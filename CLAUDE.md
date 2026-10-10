@@ -73,6 +73,38 @@ themselves and record them in an IPAM sheet; the model catches overlaps,
 wrong masks and gateways outside the subnet. No built-in calculator does it
 for them, and Mason's hints point at the principle, never the answer.
 
+## More decisions, 10 October 2026
+
+- **Network-Sims is a knowledge base**, as Core-2-Sims was for Core 2: each
+  sim becomes a ticket set (the sim itself plus five more), the sims' own
+  keys stand, Extra training covers the objectives no sim covers, and an
+  Exam Practice view lays each sim out the way the exam does.
+- **Both build modes:** client jobs (a work order: rooms, devices,
+  requirements, limits such as 100 m runs and the PoE budget, the model
+  checks the job against it) as the main path, and free build.
+  **Still open:** whether jobs carry an equipment budget.
+- **Instructor tools behind PIN 3693:** choose a specific fault for a class
+  demonstration, show the fault and the fix after class, unlock any level.
+- **Defaults the owner did not object to:** a logical diagram and a
+  physical view (house floor plan, closet rack in 3D) plus a terminal
+  panel; console-cable setup first, then SSH, web pages for home gear;
+  Mason as team lead and coach with the program's ladder and rules; a
+  packet step-through showing headers change hop by hop; Wi-Fi shaped by
+  walls, distance and neighbours' networks; AAA, a persistent dyslexia
+  toggle, the full footer, progress saved in the browser.
+- **"Don't build yet"** (owner, 10 October 2026): photographs still coming.
+
+### Photographs received (10 October 2026)
+
+Home level, in the session, not in the repo: a mesh node (front, side,
+back with WAN/LAN/12V ports, bottom label, status LED), a cable modem
+(front LEDs POWER/DS/US/ONLINE/LINK-ACT; back coax F-type, Ethernet,
+reset, power), a fiber ONT (POWER/PON/ALARM/LINK-ACT/ETHERNET; green SC/APC
+fiber port, Ethernet, 12V DC), a home wireless router (four antennas;
+INTERNET/WAN, LAN 1-4, RESET, WPS, power), a 5-port unmanaged gigabit
+switch (front ports with link LEDs, back power). Brand marks in the photos
+stay off the models.
+
 ## Objectives
 
 Read from the owner's "All updated Objectives" Google Doc

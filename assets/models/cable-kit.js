@@ -38,6 +38,7 @@ export function tubeVar(curve, o = {}) {
       const a = j / m * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
       const c = ex === 2 ? ca : Math.sign(ca) * Math.pow(Math.abs(ca), 2 / ex), s = ex === 2 ? sa : Math.sign(sa) * Math.pow(Math.abs(sa), 2 / ex);
       const off = f.N[i].clone().multiplyScalar(c * r[1]).addScaledVector(f.B[i], s * r[0]);
+      if (o.bump) { const bm = o.bump(t, a), L = off.length(); if (bm && L > 1e-6) off.multiplyScalar((L + bm) / L); }   /* o.bump(t, a): push the surface out (+) or in (-) here, in mm */
       pos.push(P.x + off.x, P.y + off.y, P.z + off.z);
       const nn = f.N[i].clone().multiplyScalar(c / r[1]).addScaledVector(f.B[i], s / r[0]).normalize();
       nor.push(nn.x, nn.y, nn.z);
@@ -58,7 +59,7 @@ export function tubeVar(curve, o = {}) {
   g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
   g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
   g.setIndex(idx);
-  if (o.square) {   /* recompute the normals for the squared-off sections, and close the seam */
+  if (o.square || o.bump) {   /* recompute the normals for the squared-off or bumped sections, and close the seam */
     g.computeVertexNormals(); const nn = g.attributes.normal;
     for (let i = 0; i <= n; i++) { const a = i * (m + 1), b = a + m; const x = (nn.getX(a) + nn.getX(b)) / 2, y = (nn.getY(a) + nn.getY(b)) / 2, z = (nn.getZ(a) + nn.getZ(b)) / 2; nn.setXYZ(a, x, y, z); nn.setXYZ(b, x, y, z); }
     nn.needsUpdate = true;

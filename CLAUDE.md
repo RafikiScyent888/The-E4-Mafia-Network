@@ -28,10 +28,18 @@ crimper, 110 punch-down, tone generator and inductive probe, loopback
 plug, the screwdriver set on its ESD mat, and the tools laid out as
 photographed; `tools.js`), then the home-level workspace and first ticket
 preview.
-- Clear plastic (plugs): transparent with a Fresnel rim on the opacity,
-  front faces only. Physical transmission was tried and dropped: it
-  veiled the wires white and dulled the gold. Wire insulation keeps a low
-  environment reflection, or the colours wash to pastel.
+- Clear plastic (plugs): near-zero face-on opacity (0.012) with a sharp
+  Fresnel rim (power 3, 0.8), front faces only; inner channel walls use
+  the faint variant. The owner called the 0.08 version "kinda cloudy":
+  every plastic layer adds a film. Physical transmission was tried and
+  dropped (it veiled the wires white and dulled the gold), and so was a
+  highlight term read from the lit colour (it clouded the whole plug).
+  Wire insulation keeps a low environment reflection, or the colours
+  wash to pastel.
+- Detail pass, 10 October 2026, after the owner: "The crimper needs to be
+  way more like the photo. The tone generator and inductive probe. As
+  well as the screw driver set. The RJ45 is also kinda of cloudy." All
+  four rebuilt; the owner: "The remakes look better."
 - LEDs: a lit LED is emissive only (a lit base colour pushes it to white),
   with a glow sprite on layer 1. The viewer draws glows in their own pass
   after the ambient occlusion (AO darkens everything beside a raised edge,

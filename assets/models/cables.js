@@ -22,24 +22,32 @@ const PAIR_OF = { orange: 0, green: 1, blue: 2, brown: 3 };
    real Cat6 gives every pair a different twist rate to cut crosstalk */
 const PAIRS = [{ c: [1.15, 0.55], lay: 12.7 }, { c: [0.15, -1.15], lay: 14.6 }, { c: [0.15, 1.15], lay: 16.5 }, { c: [-1.15, 0.45], lay: 18.4 }];
 
-/* clear polycarbonate, as it reads in the owner's photos: almost
-   invisible face-on, its edges and corners catching the light where the
-   surface turns away from you (a Fresnel rim on the opacity) */
-function clearPlastic() {
-  const m = new THREE.MeshPhysicalMaterial({ color: 0xf7fbfc, roughness: 0.06, metalness: 0, transparent: true, opacity: 0.08, depthWrite: false,
-    clearcoat: 0.5, clearcoatRoughness: 0.06, envMapIntensity: 0.7 });   /* front faces only: every extra layer greyed the wires */
+/* clear polycarbonate, as it reads in the owner's photos: glass-clear
+   face-on (the wires and contacts show at full colour), only its edges
+   and corners catching the light, in a thin bright line where the surface
+   turns away (a sharp Fresnel rim). o.faint for inner walls, which in a
+   real plug are hardly seen at all. Every layer adds a film, so keep the
+   face-on opacity near zero: at 0.08 the plug read cloudy. */
+const clearCache = {};
+function clearPlastic(o = {}) {
+  const key = o.faint ? "faint" : "body"; if (clearCache[key]) return clearCache[key];
+  const base = o.faint ? 0.0 : 0.012, rim = o.faint ? 0.22 : 0.8, pw = o.faint ? 5.0 : 3.0;
+  const m = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.04, metalness: 0, transparent: true, opacity: base, depthWrite: false,
+    clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.0 });
   m.userData.clear = true;
   m.onBeforeCompile = function (sh) {
     sh.fragmentShader = sh.fragmentShader.replace("#include <opaque_fragment>", "#include <opaque_fragment>\n" +
-      "{ float e4f = 1.0 - abs(dot(normal, normalize(vViewPosition))); gl_FragColor.a = clamp(gl_FragColor.a + pow(e4f, 2.0) * 0.78, 0.0, 0.92); gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.95, 0.97, 0.98), pow(e4f, 2.0) * 0.6); }");
+      "{ float e4f = 1.0 - abs(dot(normal, normalize(vViewPosition))); float e4r = pow(e4f, " + pw.toFixed(1) + ");\n" +
+      "  gl_FragColor.a = clamp(" + base.toFixed(3) + " + e4r * " + rim.toFixed(2) + ", 0.0, 0.85);\n" +
+      "  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.97, 0.985, 0.99), e4r * 0.55); }");
   };
-  m.customProgramCacheKey = function () { return "e4clear"; };
-  return m;
+  m.customProgramCacheKey = function () { return "e4clear2" + key; };
+  clearCache[key] = m; return m;
 }
 const V = function (x, y, z) { return new THREE.Vector3(x, y, z); };
 export { clearPlastic, GOLD };
 /* gold plating: kept partly diffuse so it reads gold from every angle, not brown where it mirrors the bench */
-const GOLD = new THREE.MeshStandardMaterial({ color: 0xe9b94e, metalness: 0.6, roughness: 0.3, envMapIntensity: 1.8 });
+const GOLD = new THREE.MeshStandardMaterial({ color: 0xdcaa3c, metalness: 0.7, roughness: 0.28, envMapIntensity: 1.6 });
 const CAT6 = "CAT6 UTP  ·  23AWG 4PR  ·  550MHz  ·  TIA-568.2  ·  VERIFIED  ·  1000FT";
 
 /* a straight-ish jacket from z0 back to z1 (z1 < z0), drooping a little */
@@ -64,7 +72,8 @@ export function rj45Plug(o = {}) {
   g.add(at(rbox(W + 0.6, H + 0.5, 6.2, 0.8, cp), 0, 0.1, zR + 3.1));
   [-1, 1].forEach(function (sd) { g.add(at(box(0.8, 3.2, 3.2, cp), sd * (W / 2 + 0.55), 0.6, zR + 3.4)); });   /* the side bosses */
   for (let k = 0; k <= 8; k++) g.add(at(box(0.36, 1.0, 4.8, cp), (k - 4) * 1.02, H / 2 + 0.2, zF - 2.6));
-  for (let k = 0; k <= 8; k++) g.add(at(box(0.22, 2.2, 9.5, cp), (k - 4) * 1.02, 1.3, zF - 5.6));   /* the channel walls, one wire to a channel */
+  const cpf = clearPlastic({ faint: true });
+  for (let k = 0; k <= 8; k++) g.add(at(box(0.22, 2.2, 9.5, cpf), (k - 4) * 1.02, 1.3, zF - 5.6));   /* the channel walls, one wire to a channel */
   const latch = new THREE.Group();
   latch.add(at(box(6.4, 0.9, 13.5, cp), 0, 0, -6.75));
   latch.add(at(box(7.4, 0.9, 3.2, cp), 0, -0.55, -13.4, -0.35, 0, 0));
@@ -130,7 +139,7 @@ export function rj11Plug(o = {}) {
   g.add(at(rbox(W, H, L - 4, 0.6, cp), 0, 0, 2));
   g.add(at(rbox(W + 0.5, H + 0.4, 4.2, 0.7, cp), 0, 0.1, zR + 2.1));
   for (let k = 0; k <= 6; k++) g.add(at(box(0.34, 0.9, 4, cp), (k - 3) * 1.02, H / 2 + 0.15, zF - 2.2));
-  for (let k = 0; k <= 6; k++) g.add(at(box(0.2, 1.8, 6, cp), (k - 3) * 1.02, 1.0, zF - 4.2));
+  for (let k = 0; k <= 6; k++) g.add(at(box(0.2, 1.8, 6, clearPlastic({ faint: true })), (k - 3) * 1.02, 1.0, zF - 4.2));
   const latch = new THREE.Group(); latch.add(at(box(4.6, 0.8, 9.5, cp), 0, 0, -4.75)); latch.add(at(box(5.4, 0.8, 2.4, cp), 0, -0.45, -9.6, -0.35, 0, 0));
   latch.position.set(0, -H / 2 - 0.35, zF - 2.5); latch.rotation.x = 0.16; g.add(latch);
   const colours = o.lines === 1 ? [null, null, "red", "green", null, null] : [null, "black", "red", "green", "yellow", null];

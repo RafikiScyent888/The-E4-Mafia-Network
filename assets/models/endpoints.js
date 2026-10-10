@@ -304,7 +304,7 @@ export function networkPrinter() {
   /* POWER: round, its ring lit green */
   const pw = new THREE.Group(); at(pw, -54, -30, fz); cp.add(pw);
   pw.add(at(cyl(6.6, 2.4, plastic(0x1b1d20, { rough: 0.35 }), 32), 0, 0, 1, Math.PI / 2));
-  pw.add(at(new THREE.Mesh(new THREE.TorusGeometry(5.6, 0.7, 10, 40), new THREE.MeshStandardMaterial({ color: 0x3dff6a, emissive: 0x2bff5a, emissiveIntensity: 1.8 })), 0, 0, 2.25));
+  pw.add(at(new THREE.Mesh(new THREE.TorusGeometry(5.6, 0.7, 10, 40), new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0x2bff5a, emissiveIntensity: 0.95 })), 0, 0, 2.25));
   pw.add(at(text("⏻", 6.5, 6.5, { color: "#5dff86", weight: "900", screen: true }), 0, 0, 2.3)); named(pw, "button:POWER", { type: "button", lit: true });
   cp.add(at(ink("POWER", 15, 3.4), -54, -19.6, fz));
   const cn = new THREE.Group(); at(cn, -28, -30, fz); cp.add(cn);
@@ -353,7 +353,7 @@ export function networkPrinter() {
   return named(g, "device:Network printer", { type: "printer", w: W, h: top, d: D });
 }
 function ledPipeAmber() {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(3, 6, 1.2), new THREE.MeshStandardMaterial({ color: 0xffa21a, emissive: 0xffa21a, emissiveIntensity: 2.2 }));
+  const m = new THREE.Mesh(new THREE.BoxGeometry(3, 6, 1.2), new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffa21a, emissiveIntensity: 0.95 }));
   m.userData = { kind: "led", color: 0xffa21a, on: true, role: "attention" }; return m;
 }
 /* the printer's colour screen, as in the photo (wording corrected) */

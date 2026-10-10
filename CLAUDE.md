@@ -19,10 +19,16 @@ talking about."** Batch 3 is the bar for every model from here on: matched
 part by part to the photo, cables plugged in as photographed, real print,
 real finishes, on the bench with shadows, and checked photo-beside-render
 from the photo's own angle.
-Next: batch 4 (tools and the bench kit), then the home-level workspace and
-first ticket preview. Batches 1 and 2 predate the realism pass and should
-be brought up to the batch 3 standard against their photos (the owner
-chooses which comes first).
+Order set by the owner, 10 October 2026: "Start with 1 and then do 2":
+batch 1 rebuilt to the batch 3 standard (done: modem, ONT, router,
+switch and the stacked pair, mesh node front/back/weak), then batch 2
+(cables), then batch 4 (tools and the bench kit), then the home-level
+workspace and first ticket preview.
+- LEDs: a lit LED is emissive only (a lit base colour pushes it to white),
+  with a glow sprite on layer 1. The viewer draws glows in their own pass
+  after the ambient occlusion (AO darkens everything beside a raised edge,
+  glow included, which sliced the glows), and hides a glow whose LED faces
+  away or has something solid in front of it.
 
 **Models** (`assets/models/`): procedural three.js, real millimetres, front
 +Z, every port a named group (`port:LAN 1`) with userData for the build to

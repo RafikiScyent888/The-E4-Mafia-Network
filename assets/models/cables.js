@@ -135,8 +135,9 @@ export function rj11Plug(o = {}) {
 export function coaxF(o = {}) {
   const g = new THREE.Group();
   const nickel = mat(0xa9aeb5, { metal: 1, rough: 0.3 }), nickel2 = mat(0x989da4, { metal: 1, rough: 0.4 });   /* plated, not mirror-white */
-  /* the cable */
-  g.add(jacketRun(-15, -52, 3.45, 0x141414, "RG6 QUAD SHIELD  ·  18AWG CCS  ·  75 OHM  ·  SWEEP TESTED 3GHz  ·  CATV", { ink: "rgba(235,235,235,0.75)", droop: 2 }));
+  /* the cable (o.stub: a short end, the device runs the rest with cableFrom) */
+  const RG6 = "RG6 QUAD SHIELD  ·  18AWG CCS  ·  75 OHM  ·  SWEEP TESTED 3GHz  ·  CATV", jc = o.jacket == null ? 0x141414 : o.jacket, ink = new THREE.Color(jc).getHSL({}).l > 0.5 ? "rgba(30,30,30,0.6)" : "rgba(235,235,235,0.75)";
+  g.add(jacketRun(-15, o.stub ? -22 : -52, 3.45, jc, RG6, { ink: ink, droop: o.stub ? 0.01 : 2 }));
   /* compression sleeve: pushed home, its black collar showing */
   g.add(at(cyl(5.3, 5, mat(0x1c1c1e, { rough: 0.45 }), 40), 0, 0, -12.5, Math.PI / 2));
   g.add(at(new THREE.Mesh(new THREE.TorusGeometry(5.3, 0.35, 8, 40), mat(0x1c1c1e, { rough: 0.45 })), 0, 0, -15));
@@ -156,7 +157,9 @@ export function coaxF(o = {}) {
   g.add(at(new THREE.Mesh(new THREE.CircleGeometry(3.55, 40), mat(0xf4f2ea, { rough: 0.85 })), 0, 0, 1.62));               // foam dielectric
   const pin = cyl(0.51, 12.4, mat(0xc87a3e, { metal: 1, rough: 0.22 }), 16); g.add(at(pin, 0, 0, 4.4, Math.PI / 2));     // to 10.6: 3 mm proud of the nut face at 7.75
   g.add(at(new THREE.Mesh(new THREE.ConeGeometry(0.51, 0.5, 16), mat(0xc87a3e, { metal: 1, rough: 0.22 })), 0, 0, 10.85, Math.PI / 2));
-  return named(g, "plug:F-type", { type: "coax", cable: "RG6" });
+  named(g, "plug:F-type", { type: "coax", cable: "RG6" });
+  if (o.stub) { g.userData.exitZ = -20; g.userData.cable = { r: 3.45, color: jc, text: RG6, ink: ink }; }
+  return g;
 }
 
 /* ---- a damaged run: kinked hard, crushed flat, the jacket torn open
@@ -275,5 +278,38 @@ export function iecC13(o = {}) {
   g.add(new THREE.Mesh(geo, m));
   named(g, "plug:IEC C13", { type: "iec-c13" });
   g.userData.exitZ = -28 - L + 2; g.userData.cable = { r: 3.9, color: 0x161718, text: "18AWG x 3C  ·  SJT  ·  105°C  ·  300V  ·  VW-1", ink: "rgba(220,220,220,0.55)" };
+  return g;
+}
+
+/* ---- a DC barrel plug on its cord (5.5 x 2.1 mm), front at z = 0 ---- */
+export function dcPlug(o = {}) {
+  const g = new THREE.Group(), m = mat(o.color || 0x161718, { rough: 0.5, grain: 0.06 });
+  g.add(at(cyl(2.75, 9, mat(0xc9ccd0, { metal: 1, rough: 0.25 }), 24), 0, 0, 4.5, Math.PI / 2));     // the barrel (inside the jack)
+  g.add(at(cyl(4.2, 3, m, 28), 0, 0, -1.5, Math.PI / 2));
+  g.add(at(cyl(5.2, 13, m, 32), 0, 0, -9.5, Math.PI / 2));
+  for (let k = 0; k < 8; k++) g.add(at(box(0.8, 0.5, 9, m), Math.cos(k / 8 * Math.PI * 2) * 5.2, Math.sin(k / 8 * Math.PI * 2) * 5.2, -9.5, 0, 0, k / 8 * Math.PI * 2));   /* grip flutes */
+  const L = 13, geo = tubeVar(new THREE.LineCurve3(V(0, 0, -16), V(0, 0, -16 - L)), { n: 80, m: 28, up: V(0, 1, 0),
+    radius: function (t) { const zz = t * L, r = THREE.MathUtils.lerp(4.4, 2.3, zz / L) + (zz > 3 && Math.sin(zz * 2.4) > 0.3 ? -0.35 : 0); return [r, r]; } });
+  g.add(new THREE.Mesh(geo, m));
+  named(g, "plug:DC", { type: "dc" });
+  g.userData.exitZ = -28; g.userData.cable = { r: 1.9, color: o.color || 0x161718, text: "UL 2468  ·  20AWG x 2C  ·  80°C 300V  ·  VW-1", ink: "rgba(225,225,225,0.4)" };
+  return g;
+}
+
+/* ---- SC/APC fiber connector on its patch cord, front at z = 0: the
+   green push-pull housing (green = angle-polished), its grip, the boot,
+   the 2 mm single-mode cord ---- */
+export function scApcPlug(o = {}) {
+  const g = new THREE.Group(), gm = mat(COL.apcGreen, { rough: 0.4, grain: 0.05 });
+  g.add(at(rbox(6.4, 7.4, 10, 0.6, gm), 0, 0, 1));                                   // the part inside the adapter
+  g.add(at(rbox(8.6, 8.6, 12, 1, gm), 0, 0, -10));                                   // the grip housing
+  for (let k = 0; k < 6; k++) [-1, 1].forEach(function (sd) { g.add(at(box(0.5, 6.4, 0.8, gm), sd * 4.35, 0, -14 + k * 1.6)); });
+  g.add(at(box(2.2, 0.8, 8, gm), 0, 4.6, -9));                                       // the key on top
+  const L = 26, geo = tubeVar(new THREE.LineCurve3(V(0, 0, -16), V(0, 0, -16 - L)), { n: 120, m: 32, up: V(0, 1, 0),
+    radius: function (t) { const zz = t * L, r = THREE.MathUtils.lerp(4.2, 1.5, Math.min(1, zz / 22)) + (zz > 6 && zz < 22 && Math.sin(zz * 2.0) > 0.4 ? -0.3 : 0); return [r, r]; },
+    square: function (t) { return t < 0.15 ? 6 : 2; } });
+  g.add(new THREE.Mesh(geo, mat(o.boot || COL.apcGreen, { rough: 0.45, grain: 0.05 })));
+  named(g, "plug:SC/APC", { type: "fiber", connector: "SC/APC" });
+  g.userData.exitZ = -40; g.userData.cable = { r: 1.0, color: o.jacket == null ? 0xf0c419 : o.jacket, text: "OS2 9/125  ·  SINGLE-MODE  ·  G.657.A2  ·  2.0mm", ink: "rgba(30,30,30,0.6)" };
   return g;
 }

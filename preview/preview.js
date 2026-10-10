@@ -13,25 +13,38 @@ import * as CAB from "../assets/models/cables.js";
 import * as END from "../assets/models/endpoints.js";
 
 const MODELS = [
-  { id: "modem", group: "Network gear", name: "Cable modem", build: GEAR.cableModem,
-    photo: "From your photo of the cable modem, front and back.",
-    shows: ["Front: POWER, DS, US, ONLINE (blue) and LINK/ACT lights", "Back: CABLE IN (F-type), ETHERNET, RESET pinhole, POWER 12V", "The label, with the serial and MAC address covered", "Side vents and its stand"] },
-  { id: "ont", group: "Network gear", name: "Fiber ONT", build: GEAR.fiberOnt,
-    photo: "From your photo of the fiber ONT home terminal.",
-    shows: ["Front: POWER, PON, ALARM (off), LINK/ACT and ETHERNET lights", "Underneath: the green SC/APC FIBER PORT, ETHERNET and 12V DC", "Side vents and the serial label"],
-    standards: ["Green on a fiber connector means APC (angle-polished): it must only ever mate with green"] },
-  { id: "router", group: "Network gear", name: "Home wireless router", build: GEAR.homeRouter,
+  { id: "modem", view: [0.95, 0.42, -1.0], light: [0.6, 1.3, -1.0], frame: [-60, 0, -110, 60, 180, 90], group: "Network gear", name: "Cable modem", build: GEAR.cableModem,
+    photo: "From your photo of the cable modem, front and back, cables plugged in as photographed.",
+    shows: ["The rounded top, the glossy face: POWER, DS, US (green), ONLINE (blue), LINK/ACT", "Back: the label (serial and MAC covered), CABLE IN with the white coax screwed on, the yellow ETHERNET port with its yellow cable, RESET, the power cord", "Vent rows near the top of each side, the slatted panel below them"],
+    standards: ["The brand where your photo has one is replaced by CABLE MODEM / DOCSIS 3.0"] },
+  { id: "modem-front", view: [0.45, 0.25, 1], light: [0.5, 1.2, 1.0], frame: [-40, 10, 60, 40, 170, 90], group: "Network gear", name: "Cable modem, front", build: GEAR.cableModem,
+    photo: "The same modem from the front.",
+    shows: ["ONLINE blue: the modem has registered with the provider. DS and US are the downstream and upstream channels."] },
+  { id: "ont", stage: "none", view: [0.45, 0.05, 1], light: [-0.4, 1.0, 1.1], frame: [-75, -40, 0, 75, 205, 40], group: "Network gear", name: "Fiber ONT", build: GEAR.fiberOnt,
+    photo: "From your photo of the fiber ONT on the wall.",
+    shows: ["FIBER ONT underlined, HOME TERMINAL", "POWER, PON, LINK/ACT, ETHERNET green; ALARM off", "Underneath: the green SC/APC fiber connector, the yellow patch cable and the 12V cord hanging down", "Vent slits and the barcode down the side"],
+    standards: ["Green on a fiber connector means APC (angle-polished): it must only ever mate with green", "The fiber cord's jacket is yellow, the colour for single-mode (TIA-598); your photo's cord is green"] },
+  { id: "router", view: [0.3, 0.32, -1], light: [0.5, 1.3, -1.0], frame: [-150, 0, -200, 150, 230, 90], group: "Network gear", name: "Home wireless router", build: GEAR.homeRouter,
     photo: "From your photo of the router's back panel.",
-    shows: ["Back, left to right: INTERNET (yellow), LAN 1-4, RESET, WPS, POWER, ON/OFF", "Four hinged antennas", "Status lights along the top front edge", "The label underneath, default Wi-Fi details covered"] },
-  { id: "switch", group: "Network gear", name: "5-port unmanaged switch", build: GEAR.unmanagedSwitch,
+    shows: ["Back: INTERNET (WAN) in yellow, LAN 1-4 in their printed frame, RESET, WPS, DC IN", "Cables in INTERNET (yellow), LAN 1 and LAN 2 (black), LAN 4 (white) and the power cord; LAN 3 empty, its lights off", "Four hinged antennas, the label and barcode sticker underneath (Wi-Fi details covered)"] },
+  { id: "router-back", focus: "panel:Back ports", view: [0, 0.18, -1], light: [0.3, 1.2, -1.0], group: "Network gear", name: "Router, back ports close-up", build: GEAR.homeRouter,
+    photo: "The same router, close in on its ports.",
+    shows: ["The WAN port is where the modem's cable goes; the LAN ports feed the home"] },
+  { id: "switch", view: [0.6, 0.4, 1], light: [0.6, 1.3, 0.9], frame: [-110, 0, -60, 90, 40, 140], group: "Network gear", name: "5-port unmanaged switch", build: function () { return GEAR.unmanagedSwitch(); },
     photo: "From your photo of the two stacked 5-port switches.",
-    shows: ["Front: POWER light and ports 1-5, each with link and activity lights", "Back: DC 5V in", "Metal case, side vents, rubber feet"] },
-  { id: "mesh", group: "Network gear", name: "Mesh Wi-Fi node", build: function () { return GEAR.meshNode(); },
+    shows: ["Metal case, cover over base, screws on the sides", "Power light; ports 1-5 in a silver bezel, two green lights each; UNMANAGED 5-PORT GIGABIT SWITCH above", "Patch cables in ports 1-4 (yellow, grey, grey, dark grey); port 5 empty, its lights off", "Angled side vents; the power jack and cord on the side"] },
+  { id: "switch-stack", view: [0.55, 0.3, 1], light: [0.6, 1.3, 0.9], frame: [-90, 0, -50, 90, 66, 80], group: "Network gear", name: "Two switches stacked", build: GEAR.switchStack,
+    photo: "As in your photo: two switches, one on the other.",
+    shows: ["Unmanaged switches simply join more devices to the network: no settings, no command line"] },
+  { id: "mesh", view: [-0.75, 0.3, -1], light: [-0.6, 1.3, -0.9], frame: [-70, 0, -110, 70, 160, 70], group: "Network gear", name: "Mesh Wi-Fi node", build: function () { return GEAR.meshNode(); },
     photo: "From your photo of the mesh nodes, with its callouts.",
-    shows: ["Front: the status light (green good; amber when the link to the next node is weak)", "Back plate: WAN, LAN and 12V DC IN", "Cooling vents round the top, side vents, RESET on the side", "The label underneath"] },
-  { id: "mesh-weak", group: "Network gear", name: "Mesh node, weak link (amber)", build: function () { return GEAR.meshNode("weak"); },
-    photo: "The same node with its status light amber, as in your photo's distant node.",
-    shows: ["Amber status: placed too far from the next node"] },
+    shows: ["The back plate: vent dots, WAN / INTERNET (yellow cable), LAN (black cable, link light on), 12V DC IN with its polarity mark", "The cooling vents round the top cap; vents round the foot", "The side strip: vents, the amber light, RESET", "The status light ring at the front; the label, pads and keyhole underneath"] },
+  { id: "mesh-front", view: [0.5, 0.25, 1], light: [0.5, 1.2, 1.0], group: "Network gear", name: "Mesh node, front and side", build: function () { return GEAR.meshNode(); },
+    photo: "The same node from the front and its side strip.",
+    shows: ["Status light green: a good link to the next node"] },
+  { id: "mesh-weak", view: [-1, 0.25, 0.45], light: [-0.6, 1.3, 0.9], group: "Network gear", name: "Mesh node, weak link (amber)", build: function () { return GEAR.meshNode("weak"); },
+    photo: "The same node with its lights amber, as in your photo's distant node.",
+    shows: ["Amber on the side strip and the front ring: placed too far from the next node"] },
   { id: "rj45b", pointAway: true, frame: [-7, -6, -24, 7, 6, 12], group: "Cables and connectors", name: "RJ45, straight-through (T568B)", build: function () { return CAB.rj45Plug({ standard: "T568B" }); },
     photo: "From your photo of the straight-through and crossover ends.",
     shows: ["Pin 1 to 8: white/orange, orange, white/green, blue, white/blue, green, white/brown, brown", "The jacket held inside the plug by the strain relief", "Eight gold contacts, the clip underneath"],
@@ -130,6 +143,30 @@ const stage = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), stageMat); stage.rot
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const gtao = new GTAOPass(scene, camera, 800, 600); gtao.blendIntensity = 1.0; composer.addPass(gtao);
+/* print (labels, legends) is paper-thin: leave it out of the occlusion depth, as the pass already does for glows */
+gtao.overrideVisibility = function () {
+  const cache = this._visibilityCache;
+  this.scene.traverse(function (o) { cache.set(o, o.visible); if (o.isPoints || o.isLine || o.userData.print) o.visible = false; });
+};
+/* the LED glows, drawn after the shading: only those whose LED faces the camera with nothing in between */
+const glowCam = new THREE.PerspectiveCamera(), glowPass = new RenderPass(scene, glowCam); glowPass.clear = false; composer.addPass(glowPass);
+const glowRender = glowPass.render.bind(glowPass);
+glowPass.render = function () { const bg = scene.background; scene.background = null; glowRender.apply(null, arguments); scene.background = bg; };   /* a colour background would force a clear */
+const ray = new THREE.Raycaster(), halos = [];
+function updateGlows() {
+  glowCam.copy(camera); glowCam.layers.set(1);
+  if (!current) return;
+  const solid = []; current.traverse(function (o) { if (o.isMesh && !o.userData.print && o.visible) solid.push(o); });
+  const P = new THREE.Vector3(), N = new THREE.Vector3(), Q = new THREE.Quaternion();
+  halos.forEach(function (h) {
+    if (!h.parent.userData.on) { h.visible = false; return; }
+    h.getWorldPosition(P); h.parent.getWorldQuaternion(Q); N.set(0, 0, 1).applyQuaternion(Q);
+    const to = camera.position.clone().sub(P), dist = to.length(); to.normalize();
+    if (N.dot(to) < 0.08) { h.visible = false; return; }
+    ray.set(camera.position, P.clone().sub(camera.position).normalize()); ray.far = dist - 0.3;
+    h.visible = ray.intersectObjects(solid, false).length === 0;
+  });
+}
 composer.addPass(new OutputPass());
 let dirty = true;
 
@@ -156,6 +193,7 @@ function show(id, view) {
   const m = MODELS.find(function (x) { return x.id === id; }) || MODELS[0];
   if (current) { scene.remove(current); }
   current = m.build(); curModel = m; scene.add(current);
+  halos.length = 0; current.traverse(function (o) { if (o.userData.halo) halos.push(o); });
   /* everything solid casts a shadow; print and clear plastic don't */
   current.traverse(function (o) { if (!o.isMesh) return; const mt = o.material; o.receiveShadow = true;
     o.castShadow = !(o.userData.print || (mt && mt.transparent && (mt.opacity < 0.6 || !mt.alphaTest))); if (mt && mt.alphaTest) o.castShadow = true; });
@@ -195,7 +233,7 @@ document.querySelectorAll("[data-view]").forEach(function (b) { b.addEventListen
 function size() { const w = canvas.clientWidth, h = canvas.clientHeight; renderer.setSize(w, h, false); composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); dirty = true; }
 window.addEventListener("resize", size); size();
 controls.addEventListener("change", function () { dirty = true; });
-(function loop() { controls.update(); if (dirty) { dirty = false; composer.render(); } requestAnimationFrame(loop); })();
+(function loop() { controls.update(); if (dirty) { dirty = false; updateGlows(); composer.render(); } requestAnimationFrame(loop); })();
 show((location.hash || "").slice(1) || "modem");
 
 /* easier reading: on stays on, across pages and visits */
@@ -206,5 +244,5 @@ setDys(stored === "1");
 dys.addEventListener("click", function () { setDys(!document.body.classList.contains("dys")); });
 
 /* for scripted close-ups: put the camera exactly here, looking there */
-function cam(c, t, fov) { camera.fov = fov || 35; camera.position.fromArray(c); controls.target.fromArray(t); camera.near = 0.5; camera.far = 20000; camera.updateProjectionMatrix(); controls.update(); dirty = true; composer.render(); }
-window.__preview = { cam: cam, show: show, look: look, ids: MODELS.map(function (m) { return m.id; }), render: function () { composer.render(); }, current: function () { return current; } };
+function cam(c, t, fov) { camera.fov = fov || 35; camera.position.fromArray(c); controls.target.fromArray(t); camera.near = 0.5; camera.far = 20000; camera.updateProjectionMatrix(); controls.update(); dirty = true; updateGlows(); composer.render(); }
+window.__preview = { cam: cam, show: show, look: look, ids: MODELS.map(function (m) { return m.id; }), render: function () { updateGlows(); composer.render(); }, current: function () { return current; } };

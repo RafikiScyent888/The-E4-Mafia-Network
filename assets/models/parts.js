@@ -89,20 +89,40 @@ export const COVERED = "████████";
 
 /* ---- an LED: a small lens that glows when on ---- */
 export function led(color, on, r) {
-  const m = new THREE.MeshStandardMaterial({ color: on ? color : 0x2a2a2a, emissive: on ? color : 0x000000, emissiveIntensity: on ? 2.2 : 0, roughness: 0.3 });
-  const s = new THREE.Mesh(new THREE.SphereGeometry(r || 1.3, 16, 10), m);
+  r = r || 1.3;
+  const s = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 10), ledMat(color, on));
   s.scale.z = 0.5; s.userData = { kind: "led", color: color, on: !!on };
+  s.add(halo(color, r * 15, r * 1.1, on));
   return s;
 }
 export function ledPipe(color, on) {
-  const m = new THREE.MeshStandardMaterial({ color: on ? color : 0x2a2a2a, emissive: on ? color : 0x000000, emissiveIntensity: on ? 2.4 : 0, roughness: 0.25 });
-  const s = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.5, 0.5), m); s.userData = { kind: "led", color: color, on: !!on };
+  const s = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.5, 0.5), ledMat(color, on)); s.userData = { kind: "led", color: color, on: !!on };
+  s.add(halo(color, 18, 0.6, on));
   return s;
 }
+/* a lit LED keeps its colour, with a soft glow round it as a camera
+   sees it; an unlit one is dark smoked plastic */
+function ledMat(color, on) {
+  /* emissive only (a black base, so the lamps don't add to it and push it to white) */
+  return on ? new THREE.MeshStandardMaterial({ color: 0x000000, emissive: color, emissiveIntensity: 0.95, roughness: 0.3 })
+    : new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.3 });
+}
+let glowTex = null;
+function halo(color, size, z, on) {
+  if (!glowTex) {
+    const c = document.createElement("canvas"); c.width = c.height = 128; const g = c.getContext("2d");
+    const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, "rgba(255,255,255,1)"); gr.addColorStop(0.16, "rgba(255,255,255,0.6)"); gr.addColorStop(0.45, "rgba(255,255,255,0.12)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128); glowTex = new THREE.CanvasTexture(c); glowTex.colorSpace = THREE.SRGBColorSpace;
+  }
+  /* a single point sprite on layer 1: the viewer draws glows after the
+     shading pass (light isn't shadowed), hiding any whose LED it can't see */
+  const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0], 3));
+  const p = new THREE.Points(geo, new THREE.PointsMaterial({ map: glowTex, color: color, size: size, sizeAttenuation: true, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
+  p.position.z = z; p.layers.set(1); p.visible = !!on; p.userData.halo = true; return p;
+}
 export function setLed(s, on) {
-  s.userData.on = on; s.material = s.material.clone();
-  s.material.color.setHex(on ? s.userData.color : 0x2a2a2a);
-  s.material.emissive.setHex(on ? s.userData.color : 0x000000); s.material.emissiveIntensity = on ? 2.2 : 0;
+  s.userData.on = on; s.material = ledMat(s.userData.color, on);
+  s.children.forEach(function (c) { if (c.userData.halo) c.visible = on; });
 }
 
 /* ---- vent slots: dark recesses on a face facing +Z ---- */
@@ -141,7 +161,8 @@ export function rj45Jack(o = {}) {
   if (o.leds !== false) {
     const on = o.on || [false, false];
     /* a shielded jack's lights are square light pipes in the shield's corners */
-    const a = o.metal ? ledPipe(COL.ledGreen, on[0]) : led(COL.ledGreen, on[0], 1.0), b = o.metal ? ledPipe(COL.ledAmber, on[1]) : led(COL.ledAmber, on[1], 1.0);
+    const ac = o.actColor || COL.ledAmber;
+    const a = o.metal ? ledPipe(COL.ledGreen, on[0]) : led(COL.ledGreen, on[0], 1.0), b = o.metal ? ledPipe(ac, on[1]) : led(ac, on[1], 1.0);
     g.add(at(a, -(ow / 2 - 1.5), H / 2 - 1.25, T + 0.1)); g.add(at(b, (ow / 2 - 1.5), H / 2 - 1.25, T + 0.1));
     a.userData.role = "link"; b.userData.role = "activity";
   }
@@ -325,4 +346,27 @@ export function screw(r, color) {
   g.children[0].scale.y = 0.35;
   g.add(at(box(r * 1.7, r * 0.22, 0.8, mat(0x6d6f73, { rough: 0.7 })), 0, 0, r * 0.32));
   return g;
+}
+
+/* ---- a round body (radius rAt(y) between the y rings given) with flat
+   pockets cut into it: inside a pocket's height the wall is clamped to a
+   plane d from the axis, so the pocket has a flat floor, ledges top and
+   bottom, and sharp sides where the flat meets the round, as moulded.
+   pockets: [{ th: angle (0 = +Z, toward +X), d, y0, y1 }] ---- */
+export function cutCylinder(rAt, ys, pockets, seg) {
+  seg = seg || 160;
+  const rings = [];
+  const all = ys.slice(); pockets.forEach(function (p) { all.push(p.y0 - 0.01, p.y0, (p.y0 + p.y1) / 2, p.y1, p.y1 + 0.01); });
+  all.sort(function (a, b) { return a - b; }).forEach(function (y, i, arr) { if (i === 0 || Math.abs(y - arr[i - 1]) > 1e-4) rings.push(y); });
+  const pos = [], idx = [];
+  rings.forEach(function (y) {
+    for (let j = 0; j <= seg; j++) {
+      const th = j / seg * Math.PI * 2; let rr = rAt(y);
+      pockets.forEach(function (p) { if (y >= p.y0 && y <= p.y1) { const c = Math.cos(th - p.th); if (c > 0) rr = Math.min(rr, p.d / c); } });
+      pos.push(Math.sin(th) * rr, y, Math.cos(th) * rr);
+    }
+  });
+  for (let i = 0; i < rings.length - 1; i++) for (let j = 0; j < seg; j++) { const a = i * (seg + 1) + j, b = a + seg + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
+  return geo;
 }

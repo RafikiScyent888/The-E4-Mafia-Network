@@ -1,191 +1,297 @@
 /* =====================================================================
-   Home network gear, from the owner's photographs (10 October 2026):
-   cable modem, fiber ONT, home wireless router, 5-port unmanaged switch,
-   mesh Wi-Fi node. Real millimetres; front faces +Z; sits on y = 0.
-   Brand names and logos are left off, as ruled.
+   Home network gear, matched part by part to the owner's photographs
+   (10 October 2026): cable modem, fiber ONT, home wireless router,
+   5-port unmanaged switch (and the two stacked, as photographed), mesh
+   Wi-Fi node. Real millimetres; front faces +Z; sits on y = 0. Cables
+   are plugged in as photographed. Brand names and logos are left off,
+   as ruled; serials, MACs and Wi-Fi details are covered.
    ===================================================================== */
 import * as THREE from "three";
-import { COL, mat, rbox, box, cyl, at, named, text, sticker, COVERED, led, slots, rj45Jack, dcJack, fFemale, scApcAdapter, pinhole, button } from "./parts.js";
+import { COL, mat, rbox, box, cyl, at, named, text, COVERED, led, slots, rj45Jack, dcJack, fFemale, scApcAdapter, pinhole, button, cutCylinder, screw } from "./parts.js";
+import { rj45Plug, coaxF, dcPlug, scApcPlug, cableFrom, plugInto } from "./cables.js";
+import { perforated, printLines, label, plastic, gloss, paintedSteel, brushed, rubber } from "./surface.js";
 
-const BACK = Math.PI;   // rotate a +Z-facing part to face -Z
-
-/* a column of LEDs with their names printed beside them */
-function ledColumn(items, x, y0, step, labelX, align, w) {
-  const g = new THREE.Group();
+const BACK = Math.PI, V = function (x, y, z) { return new THREE.Vector3(x, y, z); };
+const ink = function (s, w, h, o) { return text(s, w, h, Object.assign({ color: "#eceee9", weight: "600" }, o || {})); };
+const dark = function (s, w, h, o) { return text(s, w, h, Object.assign({ color: "#2b2e33", weight: "600" }, o || {})); };
+const up = function (m) { m.rotation.z = Math.PI / 2; return m; };
+function patch(jack, boot, jacket) { return plugInto(jack, rj45Plug({ standard: "T568B", boot: boot, jacket: jacket == null ? boot : jacket })); }
+function dcIn(jack, color) { return plugInto(jack, dcPlug({ color: color }), { y: 0, z: 1.45 }); }
+function rrPts(w, h, r, cx, cy, p) {
+  const x = (cx || 0) - w / 2, y = (cy || 0) - h / 2; r = Math.min(r, w / 2, h / 2);
+  p.moveTo(x + r, y); p.lineTo(x + w - r, y); p.quadraticCurveTo(x + w, y, x + w, y + r); p.lineTo(x + w, y + h - r); p.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  p.lineTo(x + r, y + h); p.quadraticCurveTo(x, y + h, x, y + h - r); p.lineTo(x, y + r); p.quadraticCurveTo(x, y, x + r, y); return p;
+}
+const rrShape = function (w, h, r, cx, cy) { return rrPts(w, h, r, cx, cy, new THREE.Shape()); };
+const rrPath = function (w, h, r, cx, cy) { return rrPts(w, h, r, cx, cy, new THREE.Path()); };
+/* a column of lights with their names beside them */
+function ledColumn(g, items, x, y0, step, labelX, w, size) {
   items.forEach(function (it, i) {
-    const y = y0 - i * step, l = led(it[1], it[2], 1.4);
-    l.userData.role = it[0]; g.add(at(l, x, y, 0.15));
-    g.add(at(text(it[0], w || 20, 3.4, { align: align || "right" }), labelX, y, 0.1));
+    const y = y0 - i * step, l = led(it[1], it[2], size || 1.6); l.userData.role = it[0]; g.add(at(l, x, y, 0.4));
+    g.add(at(ink(it[0], w || 24, 3.6, { align: "right" }), labelX, y, 0.1));
   });
-  return g;
 }
 
 /* ------------------------------------------------------------ modem */
-/* A DOCSIS cable modem standing on its edge, as in the photo: the LEDs
-   down the narrow front, and on the back CABLE IN, ETHERNET, RESET and
-   POWER. */
+/* A DOCSIS cable modem standing on its edge, as in the photo: rounded
+   top, the glossy face with POWER, DS, US, ONLINE (blue) and LINK/ACT;
+   on the back the label, CABLE IN with the white coax screwed on, the
+   yellow ETHERNET port with its cable, RESET, and the power cord; vent
+   grids and a slatted panel down each side. */
 export function cableModem() {
-  const g = new THREE.Group(), W = 48, H = 168, D = 140;
-  g.add(at(rbox(W, H, D, 5, mat(COL.black, { rough: 0.7 })), 0, H / 2 + 6, 0));
-  g.add(at(rbox(W + 8, 7, D + 6, 3, mat(COL.charcoal, { rough: 0.8 })), 0, 3.5, 0));       // its stand
-  const front = new THREE.Group(); at(front, 0, 0, D / 2);
-  front.add(ledColumn([["POWER", COL.ledGreen, true], ["DS", COL.ledGreen, true], ["US", COL.ledGreen, true], ["ONLINE", COL.ledBlue, true], ["LINK/ACT", COL.ledGreen, true]], 12, 150, 11, -3, "right", 22));
-  front.add(at(text("CABLE MODEM", 40, 4.2, { weight: "700" }), 0, 26, 0.1));
-  front.add(at(text("DOCSIS 3.0", 30, 3, { weight: "500", color: "#cfd2d6" }), 0, 20, 0.1));
-  g.add(front);
-  const back = new THREE.Group(); at(back, 0, 0, -D / 2, 0, BACK);
-  back.add(at(sticker(["CABLE MODEM · DOCSIS 3.0", "MODEL: CM-3000", "S/N: " + COVERED, "HFC MAC: " + COVERED, "12V ⎓ 1.5A"], 40, 26), 0, 150, 0));
-  back.add(at(fFemale("CABLE IN"), 0, 118, 0)); back.add(at(text("CABLE IN", 26, 3.2), 0, 108, 0.1));
-  back.add(at(rj45Jack({ name: "ETHERNET", insert: COL.wanYellow, on: [true, true] }), 0, 92, 0)); back.add(at(text("ETHERNET", 26, 3.2), 0, 82, 0.1));
-  back.add(at(pinhole("RESET"), 0, 74, 0)); back.add(at(text("RESET", 20, 3), 0, 69, 0.1));
-  back.add(at(dcJack("POWER"), 0, 58, 0)); back.add(at(text("POWER\n12V ⎓ 1.5A", 26, 6.4), 0, 49, 0.1));
-  g.add(back);
-  [-1, 1].forEach(function (s) {
-    const v = slots(16, 2, 30, 4.2, true); at(v, s * (W / 2 + 0.05), 128, -30, 0, s * Math.PI / 2); g.add(v);
-    const v2 = slots(16, 2, 30, 4.2, true); at(v2, s * (W / 2 + 0.05), 60, -30, 0, s * Math.PI / 2); g.add(v2);
+  const g = new THREE.Group(), W = 52, H = 176, D = 158, R = 18;
+  const body = plastic(0x17181a, { rough: 0.55 });
+  const prof = new THREE.Shape(); const zx = function (z) { return -z; };
+  prof.moveTo(zx(-D / 2 + 3), 0); prof.lineTo(zx(D / 2 - 3), 0); prof.quadraticCurveTo(zx(D / 2), 0, zx(D / 2), 3); prof.lineTo(zx(D / 2), H - R);
+  prof.quadraticCurveTo(zx(D / 2), H, zx(D / 2 - R), H); prof.lineTo(zx(-D / 2 + R), H); prof.quadraticCurveTo(zx(-D / 2), H, zx(-D / 2), H - R); prof.lineTo(zx(-D / 2), 3);
+  prof.quadraticCurveTo(zx(-D / 2), 0, zx(-D / 2 + 3), 0);
+  const bm = new THREE.Mesh(new THREE.ExtrudeGeometry(prof, { depth: W - 6, bevelEnabled: true, bevelSize: 3, bevelOffset: -3, bevelThickness: 3, bevelSegments: 3, curveSegments: 12 }), body);
+  bm.rotation.y = Math.PI / 2; bm.position.set(-W / 2 + 3, 0, 0); g.add(bm);
+  /* the face: glossy panel, the lights, the name where the brand was */
+  const front = new THREE.Group(); at(front, 0, 0, D / 2); g.add(front);
+  front.add(at(rbox(W - 10, 142, 1.2, 4, gloss(0x0a0b0c, { rough: 0.12 })), 0, 84, 0.6));
+  const lc = new THREE.Group(); lc.position.z = 1.25; front.add(lc);
+  ledColumn(lc, [["POWER", COL.ledGreen, true], ["DS", COL.ledGreen, true], ["US", COL.ledGreen, true], ["ONLINE", COL.ledBlue, true], ["LINK/ACT", COL.ledGreen, true]], 11, 118, 10, -6, 24, 1.7);
+  lc.add(at(ink("CABLE MODEM", 34, 4.2, { weight: "700" }), 0, 30, 0.1)); lc.add(at(ink("DOCSIS 3.0", 26, 3.2, { weight: "500", color: "#c9cdd3" }), 0, 23.5, 0.1));
+  /* the back */
+  const back = new THREE.Group(); at(back, 0, 0, -D / 2, 0, BACK); g.add(back);
+  back.add(at(rbox(W - 8, H - 26, 0.6, 3, plastic(0x111213, { rough: 0.7 })), 0, (H - 26) / 2 + 5, 0.1));
+  const lb = label(["CABLE MODEM · DOCSIS 3.0", "MODEL: CM-3000", "S/N: " + COVERED, "HFC MAC: " + COVERED, "12V ⎓ 1A"], { w: 36, h: 34, barcode: "modem-sn", marks: true });
+  at(lb, -2, 140, 0.5); back.add(lb);
+  const fin = fFemale("CABLE IN"); at(fin, -6, 112, 0.4); back.add(fin); back.add(at(up(ink("CABLE IN", 18, 3.2)), 15, 112, 0.5));
+  const eth = rj45Jack({ name: "ETHERNET", insert: COL.wanYellow, on: [true, true] }); at(eth, -6, 86, 0.4); back.add(eth); back.add(at(up(ink("ETHERNET", 20, 3.2)), 15, 86, 0.5));
+  back.add(at(pinhole("RESET"), -6, 66, 0.5)); back.add(at(up(ink("RESET", 14, 3.2)), 15, 66, 0.5));
+  back.add(at(rbox(16, 15, 1.2, 2, plastic(0x0b0b0c)), -6, 46, 0.3));
+  const dc = dcJack("POWER"); at(dc, -6, 46, 0.9); back.add(dc); back.add(at(up(ink("12V ⎓ 1A", 18, 3.2)), 15, 46, 0.5));
+  back.add(at(ink("POWER", 20, 3), -6, 33, 0.5));
+  /* the cables: coax screwed on, the yellow patch cable, the power cord */
+  const cx = coaxF({ stub: true, jacket: 0xe7e4dc }); cx.rotation.y = Math.PI; cx.position.set(0, 0, 10.7); fin.add(cx);
+  const ep = patch(eth, COL.wanYellow);
+  const pp = dcIn(dc);
+  /* all three run off to the left as you face the back, the coax outermost, so none crosses another */
+  cableFrom(g, cx, [[44, 104, -D / 2 - 34], [96, 50, -D / 2 - 52], [124, 3.45, -D / 2 - 64], [300, 3.45, -D / 2 - 110]], { straight: 14 });
+  cableFrom(g, ep, [[36, 76, -D / 2 - 34], [74, 26, -D / 2 - 46], [96, 3.05, -D / 2 - 54], [290, 3.05, -D / 2 - 150]], { straight: 18 });
+  cableFrom(g, pp, [[26, 34, -D / 2 - 28], [50, 1.9, -D / 2 - 38], [280, 1.9, -D / 2 - 190]], { straight: 10 });
+  /* each side: rows of vent slots near the top, the slatted panel below */
+  [-1, 1].forEach(function (sd) {
+    const side = new THREE.Group(); at(side, sd * (W / 2 + 0.02), 0, 0, 0, sd * Math.PI / 2); g.add(side);
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 9; c++) side.add(at(box(9, 2.2, 0.5, mat(0x050506)), -48 + c * 12, 154 - r * 6, 0.05));
+    side.add(at(rbox(96, 104, 1, 3, plastic(0x0e0f10, { rough: 0.6 })), 6, 78, -0.3));
+    const sl = perforated(90, 98, { pitch: 5, d: 2.2, shape: "slot", material: plastic(0x17181a, { rough: 0.55 }) }); sl.position.set(6, 78, 0.25); side.add(sl);
   });
-  return named(g, "device:Cable modem", { type: "modem", w: W, h: H + 6, d: D + 6 });
+  [[-18, 60], [18, 60], [-18, -60], [18, -60]].forEach(function (p) { g.add(at(rbox(10, 1.2, 18, 0.5, rubber(0x1b1c1e)), p[0], 0.2, p[1])); });
+  return named(g, "device:Cable modem", { type: "modem", w: W, h: H, d: D });
 }
 
 /* -------------------------------------------------------------- ONT */
-/* The fiber optical network terminal, wall-mounted, from the photo:
-   LEDs POWER, PON, ALARM, LINK/ACT, ETHERNET; on the underside the
-   green SC/APC FIBER PORT, ETHERNET and 12V DC. */
-export function fiberOnt() {
-  const g = new THREE.Group(), W = 112, H = 150, D = 34;
-  g.add(at(rbox(W, H, D, 4, mat(COL.black, { rough: 0.7 })), 0, H / 2, 0));
-  const front = new THREE.Group(); at(front, 0, 0, D / 2);
-  front.add(at(text("FIBER ONT", 70, 9, { weight: "800", align: "left" }), -14, 132, 0.1));
-  front.add(at(text("HOME TERMINAL", 70, 4.6, { weight: "600", align: "left", color: "#d6d9dd" }), -14, 124, 0.1));
-  front.add(ledColumn([["POWER", COL.ledGreen, true], ["PON", COL.ledGreen, true], ["ALARM", COL.ledRed, false], ["LINK/ACT", COL.ledGreen, true], ["ETHERNET", COL.ledGreen, true]], 40, 104, 12, 22, "right", 26));
-  front.add(at(text("FIBER PORT", 30, 3.6), -32, 9, 0.1));
-  front.add(at(text("ETHERNET", 30, 3.6), 0, 9, 0.1));
-  front.add(at(text("12V DC", 30, 3.6), 32, 9, 0.1));
-  g.add(front);
-  const under = new THREE.Group(); at(under, 0, 0, 2, Math.PI / 2, 0, 0);   // parts face down
-  under.add(at(scApcAdapter("FIBER"), -32, 0, 0));
-  under.add(at(rj45Jack({ name: "ETHERNET", on: [true, true] }), 0, 0, 0));
-  under.add(at(dcJack("12V DC"), 32, 0, 0));
-  g.add(under);
-  /* side vents: kept inside the 34 mm depth (the first preview let them overhang) */
-  const v = slots(5, 2.4, 9, 4.6, true); at(v, W / 2 + 0.05, 80, 0, 0, Math.PI / 2); g.add(v);
-  const v2 = slots(5, 2.4, 9, 4.6, true); at(v2, W / 2 + 0.05, 64, 0, 0, Math.PI / 2); g.add(v2);
-  const bc = sticker(["S/N " + COVERED, "││┃│┃┃││┃││┃"], 24, 10); at(bc, W / 2 + 0.05, 30, 0, 0, Math.PI / 2); g.add(bc);
+/* The fiber ONT on the wall, as in the photo: FIBER ONT underlined,
+   HOME TERMINAL, the lights (ALARM the only one off), the port names
+   along the bottom; underneath, the green SC/APC fiber connector, the
+   yellow patch cable and the 12V cord hanging down; vents and the
+   barcode down the side. */
+export function fiberOnt(o = {}) {
+  const g = new THREE.Group(), W = 120, H = 160, D = 32, Y = 120;
+  if (o.wall !== false) g.add(at(box(520, 520, 4, mat(0xe8e6e1, { rough: 0.92, grain: 0.1, scale: 1.3 })), 0, 80, -D / 2 - 2));
+  g.add(at(rbox(W, H, D, 10, plastic(0x141516, { rough: 0.5 })), 0, Y, 0));
+  const front = new THREE.Group(); at(front, 0, Y - H / 2, D / 2); g.add(front);
+  front.add(at(rbox(W - 7, H - 7, 1.4, 8, plastic(0x18191b, { rough: 0.42 })), 0, H / 2, 0));
+  const F = 0.8;
+  front.add(at(ink("FIBER ONT", 66, 12, { weight: "800", align: "left" }), -16, H - 22, F));
+  front.add(at(box(58, 0.8, 0.1, mat(0xdfe2e6)), -21, H - 30, F));
+  front.add(at(ink("HOME TERMINAL", 66, 5.6, { weight: "600", align: "left", color: "#d5d8dc" }), -16, H - 36, F));
+  ledColumn(front, [["POWER", COL.ledGreen, true], ["PON", COL.ledGreen, true], ["ALARM", COL.ledRed, false], ["LINK/ACT", COL.ledGreen, true], ["ETHERNET", COL.ledGreen, true]], 40, H - 56, 13.5, 18, 32, 1.9);
+  front.children.slice(-10).forEach(function (c) { c.position.z += F; });
+  [["FIBER PORT", -36], ["ETHERNET", 0], ["12V DC", 34]].forEach(function (l) { front.add(at(ink(l[0], 30, 3.6), l[1], 9, F)); });
+  /* the right side: two columns of vent slits, the barcode */
+  const side = new THREE.Group(); at(side, W / 2 + 0.02, Y, 0, 0, Math.PI / 2); g.add(side);
+  for (let r = 0; r < 14; r++) [-6, 6].forEach(function (x) { side.add(at(box(9, 2.2, 0.5, mat(0x050506)), x, 62 - r * 7.2, 0.05)); });
+  const bc = label(["S/N " + COVERED], { w: 46, h: 11, barcode: "ont-sn", boldFirst: false }); bc.rotation.z = -Math.PI / 2; at(bc, -2, -40, 0.05); side.add(bc);
+  /* underneath: the ports, facing down, each with its cable */
+  const under = new THREE.Group(); at(under, 0, Y - H / 2 - 0.1, 0, Math.PI / 2, 0, 0); g.add(under);
+  const fa = scApcAdapter("FIBER"); at(fa, -36, 0, 0); under.add(fa);
+  const ej = rj45Jack({ name: "ETHERNET", on: [true, true], metal: true }); at(ej, 0, 0, 0); under.add(ej);
+  const dj = dcJack("12V DC"); at(dj, 34, 0, 0); under.add(dj);
+  const fp = scApcPlug({ jacket: 0xf0c419 }); fp.rotation.y = Math.PI; fp.position.set(0, 0, 2); fa.add(fp);
+  const ep = patch(ej, COL.wanYellow);
+  const pp = dcIn(dj);
+  const by = Y - H / 2;
+  cableFrom(g, fp, [[-44, by - 70, 6], [-70, by - 130, 10], [-120, by - 230, 12]], { straight: 14 });
+  cableFrom(g, ep, [[2, by - 80, 10], [6, by - 160, 12], [10, by - 260, 14]], { straight: 18 });
+  cableFrom(g, pp, [[36, by - 70, 4], [40, by - 160, 6], [44, by - 260, 8]], { straight: 12 });
   return named(g, "device:Fiber ONT", { type: "ont", w: W, h: H, d: D });
 }
 
 /* ----------------------------------------------------------- router */
-/* The home wireless router from the photo: four antennas at the back;
-   on the back INTERNET (yellow), LAN 1-4, RESET, WPS, POWER, ON/OFF;
-   status LEDs along the top front edge. */
+/* The home wireless router, as in the photo of its back: INTERNET (WAN)
+   in yellow, LAN 1-4 in their printed frame, RESET, WPS, DC IN, cables
+   in INTERNET, LAN 1, LAN 2 and LAN 4 and the power cord; the four
+   hinged antennas; the label and barcode sticker underneath. */
 export function homeRouter() {
-  const g = new THREE.Group(), W = 232, H = 38, D = 152;
-  g.add(at(rbox(W, H, D, 6, mat(COL.black, { rough: 0.55 })), 0, H / 2 + 4, 0));
-  [[-90, 50], [90, 50], [-90, -50], [90, -50]].forEach(function (p) { g.add(at(cyl(7, 4, mat(COL.charcoal, { rough: 0.9 })), p[0], 2, p[1])); });
-  const top = new THREE.Group(); at(top, 0, H + 4.05, 0, -Math.PI / 2, 0, 0);
-  [["POWER", true], ["INTERNET", true], ["2.4G", true], ["5G", true], ["LAN", true], ["WPS", false]].forEach(function (it, i) {
-    const x = -75 + i * 30, l = led(COL.ledGreen, it[1], 1.5); l.userData.role = it[0];
-    top.add(at(l, x, -62, 0.1)); top.add(at(text(it[0], 24, 4), x, -68, 0.1));
+  const g = new THREE.Group(), W = 240, D = 165, Y0 = 5;
+  const blk = plastic(0x161719, { rough: 0.5 });
+  g.add(at(rbox(W, 40, D, 7, blk), 0, Y0 + 20, 0));
+  g.add(at(rbox(W - 10, 10, D - 12, 5, plastic(0x1b1c1f, { rough: 0.38 })), 0, Y0 + 40, 2));
+  [[-95, 55], [95, 55], [-95, -55], [95, -55]].forEach(function (p) { g.add(at(cyl(8, Y0, rubber(0x202124), 24), p[0], Y0 / 2, p[1])); });
+  /* the top: a vent field, the lights along the front edge */
+  const top = new THREE.Group(); at(top, 0, Y0 + 45.05, 0, -Math.PI / 2, 0, 0); g.add(top);
+  top.add(at(perforated(150, 70, { pitch: 4, d: 2.4, shape: "hex", material: plastic(0x1b1c1f, { rough: 0.38 }) }), 0, 6, 0.2)); top.add(at(box(150, 70, 0.1, mat(0x050506)), 0, 6, 0.05));
+  [["⏻", true], ["◎", true], ["2.4G", true], ["5G", true], ["LAN", true], ["WPS", false]].forEach(function (it, i) {
+    const x = -70 + i * 28, l = led(COL.ledGreen, it[1], 1.6); l.userData.role = it[0]; top.add(at(l, x, -62, 0.4)); top.add(at(ink(it[0], 14, 4), x, -68, 0.3));
   });
-  top.add(at(text("WIRELESS ROUTER · Wi-Fi 6", 90, 5, { weight: "600", color: "#b9bec5" }), 0, 40, 0.1));
-  g.add(top);
-  const back = new THREE.Group(); at(back, 0, 0, -D / 2, 0, BACK);
-  const yP = H / 2 + 6, yL = 8.5;
-  /* seen from behind, left to right: INTERNET, LAN 1-4, RESET, WPS, POWER, ON/OFF */
-  const lay = [["INTERNET", -80, "rj45", COL.wanYellow], ["LAN 1", -60, "rj45"], ["LAN 2", -42, "rj45"], ["LAN 3", -24, "rj45"], ["LAN 4", -6, "rj45"],
-    ["RESET", 14, "pin"], ["WPS", 30, "btn"], ["POWER", 52, "dc"], ["ON/OFF", 72, "btn"]];
-  lay.forEach(function (p) {
-    const part = p[2] === "rj45" ? rj45Jack({ name: p[0], insert: p[3] || 0x46494f, on: [p[0] === "INTERNET" || p[0] === "LAN 1", p[0] === "INTERNET"] })
-      : p[2] === "pin" ? pinhole(p[0]) : p[2] === "dc" ? dcJack(p[0]) : button(p[0], 7, 5);
-    back.add(at(part, p[1], yP + 2, 0)); back.add(at(text(p[0], 18, 3.2), p[1], yL, 0.1));
-  });
-  g.add(back);
-  /* the antennas: hinged blades, two at the back corners, two at the sides */
-  const am = mat(COL.black, { rough: 0.5 });
-  function antenna(x, z, tiltZ, tiltX) {
-    const a = new THREE.Group();
-    a.add(cyl(6, 12, mat(COL.charcoal, { rough: 0.7 })).rotateZ(Math.PI / 2));
-    const blade = rbox(15, 175, 8, 3.5, am); blade.position.y = 92; a.add(blade);
-    a.position.set(x, H + 2, z); a.rotation.set(tiltX || 0, 0, tiltZ || 0);
+  /* the back */
+  const back = new THREE.Group(); at(back, 0, 0, -D / 2, 0, BACK); g.add(back);
+  back.name = "panel:Back ports";
+  back.add(at(rbox(W - 34, 21, 0.8, 3, plastic(0x0d0e0f, { rough: 0.6 })), -6, Y0 + 30, 0.1));
+  const py = Y0 + 32, ly = Y0 + 20.5;
+  /* below the ports, as photographed: the label with its marks, the barcode sticker */
+  const bl = label(["WIRELESS ROUTER · Wi-Fi 6 · MODEL: HR-AX3000", "DEFAULT SSID: " + COVERED + "   Wi-Fi PASSWORD: " + COVERED, "ADMIN: http://192.168.1.1  ·  12V ⎓ 2A"], { w: 82, h: 12, marks: true });
+  at(bl, -46, Y0 + 9, 0.3); back.add(bl);
+  const bb = label(["MAC: " + COVERED], { w: 54, h: 12, barcode: "router-mac", boldFirst: false }); at(bb, 46, Y0 + 9, 0.3); back.add(bb);
+  const wan = rj45Jack({ name: "INTERNET", insert: COL.wanYellow, on: [true, true] }); at(wan, -90, py, 0.5); back.add(wan);
+  back.add(at(text("INTERNET", 18, 3, { color: "#f2c200", weight: "700" }), -90, ly + 0.8, 0.6)); back.add(at(text("(WAN)", 14, 2.8, { color: "#f2c200", weight: "700" }), -90, ly - 2.6, 0.6));
+  back.add(at(printLines(78, 24, [[0, 0, 76, 22, 1.5]], { color: "#8a8e94", width: 0.4 }), -36, py - 2, 0.6));
+  const lans = [];
+  for (let i = 0; i < 4; i++) { const j = rj45Jack({ name: "LAN " + (i + 1), insert: 0x2a2c30, on: [i !== 2, i === 0 || i === 3] }); at(j, -63 + i * 18, py, 0.5); back.add(j); lans.push(j); back.add(at(ink("LAN " + (i + 1), 14, 3), -63 + i * 18, ly, 0.6)); }
+  back.add(at(pinhole("RESET"), 16, py, 0.6)); back.add(at(ink("RESET", 14, 3), 16, ly, 0.6));
+  const wps = new THREE.Group(); at(wps, 32, py, 0.6); back.add(wps); wps.add(at(cyl(3.6, 2, plastic(0x2a2c30, { rough: 0.4 }), 24), 0, 0, 1, Math.PI / 2)); named(wps, "button:WPS", { type: "button" });
+  back.add(at(ink("WPS", 12, 3), 32, ly, 0.6));
+  back.add(at(rbox(15, 14, 1.2, 2, plastic(0x0b0b0c)), 52, py, 0.4));
+  const dc = dcJack("DC IN"); at(dc, 52, py, 1); back.add(dc); back.add(at(ink("DC IN", 14, 3), 52, ly, 0.6));
+  /* the antennas: two on the back corners, two on the sides, on their hinges */
+  function antenna(x, y, z, ry, tilt) {
+    const a = new THREE.Group(); a.position.set(x, y, z); a.rotation.y = ry; g.add(a);
+    a.add(at(cyl(6.5, 15, plastic(0x1c1d20, { rough: 0.45 }), 28), 0, 0, 0, 0, 0, Math.PI / 2));
+    const bl = new THREE.Group(); bl.rotation.z = tilt; a.add(bl);
+    bl.add(at(cyl(5.5, 8, plastic(0x1c1d20, { rough: 0.45 }), 24), 0, 6, 0));
+    const blade = rbox(15, 178, 8, 3.8, plastic(0x141517, { rough: 0.42 })); blade.position.y = 98; bl.add(blade);
     return named(a, "antenna", {});
   }
-  g.add(antenna(-104, -D / 2 + 6, 0.06)); g.add(antenna(104, -D / 2 + 6, -0.06));
-  g.add(antenna(-W / 2 - 4, -40, 0.18, 0)); g.add(antenna(W / 2 + 4, -40, -0.18, 0));
-  const under = sticker(["WIRELESS ROUTER · Wi-Fi 6", "MODEL: HR-AX3000", "DEFAULT SSID: " + COVERED, "Wi-Fi PASSWORD: " + COVERED, "ADMIN: http://192.168.1.1", "MAC: " + COVERED, "12V ⎓ 2A"], 70, 36);
-  at(under, 0, 3.9, 0, Math.PI / 2, 0, 0); g.add(under);
-  return named(g, "device:Home router", { type: "router", w: W, h: H + 4, d: D });
+  antenna(-106, Y0 + 36, -D / 2 + 4, 0, 0.08); antenna(106, Y0 + 36, -D / 2 + 4, 0, -0.08);
+  antenna(-W / 2 - 4, Y0 + 32, -38, 0, 0.2); antenna(W / 2 + 4, Y0 + 32, -38, 0, -0.2);
+  /* underneath: the label with the regulatory marks, the barcode sticker, vents */
+  const ul = label(["S/N: " + COVERED], { w: 50, h: 12, barcode: "router-sn", boldFirst: false });
+  at(ul, 0, Y0 - 0.05, 0, Math.PI / 2, 0, 0); g.add(ul);
+  for (let k = 0; k < 16; k++) g.add(at(box(4, 0.4, 40, mat(0x050506)), -70 + k * 9, Y0 - 0.02, 30));
+  /* the cables, out of the back and down onto the bench behind */
+  const cw = patch(wan, COL.wanYellow), c1 = patch(lans[0], 0x1b1c1e), c2 = patch(lans[1], 0x1b1c1e), c4 = patch(lans[3], 0xd9dbdc), cp = dcIn(dc);
+  [[cw, 90, 30], [c1, 63, 12], [c2, 45, -2], [c4, 9, -20]].forEach(function (c) { cableFrom(g, c[0], [[c[1] + c[2] * 0.2, 16, -D / 2 - 56], [c[1] + c[2] * 0.5, 3.05, -D / 2 - 96], [c[1] + c[2] * 2.4, 3.05, -D / 2 - 280]], { straight: 22 }); });
+  cableFrom(g, cp, [[-52, 14, -D / 2 - 44], [-58, 1.9, -D / 2 - 74], [-90, 1.9, -D / 2 - 280]], { straight: 14 });
+  return named(g, "device:Home router", { type: "router", w: W, h: Y0 + 45, d: D });
 }
 
 /* ----------------------------------------------------------- switch */
-/* The 5-port unmanaged gigabit switch from the photo: a metal case,
-   POWER LED and ports 1-5 with link LEDs at the front, DC in behind. */
-export function unmanagedSwitch() {
-  const g = new THREE.Group(), W = 106, H = 27, D = 98;
-  g.add(at(rbox(W, H, D, 2.5, mat(0x2c2f34, { metal: 0.55, rough: 0.42 })), 0, H / 2 + 2, 0));
-  [[-42, 38], [42, 38], [-42, -38], [42, -38]].forEach(function (p) { g.add(at(cyl(5, 2, mat(COL.black, { rough: 0.95 })), p[0], 1, p[1])); });
-  const front = new THREE.Group(); at(front, 0, 0, D / 2);
-  const p = led(COL.ledGreen, true, 1.3); p.userData.role = "POWER"; front.add(at(p, -45, 20, 0.15)); front.add(at(text("POWER", 14, 3), -45, 13, 0.1));
+/* The 5-port unmanaged gigabit switch, as in the photo: a metal case
+   (cover over base, screws on the sides), Power light, ports 1-5 in
+   their silver bezel with two green lights each, UNMANAGED 5-PORT
+   GIGABIT SWITCH printed above, angled side vents, the power jack on
+   the side; patch cables in ports 1-4. */
+export function unmanagedSwitch(o = {}) {
+  const g = new THREE.Group(), W = 122, H = 30, D = 100, Y0 = 2;
+  const steel = paintedSteel(0x2b2e32, { rough: 0.42 });
+  g.add(at(rbox(W, H, D, 2.2, steel), 0, Y0 + H / 2, 0));
+  [-1, 1].forEach(function (sd) {
+    g.add(at(box(0.4, 0.6, D - 6, mat(0x0a0b0c)), sd * (W / 2 + 0.05), Y0 + 5, 0));                    // where the cover meets the base
+    [-30, 32].forEach(function (z) { const s = screw(2.1, 0x8e9196); s.rotation.y = sd * Math.PI / 2; s.position.set(sd * (W / 2 + 0.05), Y0 + 2.6, z); g.add(s); });
+    const side = new THREE.Group(); at(side, sd * (W / 2 + 0.02), Y0 + H / 2 + 2, 0, 0, sd * Math.PI / 2); g.add(side);
+    for (let k = 0; k < 11; k++) side.add(at(box(1.6, 13, 0.5, mat(0x050506)), sd * (14 + k * 3.6), 0, 0.05, 0, 0, 0.42));
+  });
+  [[-48, 38], [48, 38], [-48, -38], [48, -38]].forEach(function (p) { g.add(at(cyl(5, Y0, rubber(0x18191b), 20), p[0], Y0 / 2, p[1])); });
+  const front = new THREE.Group(); at(front, 0, 0, D / 2); g.add(front);
+  front.add(at(ink("Power", 14, 3.6, { weight: "500" }), -50, Y0 + 22, 0.05));
+  const pw = led(COL.ledGreen, true, 1.5); pw.userData.role = "POWER"; front.add(at(pw, -50, Y0 + 15.5, 0.3));
+  const bez = rrShape(88, 18.5, 1.6, 6, 0); bez.holes.push(rrPath(85, 15.5, 1, 6, 0));
+  front.add(at(new THREE.Mesh(new THREE.ExtrudeGeometry(bez, { depth: 1.2, bevelEnabled: false }), brushed(0xc5c8cc, "x")), 0, Y0 + 15, 0));
+  front.add(at(ink("UNMANAGED 5-PORT GIGABIT SWITCH", 70, 3, { weight: "700", spacing: 0.06 }), 12, Y0 + 26.6, 0.05));
+  const jacks = [], on = o.cables === false ? [false, false, false, false, false] : [true, true, true, true, false];
   for (let i = 0; i < 5; i++) {
-    const x = -24 + i * 15.6, j = rj45Jack({ name: String(i + 1), on: [i < 4, i === 0 || i === 2] });
-    j.scale.setScalar(0.95); front.add(at(j, x, H / 2 + 1, 0));
-    front.add(at(text(String(i + 1), 6, 3), x, H + 0.5, 0.1));
+    const x = -26 + i * 16.4, j = rj45Jack({ name: String(i + 1), metal: true, on: [on[i], on[i]], actColor: COL.ledGreen });   /* both lights green, as photographed */
+    front.add(at(j, x, Y0 + 15, 0.3)); jacks.push(j); front.add(at(ink(String(i + 1), 5, 3.4), x, Y0 + 3.6, 0.05));
   }
-  g.add(front);
-  const topT = text("5-PORT GIGABIT SWITCH · UNMANAGED", 70, 4.2, { weight: "700", color: "#d7dade" });
-  at(topT, 8, H + 2.05, D / 2 - 8, -Math.PI / 2, 0, 0); g.add(topT);
-  const back = new THREE.Group(); at(back, 0, 0, -D / 2, 0, BACK);
-  back.add(at(dcJack("POWER"), 30, H / 2 + 2, 0)); back.add(at(text("DC 5V ⎓ 1A", 20, 3.2), 30, 6, 0.1));
-  g.add(back);
-  [-1, 1].forEach(function (s) { const v = slots(10, 2, 12, 4.4, true); at(v, s * (W / 2 + 0.05), H / 2 + 2, 0, 0, s * Math.PI / 2); g.add(v); });
-  const under = sticker(["5-PORT GIGABIT SWITCH", "MODEL: US-1005", "10/100/1000 Mbps · Auto-MDI/MDIX", "S/N: " + COVERED, "5V ⎓ 1A"], 60, 26);
-  at(under, 0, 1.95, 0, Math.PI / 2, 0, 0); g.add(under);
-  return named(g, "device:5-port switch", { type: "switch", w: W, h: H + 2, d: D });
+  /* the power jack on the right side */
+  const rs = new THREE.Group(); at(rs, W / 2 + 0.02, Y0 + H / 2, -24, 0, Math.PI / 2); g.add(rs);
+  rs.add(at(rbox(14, 14, 1, 2, plastic(0x0b0b0c)), 0, 1, 0.1));
+  const dj = dcJack("POWER"); at(dj, 0, 1, 0.6); rs.add(dj); rs.add(at(up(ink("POWER DC 5V", 20, 2.8)), 11, 1, 0.05));
+  const under = label(["UNMANAGED 5-PORT GIGABIT SWITCH · MODEL: US-1005", "10/100/1000 Mbps · Auto-MDI/MDIX · 5V ⎓ 1A", "S/N: " + COVERED], { w: 70, h: 18, marks: true });
+  at(under, 0, Y0 - 0.05, 0, Math.PI / 2, 0, 0); g.add(under);
+  if (o.cables !== false) {
+    const cols = [[0xf2c200], [0x9fa3a8], [0xb9bcc0], [0x4a4d52]];
+    cols.forEach(function (c, i) {
+      const p = patch(jacks[i], c[0]), x = -26 + i * 16.4;
+      cableFrom(g, p, [[x - 14 - i * 3, Y0 + 10, D / 2 + 60], [x - 34 - i * 6, 3.05, D / 2 + 96], [x - 120 - i * 14, 3.05, D / 2 + 230]], { straight: 22 });
+    });
+    const pp = dcIn(dj);
+    cableFrom(g, pp, [[W / 2 + 40, Y0 + 8, -30], [W / 2 + 70, 1.9, -40], [W / 2 + 220, 1.9, -90]], { straight: 10 });
+  }
+  return named(g, "device:5-port switch", { type: "switch", w: W, h: H + Y0, d: D });
+}
+/* the two switches stacked, as photographed */
+export function switchStack() {
+  const g = new THREE.Group(), a = unmanagedSwitch(), b = unmanagedSwitch(); b.position.y = 32; g.add(a, b);
+  return named(g, "device:Switches stacked", { type: "switch-stack" });
 }
 
 /* ------------------------------------------------------------- mesh */
-/* The mesh Wi-Fi node from the photo: a white cylinder, cooling vents
-   round the top, a status LED at the front (green good, amber weak
-   link to the next node), side vents, and on the back plate WAN, LAN
-   and 12V DC IN; reset on the side; the label underneath. */
+/* The mesh Wi-Fi node, as in the photo and its callouts: a white
+   cylinder, cooling vents round the top cap, the status light ring at
+   the front (green good, amber when the link to the next node is weak),
+   the side strip with vents, the amber light and RESET, the back plate
+   with WAN, LAN and 12V DC IN (cables in), vents round the foot, the
+   label, pads and keyhole underneath. */
 export function meshNode(status) {
-  const g = new THREE.Group(), R = 50, H = 150;
-  const prof = [];
-  const r1 = 5, r2 = 12;
-  prof.push(new THREE.Vector2(0, 0));
-  for (let i = 0; i <= 6; i++) { const a = -Math.PI / 2 + i / 6 * Math.PI / 2; prof.push(new THREE.Vector2(R - r1 + Math.cos(a) * r1, r1 + Math.sin(a) * r1)); }
-  for (let i = 0; i <= 10; i++) { const a = i / 10 * Math.PI / 2; prof.push(new THREE.Vector2(R - r2 + Math.cos(a) * r2, H - r2 + Math.sin(a) * r2)); }
-  prof.push(new THREE.Vector2(0, H));
-  const body = new THREE.Mesh(new THREE.LatheGeometry(prof, 72), mat(COL.white, { rough: 0.45 }));
-  g.add(body);
-  /* top vents: a ring of slots */
-  for (let i = 0; i < 28; i++) {
-    const a = i / 28 * Math.PI * 2, s = box(9, 0.6, 2, mat(COL.hole, { rough: 1 }));
-    s.position.set(Math.cos(a) * 26, H + 0.05, Math.sin(a) * 26); s.rotation.y = -a; g.add(s);
-  }
-  g.add(at(new THREE.Mesh(new THREE.CircleGeometry(16, 48), mat(0xe2e1dc, { rough: 0.6 })), 0, H + 0.08, 0, -Math.PI / 2));
-  /* front status LED */
-  const color = status === "weak" ? COL.ledAmber : COL.ledGreen;
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(4.2, 1.2, 10, 32), new THREE.MeshStandardMaterial({ color: color, emissive: color, emissiveIntensity: 2.2, roughness: 0.3 }));
-  ring.position.set(0, 22, R + 0.2); ring.userData = { kind: "led", role: "STATUS", color: color, on: true }; g.add(ring);
-  /* side vents, standing slots on the left and right */
-  [-1, 1].forEach(function (s) {
-    for (let i = 0; i < 6; i++) {
-      const a = s * Math.PI / 2 + (i - 2.5) * 0.09, sl = box(2.4, 44, 1.2, mat(COL.hole, { rough: 1 }));
-      sl.position.set(Math.sin(a) * (R - 0.2), 108, Math.cos(a) * (R - 0.2)); sl.rotation.y = a; g.add(sl);
-    }
-  });
-  /* the back plate: WAN, LAN, 12V DC IN stacked, as in the photo */
-  const bp = new THREE.Group(); at(bp, 0, 0, -R - 0.6, 0, BACK);   // proud of the curve
-  bp.add(at(rbox(30, 74, 3, 3, mat(0xdcdbd6, { rough: 0.6 })), 0, 52, -1.4));
-  bp.add(at(rj45Jack({ name: "WAN", insert: COL.wanYellow, on: [true, true] }), 0, 78, 0.2)); bp.add(at(text("WAN", 14, 3), 0, 69, 0.2));
-  bp.add(at(rj45Jack({ name: "LAN", on: [false, false] }), 0, 56, 0.2)); bp.add(at(text("LAN", 14, 3), 0, 47, 0.2));
-  bp.add(at(dcJack("12V DC IN"), 0, 33, 0.2)); bp.add(at(text("12V DC IN", 22, 3), 0, 24, 0.2));
-  g.add(bp);
-  for (let i = 0; i < 5; i++) { const sl = box(2.2, 26, 1.2, mat(COL.hole, { rough: 1 })); sl.position.set((i - 2) * 4.2, 120, -R + 0.3); g.add(sl); }
-  /* reset on the left side, low */
-  const rs = new THREE.Group(); at(rs, -R + 0.3, 30, 8, 0, -Math.PI / 2); rs.add(pinhole("RESET")); rs.add(at(text("RESET", 14, 3), 0, -6, 0.1)); g.add(rs);
-  /* the label underneath */
-  const lab = sticker(["MESH Wi-Fi NODE", "MODEL: MW-6", "S/N: " + COVERED, "MAC: " + COVERED, "12V ⎓ 1.5A"], 44, 24);
-  at(lab, 0, -0.05, 0, Math.PI / 2, 0, 0); g.add(lab);
+  const g = new THREE.Group(), R = 52, H = 152, weak = status === "weak", white = plastic(0xf2f2ef, { rough: 0.42, grain: 0.05 });
+  const rAt = function (y) { if (y < 7) return R - 2.5; if (y <= H - 8) return R; const t = (y - (H - 8)) / 8; return R - 5 * t * t; };
+  const ys = [7, 20, 40, 60, 80, 100, 120, 140, H - 8, H - 5, H - 3, H - 1.5, H];
+  const pk = [{ th: Math.PI, d: R - 4, y0: 22, y1: 96 }, { th: -Math.PI / 2, d: R - 2.5, y0: 24, y1: 134 }];
+  g.add(new THREE.Mesh(cutCylinder(rAt, ys, pk, 192), white));
+  /* the foot: a grey band with vent slots all round */
+  g.add(at(cyl(R - 2.5, 7, plastic(0xdcdad4, { rough: 0.5 }), 96), 0, 3.5, 0));
+  for (let k = 0; k < 64; k++) { const a = k / 64 * Math.PI * 2; const s = box(1.3, 3.4, 0.6, mat(0x0a0a0b)); s.position.set(Math.sin(a) * (R - 2.3), 3.6, Math.cos(a) * (R - 2.3)); s.rotation.y = a; g.add(s); }
+  /* the top: the cap and its ring of cooling vents */
+  g.add(at(cyl(R - 5, 0.6, white, 96), 0, H - 0.2, 0));
+  g.add(at(cyl(R - 14, 1.4, plastic(0xe9e8e4, { rough: 0.5 }), 96), 0, H + 0.6, 0));
+  for (let k = 0; k < 56; k++) { const a = k / 56 * Math.PI * 2; const s = box(1.3, 0.5, 6.5, mat(0x0a0a0b)); s.position.set(Math.sin(a) * (R - 9.2), H + 0.15, Math.cos(a) * (R - 9.2)); s.rotation.y = a; g.add(s); }
+  /* the status light ring at the front */
+  const col = weak ? COL.ledAmber : COL.ledGreen;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(4.6, 1.1, 12, 40), new THREE.MeshStandardMaterial({ color: 0x000000, emissive: col, emissiveIntensity: 0.95, roughness: 0.3 }));
+  ring.position.set(0, 24, R + 0.4); ring.userData = { kind: "led", role: "STATUS", color: col, on: true }; g.add(ring);
+  g.add(at(new THREE.Mesh(new THREE.CircleGeometry(3.4, 32), plastic(0xe6e6e3)), 0, 24, R + 0.05));
+  /* the side strip: vents, the amber light and RESET */
+  const ss = new THREE.Group(); ss.name = "panel:Side"; at(ss, -(R - 2.5), 79, 0, 0, -Math.PI / 2); g.add(ss);
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) ss.add(at(box(2.2, 12, 0.5, mat(0x060607)), -6.6 + c * 4.4, 40 - r * 15, 0.05));
+  for (let c = 0; c < 4; c++) ss.add(at(box(2.2, 7, 0.5, mat(0x060607)), -6.6 + c * 4.4, -47, 0.05));
+  const al = led(COL.ledAmber, weak, 1.2); al.userData.role = "LINK"; ss.add(at(al, -6, -20, 0.2)); ss.add(at(dark("RESET", 12, 2.8), 4, -20, 0.05));
+  const rb = new THREE.Group(); at(rb, 0, -32, 0); ss.add(rb); rb.add(at(cyl(4.2, 1.6, plastic(0xeceae6, { rough: 0.4 }), 32), 0, 0, 0.5, Math.PI / 2));
+  rb.add(at(new THREE.Mesh(new THREE.TorusGeometry(4.6, 0.35, 8, 32), mat(0xc9c8c3)), 0, 0, 0.1)); named(rb, "button:RESET", { type: "button" });
+  /* the back plate: vent dots, WAN, LAN, 12V DC IN with their names */
+  const bp = new THREE.Group(); bp.name = "panel:Back plate"; at(bp, 0, 59, -(R - 4), 0, BACK); g.add(bp);
+  for (let k = 0; k < 8; k++) bp.add(at(new THREE.Mesh(new THREE.CircleGeometry(0.9, 12), mat(0x060607)), -12.6 + k * 3.6, 32, 0.05));
+  const wj = rj45Jack({ name: "WAN", on: [true, true], metal: true }); at(wj, 6, 18, 0); bp.add(wj); bp.add(at(dark("WAN / INTERNET", 14, 2.4, { align: "right" }), -9.5, 18, 0.05));
+  const lj = rj45Jack({ name: "LAN", on: [true, false], metal: true }); at(lj, 6, -2, 0); bp.add(lj); bp.add(at(dark("LAN", 10, 2.6, { align: "right" }), -7.5, -2, 0.05));
+  bp.add(at(rbox(14, 13, 1, 2, plastic(0x1a1b1d)), 6, -22, 0.3));
+  const dj = dcJack("12V DC IN"); at(dj, 6, -22, 0.8); bp.add(dj); bp.add(at(dark("12V DC IN", 12, 2.6, { align: "right" }), -7.5, -20, 0.05));
+  bp.add(at(polarity(), -10.5, -25.5, 0.05));
+  for (let k = 0; k < 3; k++) { const s = box(2.2, 30, 0.6, mat(0x060607)); s.position.set((k - 1) * 4.4, 119, -R + 0.2); g.add(s); }
+  /* underneath: two pads, the label, the keyhole */
+  const under = new THREE.Group(); at(under, 0, -0.06, 0, Math.PI / 2, 0, 0); g.add(under);
+  [-1, 1].forEach(function (sd) { const p = new THREE.Mesh(new THREE.TorusGeometry(36, 2.8, 8, 24, 0.9), rubber(0x8d9095)); p.rotation.z = sd > 0 ? -0.45 : Math.PI - 0.45; p.scale.z = 0.3; under.add(p); });
+  const ul = label(["MESH Wi-Fi NODE · MODEL: MW-6", "S/N: " + COVERED, "MAC: " + COVERED], { w: 40, h: 16, barcode: "mesh-sn" }); at(ul, 0, 10, 0); under.add(ul);
+  under.add(at(new THREE.Mesh(new THREE.CircleGeometry(4.5, 24), mat(0x0a0a0b)), 0, -18, 0.05)); under.add(at(box(3.4, 9, 0.1, mat(0x0a0a0b)), 0, -12, 0.05));
+  /* the cables, out of the back plate and down to the bench */
+  const cw = patch(wj, COL.wanYellow), cl = patch(lj, 0x1b1c1e), cp = dcIn(dj);
+  cableFrom(g, cw, [[-14, 52, -R - 42], [-24, 3.05, -R - 76], [-70, 3.05, -R - 250]], { straight: 18 });
+  cableFrom(g, cl, [[-10, 34, -R - 40], [-14, 3.05, -R - 70], [-40, 3.05, -R - 260]], { straight: 18 });
+  cableFrom(g, cp, [[-8, 18, -R - 30], [-6, 1.9, -R - 56], [-10, 1.9, -R - 260]], { straight: 10 });
   return named(g, "device:Mesh node", { type: "mesh", w: R * 2, h: H, d: R * 2 });
+}
+/* the centre-positive symbol printed by a DC input */
+function polarity() {
+  const c = document.createElement("canvas"); c.width = 220; c.height = 70; const x = c.getContext("2d");
+  x.strokeStyle = "#2b2e33"; x.fillStyle = "#2b2e33"; x.lineWidth = 6;
+  x.beginPath(); x.arc(28, 35, 18, 0, Math.PI * 2); x.stroke(); x.fillRect(16, 32, 24, 6);
+  x.beginPath(); x.moveTo(46, 35); x.lineTo(82, 35); x.stroke();
+  x.beginPath(); x.arc(110, 35, 24, Math.PI * 0.3, Math.PI * 1.7); x.stroke(); x.beginPath(); x.arc(110, 35, 7, 0, Math.PI * 2); x.fill();
+  x.beginPath(); x.moveTo(117, 35); x.lineTo(160, 35); x.stroke();
+  x.beginPath(); x.arc(186, 35, 18, 0, Math.PI * 2); x.stroke(); x.fillRect(174, 32, 24, 6); x.fillRect(183, 23, 6, 24);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(9, 2.9), new THREE.MeshStandardMaterial({ map: t, transparent: true, depthWrite: false, roughness: 0.7 })); m.userData.print = true; return m;
 }

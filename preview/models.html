@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Model previews · The E4 Mafia Network</title>
+<meta name="description" content="Preview of the 3D models for the Network+ build, for the owner's approval. Not linked from the site yet.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e3a8a'/%3E%3Ccircle cx='16' cy='9' r='3.2' fill='%23f3f6ff'/%3E%3Ccircle cx='8' cy='23' r='3.2' fill='%23f3f6ff'/%3E%3Ccircle cx='24' cy='23' r='3.2' fill='%23f3f6ff'/%3E%3Cpath d='M16 9L8 23M16 9l8 14M8 23h16' stroke='%23ffd84d' stroke-width='1.8'/%3E%3C/svg%3E">
+<script type="importmap">{ "imports": { "three": "../assets/three/three.module.min.js", "three/addons/": "../assets/three/addons/" } }</script>
+<style>
+  :root {
+    --bg: #0d1a38; --panel: #142650; --panel-2: #1b3168; --line: #4a64a8;
+    --ink: #f3f6ff; --muted: #d4dcf2; --accent: #ffd84d; --btn: #1e3a8a; --btn-on: #f3f6ff; --btn-on-ink: #0d1a38;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  body.dys { font-family: "Atkinson Hyperlegible", Verdana, Tahoma, Arial, sans-serif; letter-spacing: 0.04em; word-spacing: 0.12em; line-height: 1.75; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 1.35rem; }
+  .badge { display: inline-block; margin-left: 10px; padding: 2px 10px; border-radius: 999px; background: var(--accent); color: #1a1400; font-size: 0.8rem; font-weight: 800; letter-spacing: 0.06em; vertical-align: 0.15em; }
+  .sub { margin: 4px 0 0; color: var(--muted); font-size: 0.95rem; max-width: 60rem; }
+  button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--btn); color: var(--ink); padding: 6px 12px; min-height: 40px; }
+  button[aria-pressed="true"], button.on { background: var(--btn-on); color: var(--btn-on-ink); border-color: var(--btn-on); font-weight: 700; }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  main { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(240px, 340px); gap: 14px; padding: 14px 18px; }
+  nav h2, aside h2 { margin: 0 0 6px; font-size: 1rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  nav ul { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 6px; }
+  nav button { width: 100%; text-align: left; }
+  .stage { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; min-height: 460px; }
+  #view { display: block; width: 100%; height: 62vh; min-height: 440px; touch-action: none; }
+  .views { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; border-top: 1px solid var(--line); background: var(--panel-2); }
+  .hint { margin: 0; padding: 8px 10px; color: var(--muted); font-size: 0.9rem; background: var(--panel-2); }
+  aside { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; align-self: start; }
+  aside h3 { margin: 0 0 8px; font-size: 1.15rem; }
+  aside p, aside li { color: var(--ink); }
+  aside ul { margin: 0 0 10px; padding-left: 1.1rem; }
+  .src { color: var(--muted); }
+  footer { padding: 16px 18px 26px; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); max-width: 60rem; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } #view { height: 52vh; min-height: 320px; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Model previews <span class="badge">PREVIEW</span></h1>
+    <p class="sub">The E4 Mafia Network · 3D models built from your photographs, for your approval before they go into the build. Your photos set the look; the standards set the details. Brand names and logos are left off.</p>
+  </div>
+  <button id="dys" type="button" aria-pressed="false">Easier reading: off</button>
+</header>
+<main>
+  <nav aria-label="Models">
+    <div id="list"></div>
+  </nav>
+  <section class="stage" aria-label="3D view">
+    <canvas id="view" aria-label="The selected model in 3D. Drag to turn it, scroll or pinch to zoom."></canvas>
+    <div class="views" role="group" aria-label="Look at it from">
+      <button data-view="three">Three-quarter</button>
+      <button data-view="front">Front</button>
+      <button data-view="back">Back</button>
+      <button data-view="left">Left side</button>
+      <button data-view="right">Right side</button>
+      <button data-view="top">Top</button>
+      <button data-view="bottom">Underneath</button>
+    </div>
+    <p class="hint">Drag to turn it · scroll or pinch to zoom · right-drag or two fingers to move it</p>
+  </section>
+  <aside aria-live="polite">
+    <h2>About this model</h2>
+    <h3 id="name"></h3>
+    <p class="src" id="photo"></p>
+    <div id="notes"></div>
+  </aside>
+</main>
+<footer>Cyber Warrior Program — built by an instructor, for students, to make certification study more interactive. For educational purposes only. Not affiliated with, endorsed by, or sponsored by CompTIA®. All trademarks belong to their respective owners. · 3D: three.js (MIT licence)</footer>
+<script type="module" src="preview.js"></script>
+</body>
+</html>

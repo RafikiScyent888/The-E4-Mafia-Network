@@ -5,9 +5,20 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (9 October 2026):** nothing built yet. Decisions are agreed (below);
-next is a preview of the home-level workspace and the first ticket, for the
-owner's go-ahead before any build.
+**Status (10 October 2026):** model previews, batches 1 and 2, are up for the
+owner's approval at `preview/models.html` (not linked from anywhere):
+cable modem, fiber ONT, home router, 5-port switch, mesh node (and its
+weak-link amber state); RJ45 T568B and T568A, bad termination, damaged
+cable, RJ11, RJ11 beside RJ45, coax F-type. Next: batches 3 (PC, laptop,
+printer, TV, camera, wall plate) and 4 (tools and the bench kit), then
+the home-level workspace and first ticket preview.
+
+**Models** (`assets/models/`): procedural three.js, real millimetres, front
++Z, every port a named group (`port:LAN 1`) with userData for the build to
+light and cable. `parts.js` holds the shared pieces; jacks stand proud of
+their panel (a jack flush inside a body is hidden by the body's face: that
+bug was found in the first renders). three.js r160 is vendored in
+`assets/three/` (MIT): nothing is fetched at runtime.
 
 ## What it is
 

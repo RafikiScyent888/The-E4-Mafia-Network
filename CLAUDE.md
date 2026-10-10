@@ -90,6 +90,21 @@ So the command line is the centre of the build, not a feature of it:
 - the Network-Sims scenarios are the base for the tickets
 Build mode, the diagrams and the 3D models serve this goal.
 
+**One giant interactive network** (owner, 10 October 2026: "I want to turn
+the sims into one gaint interactive one with all network topologies
+applied"). The sims are not separate exercises: their scenarios happen
+inside one connected network that contains every topology on the
+objectives. Proposed placement, shown to the owner for confirmation:
+client homes (star round the home router, plus wireless mesh); small
+office (star on a switch); Rafiki's IT Services HQ (three-tier: core,
+distribution, access); a smaller building (collapsed core); branch offices
+(hub and spoke back to HQ); a leased line between two sites
+(point-to-point); the data center (spine and leaf); the core routers
+joining HQ, data center and cloud (mesh); the whole thing (hybrid). Each
+sim's scenario sits where it fits (STP in the campus switches, routing
+tables on the WAN, ACLs at the firewall, VLSM in the address plan), and
+students move around all of it from the command line.
+
 ## More decisions, 10 October 2026
 
 - **Network-Sims is a knowledge base**, as Core-2-Sims was for Core 2: each

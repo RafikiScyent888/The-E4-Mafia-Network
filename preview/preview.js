@@ -12,6 +12,11 @@ import * as GEAR from "../assets/models/home-gear.js";
 import * as CAB from "../assets/models/cables.js";
 import * as END from "../assets/models/endpoints.js";
 
+/* how a cable lies on the bench behind its plug: [x, y, dz] back from the jacket's end, dropping to the bench */
+const RUN_L = [[0, -0.6, 8], [0, -2.0, 18], [-3, -2.55, 34], [-14, -2.55, 62], [-36, -2.55, 100], [-64, -2.55, 140]];
+const RUN_R = [[0, -0.6, 8], [0, -2.0, 18], [3, -2.55, 34], [14, -2.55, 62], [36, -2.55, 100], [64, -2.55, 140]];
+const RUN_SIDE = [[0, -0.6, 8], [0, -2.0, 18], [0.5, -2.55, 40], [2, -2.55, 80], [3, -2.55, 120]];
+const RUN_L11 = [[0, -0.6, 6], [0, -1.8, 14], [-3, -2.4, 28], [-12, -2.4, 54], [-30, -2.4, 90], [-56, -2.4, 130]];
 const MODELS = [
   { id: "modem", view: [0.95, 0.42, -1.0], light: [0.6, 1.3, -1.0], frame: [-60, 0, -110, 60, 180, 90], group: "Network gear", name: "Cable modem", build: GEAR.cableModem,
     photo: "From your photo of the cable modem, front and back, cables plugged in as photographed.",
@@ -45,30 +50,37 @@ const MODELS = [
   { id: "mesh-weak", view: [-1, 0.25, 0.45], light: [-0.6, 1.3, 0.9], group: "Network gear", name: "Mesh node, weak link (amber)", build: function () { return GEAR.meshNode("weak"); },
     photo: "The same node with its lights amber, as in your photo's distant node.",
     shows: ["Amber on the side strip and the front ring: placed too far from the next node"] },
-  { id: "rj45b", pointAway: true, frame: [-7, -6, -24, 7, 6, 12], group: "Cables and connectors", name: "RJ45, straight-through (T568B)", build: function () { return CAB.rj45Plug({ standard: "T568B" }); },
-    photo: "From your photo of the straight-through and crossover ends.",
-    shows: ["Pin 1 to 8: white/orange, orange, white/green, blue, white/blue, green, white/brown, brown", "The jacket held inside the plug by the strain relief", "Eight gold contacts, the clip underneath"],
+  { id: "rj45b", stage: "concrete", view: [0.25, 0.75, 0.62], light: [0.3, 1.4, 0.7], frame: [-8, 0, -14, 8, 10, 12], group: "Cables and connectors", name: "RJ45, straight-through (T568B)", build: function () { return CAB.onBench(function () { return CAB.rj45Plug({ standard: "T568B", run: RUN_L }); }, 5.6); },
+    photo: "From your photo of the straight-through and crossover ends, on the bench as photographed.",
+    shows: ["Pin 1 to 8: white/orange, orange, white/green, blue, white/blue, green, white/brown, brown", "Seen through clear plastic: the wires run to the front, each under its gold contact", "The jacket held inside the plug by the strain relief; the collar and its side bosses at the back"],
     standards: ["Wire order exactly as TIA-568 T568B, not the photo's pixels"] },
-  { id: "rj45a", pointAway: true, frame: [-7, -6, -24, 7, 6, 12], group: "Cables and connectors", name: "RJ45, crossover end (T568A)", build: function () { return CAB.rj45Plug({ standard: "T568A" }); },
+  { id: "rj45a", stage: "concrete", view: [0.25, 0.75, 0.62], light: [0.3, 1.4, 0.7], frame: [-8, 0, -14, 8, 10, 12], group: "Cables and connectors", name: "RJ45, crossover end (T568A)", build: function () { return CAB.onBench(function () { return CAB.rj45Plug({ standard: "T568A", run: RUN_R }); }, 5.6); },
     photo: "From the same photo: the crossover cable's T568A end.",
     shows: ["Pin 1 to 8: white/green, green, white/orange, blue, white/blue, orange, white/brown, brown", "A crossover is T568A on one end and T568B on the other"],
     standards: ["Wire order exactly as TIA-568 T568A"] },
-  { id: "rj45bad", pointAway: true, frame: [-7, -6, -34, 7, 6, 12], group: "Cables and connectors", name: "RJ45, bad termination", build: function () { return CAB.rj45Plug({ standard: "T568B", termination: "bad" }); },
+  { id: "pair-ab", stage: "concrete", view: [0, 0.62, 0.78], light: [0.2, 1.4, 0.8], frame: [-26, 0, -8, 26, 10, 8], group: "Cables and connectors", name: "Straight-through beside crossover", build: function () {
+      const g = new THREE.Group(); const a = CAB.onBench(function () { return CAB.rj45Plug({ standard: "T568B", run: RUN_SIDE }); }, 5.6); a.rotation.y = Math.PI / 2; a.position.x = -14;
+      const b = CAB.onBench(function () { return CAB.rj45Plug({ standard: "T568A", run: RUN_SIDE }); }, 5.6); b.rotation.y = -Math.PI / 2; b.position.x = 14; g.add(a, b); return g; },
+    photo: "As in your photo: the two ends nose to nose.",
+    shows: ["Left, T568B: the orange pair on pins 1-2. Right, T568A: the green pair on pins 1-2. Same cable, different pin-out."] },
+  { id: "rj45bad", stage: "concrete", view: [-1, 0.32, 0.22], light: [-0.4, 1.4, 0.8], frame: [-8, 0, -48, 8, 13, 13], group: "Cables and connectors", name: "RJ45, bad termination", build: function () { return CAB.onBench(function () { return CAB.rj45Plug({ standard: "T568B", termination: "bad", run: RUN_SIDE }); }, 5.6); },
     photo: "From your photo: jacket out, too much untwist.",
-    shows: ["The jacket stops well outside the plug, so the strain relief grips bare wires", "The pairs untwisted far too far: crosstalk, and the wires pull out"] },
-  { id: "damaged", frame: [-30, -6, -8, 60, 22, 8], group: "Cables and connectors", name: "Damaged cable", build: CAB.damagedCable,
-    photo: "From your photo: kinked and crushed.",
-    shows: ["A hard kink, a crushed flat section, and the jacket torn with the pairs showing", "A run like this fails the cable tester"] },
-  { id: "rj11", pointAway: true, frame: [-6, -5, -18, 6, 5, 8], group: "Cables and connectors", name: "RJ11 (phone)", build: function () { return CAB.rj11Plug({ lines: 2 }); },
+    shows: ["The jacket stops well outside the plug, its end ragged, a few loose fibres", "The strain relief grips bare wires, not jacket: one pull and they come out", "The pairs untwisted far too far: crosstalk"] },
+  { id: "damaged", stage: "concrete", view: [0.05, 0.22, 1], light: [0.3, 1.4, 0.8], frame: [-80, 0, -10, 80, 28, 12], group: "Cables and connectors", name: "Damaged cable", build: function () { return CAB.onBench(CAB.damagedCable, 3.05); },
+    photo: "From your photo: kinked and crushed (category fail).",
+    shows: ["A hard kink with the pairs pulled out of the tear in a loop", "A crushed flat section, torn open, broken conductors and bare copper splayed out", "Flakes of jacket and snipped wire on the bench", "A run like this fails the cable tester"] },
+  { id: "rj11", stage: "concrete", view: [0.25, 0.75, 0.62], light: [0.3, 1.4, 0.7], frame: [-6, 0, -11, 6, 8, 9], group: "Cables and connectors", name: "RJ11 (phone)", build: function () { return CAB.onBench(function () { return CAB.rj11Plug({ lines: 2, run: RUN_L11 }); }, 4.4); },
     photo: "From your photos of RJ11 beside RJ45.",
-    shows: ["Six positions, four wires: black, red, green, yellow (two phone lines)", "Smaller than RJ45, on flat grey cable"],
+    shows: ["Six positions, four wires: black, red, green, yellow (two phone lines)", "Smaller than RJ45, on round grey cable as photographed"],
     standards: ["RJ11 is a 6-position plug: 2 wires for one line, 4 for two. Your photo's “4-pin” label is a common mistake, not used here."] },
-  { id: "pair", pointAway: true, frame: [-16, -6, -22, 17, 6, 12], group: "Cables and connectors", name: "RJ11 beside RJ45", build: function () { const g = new THREE.Group(); const a = CAB.rj11Plug({ lines: 2 }); a.position.x = -10; const b = CAB.rj45Plug({ standard: "T568B" }); b.position.x = 10; g.add(a, b); return g; },
-    photo: "As in your photos: the two side by side for size.",
-    shows: ["RJ11: 6 positions, 9.6 mm wide", "RJ45: 8 positions, 11.7 mm wide"] },
-  { id: "coax", frame: [-7, -7, -18, 7, 7, 13], group: "Cables and connectors", name: "Coax, F-type connector", build: CAB.coaxF,
+  { id: "pair", stage: "concrete", view: [0, 0.75, 0.66], light: [0.2, 1.4, 0.8], frame: [-18, 0, -14, 18, 10, 12], group: "Cables and connectors", name: "RJ11 beside RJ45", build: function () {
+      const g = new THREE.Group(); const a = CAB.onBench(function () { return CAB.rj11Plug({ lines: 2, run: RUN_L11 }); }, 4.4); a.position.x = -10;
+      const b = CAB.onBench(function () { return CAB.rj45Plug({ standard: "T568B", jacket: 0x1c1d20, run: RUN_R }); }, 5.6); b.position.x = 10; g.add(a, b); return g; },
+    photo: "As in your photos: the two side by side for size, on the bench.",
+    shows: ["RJ11: 6 positions, 9.6 mm wide, on grey cable", "RJ45: 8 positions, 11.7 mm wide, on black Cat6"] },
+  { id: "coax", stage: "concrete", view: [0.75, 0.3, 0.6], light: [0.5, 1.3, 0.8], frame: [-8, 0, -24, 8, 12, 14], group: "Cables and connectors", name: "Coax, F-type connector", build: function () { return CAB.onBench(function () { return CAB.coaxF({ run: [[0, -0.6, 10], [0, -2.0, 25], [-4, -2.7, 50], [-16, -2.7, 90], [-40, -2.7, 140]] }); }, 6.15); },   /* resting on a flat of the hex */
     photo: "From your photo of the coax F-connector.",
-    shows: ["A compression F-type on RG6: sleeve, body, 7/16-inch hex nut", "The copper centre conductor standing just proud of the nut"],
+    shows: ["A compression F-type on black RG6: sleeve, knurled body, 7/16-inch hex nut", "The copper centre conductor standing just proud of the nut"],
     standards: ["A male F-type's nut is threaded on the INSIDE (it screws onto the modem's threaded barrel). Your photo shows threads outside; the model follows the real connector."] },
   { id: "pc", view: "back3", light: [0.6, 1.3, -1.0], frame: [-115, 0, -250, 115, 270, 195], group: "Devices on the network", name: "Desktop PC", build: END.desktopPC,
     photo: "From your photo of the desktop PC's back, cables plugged in as photographed.",
@@ -146,7 +158,7 @@ const gtao = new GTAOPass(scene, camera, 800, 600); gtao.blendIntensity = 1.0; c
 /* print (labels, legends) is paper-thin: leave it out of the occlusion depth, as the pass already does for glows */
 gtao.overrideVisibility = function () {
   const cache = this._visibilityCache;
-  this.scene.traverse(function (o) { cache.set(o, o.visible); if (o.isPoints || o.isLine || o.userData.print) o.visible = false; });
+  this.scene.traverse(function (o) { cache.set(o, o.visible); if (o.isPoints || o.isLine || o.userData.print || (o.material && o.material.userData && o.material.userData.clear)) o.visible = false; });   /* and clear plastic, so what's inside it isn't shaded as if behind a wall */
 };
 /* the LED glows, drawn after the shading: only those whose LED faces the camera with nothing in between */
 const glowCam = new THREE.PerspectiveCamera(), glowPass = new RenderPass(scene, glowCam); glowPass.clear = false; composer.addPass(glowPass);
@@ -156,7 +168,7 @@ const ray = new THREE.Raycaster(), halos = [];
 function updateGlows() {
   glowCam.copy(camera); glowCam.layers.set(1);
   if (!current) return;
-  const solid = []; current.traverse(function (o) { if (o.isMesh && !o.userData.print && o.visible) solid.push(o); });
+  const solid = []; current.traverse(function (o) { if (o.isMesh && !o.userData.print && o.visible && !(o.material && o.material.userData && o.material.userData.clear)) solid.push(o); });
   const P = new THREE.Vector3(), N = new THREE.Vector3(), Q = new THREE.Quaternion();
   halos.forEach(function (h) {
     if (!h.parent.userData.on) { h.visible = false; return; }
@@ -196,7 +208,7 @@ function show(id, view) {
   halos.length = 0; current.traverse(function (o) { if (o.userData.halo) halos.push(o); });
   /* everything solid casts a shadow; print and clear plastic don't */
   current.traverse(function (o) { if (!o.isMesh) return; const mt = o.material; o.receiveShadow = true;
-    o.castShadow = !(o.userData.print || (mt && mt.transparent && (mt.opacity < 0.6 || !mt.alphaTest))); if (mt && mt.alphaTest) o.castShadow = true; });
+    o.castShadow = !(o.userData.print || (mt && mt.userData && mt.userData.clear) || (mt && mt.transparent && (mt.opacity < 0.6 || !mt.alphaTest))); if (mt && mt.alphaTest) o.castShadow = true; });
   const b = new THREE.Box3().setFromObject(current), s = new THREE.Sphere(); b.getBoundingSphere(s); center.copy(s.center); radius = s.radius;
   /* the bench under it, the shadow camera round it, AO sized to it */
   const st = m.stage || "wood"; stage.visible = st !== "none";

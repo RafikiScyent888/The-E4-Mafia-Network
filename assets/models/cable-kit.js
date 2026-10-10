@@ -96,8 +96,8 @@ export function wireMat(name) {
     g.fillStyle = "#" + HUE[name.slice(6)].toString(16).padStart(6, "0");
     for (let y = 0; y < 256; y += 32) { g.save(); g.translate(0, y); g.beginPath(); g.moveTo(0, 0); g.lineTo(64, 18); g.lineTo(64, 30); g.lineTo(0, 12); g.fill(); g.restore(); }
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
-    m = new THREE.MeshPhysicalMaterial({ map: t, roughness: 0.32, clearcoat: 0.4 });
-  } else m = new THREE.MeshPhysicalMaterial({ color: HUE[name], roughness: 0.32, clearcoat: 0.4 });
+    m = new THREE.MeshPhysicalMaterial({ map: t, roughness: 0.36, clearcoat: 0.2, envMapIntensity: 0.45 });
+  } else m = new THREE.MeshPhysicalMaterial({ color: HUE[name], roughness: 0.36, clearcoat: 0.2, envMapIntensity: 0.45 });   /* a strong room reflection washed the colours to pastel */
   wm.set(name, m); return m;
 }
 export function wireTube(points, name, r, segs) {

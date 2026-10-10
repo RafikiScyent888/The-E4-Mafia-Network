@@ -22,10 +22,23 @@ const PAIR_OF = { orange: 0, green: 1, blue: 2, brown: 3 };
    real Cat6 gives every pair a different twist rate to cut crosstalk */
 const PAIRS = [{ c: [1.15, 0.55], lay: 12.7 }, { c: [0.15, -1.15], lay: 14.6 }, { c: [0.15, 1.15], lay: 16.5 }, { c: [-1.15, 0.45], lay: 18.4 }];
 
+/* clear polycarbonate, as it reads in the owner's photos: almost
+   invisible face-on, its edges and corners catching the light where the
+   surface turns away from you (a Fresnel rim on the opacity) */
 function clearPlastic() {
-  return new THREE.MeshPhysicalMaterial({ color: 0xeaf3f7, roughness: 0.07, metalness: 0, transparent: true, opacity: 0.3, clearcoat: 1, clearcoatRoughness: 0.08, depthWrite: false });
+  const m = new THREE.MeshPhysicalMaterial({ color: 0xf7fbfc, roughness: 0.06, metalness: 0, transparent: true, opacity: 0.08, depthWrite: false,
+    clearcoat: 0.5, clearcoatRoughness: 0.06, envMapIntensity: 0.7 });   /* front faces only: every extra layer greyed the wires */
+  m.userData.clear = true;
+  m.onBeforeCompile = function (sh) {
+    sh.fragmentShader = sh.fragmentShader.replace("#include <opaque_fragment>", "#include <opaque_fragment>\n" +
+      "{ float e4f = 1.0 - abs(dot(normal, normalize(vViewPosition))); gl_FragColor.a = clamp(gl_FragColor.a + pow(e4f, 2.0) * 0.78, 0.0, 0.92); gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.95, 0.97, 0.98), pow(e4f, 2.0) * 0.6); }");
+  };
+  m.customProgramCacheKey = function () { return "e4clear"; };
+  return m;
 }
 const V = function (x, y, z) { return new THREE.Vector3(x, y, z); };
+/* gold plating: kept partly diffuse so it reads gold from every angle, not brown where it mirrors the bench */
+const GOLD = new THREE.MeshStandardMaterial({ color: 0xe9b94e, metalness: 0.6, roughness: 0.3, envMapIntensity: 1.8 });
 const CAT6 = "CAT6 UTP  ·  23AWG 4PR  ·  550MHz  ·  TIA-568.2  ·  VERIFIED  ·  1000FT";
 
 /* a straight-ish jacket from z0 back to z1 (z1 < z0), drooping a little */
@@ -45,18 +58,23 @@ export function rj45Plug(o = {}) {
   const L = 21.5, W = 11.7, H = 8, zF = L / 2, zR = -L / 2, jc = o.jacket || 0x2c55b8;
   const cp = clearPlastic();
   /* the body, the nine ribs between the contacts, the latch with its tab */
-  g.add(rbox(W, H, L, 0.7, cp));
+  /* the body: the front contact block, and behind it the collar where the cable enters, a step proud of it */
+  g.add(at(rbox(W, H, L - 6, 0.7, cp), 0, 0, 3));
+  g.add(at(rbox(W + 0.6, H + 0.5, 6.2, 0.8, cp), 0, 0.1, zR + 3.1));
+  [-1, 1].forEach(function (sd) { g.add(at(box(0.8, 3.2, 3.2, cp), sd * (W / 2 + 0.55), 0.6, zR + 3.4)); });   /* the side bosses */
   for (let k = 0; k <= 8; k++) g.add(at(box(0.36, 1.0, 4.8, cp), (k - 4) * 1.02, H / 2 + 0.2, zF - 2.6));
+  for (let k = 0; k <= 8; k++) g.add(at(box(0.22, 2.2, 9.5, cp), (k - 4) * 1.02, 1.3, zF - 5.6));   /* the channel walls, one wire to a channel */
   const latch = new THREE.Group();
   latch.add(at(box(6.4, 0.9, 13.5, cp), 0, 0, -6.75));
   latch.add(at(box(7.4, 0.9, 3.2, cp), 0, -0.55, -13.4, -0.35, 0, 0));
   for (let k = 0; k < 3; k++) latch.add(at(box(7.2, 0.35, 0.4, cp), 0, -0.4 - k * 0.2, -12.4 - k * 0.9, -0.35, 0, 0));
   latch.position.set(0, -H / 2 - 0.4, zF - 3); latch.rotation.x = 0.16; g.add(latch);
   /* the eight gold blades, each with its crown of teeth into a wire */
-  const gm = mat(COL.gold, { metal: 1, rough: 0.2 });
+  const gm = GOLD;
   const pinX = function (i) { return (3.5 - i) * 1.02; };   // pin 1 on the left, plug pointing away, clip underneath
   for (let i = 0; i < 8; i++) {
     g.add(at(box(0.3, 2.6, 3.6, gm), pinX(i), H / 2 - 1.15, zF - 2.4));
+    g.add(at(box(0.72, 0.25, 3.2, gm), pinX(i), H / 2 + 0.05, zF - 2.4));   /* the blade's top edge, as seen through the top of the plug */
     g.add(at(box(0.3, 0.7, 0.6, gm), pinX(i), 1.8, zF - 3.6)); g.add(at(box(0.3, 0.7, 0.6, gm), pinX(i), 1.8, zF - 1.9));
   }
   /* where the jacket stops: about 7 mm inside the plug when done right */
@@ -91,6 +109,7 @@ export function rj45Plug(o = {}) {
   if (o.boot != null) { g.add(boot(zR, H, W, o.boot)); g.add(jacketRun(zJ, zR - 22, 3.05, jc, CAT6, { droop: 0.01 })); g.userData.exitZ = zR - 24; g.userData.cable = { r: 3.05, color: jc, text: CAT6 }; }
   else g.add(jacketRun(zJ, zJ - 34, 3.05, jc, CAT6, { run: o.run }));
   g.add(at(new THREE.Mesh(new THREE.RingGeometry(2.45, 3.05, 32), mat(jc, { rough: 0.6 })), 0, 0, zJ + 0.01));
+  if (bad) g.add(frayedEnd(zJ, 3.05, jc));
   if (!bad) g.add(at(box(7.6, 1.5, 3.4, clearPlastic()), 0, -H / 2 + 0.85, zR + 3.2));
   else {
     g.add(at(box(7.6, 1.5, 3.4, clearPlastic()), 0, -H / 2 + 0.85, zR + 3.2));   // biting bare wires, not jacket
@@ -107,24 +126,28 @@ export function rj45Plug(o = {}) {
    in positions 2-5 for two lines, straight on flat satin cable ---- */
 export function rj11Plug(o = {}) {
   const g = new THREE.Group(), L = 14.5, W = 9.6, H = 6.6, zF = L / 2, zR = -L / 2, cp = clearPlastic();
-  g.add(rbox(W, H, L, 0.6, cp));
+  g.add(at(rbox(W, H, L - 4, 0.6, cp), 0, 0, 2));
+  g.add(at(rbox(W + 0.5, H + 0.4, 4.2, 0.7, cp), 0, 0.1, zR + 2.1));
   for (let k = 0; k <= 6; k++) g.add(at(box(0.34, 0.9, 4, cp), (k - 3) * 1.02, H / 2 + 0.15, zF - 2.2));
+  for (let k = 0; k <= 6; k++) g.add(at(box(0.2, 1.8, 6, cp), (k - 3) * 1.02, 1.0, zF - 4.2));
   const latch = new THREE.Group(); latch.add(at(box(4.6, 0.8, 9.5, cp), 0, 0, -4.75)); latch.add(at(box(5.4, 0.8, 2.4, cp), 0, -0.45, -9.6, -0.35, 0, 0));
   latch.position.set(0, -H / 2 - 0.35, zF - 2.5); latch.rotation.x = 0.16; g.add(latch);
   const colours = o.lines === 1 ? [null, null, "red", "green", null, null] : [null, "black", "red", "green", "yellow", null];
-  const gm = mat(COL.gold, { metal: 1, rough: 0.2 }), zJ = zR + 5, yW = 0.9;
+  const gm = GOLD, zJ = zR + 5, yW = 0.9;
   for (let p = 0; p < 6; p++) {
     const x = (2.5 - p) * 1.02;
     if (!colours[p]) continue;
     g.add(at(box(0.3, 2.2, 3, gm), x, H / 2 - 1.0, zF - 2));
+    g.add(at(box(0.7, 0.25, 2.7, gm), x, H / 2 + 0.05, zF - 2));
     g.add(wireTube([V((2.5 - p) * 0.95, 0, zJ - 2), V((2.5 - p) * 0.98, yW * 0.6, zJ + 2), V(x, yW, zJ + 5), V(x, yW, zF - 0.5)], colours[p], 0.42, 40));
     g.add(copperEnd(V(x, yW, zF - 0.48), V(0, 0, 1), 0.22));
   }
-  const PHONE = "TELEPHONE CORD  ·  4 COND  ·  26AWG  ·  FLAT SATIN";
-  g.add(jacketRun(zJ, o.stub ? zR - 2 : zJ - 30, 1.6, 0xa7abb1, PHONE, { flat: true, ink: "rgba(40,44,50,0.75)", droop: o.stub ? 0.01 : 0.8, run: o.stub ? null : o.run }));
+  /* flat satin cord for a phone line cord (the wall plate), round grey cable as in the owner's RJ11 photos */
+  const flat = !!o.flat, PHONE = flat ? "TELEPHONE CORD  ·  4 COND  ·  26AWG  ·  FLAT SATIN" : "TELEPHONE CABLE  ·  2 PAIR  ·  24AWG  ·  CMR", jr = flat ? 1.6 : 2.0;
+  g.add(jacketRun(zJ, o.stub ? zR - 2 : zJ - 30, jr, flat ? 0xa7abb1 : 0x8e9196, PHONE, { flat: flat, ink: "rgba(40,44,50,0.7)", droop: o.stub ? 0.01 : 0.8, run: o.stub ? null : o.run }));
   g.add(at(box(6.4, 1.2, 3, cp), 0, -H / 2 + 0.7, zR + 2.6));
   named(g, "plug:RJ11", { type: "rj11", positions: 6, conductors: o.lines === 1 ? 2 : 4 });
-  if (o.stub) { g.userData.exitZ = zR - 2; g.userData.cable = { r: 1.6, color: 0xa7abb1, text: PHONE, ink: "rgba(40,44,50,0.75)", flat: true }; }
+  if (o.stub) { g.userData.exitZ = zR - 2; g.userData.cable = { r: jr, color: flat ? 0xa7abb1 : 0x8e9196, text: PHONE, ink: "rgba(40,44,50,0.7)", flat: flat }; }
   return g;
 }
 
@@ -134,19 +157,19 @@ export function rj11Plug(o = {}) {
    centre conductor standing about 3 mm proud of the nut */
 export function coaxF(o = {}) {
   const g = new THREE.Group();
-  const nickel = mat(0xa9aeb5, { metal: 1, rough: 0.3 }), nickel2 = mat(0x989da4, { metal: 1, rough: 0.4 });   /* plated, not mirror-white */
+  const nickel = mat(0xd3d6da, { metal: 0.8, rough: 0.24 }), nickel2 = mat(0xc4c8cc, { metal: 0.8, rough: 0.3 });   /* nickel plate: bright, but not mirror-white */
   /* the cable (o.stub: a short end, the device runs the rest with cableFrom) */
   const RG6 = "RG6 QUAD SHIELD  ·  18AWG CCS  ·  75 OHM  ·  SWEEP TESTED 3GHz  ·  CATV", jc = o.jacket == null ? 0x141414 : o.jacket, ink = new THREE.Color(jc).getHSL({}).l > 0.5 ? "rgba(30,30,30,0.6)" : "rgba(235,235,235,0.75)";
-  g.add(jacketRun(-15, o.stub ? -22 : -52, 3.45, jc, RG6, { ink: ink, droop: o.stub ? 0.01 : 2 }));
+  g.add(jacketRun(-15, o.stub ? -22 : -52, 3.45, jc, RG6, { ink: ink, droop: o.stub ? 0.01 : 2, run: o.stub ? null : o.run }));
   /* compression sleeve: pushed home, its black collar showing */
-  g.add(at(cyl(5.3, 5, mat(0x1c1c1e, { rough: 0.45 }), 40), 0, 0, -12.5, Math.PI / 2));
-  g.add(at(new THREE.Mesh(new THREE.TorusGeometry(5.3, 0.35, 8, 40), mat(0x1c1c1e, { rough: 0.45 })), 0, 0, -15));
+  g.add(at(cyl(5.3, 5, nickel, 40), 0, 0, -12.5, Math.PI / 2));                                            /* the sleeve, plated, as photographed */
+  g.add(at(new THREE.Mesh(new THREE.TorusGeometry(5.3, 0.35, 8, 40), nickel), 0, 0, -15));
   /* the body, with its knurled grip */
   g.add(at(cyl(5.15, 11, nickel2, 48), 0, 0, -4.5, Math.PI / 2));
   for (let k = 0; k < 56; k++) { const a = k / 56 * Math.PI * 2, r = box(0.32, 0.22, 6, nickel); r.position.set(Math.cos(a) * 5.2, Math.sin(a) * 5.2, -5.5); r.rotation.z = a; g.add(r); }
   g.add(at(new THREE.Mesh(new THREE.TorusGeometry(5.15, 0.3, 8, 48), nickel), 0, 0, 0.9));
   /* the hex nut, 7/16 inch across the flats, chamfered, hollow */
-  const hex = new THREE.Shape(); for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2 + Math.PI / 6; const px = Math.cos(a) * 6.41, py = Math.sin(a) * 6.41; if (k) hex.lineTo(px, py); else hex.moveTo(px, py); } hex.closePath();
+  const hex = new THREE.Shape(); for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; const px = Math.cos(a) * 6.41, py = Math.sin(a) * 6.41; if (k) hex.lineTo(px, py); else hex.moveTo(px, py); } hex.closePath();
   const bore = new THREE.Path(); bore.absarc(0, 0, 4.75, 0, Math.PI * 2, true); hex.holes.push(bore);
   g.add(at(new THREE.Mesh(new THREE.ExtrudeGeometry(hex, { depth: 5.6, bevelEnabled: true, bevelSize: 0.6, bevelThickness: 0.55, bevelSegments: 3, curveSegments: 40 }), nickel), 0, 0, 1.5));
   /* inside the nut: threads, O-ring, the post, the foam, the conductor */
@@ -162,52 +185,88 @@ export function coaxF(o = {}) {
   return g;
 }
 
-/* ---- a damaged run: kinked hard, crushed flat, the jacket torn open
-   with the twisted pairs showing and one conductor broken ---- */
+/* ---- a damaged run, as photographed: a big kink humped up off the
+   bench, the jacket torn clean through at its foot with the pairs bare
+   and splayed; then a crushed flat stretch torn open on top, broken
+   conductors and bare copper strands sticking out every way; flakes of
+   jacket and snipped wire on the bench. The cable's centre is at y = 0
+   where it lies flat (lift it by its radius to sit it on a bench). ---- */
 export function damagedCable(o = {}) {
-  const g = new THREE.Group(), jc = o.jacket || 0x2c55b8, r = 3.05;
-  const path = new THREE.CatmullRomCurve3([V(-95, 0, 0), V(-45, 0, 0), V(-15, 0, 0), V(-6.5, 5, 0), V(-2.2, 10.5, 0), V(0, 12.2, 0), V(2.2, 10.5, 0), V(6.5, 5, 0), V(15, 0, 0), V(30, 0, 0), V(46, 0, 0), V(60, 0, 0), V(100, 0, 0)], false, "catmullrom", 0.35);
-  const N = 420, xAt = function (t) { return path.getPointAt(t).x; };
-  const crush = function (t) { const x = xAt(t); const s = x < 16 || x > 54 ? 0 : x < 22 ? (x - 16) / 6 : x > 48 ? (54 - x) / 6 : 1; return s * s * (3 - 2 * s); };
-  const radius = function (t) { const c = crush(t); return [r * (1 + 0.5 * c), r * (1 - 0.58 * c)]; };
-  const apex = function (t) { const p = path.getPointAt(t); return Math.hypot(p.x, p.y - 11); };
-  /* tears: on the outside of the kink, and across the crushed flat */
+  const g = new THREE.Group(), jc = o.jacket || 0x24459c, r = 3.05;
+  const path = new THREE.CatmullRomCurve3([V(-160, 0, 0), V(-100, 0, 0), V(-72, 0, 0), V(-56, 1.2, 0), V(-44, 7, 0), V(-32, 17, 0), V(-20, 22.5, 0), V(-8, 20, 0),
+    V(2, 11, 0), V(10, 3, 0), V(20, 0, 0), V(40, 0, 0), V(60, 0, 0), V(80, 0, 0), V(110, 0, 0), V(160, 0, 0)], false, "catmullrom", 0.5);
+  const N = 620, len = path.getLength(), xAt = function (t) { return path.getPointAt(t).x; };
+  const smooth = function (e) { e = Math.max(0, Math.min(1, e)); return e * e * (3 - 2 * e); };
+  const crush = function (t) { const x = xAt(t); return smooth((x - 26) / 7) * smooth((84 - x) / 7); };
+  const gapA = -64, gapB = -45;                                                   /* torn clean through here */
+  const radius = function (t) { const c = crush(t); return [r * (1 + 0.55 * c), r * (1 - 0.6 * c)]; };
   const hole = function (t, a) {
-    const p = path.getPointAt(t);
-    if (apex(t) < 4.2) { const d = Math.atan2(Math.sin(a), Math.cos(a)); return Math.abs(d) < 0.85 + 0.25 * Math.sin(t * 900); }
-    if (p.x > 27 && p.x < 39) { const d = Math.atan2(Math.sin(a - Math.PI / 2), Math.cos(a - Math.PI / 2)); return Math.abs(d) < 0.7 + 0.3 * Math.sin(p.x * 3.1); }
+    const x = xAt(t), d = Math.atan2(Math.sin(a), Math.cos(a));
+    if (x > gapA + 1.6 * Math.sin(a * 3) && x < gapB + 2.2 * Math.sin(a * 2 + 1)) return true;
+    if (x > 40 && x < 64) return Math.abs(d) < 0.95 + 0.35 * Math.sin(x * 2.3) + 0.2 * Math.sin(x * 7.1);
     return false;
   };
-  const tint = function (t, a) { const d = apex(t); return d < 9 ? Math.max(0, Math.cos(a)) * (1 - d / 9) * 0.55 : 0; };   // stress whitening on the outside of the bend
-  const jg = tubeVar(path, { n: N, m: 36, radius: radius, hole: hole, tint: tint, uvLength: 120, up: V(0, 0, 1) });
+  const tint = function (t, a) { const p = path.getPointAt(t); if (p.y < 3) return 0; return Math.max(0, Math.cos(a)) * Math.min(1, (p.y - 3) / 18) * 0.4; };   /* stress whitening over the hump */
+  const jg = tubeVar(path, { n: N, m: 40, radius: radius, hole: hole, tint: tint, uvLength: 120, up: V(0, 1, 0) });
   g.add(new THREE.Mesh(jg, jacketMaterial(jc, CAT6, null, { side: THREE.DoubleSide })));
-  /* the pairs inside, where the tears show them */
-  const F = frames(path, N, V(0, 0, 1)), len = path.getLength();
-  const at_s = function (s) { return Math.min(1, Math.max(0, s / len)); };
-  const frameAt = function (s) { const i = Math.round(at_s(s) * N); return { N: F.N[i], B: F.B[i] }; };
-  const sOfX = function (x) { let lo = 0, hi = 1; for (let k = 0; k < 30; k++) { const m = (lo + hi) / 2; if (xAt(m) < x) lo = m; else hi = m; } return lo * len; };
+  /* ragged tongues of jacket round the torn ends */
+  const jm = mat(jc, { rough: 0.5 }); const jmd = jm.clone(); jmd.side = THREE.DoubleSide;
+  const F = frames(path, N, V(0, 1, 0));
+  const tOfX = function (x) { let lo = 0, hi = 1; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (xAt(m) < x) lo = m; else hi = m; } return lo; };
+  [[gapA, -1], [gapB, 1]].forEach(function (e, ei) {
+    const t = tOfX(e[0]), i = Math.round(t * N), P = path.getPointAt(t), T = F.T[i];
+    for (let k = 0; k < 7; k++) {
+      const a = k / 7 * Math.PI * 2 + ei, w = 1.6 + (k % 3) * 0.6, l = 1.8 + (k * 5 % 4) * 0.7;
+      const n = F.N[i].clone().multiplyScalar(Math.cos(a)).addScaledVector(F.B[i], Math.sin(a));
+      const fl = new THREE.Mesh(new THREE.PlaneGeometry(w, l), jmd);
+      fl.position.copy(P).addScaledVector(n, r + 0.3).addScaledVector(T, e[1] * l * 0.4);
+      fl.lookAt(fl.position.clone().add(n)); fl.rotateX(e[1] * (0.6 + (k % 2) * 0.4)); g.add(fl);
+    }
+  });
+  /* the pairs inside: hidden under the jacket, bare and splayed across the gap */
+  const frameAt = function (s) { const k = Math.round(Math.min(1, Math.max(0, s / len)) * N); return { N: F.N[k], B: F.B[k] }; };
+  const sOfX = function (x) { return tOfX(x) * len; };
   [["orange", 0], ["green", 1], ["blue", 2], ["brown", 3]].forEach(function (pc) {
     const P = PAIRS[pc[1]];
-    [[-12, 12], [24, 42]].forEach(function (seg) {
+    const centre = function (s) {
+      const t = s / len, x = xAt(t), c = crush(t), Fr = frameAt(s);
+      const sp = 1 + 1.6 * smooth((x - gapA + 4) / 6) * smooth((gapB + 4 - x) / 6);   /* loosened where the jacket is gone */
+      const sag = -1.4 * smooth((x - gapA) / 8) * smooth((gapB - x) / 8) * (pc[1] - 1.5) * 0.5;
+      return path.getPointAt(t).addScaledVector(Fr.B, P.c[0] * sp * (1 + 0.5 * c)).addScaledVector(Fr.N, P.c[1] * sp * (1 - 0.6 * c) + sag);
+    };
+    [[gapA - 4, gapB + 4], [38, 66]].forEach(function (seg, si) {
       const s0 = sOfX(seg[0]), s1 = sOfX(seg[1]);
-      const centre = function (s) { const t = at_s(s), c = crush(t), Fr = frameAt(s); return path.getPointAt(t).addScaledVector(Fr.B, P.c[0] * (1 + 0.5 * c)).addScaledVector(Fr.N, P.c[1] * (1 - 0.58 * c)); };
       [0, Math.PI].forEach(function (ph, w) {
         const name = (w === 0 ? "white/" : "") + pc[0];
-        if (pc[0] === "orange" && w === 1 && seg[0] === 24) {
-          /* the broken conductor: two ends, copper showing, pushed out of the tear */
-          const A = helix(centre, frameAt, s0, sOfX(31.5), P.lay, ph, 0.5); A.push(V(32.6, 2.6, 1.8)); g.add(wireTube(A, name, 0.47));
-          g.add(at(cyl(0.26, 1.4, mat(0xc87a3e, { metal: 1, rough: 0.25 })), 33.2, 3.0, 2.1, 0, 0, 0.9));
-          const Bp = helix(centre, frameAt, sOfX(34), s1, P.lay, ph, 0.5); Bp.unshift(V(33.6, 3.4, 2.5)); g.add(wireTube(Bp, name, 0.47));
-          g.add(at(cyl(0.26, 1.4, mat(0xc87a3e, { metal: 1, rough: 0.25 })), 33.9, 4.0, 2.8, 0, 0, 0.5));
+        if (si === 1 && pc[0] === "orange" && w === 1) {
+          /* the broken conductor: two ends pushed up out of the tear, copper showing */
+          const A = helix(centre, frameAt, s0, sOfX(50), P.lay, ph, 0.5); A.push(V(51.5, 3.6, 0.6)); g.add(wireTube(A, name, 0.47));
+          g.add(at(cyl(0.26, 1.5, mat(0xc87a3e, { metal: 1, rough: 0.25 })), 52.2, 4.1, 0.6, 0, 0, 0.8));
+          const Bp = helix(centre, frameAt, sOfX(53), s1, P.lay, ph, 0.5); Bp.unshift(V(52.6, 4.4, 1.2)); g.add(wireTube(Bp, name, 0.47));
+          g.add(at(cyl(0.26, 1.5, mat(0xc87a3e, { metal: 1, rough: 0.25 })), 52.6, 5.0, 1.4, 0, 0, 0.4));
           return;
         }
-        g.add(wireTube(helix(centre, frameAt, s0, s1, P.lay, ph, 0.5), name, 0.47));
+        g.add(wireTube(helix(centre, frameAt, s0, s1, P.lay, ph, 0.5), name, 0.47, 160));
       });
     });
   });
-  /* flakes of torn jacket on the floor */
-  for (let i = 0; i < 7; i++) g.add(at(box(1.6 + (i % 3) * 0.7, 0.35, 1.1 + (i % 2) * 0.6, mat(jc, { rough: 0.5 })), 22 + i * 4.8, -2.6, 6.5 - i * 1.9, 0, i * 0.8, 0));
-  return named(g, "cable:Damaged run", { type: "damaged", faults: ["kinked", "crushed", "jacket torn", "conductor broken"] });
+  /* bare copper strands splayed out of the crushed tear, a few still insulated */
+  const cu = mat(0xc87a3e, { metal: 1, rough: 0.3 });
+  for (let k = 0; k < 22; k++) {
+    const x0 = 42 + (k * 37 % 20), a = -0.5 + (k * 53 % 100) / 100 * 2.8, l = 5 + (k * 29 % 11), bend = (k % 3 - 1) * 0.7;
+    const p0 = V(x0, 1.0, (k % 5 - 2) * 0.6), d = V(Math.cos(a) * 0.5 + bend * 0.3, Math.sin(a) * 0.9 + 0.3, Math.cos(a) * 0.8).normalize();
+    const pts = [p0, p0.clone().addScaledVector(d, l * 0.5).add(V(bend, 0.4, 0)), p0.clone().addScaledVector(d, l).add(V(bend * 2, -0.6, 0.5))];
+    const ins = k % 5 === 0;
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 14, ins ? 0.47 : 0.12, 6), ins ? wireMat(["orange", "white/green", "brown", "white/blue", "green"][k % 5]) : cu));
+  }
+  /* flakes of torn jacket, and snipped bits of wire, on the bench */
+  for (let i = 0; i < 18; i++) {
+    const x = -110 + (i * 41 % 220), z = -20 + (i * 23 % 40), sz = 1.3 + (i % 4) * 0.8;
+    if (Math.abs(z) < 5) continue;
+    g.add(at(box(sz, 0.35, sz * (0.55 + (i % 3) * 0.3), mat(jc, { rough: 0.5 })), x, -r + 0.18, z, 0, i * 0.8, 0));
+  }
+  for (let i = 0; i < 7; i++) { const w = cyl(0.2, 3 + i % 3, i % 2 ? cu : wireMat("white/orange"), 6); at(w, -70 + i * 26, -r + 0.2, (i % 2 ? 1 : -1) * (9 + (i % 3) * 4), 0, i * 1.1, Math.PI / 2); g.add(w); }
+  return named(g, "cable:Damaged run", { type: "damaged", faults: ["kinked", "jacket torn through", "crushed", "conductor broken"] });
 }
 
 /* ---- the moulded boot of a factory patch cable ----
@@ -311,5 +370,34 @@ export function scApcPlug(o = {}) {
   g.add(new THREE.Mesh(geo, mat(o.boot || COL.apcGreen, { rough: 0.45, grain: 0.05 })));
   named(g, "plug:SC/APC", { type: "fiber", connector: "SC/APC" });
   g.userData.exitZ = -40; g.userData.cable = { r: 1.0, color: o.jacket == null ? 0xf0c419 : o.jacket, text: "OS2 9/125  ·  SINGLE-MODE  ·  G.657.A2  ·  2.0mm", ink: "rgba(30,30,30,0.6)" };
+  return g;
+}
+
+/* the ragged end of a jacket cut badly: torn tongues of jacket and a few
+   loose strands of the filler, as in the bad-termination photo */
+function frayedEnd(z, r, color) {
+  const g = new THREE.Group(), m = mat(color, { rough: 0.55 });
+  for (let k = 0; k < 9; k++) {
+    const a = k / 9 * Math.PI * 2 + Math.sin(k * 3.1) * 0.25, len = 1.2 + (k * 7 % 5) * 0.55, w = 1.2 + (k % 3) * 0.5;
+    const t = new THREE.Mesh(new THREE.PlaneGeometry(w, len), m); t.material = m.clone(); t.material.side = THREE.DoubleSide;
+    t.position.set(Math.cos(a) * (r + 0.05 + (k % 2) * 0.25), Math.sin(a) * (r + 0.05 + (k % 2) * 0.25), z + len / 2 - 0.2);
+    t.rotation.set(Math.PI / 2, 0, 0); t.rotateOnWorldAxis(new THREE.Vector3(0, 0, 1), a - Math.PI / 2); t.rotateX(0.25 + (k % 3) * 0.15);
+    g.add(t);
+  }
+  /* loose fibres */
+  const fm = new THREE.MeshStandardMaterial({ color: 0xe8e2cf, roughness: 0.9 });
+  for (let k = 0; k < 6; k++) {
+    const a = k * 1.7, p0 = V(Math.cos(a) * 1.2, Math.sin(a) * 1.2, z);
+    const curve = new THREE.CatmullRomCurve3([p0, p0.clone().add(V(Math.cos(a) * 1.5, Math.sin(a) * 1.2, 2.5)), p0.clone().add(V(Math.cos(a) * 3.2, Math.sin(a) * 2.8 - 1, 4.5 + k * 0.4))]);
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 16, 0.07, 5), fm));
+  }
+  return g;
+}
+
+/* ---- lying on the bench: a plug rests on its underside, its cable
+   running on along the bench (run points are plug-local: [x, y, dz] back
+   from the jacket's end, y dropping to the bench) ---- */
+export function onBench(make, lift) {
+  const g = new THREE.Group(), p = make(); p.position.y = lift; g.add(p);
   return g;
 }

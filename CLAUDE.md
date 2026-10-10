@@ -22,8 +22,13 @@ from the photo's own angle.
 Order set by the owner, 10 October 2026: "Start with 1 and then do 2":
 batch 1 rebuilt to the batch 3 standard (done: modem, ONT, router,
 switch and the stacked pair, mesh node front/back/weak), then batch 2
-(cables), then batch 4 (tools and the bench kit), then the home-level
-workspace and first ticket preview.
+(done: the cables on concrete as photographed, clear plugs, the damaged
+run's hump and tears), then batch 4 (tools and the bench kit), then the
+home-level workspace and first ticket preview.
+- Clear plastic (plugs): transparent with a Fresnel rim on the opacity,
+  front faces only. Physical transmission was tried and dropped: it
+  veiled the wires white and dulled the gold. Wire insulation keeps a low
+  environment reflection, or the colours wash to pastel.
 - LEDs: a lit LED is emissive only (a lit base colour pushes it to white),
   with a glow sprite on layer 1. The viewer draws glows in their own pass
   after the ambient occlusion (AO darkens everything beside a raised edge,

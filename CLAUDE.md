@@ -115,6 +115,9 @@ smart TV rear panel, a PoE dome IP camera, a cable tester (main and remote,
 pins 1-8 and G), and the tools (RJ45/11 crimper, 110 punch-down, tone
 generator, inductive probe, RJ45 loopback plug). **The home-level list is
 complete.**
+Plus one the owner added: an **electronics screwdriver set** (precision
+bits in a case, a driver handle), shown on an ESD mat with tweezers: the
+technician's bench kit for opening equipment.
 
 Accuracy notes for the models (the photos are reference, the standards
 win): wire colour order follows TIA-568 T568A/T568B exactly, not the

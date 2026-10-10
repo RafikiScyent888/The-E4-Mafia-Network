@@ -105,6 +105,24 @@ INTERNET/WAN, LAN 1-4, RESET, WPS, power), a 5-port unmanaged gigabit
 switch (front ports with link LEDs, back power). Brand marks in the photos
 stay off the models.
 
+Then the rest of the home list, the same day: RJ11 beside RJ45 (two shots),
+straight-through (T568B) and crossover (T568A end) connectors, a bad
+termination (jacket out, too much untwist), a kinked and crushed cable, a
+compression F-type coax connector, a data/voice wall plate (Ethernet and
+telephone), a desktop PC rear panel, a laptop's Ethernet side, a network
+printer (port with link/activity LEDs, control panel showing its IP), a
+smart TV rear panel, a PoE dome IP camera, a cable tester (main and remote,
+pins 1-8 and G), and the tools (RJ45/11 crimper, 110 punch-down, tone
+generator, inductive probe, RJ45 loopback plug). **The home-level list is
+complete.**
+
+Accuracy notes for the models (the photos are reference, the standards
+win): wire colour order follows TIA-568 T568A/T568B exactly, not the
+photo's pixels; RJ11 is a 6-position connector (2 conductors for one line,
+4 for two lines), not "4-pin"; garbled text in the photos (tester screen,
+labels) is replaced with correct wording; sides a photo doesn't show follow
+the standard design for that device and are previewed before use.
+
 ## Objectives
 
 Read from the owner's "All updated Objectives" Google Doc

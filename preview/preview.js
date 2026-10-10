@@ -11,6 +11,7 @@ import * as SURF from "../assets/models/surface.js";
 import * as GEAR from "../assets/models/home-gear.js";
 import * as CAB from "../assets/models/cables.js";
 import * as END from "../assets/models/endpoints.js";
+import * as TOOL from "../assets/models/tools.js";
 
 /* how a cable lies on the bench behind its plug: [x, y, dz] back from the jacket's end, dropping to the bench */
 const RUN_L = [[0, -0.6, 8], [0, -2.0, 18], [-3, -2.55, 34], [-14, -2.55, 62], [-36, -2.55, 100], [-64, -2.55, 140]];
@@ -125,7 +126,41 @@ const MODELS = [
     standards: ["Single-gang plate, its screws 83.3 mm apart as the standard sets them", "An RJ11 plug fits an RJ45 jack but not the other way round: the jacks are drawn at their real sizes"] },
   { id: "wallplate-empty", stage: "none", view: [0.1, 0.05, 1], light: [-0.5, 0.9, 1.1], frame: [-45, -65, 0, 45, 65, 10], group: "Devices on the network", name: "Wall plate, nothing plugged in", build: function () { return END.wallPlate({ plugged: false }); },
     photo: "The same plate with the cables out, to see the jacks.",
-    shows: ["Eight gold contacts in the Ethernet jack, four in the telephone jack (one or two lines)"] }
+    shows: ["Eight gold contacts in the Ethernet jack, four in the telephone jack (one or two lines)"] },
+  { id: "tester", stage: "concrete", view: [0.12, 0.3, 1], light: [0.3, 1.3, 1.0], frame: [-110, 0, -40, 115, 110, 30], group: "Tools and the bench kit", name: "Cable tester, main and remote", build: TOOL.cableTester,
+    photo: "From your photo of the cable tester, main unit and remote joined by a short patch cable.",
+    shows: ["Main: the LCD (CAT6 TEST - T568B, progress 100%, pins 1-8 and G, PASS), the green panel with a light per pin, all lit", "Remote: its own row of lights, REMOTE, the PASS - ALL PAIRS window", "The short black patch cable plugged into both"],
+    standards: ["The photo's screen text is garbled (\u201cPasss 1- 02B\u201d); the screen shows the correct wording", "A tester checks each wire end to end, in order: a crossed or open wire lights out of order or not at all"] },
+  { id: "tester-screen", stage: "concrete", focus: "panel:Main unit", view: [0.1, 0.15, 1], light: [0.3, 1.3, 1.0], group: "Tools and the bench kit", name: "Cable tester, main unit close-up", build: TOOL.cableTester,
+    photo: "The same tester, close in on the main unit.",
+    shows: ["The fault row above stays dark; every pass light is lit, 1 to 8 and G (the shield)"] },
+  { id: "crimper", stage: "concrete", view: [0.35, 0.95, 0.55], light: [0.4, 1.4, 0.6], group: "Tools and the bench kit", name: "RJ45/RJ11 crimper", build: TOOL.crimper,
+    photo: "From your photo of the RJ45/11 crimp tool.",
+    shows: ["The blue steel head with its 8P (RJ45) and 6P (RJ11) dies, the teeth that press the contacts down", "The cutting blade along the edge, the stripping notch, the ratchet", "The slim blue handle with its black inset; the big black-gripped handle with blue edges"] },
+  { id: "punch", stage: "concrete", view: [0.4, 0.8, 0.8], light: [0.4, 1.4, 0.7], group: "Tools and the bench kit", name: "110 punch-down tool", build: TOOL.punchDown,
+    photo: "From your photo of the 110 punch-down.",
+    shows: ["The grey ribbed body, the 110 label, the white end cap", "The yellow impact sleeve, the black collar, the 110 blade with its cutting side"],
+    standards: ["The cutting side of the blade faces the waste end of the wire when you punch it down"] },
+  { id: "tone", stage: "concrete", view: [0.3, 0.95, 0.6], light: [0.4, 1.4, 0.7], frame: [-50, 0, -80, 50, 34, 90], group: "Tools and the bench kit", name: "Tone generator", build: TOOL.toneGenerator,
+    photo: "From your photo of the tone generator and probe.",
+    shows: ["The off-white case, the grey face: LCD (TONE ON, MODE ALT, LINE OPEN), the red power button, MODE, the arrow pad and OK, TONE GENERATOR", "Its lead out of the bottom, across the bench"] },
+  { id: "probe", stage: "concrete", view: [0.25, 0.95, 0.6], light: [0.4, 1.4, 0.7], frame: [-120, 0, -24, 120, 30, 24], group: "Tools and the bench kit", name: "Inductive probe", build: TOOL.inductiveProbe,
+    photo: "From the same photo: the inductive probe.",
+    shows: ["The wand tapering to its black tip, the grey face, INDUCTIVE PROBE, the push button, the sensitivity mark, the green light", "The speaker grille at the back: you hear the tone when the tip is near the right wire"] },
+  { id: "loopback", stage: "concrete", view: [0.35, 0.75, 0.6], light: [0.3, 1.4, 0.7], frame: [-8, 0, -14, 8, 10, 12], group: "Tools and the bench kit", name: "RJ45 loopback plug", build: function () { const g = new THREE.Group(); const p = TOOL.loopbackPlug(); p.position.y = 5.6; g.add(p); return g; },
+    photo: "From the same photo: the RJ45 loopback plug.",
+    shows: ["Seen through the clear plug: each wire runs in at one pin and turns round inside to another", "The grey moulded hood at the back"],
+    standards: ["Wired 1 to 3 and 2 to 6 (and 4 to 7, 5 to 8 for gigabit): a port hears its own transmit, so its link light should come on"] },
+  { id: "tools", stage: "concrete", view: [0.05, 0.62, 1], light: [0.3, 1.4, 0.8], frame: [-270, 0, -130, 280, 50, 170], group: "Tools and the bench kit", name: "The tools together, as photographed", build: TOOL.toolLayout,
+    photo: "As in your photo: crimper, punch-down, tone generator, probe and loopback plug on the bench.",
+    shows: ["Every tool at its real size beside the others"] },
+  { id: "kit", stage: "none", view: [0.55, 0.5, 1], light: [0.4, 1.4, 0.9], frame: [-340, 0, -150, 200, 120, 160], group: "Tools and the bench kit", name: "Screwdriver set on the ESD mat", build: TOOL.screwdriverKit,
+    photo: "From your photo of the electronics screwdriver set on an ESD mat with tweezers.",
+    shows: ["The aluminium case open: the lid's chart of bit types, four rows of precision bits labelled on the holder", "The driver: knurled black grip, blue end, steel shaft, its bit on the set", "The ESD tweezers, a parts tray with screws", "The blue ESD mat on the white bench, its grounding snap and print"],
+    standards: ["Bit types as real kits carry them: Phillips, flathead, Torx and security Torx, pentalobe, tri-wing, hex, triangle, square, spanner", "Brand names on the case and lid are left off"] },
+  { id: "kit-case", stage: "none", focus: "panel:Bit case", view: [0.3, 0.7, 1], light: [0.4, 1.4, 0.9], group: "Tools and the bench kit", name: "Screwdriver set, the bits close-up", build: TOOL.screwdriverKit,
+    photo: "The same set, close in on the bits.",
+    shows: ["Each row's sizes printed on the holder in front of it"] }
 ];
 
 const canvas = document.getElementById("view");

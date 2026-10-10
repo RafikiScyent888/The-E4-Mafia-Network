@@ -37,6 +37,7 @@ function clearPlastic() {
   return m;
 }
 const V = function (x, y, z) { return new THREE.Vector3(x, y, z); };
+export { clearPlastic, GOLD };
 /* gold plating: kept partly diffuse so it reads gold from every angle, not brown where it mirrors the bench */
 const GOLD = new THREE.MeshStandardMaterial({ color: 0xe9b94e, metalness: 0.6, roughness: 0.3, envMapIntensity: 1.8 });
 const CAT6 = "CAT6 UTP  ·  23AWG 4PR  ·  550MHz  ·  TIA-568.2  ·  VERIFIED  ·  1000FT";
@@ -44,7 +45,7 @@ const CAT6 = "CAT6 UTP  ·  23AWG 4PR  ·  550MHz  ·  TIA-568.2  ·  VERIFIED  
 /* a straight-ish jacket from z0 back to z1 (z1 < z0), drooping a little */
 function jacketRun(z0, z1, r, color, text, o = {}) {
   /* o.run: where the cable goes after the plug, as [x, y, dz] steps back from the jacket's end (a patch cable drooping to the floor) */
-  const pts = o.run ? [V(0, 0, z0)].concat(o.run.map(function (q) { return V(q[0], q[1], z0 - q[2]); })) : [V(0, 0, z0), V(0, 0, (z0 + z1) / 2), V(0, -(o.droop || 1.5), z1)];
+  const pts = o.run ? [V(0, 0, z0)].concat(o.run.map(function (q) { return V(q[0], q[1], z0 - q[2]); })) : [V(0, 0, z0), V(0, 0, (z0 + z1) / 2), V(0, -(o.droop == null ? 1.5 : o.droop), z1)];
   const curve = new THREE.CatmullRomCurve3(pts);
   const g = tubeVar(curve, { n: o.run ? 200 : 80, m: 32, radius: function () { return o.flat ? [r * 1.95, r] : [r, r]; }, uvLength: 120, color: 0xffffff, up: V(0, 1, 0) });
   return new THREE.Mesh(g, jacketMaterial(color, text, o.ink, { side: THREE.DoubleSide }));
@@ -107,7 +108,7 @@ export function rj45Plug(o = {}) {
      With o.boot the moulded boot covers the back of the plug and the
      device runs the cable on from its end (cableFrom). */
   if (o.boot != null) { g.add(boot(zR, H, W, o.boot)); g.add(jacketRun(zJ, zR - 22, 3.05, jc, CAT6, { droop: 0.01 })); g.userData.exitZ = zR - 24; g.userData.cable = { r: 3.05, color: jc, text: CAT6 }; }
-  else g.add(jacketRun(zJ, zJ - 34, 3.05, jc, CAT6, { run: o.run }));
+  else g.add(jacketRun(zJ, zJ - (o.jacketLen || 34), 3.05, jc, CAT6, { run: o.run, droop: o.jacketLen ? 0.01 : null }));   /* o.jacketLen: a short end, when another plug's run arrives here */
   g.add(at(new THREE.Mesh(new THREE.RingGeometry(2.45, 3.05, 32), mat(jc, { rough: 0.6 })), 0, 0, zJ + 0.01));
   if (bad) g.add(frayedEnd(zJ, 3.05, jc));
   if (!bad) g.add(at(box(7.6, 1.5, 3.4, clearPlastic()), 0, -H / 2 + 0.85, zR + 3.2));

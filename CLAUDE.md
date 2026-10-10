@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (10 October 2026):** model previews, batches 1 to 3, are up for the
+**Status (10 October 2026):** model previews, batches 1 to 4, are up for the
 owner's approval at `preview/models.html` (not linked from anywhere).
 Batch 1: cable modem, fiber ONT, home router, 5-port switch, mesh node
 (and its weak-link amber state). Batch 2: RJ45 T568B and T568A, bad
@@ -23,8 +23,11 @@ Order set by the owner, 10 October 2026: "Start with 1 and then do 2":
 batch 1 rebuilt to the batch 3 standard (done: modem, ONT, router,
 switch and the stacked pair, mesh node front/back/weak), then batch 2
 (done: the cables on concrete as photographed, clear plugs, the damaged
-run's hump and tears), then batch 4 (tools and the bench kit), then the
-home-level workspace and first ticket preview.
+run's hump and tears), then batch 4 (done: cable tester main and remote,
+crimper, 110 punch-down, tone generator and inductive probe, loopback
+plug, the screwdriver set on its ESD mat, and the tools laid out as
+photographed; `tools.js`), then the home-level workspace and first ticket
+preview.
 - Clear plastic (plugs): transparent with a Fresnel rim on the opacity,
   front faces only. Physical transmission was tried and dropped: it
   veiled the wires white and dulled the gold. Wire insulation keeps a low

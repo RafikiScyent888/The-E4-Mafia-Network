@@ -48,6 +48,31 @@ build step, served from `main` by GitHub Pages.
    and the Command Center's tile), **between A+ Core 2 and Security
    Start-up Firewall**. Add the link only once the first slice is live.
 
+## Built like the real world, as one giant teaching tool
+
+The owner, 10 October 2026: **"I want this to built like you would do in the
+real world however as one gaint teaching tool."** So the configuration is
+the real job, done with the real commands on each device, and the model
+proves the result by sending traffic through it: a VLAN either carries the
+traffic or it doesn't, for the real reason. Every configuration skill is
+also a troubleshooting skill: what can be configured can be broken in a
+ticket, found with the show commands and fixed with the configuration ones.
+
+What students configure, by level (agreed 10 October 2026):
+
+| Level | Configuration |
+|---|---|
+| **Home** | IP plan (address, mask, gateway, DNS); the router's web page (DHCP range, Wi-Fi name and security, port forwarding); static addresses for a printer or camera |
+| **Small office** | First managed switch: hostname, passwords, remote management, port settings (speed, duplex, shutting unused ports); subnetting the office into blocks |
+| **Small business** | VLANs (create, access ports, trunks with allowed and native VLANs); inter-VLAN routing on router subinterfaces; a DHCP scope per VLAN; ACLs; NAT/PAT; a guest network kept apart |
+| **Campus** | Layer 3 switches with a gateway per VLAN; spanning tree (root bridge, port roles, protections); link aggregation; OSPF; first-hop redundancy with a virtual gateway; MTU and jumbo frames; port security |
+| **Enterprise** | BGP to the providers; route selection across static, OSPF and EIGRP; a screened subnet and firewall zones; site-to-site and remote-access VPN; a cloud network (VPC, security groups, cloud gateway); SNMP, syslog, NTP, port mirroring |
+
+**Subnetting is by hand:** students work out classful, CIDR and VLSM plans
+themselves and record them in an IPAM sheet; the model catches overlaps,
+wrong masks and gateways outside the subnet. No built-in calculator does it
+for them, and Mason's hints point at the principle, never the answer.
+
 ## Objectives
 
 Read from the owner's "All updated Objectives" Google Doc

@@ -5,20 +5,48 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (10 October 2026):** model previews, batches 1 and 2, are up for the
-owner's approval at `preview/models.html` (not linked from anywhere):
-cable modem, fiber ONT, home router, 5-port switch, mesh node (and its
-weak-link amber state); RJ45 T568B and T568A, bad termination, damaged
-cable, RJ11, RJ11 beside RJ45, coax F-type. Next: batches 3 (PC, laptop,
-printer, TV, camera, wall plate) and 4 (tools and the bench kit), then
-the home-level workspace and first ticket preview.
+**Status (10 October 2026):** model previews, batches 1 to 3, are up for the
+owner's approval at `preview/models.html` (not linked from anywhere).
+Batch 1: cable modem, fiber ONT, home router, 5-port switch, mesh node
+(and its weak-link amber state). Batch 2: RJ45 T568B and T568A, bad
+termination, damaged cable, RJ11, RJ11 beside RJ45, coax F-type. Batch 3,
+rebuilt part by part to the owner's photos after "You are missing so much
+detail. The requirement is to look real life as possible" (10 October
+2026): desktop PC, laptop, network printer, smart TV, PoE IP camera,
+data/voice wall plate, each with its cables plugged in as photographed.
+Next: batch 4 (tools and the bench kit), then the home-level workspace and
+first ticket preview. Batches 1 and 2 predate the realism pass and should
+be brought up to the batch 3 standard against their photos.
 
 **Models** (`assets/models/`): procedural three.js, real millimetres, front
 +Z, every port a named group (`port:LAN 1`) with userData for the build to
-light and cable. `parts.js` holds the shared pieces; jacks stand proud of
-their panel (a jack flush inside a body is hidden by the body's face: that
-bug was found in the first renders). three.js r160 is vendored in
-`assets/three/` (MIT): nothing is fetched at runtime.
+light and cable. three.js r160 is vendored in `assets/three/` (MIT),
+including the post-processing addons the viewer uses: nothing is fetched
+at runtime.
+- `parts.js`: the shared pieces. Jacks stand proud of their panel (a jack
+  flush inside a body is hidden by the body's face). `mat(color, {metal,
+  rough, grain, brushed})`: before 10 October 2026 `metal` and `rough` were
+  handed to three.js under the wrong names and silently ignored, so every
+  "metal" part rendered as matte plastic. Fixed; keep the mapping.
+- `surface.js`: the realism layer. Grain is worked in the shader from each
+  mesh's own millimetres (same size on a button and a panel); finishes
+  (plastic, brushed, painted steel, rubber); `perforated` (real holes, alpha
+  tested); `printLines` (the outline boxes printed round port groups);
+  barcodes, generic regulatory marks (no brand marks), printed labels; the
+  wood and concrete the gear sits on.
+- `cables.js`: plugs with the moulded boot (`rj45Plug({boot})`), `plugInto`
+  a jack, `cableFrom` to run the cable on in the device's own coordinates
+  down to the bench, `iecC13` mains plug and cord. Jacket legends at real
+  size (about 2.5 mm letters).
+- `endpoints.js`: batch 3. Rear ports in a tower stand on end (the board is
+  on its side); the camera's port pocket is a real flat cut into the round
+  base (`pocketWall`), not a pad floating on it.
+- The viewer (`preview/`): wood bench (concrete for the camera), soft
+  shadows, ambient occlusion (GTAO), per-model `view`, `light`, `stage`,
+  `frame`, `focus` (close-up on a named panel); `__preview.cam()` for
+  scripted shots matched to the owner's photos.
+- Check a model by putting the owner's photo beside a render from the same
+  angle and distance; a wide render hides missing detail.
 
 ## What it is
 

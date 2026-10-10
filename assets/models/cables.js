@@ -30,14 +30,16 @@ const CAT6 = "CAT6 UTP  ·  23AWG 4PR  ·  550MHz  ·  TIA-568.2  ·  VERIFIED  
 
 /* a straight-ish jacket from z0 back to z1 (z1 < z0), drooping a little */
 function jacketRun(z0, z1, r, color, text, o = {}) {
-  const pts = [V(0, 0, z0), V(0, 0, (z0 + z1) / 2), V(0, -(o.droop || 1.5), z1)];
+  /* o.run: where the cable goes after the plug, as [x, y, dz] steps back from the jacket's end (a patch cable drooping to the floor) */
+  const pts = o.run ? [V(0, 0, z0)].concat(o.run.map(function (q) { return V(q[0], q[1], z0 - q[2]); })) : [V(0, 0, z0), V(0, 0, (z0 + z1) / 2), V(0, -(o.droop || 1.5), z1)];
   const curve = new THREE.CatmullRomCurve3(pts);
-  const g = tubeVar(curve, { n: 80, m: 32, radius: function () { return o.flat ? [r * 1.95, r] : [r, r]; }, uvLength: 120, color: 0xffffff, up: V(0, 1, 0) });
+  const g = tubeVar(curve, { n: o.run ? 200 : 80, m: 32, radius: function () { return o.flat ? [r * 1.95, r] : [r, r]; }, uvLength: 120, color: 0xffffff, up: V(0, 1, 0) });
   return new THREE.Mesh(g, jacketMaterial(color, text, o.ink, { side: THREE.DoubleSide }));
 }
 
 /* ---- RJ45 plug ----
-   o.standard 'T568B' | 'T568A'; o.termination 'good' | 'bad'; o.jacket colour */
+   o.standard 'T568B' | 'T568A'; o.termination 'good' | 'bad'; o.jacket colour;
+   o.run: the cable's path on from the plug (see jacketRun) */
 export function rj45Plug(o = {}) {
   const g = new THREE.Group(), order = o.standard === "T568A" ? T568A : T568B, bad = o.termination === "bad";
   const L = 21.5, W = 11.7, H = 8, zF = L / 2, zR = -L / 2, jc = o.jacket || 0x2c55b8;
@@ -83,8 +85,11 @@ export function rj45Plug(o = {}) {
     g.add(wireTube(pts, name, 0.47, 120));
     g.add(copperEnd(V(pinX(i), yW, zF - 0.48), V(0, 0, 1), 0.27));
   });
-  /* the jacket, its cut edge, and (done right) the strain-relief bar biting it */
-  g.add(jacketRun(zJ, zJ - 34, 3.05, jc, CAT6));
+  /* the jacket, its cut edge, and (done right) the strain-relief bar biting it.
+     With o.boot the moulded boot covers the back of the plug and the
+     device runs the cable on from its end (cableFrom). */
+  if (o.boot != null) { g.add(boot(zR, H, W, o.boot)); g.add(jacketRun(zJ, zR - 22, 3.05, jc, CAT6, { droop: 0.01 })); g.userData.exitZ = zR - 24; g.userData.cable = { r: 3.05, color: jc, text: CAT6 }; }
+  else g.add(jacketRun(zJ, zJ - 34, 3.05, jc, CAT6, { run: o.run }));
   g.add(at(new THREE.Mesh(new THREE.RingGeometry(2.45, 3.05, 32), mat(jc, { rough: 0.6 })), 0, 0, zJ + 0.01));
   if (!bad) g.add(at(box(7.6, 1.5, 3.4, clearPlastic()), 0, -H / 2 + 0.85, zR + 3.2));
   else {
@@ -93,7 +98,9 @@ export function rj45Plug(o = {}) {
     g.children[g.children.length - 1].material = new THREE.MeshStandardMaterial({ color: 0xe9e1c8, roughness: 0.9 });
   }
   const tag = o.standard === "T568A" ? "T568A" : "T568B";
-  return named(g, "plug:RJ45 " + tag + (bad ? " (bad termination)" : ""), { type: "rj45", standard: tag, termination: bad ? "bad" : "good", pins: order.slice() });
+  const ex = { exitZ: g.userData.exitZ, cable: g.userData.cable };
+  named(g, "plug:RJ45 " + tag + (bad ? " (bad termination)" : ""), { type: "rj45", standard: tag, termination: bad ? "bad" : "good", pins: order.slice() });
+  Object.assign(g.userData, ex); return g;
 }
 
 /* ---- RJ11 plug: six positions; four wires (black, red, green, yellow)
@@ -113,9 +120,12 @@ export function rj11Plug(o = {}) {
     g.add(wireTube([V((2.5 - p) * 0.95, 0, zJ - 2), V((2.5 - p) * 0.98, yW * 0.6, zJ + 2), V(x, yW, zJ + 5), V(x, yW, zF - 0.5)], colours[p], 0.42, 40));
     g.add(copperEnd(V(x, yW, zF - 0.48), V(0, 0, 1), 0.22));
   }
-  g.add(jacketRun(zJ, zJ - 30, 1.6, 0xa7abb1, "TELEPHONE CORD  ·  4 COND  ·  26AWG  ·  FLAT SATIN", { flat: true, ink: "rgba(40,44,50,0.75)", droop: 0.8 }));
+  const PHONE = "TELEPHONE CORD  ·  4 COND  ·  26AWG  ·  FLAT SATIN";
+  g.add(jacketRun(zJ, o.stub ? zR - 2 : zJ - 30, 1.6, 0xa7abb1, PHONE, { flat: true, ink: "rgba(40,44,50,0.75)", droop: o.stub ? 0.01 : 0.8, run: o.stub ? null : o.run }));
   g.add(at(box(6.4, 1.2, 3, cp), 0, -H / 2 + 0.7, zR + 2.6));
-  return named(g, "plug:RJ11", { type: "rj11", positions: 6, conductors: o.lines === 1 ? 2 : 4 });
+  named(g, "plug:RJ11", { type: "rj11", positions: 6, conductors: o.lines === 1 ? 2 : 4 });
+  if (o.stub) { g.userData.exitZ = zR - 2; g.userData.cable = { r: 1.6, color: 0xa7abb1, text: PHONE, ink: "rgba(40,44,50,0.75)", flat: true }; }
+  return g;
 }
 
 /* ---- male F-type compression connector on RG6 ----
@@ -195,4 +205,75 @@ export function damagedCable(o = {}) {
   /* flakes of torn jacket on the floor */
   for (let i = 0; i < 7; i++) g.add(at(box(1.6 + (i % 3) * 0.7, 0.35, 1.1 + (i % 2) * 0.6, mat(jc, { rough: 0.5 })), 22 + i * 4.8, -2.6, 6.5 - i * 1.9, 0, i * 0.8, 0));
   return named(g, "cable:Damaged run", { type: "damaged", faults: ["kinked", "crushed", "jacket torn", "conductor broken"] });
+}
+
+/* ---- the moulded boot of a factory patch cable ----
+   A collar over the back of the plug, tapering to the cable, ribbed so
+   the cable bends gently instead of kinking at the plug, and the
+   snagless hood that keeps the latch from catching. */
+function boot(zR, H, W, color) {
+  const g = new THREE.Group(), m = mat(color, { rough: 0.48, grain: 0.06 });
+  const z0 = zR + 6, z1 = zR - 24, L = z0 - z1;
+  const lerp = THREE.MathUtils.lerp;
+  const geo = tubeVar(new THREE.LineCurve3(V(0, 0, z0), V(0, 0, z1)), { n: 150, m: 44, up: V(0, 1, 0),
+    radius: function (t) {
+      const zz = t * L;
+      if (zz < 8) return [W / 2 + 0.75, H / 2 + 0.75];
+      const k = Math.min(1, (zz - 8) / 8), rx = lerp(W / 2 + 0.75, 4.4, k), ry = lerp(H / 2 + 0.75, 4.1, k);
+      const groove = zz > 15 && zz < L - 1.5 && Math.sin((zz - 15) * 2.2) > 0.35 ? -0.55 : 0;
+      const taper = zz > 15 ? -(zz - 15) / (L - 15) * 0.75 : 0;
+      return [rx + groove + taper, ry + groove + taper];
+    },
+    square: function (t) { const zz = t * L; return zz < 8 ? 8 : lerp(8, 2, Math.min(1, (zz - 8) / 8)); } });
+  g.add(new THREE.Mesh(geo, m));
+  g.add(at(new THREE.Mesh(new THREE.RingGeometry(3.0, 3.75, 32), m), 0, 0, z1, 0, Math.PI, 0));             // where the cable goes in
+  /* the snagless hood over the latch tab */
+  const hood = new THREE.Group(); hood.position.set(0, -H / 2 - 0.75, zR + 6); g.add(hood);
+  const hs = new THREE.Shape(); hs.moveTo(-4.1, 0); hs.lineTo(4.1, 0); hs.lineTo(3.6, -3.2); hs.quadraticCurveTo(0, -4.1, -3.6, -3.2); hs.closePath();
+  const hg = new THREE.ExtrudeGeometry(hs, { depth: 9, bevelEnabled: true, bevelSize: 0.4, bevelThickness: 0.4, bevelSegments: 2 });
+  const hm = new THREE.Mesh(hg, m); hm.position.z = -9; hood.add(hm);
+  return g;
+}
+
+/* ---- a cable running on from a plug, in the device's own coordinates:
+   out of the plug's back, then through the points given (down to the
+   bench and along it), as a real patch cable lies ---- */
+export function cableFrom(root, plug, pts, o = {}) {
+  root.updateMatrixWorld(true);
+  const c = plug.userData.cable || {}, r = o.r || c.r || 3.05, z = plug.userData.exitZ;
+  const toRoot = function (v) { return root.worldToLocal(plug.localToWorld(v.clone())); };
+  const P = [toRoot(V(0, 0, z + 3)), toRoot(V(0, 0, z - 6)), toRoot(V(0, 0, z - (o.straight || 20)))].concat(pts.map(function (q) { return q.isVector3 ? q : V(q[0], q[1], q[2]); }));
+  const up = toRoot(V(0, 1, z)).sub(toRoot(V(0, 0, z))).normalize();
+  const curve = new THREE.CatmullRomCurve3(P, false, "centripetal");
+  const flat = o.flat != null ? o.flat : c.flat;
+  const geo = tubeVar(curve, { n: Math.max(60, Math.ceil(curve.getLength() / 1.5)), m: flat ? 20 : 24, up: up, uvLength: 420,
+    radius: function () { return flat ? [r * 1.95, r] : [r, r]; } });
+  /* the legend at its real size (about 2.5 mm letters), repeating every so often, in a softer ink */
+  const col = o.color != null ? o.color : c.color, lum = new THREE.Color(col).getHSL({}).l;
+  const mesh = new THREE.Mesh(geo, jacketMaterial(col, o.text || c.text || CAT6, o.ink || c.ink || (lum < 0.3 ? "rgba(235,235,235,0.5)" : "rgba(25,25,25,0.55)"), { font: 16 }));
+  root.add(mesh); return mesh;
+}
+/* plug a plug into a jack group (both face +Z; the plug goes in pointing -Z) */
+export function plugInto(jack, plug, o = {}) {
+  plug.rotation.y = Math.PI; plug.position.set(0, o.y == null ? 0.9 : o.y, o.z == null ? 2.75 : o.z);
+  jack.add(plug); return plug;
+}
+
+/* ---- IEC C13 mains connector on its cord (the plug that goes into a
+   PC's or printer's C14 inlet): the moulded body, the strain relief ---- */
+export function iecC13(o = {}) {
+  const g = new THREE.Group(), m = mat(0x1a1b1d, { rough: 0.5, grain: 0.06 });
+  const face = new THREE.Shape(); [[-11.8, 7.9], [11.8, 7.9], [11.8, -2.6], [7.0, -7.9], [-7.0, -7.9], [-11.8, -2.6]].forEach(function (q, i) { if (i) face.lineTo(q[0], q[1]); else face.moveTo(q[0], q[1]); }); face.closePath();
+  [[-7, 1.8], [7, 1.8], [0, -4.4]].forEach(function (q) { const h = new THREE.Path(); h.moveTo(q[0] - 1.3, q[1] - 2.7); h.lineTo(q[0] + 1.3, q[1] - 2.7); h.lineTo(q[0] + 1.3, q[1] + 2.7); h.lineTo(q[0] - 1.3, q[1] + 2.7); h.closePath(); face.holes.push(h); });
+  const nose = new THREE.Mesh(new THREE.ExtrudeGeometry(face, { depth: 9, bevelEnabled: true, bevelSize: 0.5, bevelThickness: 0.5, bevelSegments: 2 }), m);
+  nose.position.z = -9; g.add(nose);
+  g.add(at(rbox(27, 19, 20, 3.2, m), 0, 0, -19));
+  for (let k = 0; k < 5; k++) g.add(at(box(27.4, 0.6, 0.8, m), 0, -6 + k * 3, -19 + 10.1, 0, 0, 0));   /* grip ridges on the body's sides */
+  const L = 26, geo = tubeVar(new THREE.LineCurve3(V(0, 0, -28), V(0, 0, -28 - L)), { n: 110, m: 36, up: V(0, 1, 0),
+    radius: function (t) { const zz = t * L, base = THREE.MathUtils.lerp(7.6, 4.3, Math.min(1, zz / 18)); return [base * (zz < 4 ? 1.25 : 1) + (Math.sin(zz * 1.9) > 0.4 && zz > 5 ? -0.45 : 0), base + (Math.sin(zz * 1.9) > 0.4 && zz > 5 ? -0.45 : 0)]; },
+    square: function (t) { return t < 0.15 ? 5 : 2; } });
+  g.add(new THREE.Mesh(geo, m));
+  named(g, "plug:IEC C13", { type: "iec-c13" });
+  g.userData.exitZ = -28 - L + 2; g.userData.cable = { r: 3.9, color: 0x161718, text: "18AWG x 3C  ·  SJT  ·  105°C  ·  300V  ·  VW-1", ink: "rgba(220,220,220,0.55)" };
+  return g;
 }

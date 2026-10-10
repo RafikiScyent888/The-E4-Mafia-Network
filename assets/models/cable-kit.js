@@ -33,8 +33,10 @@ export function tubeVar(curve, o = {}) {
   const base = new THREE.Color(o.color == null ? 0xffffff : o.color);
   for (let i = 0; i <= n; i++) {
     const t = i / n, P = curve.getPointAt(t), r = o.radius ? o.radius(t) : [o.r || 3, o.r || 3];
+    const ex = o.square ? o.square(t) : 2;   /* 2: an ellipse; higher: a rounded rectangle (a superellipse) */
     for (let j = 0; j <= m; j++) {
-      const a = j / m * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
+      const a = j / m * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+      const c = ex === 2 ? ca : Math.sign(ca) * Math.pow(Math.abs(ca), 2 / ex), s = ex === 2 ? sa : Math.sign(sa) * Math.pow(Math.abs(sa), 2 / ex);
       const off = f.N[i].clone().multiplyScalar(c * r[1]).addScaledVector(f.B[i], s * r[0]);
       pos.push(P.x + off.x, P.y + off.y, P.z + off.z);
       const nn = f.N[i].clone().multiplyScalar(c / r[1]).addScaledVector(f.B[i], s / r[0]).normalize();
@@ -56,6 +58,11 @@ export function tubeVar(curve, o = {}) {
   g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
   g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
   g.setIndex(idx);
+  if (o.square) {   /* recompute the normals for the squared-off sections, and close the seam */
+    g.computeVertexNormals(); const nn = g.attributes.normal;
+    for (let i = 0; i <= n; i++) { const a = i * (m + 1), b = a + m; const x = (nn.getX(a) + nn.getX(b)) / 2, y = (nn.getY(a) + nn.getY(b)) / 2, z = (nn.getZ(a) + nn.getZ(b)) / 2; nn.setXYZ(a, x, y, z); nn.setXYZ(b, x, y, z); }
+    nn.needsUpdate = true;
+  }
   return g;
 }
 
@@ -68,13 +75,13 @@ export function legend(text, bg, ink, o = {}) {
   g.fillStyle = "#" + new THREE.Color(bg).getHexString(); g.fillRect(0, 0, 2048, 128);
   /* faint extrusion streaks, as on a real PVC jacket */
   for (let i = 0; i < 40; i++) { g.fillStyle = "rgba(255,255,255," + (0.012 + (i % 5) * 0.004) + ")"; g.fillRect(0, (i * 37) % 128, 2048, 1); }
-  g.fillStyle = ink; g.font = "600 30px Arial, Helvetica, sans-serif"; g.textBaseline = "middle";
+  g.fillStyle = ink; g.font = "600 " + (o.font || 18) + "px Arial, Helvetica, sans-serif";   /* about 2.5 mm letters, as printed on real jacket */ g.textBaseline = "middle";
   g.fillText(text, 30, o.band == null ? 106 : o.band);   /* near the top of the jacket, where it can be read */
   const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   legendCache.set(key, t); return t;
 }
 export function jacketMaterial(color, text, ink, o = {}) {
-  return new THREE.MeshPhysicalMaterial({ color: 0xffffff, map: legend(text, color, ink || "rgba(255,255,255,0.82)"), roughness: o.rough == null ? 0.42 : o.rough, clearcoat: 0.25, clearcoatRoughness: 0.5, vertexColors: true, side: o.side || THREE.FrontSide });
+  return new THREE.MeshPhysicalMaterial({ color: 0xffffff, map: legend(text, color, ink || "rgba(255,255,255,0.82)", o.font ? { font: o.font } : {}), roughness: o.rough == null ? 0.42 : o.rough, clearcoat: 0.25, clearcoatRoughness: 0.5, vertexColors: true, side: o.side || THREE.FrontSide, envMapIntensity: 0.7 });
 }
 
 /* ---- wire insulation: solid colour, or white with a coloured stripe ---- */

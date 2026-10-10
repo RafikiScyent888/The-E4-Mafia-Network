@@ -73,6 +73,23 @@ themselves and record them in an IPAM sheet; the model catches overlaps,
 wrong masks and gateways outside the subnet. No built-in calculator does it
 for them, and Mason's hints point at the principle, never the answer.
 
+## THE GOAL — read this before designing anything
+
+The owner, 10 October 2026: **"I need to get them comfortable using commands
+to troubleshoot and move around the network devices to solve problems
+using the network sims as a base."**
+
+So the command line is the centre of the build, not a feature of it:
+- moving around: console into a device, SSH from one device to the next,
+  find the next hop with neighbour discovery and the routing table, exit
+  back; the prompt always says where you are and which mode you're in
+- the modes and the help: user and privileged EXEC, global and interface
+  configuration, `?` and tab completion, `show` before `configure`
+- troubleshooting by evidence from commands on each device (show,
+  ping, traceroute, ipconfig, nslookup, arp), then the fix, then verify
+- the Network-Sims scenarios are the base for the tickets
+Build mode, the diagrams and the 3D models serve this goal.
+
 ## More decisions, 10 October 2026
 
 - **Network-Sims is a knowledge base**, as Core-2-Sims was for Core 2: each
@@ -82,7 +99,7 @@ for them, and Mason's hints point at the principle, never the answer.
 - **Both build modes:** client jobs (a work order: rooms, devices,
   requirements, limits such as 100 m runs and the PoE budget, the model
   checks the job against it) as the main path, and free build.
-  **Still open:** whether jobs carry an equipment budget.
+  **No budget** (owner, 10 October 2026: "We are not worried about budget").
 - **Instructor tools behind PIN 3693:** choose a specific fault for a class
   demonstration, show the fault and the fix after class, unlock any level.
 - **Defaults the owner did not object to:** a logical diagram and a

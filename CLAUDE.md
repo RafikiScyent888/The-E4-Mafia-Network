@@ -14,9 +14,15 @@ rebuilt part by part to the owner's photos after "You are missing so much
 detail. The requirement is to look real life as possible" (10 October
 2026): desktop PC, laptop, network printer, smart TV, PoE IP camera,
 data/voice wall plate, each with its cables plugged in as photographed.
+The owner approved batch 3, 10 October 2026: **"Now, that is what I am
+talking about."** Batch 3 is the bar for every model from here on: matched
+part by part to the photo, cables plugged in as photographed, real print,
+real finishes, on the bench with shadows, and checked photo-beside-render
+from the photo's own angle.
 Next: batch 4 (tools and the bench kit), then the home-level workspace and
 first ticket preview. Batches 1 and 2 predate the realism pass and should
-be brought up to the batch 3 standard against their photos.
+be brought up to the batch 3 standard against their photos (the owner
+chooses which comes first).
 
 **Models** (`assets/models/`): procedural three.js, real millimetres, front
 +Z, every port a named group (`port:LAN 1`) with userData for the build to

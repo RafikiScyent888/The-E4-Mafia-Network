@@ -7,11 +7,12 @@ import { isIp } from "./util.js";
 const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh" };
 
 export function tabsFor(sim, id) {
-  const k = sim.d[id].kind, P = STILL[id] ? [["physical", "Physical"]] : [];
+  const k = sim.d[id].kind, P = STILL[id] || k === "rogue" ? [["physical", "Physical"]] : [];
   const T = {
-    pc: [["cmd", "Command Prompt"], ["settings", "Network settings"]],
+    pc: [["cmd", "Command Prompt"], ["settings", "Network settings"], ["printers", "Printers"]],
     laptop: [["cmd", "Command Prompt"], ["wifi", "Wi-Fi"]],
-    router: [["status", "Status"], ["dhcp", "LAN & DHCP"], ["clients", "DHCP clients"], ["wifi", "Wi-Fi"]],
+    router: [["status", "Status"], ["dhcp", "LAN & DHCP"], ["clients", "DHCP clients"], ["wifi", "Wi-Fi"], ["forward", "Port forwarding"]],
+    rogue: [["admin", "Admin page"]],
     modem: [["lights", "Lights"], ["status", "Status page"]],
     switch: [["lights", "Lights"]],
     printer: [["panel", "Control panel"]],
@@ -38,6 +39,8 @@ function portName(e) { return /^\d$/.test(e.port) ? "port " + e.port : e.port; }
 export function cableName(sim, c, fromDev) {
   const other = c.a.dev === fromDev ? c.b : c.a;
   if (c.kind === "coax") return "Coax cable, wall outlet to the modem's CABLE IN";
+  if (other.dev === "rogue") return "Patch cable to a box not on the diagram (" + other.port + ")";
+  if (fromDev === "rogue") return "Patch cable to the 5-port switch (port " + other.port + ")";
   return "Patch cable to the " + sim.d[other.dev].label.replace(/^(\w)/, function (m) { return m.toLowerCase(); }).replace(/^isp$/, "ISP") + (/^\d$/.test(other.port) ? " (port " + other.port + ")" : other.port ? " (" + other.port + ")" : "");
 }
 
@@ -48,7 +51,7 @@ export function look(sim, cableId, end) {
   if (!e.seated) return "Not plugged in: the plug is lying loose behind the " + (e.dev === "pc" ? "desk" : e.dev === "switch" ? "shelf" : "furniture") + ".";
   let s = "Clicked in and latched.";
   if (c.cond === "crushed") s += " Along the run under the desk, the jacket is flattened where a chair wheel rolls over it.";
-  if (c.cond === "damaged") s += " A hand's width from this plug the jacket is kinked and split; the blue and brown pairs show through.";
+  if (c.cond === "damaged" && (!c.kink || c.kink === end)) s += " A hand's width from this plug the jacket is kinked and split; the blue and brown pairs show through.";   /* the damage is near one end only */
   const up = sim.cableUp(c);
   s += up ? " The link light by the jack is on." : " The link light by the jack is off.";
   return s;
@@ -60,14 +63,14 @@ export function page(sim, id, key) {
   if (key === "physical") {
     const cables = sim.cablesOf(id).map(function (c) {
       const end = c.a.dev === id ? "a" : "b";
-      const acts = c.kind === "coax" ? ["look", "tighten"] : ["look", "reseat", "test", "replace"];
+      const acts = c.kind === "coax" ? ["look", "tighten"] : ["look", "reseat", "unplug", "test", "replace"];
       return { cable: c.id, end: end, name: cableName(sim, c, id), acts: acts };
     });
     if (id === "modem") { /* the coax's wall end is reached from the modem too: it's behind the TV stand */
       const cx = sim.cable("c-coax"); cables.forEach(function (k) { if (k.cable === "c-coax") k.name = "Coax cable at the modem's CABLE IN"; });
       cables.push({ cable: "c-coax", end: "a", name: "Coax cable at the wall outlet (behind the TV stand)", acts: ["look", "tighten"] });
     }
-    return { kind: "physical", still: STILL[id] ? "assets/stills/" + STILL[id] + ".jpg" : null, label: x.label, cables: cables, restart: true, facts: { page: id + "-physical" } };
+    return { kind: "physical", still: STILL[id] ? "assets/stills/" + STILL[id] + ".jpg" : null, label: x.label, cables: cables, restart: true, facts: { page: id + "-physical", rogue: id === "rogue" } };
   }
   if (id === "router") {
     if (key === "status") {
@@ -88,8 +91,11 @@ export function page(sim, id, key) {
       const resv = r.dhcp.reservations;
       const rows = r.leases.map(function (l) { return [l.name, l.mac, l.ip, resv.some(function (v) { return v.mac === l.mac; }) ? "Reserved" : "DHCP"]; });
       const size = (function () { const a = r.dhcp.start.split(".").map(Number)[3], b = r.dhcp.end.split(".").map(Number)[3]; return b - a + 1; })();
-      return { kind: "table", title: "DHCP clients", head: ["Device", "Hardware address", "IP address", "Type"], rows: rows, note: rows.length + " of " + size + " addresses in the range are leased.", facts: { page: "router-clients", count: rows.length, size: size, rows: rows } };
+      const inRange = r.leases.filter(function (l) { const n = +l.ip.split(".")[3]; return n >= +r.dhcp.start.split(".")[3] && n <= +r.dhcp.end.split(".")[3]; }).length;
+      return { kind: "table", title: "DHCP clients", head: ["Device", "Hardware address", "IP address", "Type"], rows: rows, reserve: true, reservations: resv.map(function (v) { return [v.name, v.mac, v.ip]; }), leaseH: r.dhcp.leaseH,
+        note: inRange + " of " + size + " addresses in the range are leased. Leases last " + r.dhcp.leaseH + " hours; a device keeps its address that long even after it leaves.", facts: { page: "router-clients", count: inRange, size: size, rows: rows, leaseH: r.dhcp.leaseH } };
     }
+    if (key === "forward") return { kind: "form", form: "router-forward", title: "Port forwarding", rules: r.forwards.map(function (f) { return { name: f.name, ext: f.ext, ip: f.ip, port: f.port }; }), wan: sim.wan() ? sim.wan().ip : "0.0.0.0", facts: { page: "router-forward", rules: r.forwards.map(function (f) { return { ext: f.ext, ip: f.ip, port: f.port }; }) } };
     if (key === "wifi") return { kind: "form", form: "router-wifi", title: "Wi-Fi", values: { ssid: r.wifi.ssid, sec: r.wifi.sec, ch24: r.wifi.ch24mode === "auto" ? "auto" : String(r.wifi.ch24), ch24now: sim.ch24(), ch5: String(r.wifi.ch5) }, facts: { page: "router-wifi", ch24: sim.ch24(), mode: r.wifi.ch24mode } };
   }
   if (id === "modem") {
@@ -111,7 +117,7 @@ export function page(sim, id, key) {
     const rows = [];
     for (let p = 1; p <= 5; p++) {
       const c = sim.cableAt("switch", String(p));
-      const who = c ? (function () { const o = c.a.dev === "switch" ? c.b : c.a; return sim.d[o.dev].label; })() : null;
+      const who = c ? (function () { const o = c.a.dev === "switch" ? c.b : c.a; return sim.d[o.dev].undocumented ? "a box that isn't on the diagram" : "the " + sim.d[o.dev].label.replace(/^(\w)(?=[a-z])/, function (m) { return m.toLowerCase(); }); })() : null;
       const sp = c ? sim.speed(c) : 0;
       const state = !c ? "off (nothing plugged in)" : sp === 0 ? "off" : sp === 1000 ? "on, green: 1 Gb/s link" : "on, amber: 10/100 Mb/s link";
       rows.push({ port: p, who: who, state: state, up: sp > 0, speed: sp });
@@ -122,18 +128,24 @@ export function page(sim, id, key) {
     const a = sim.addr("pc"), f = x.ifaces[0], c = sim.cableAt("pc", f.port), sp = sim.speed(c);
     const rows = [["Ethernet", a ? "Connected" : "Not connected (unplugged)"], ["IP assignment", f.cfg.mode === "dhcp" ? "Automatic (DHCP)" : "Manual"], ["DNS server assignment", f.cfg.dnsMode === "static" ? "Manual" : "Automatic (DHCP)"],
       ["Link speed (Receive/Transmit)", sp ? sp + "/" + sp + " (Mbps)" : "--"], ["IPv4 address", a ? a.ip : "--"], ["IPv4 DNS servers", a && a.dns.length ? a.dns.join(", ") : "--"], ["Physical address (MAC)", f.mac.toUpperCase()]];
-    return { kind: "rows", title: "Network settings", rows: rows, facts: { page: "pc-settings", speed: sp, connected: !!a } };
+    rows.splice(4, 0, ["Speed & duplex", "Auto negotiation"]);
+    return { kind: "rows", title: "Network settings", rows: rows, speedTest: true, facts: { page: "pc-settings", speed: sp, connected: !!a } };
+  }
+  if (id === "pc" && key === "printers") {
+    const pr = x.printer;
+    return { kind: "printers", title: "Printers", name: pr.name, port: pr.port, facts: { page: "pc-printers", port: pr.port } };
   }
   if (id === "laptop" && key === "wifi") {
     const l = sim.wifiLink("laptop"), a = sim.addr("laptop"), f = x.ifaces[0];
     const rows = l && l.connected ? [["Wi-Fi", "Connected to " + l.ap.ssid], ["Protocol", l.band === 5 ? "Wi-Fi 5 (802.11ac)" : "Wi-Fi 4 (802.11n)"], ["Security type", sim.d.router.wifi.sec], ["Network band", l.band === 5 ? "5 GHz" : "2.4 GHz"], ["Network channel", String(l.ch)], ["Link speed (Receive/Transmit)", l.rate + "/" + l.rate + " (Mbps)"], ["IPv4 address", a ? a.ip : "--"], ["IPv4 DNS servers", a && a.dns.length ? a.dns.join(", ") : "--"]]
       : [["Wi-Fi", l && l.reason === "auth" ? "Can't connect to this network (the password was rejected)" : "Not connected: no saved network in range"], ["Saved network", f.saved.ssid]];
-    return { kind: "rows", title: "Wi-Fi", rows: rows, facts: { page: "laptop-wifi", connected: !!(l && l.connected), ch: l && l.ch, band: l && l.band, signal: l && l.signal } };
+    return { kind: "rows", title: "Wi-Fi", rows: rows, speedTest: !!(l && l.connected), facts: { page: "laptop-wifi", connected: !!(l && l.connected), ch: l && l.ch, band: l && l.band, signal: l && l.signal } };
   }
   if (id === "printer" && key === "panel") {
     const f = x.ifaces[0], a = sim.addr("printer");
-    const rows = [["Status", a ? "Ready" : "No network connection"], ["Config method", f.cfg.mode === "static" ? "Manual (static)" : "Automatic (DHCP)"], ["IP address", f.cfg.mode === "static" ? f.cfg.ip : a ? a.ip : "0.0.0.0"], ["Subnet mask", f.cfg.mode === "static" ? f.cfg.mask : a ? a.mask : "0.0.0.0"], ["Gateway", f.cfg.mode === "static" ? f.cfg.gw : a ? a.gw : "0.0.0.0"]];
-    return { kind: "rows", title: "Control panel", rows: rows, facts: { page: "printer-panel", ip: f.cfg.ip, mode: f.cfg.mode } };
+    return { kind: "form", form: "printer", title: "Control panel", status: a ? "Ready" : "No network connection", mac: f.mac,
+      values: { mode: f.cfg.mode, ip: f.cfg.mode === "static" ? f.cfg.ip : a ? a.ip : "", mask: f.cfg.mode === "static" ? f.cfg.mask : a ? a.mask : sim.d.router.lan.mask, gw: f.cfg.mode === "static" ? f.cfg.gw : a ? a.gw : sim.d.router.lan.ip },
+      facts: { page: "printer-panel", ip: f.cfg.mode === "static" ? f.cfg.ip : a && a.ip, mode: f.cfg.mode, mac: f.mac } };
   }
   if (id === "camera" && key === "web") {
     const a = sim.addr("camera"), up = a && sim.route("camera", "203.0.113.80").internet;
@@ -147,9 +159,14 @@ export function page(sim, id, key) {
     const m = x, a = sim.addr("mesh"), n = Object.keys(sim.d).filter(function (k) { const l = sim.wifiLink(k); return l && l.connected && l.ap.id === "mesh"; }).length;
     return { kind: "rows", title: "Status", rows: [["Mode", "Access point (wireless bridge to the router)"], ["Backhaul to the router", m.backhaul.ok && sim.on("router") ? "5 GHz, good (signal 74%, 866 Mb/s)" : "Lost: can't reach the router"], ["2.4 GHz channel", String(sim.ch24()) + " (follows the router)"], ["Clients on this node", String(n)], ["IP address", a ? a.ip : "--"]], facts: { page: "mesh-status", backhaul: m.backhaul.ok, clients: n } };
   }
-  if (id === "phone" && key === "wifi") {
-    const l = sim.wifiLink("phone"), a = sim.addr("phone"), up = a && sim.route("phone", "203.0.113.80").internet;
-    return { kind: "rows", title: "Wi-Fi", rows: [["Wi-Fi", l && l.connected ? "Connected to " + l.ap.ssid + (l.band === 5 ? " (5 GHz)" : " (2.4 GHz)") : "Not connected"], ["IP address", a ? a.ip : "--"], ["Internet", up ? "OK" : "No internet"]], facts: { page: "phone-wifi" } };
+  if (x.kind === "phone" && key === "wifi") {
+    const l = sim.wifiLink(id), a = sim.addr(id), up = !!(a && sim.route(id, "203.0.113.80").internet);
+    const rows = [["Wi-Fi", l && l.connected ? "Connected to " + l.ap.ssid + (l.band === 5 ? " (5 GHz)" : " (2.4 GHz)") + " · signal " + l.signal + "%" : "Not connected"], ["IP address", a ? a.ip + (a.kind === "apipa" ? " (it gave itself this: no address came)" : "") : "--"], ["Router", a && a.gw || "--"], ["Internet", up ? "OK" : "No internet"]];
+    return { kind: "rows", title: "Wi-Fi", rows: rows, rejoin: true, cameraApp: id === "phone" && sim.d.router.forwards.length > 0, facts: { page: id === "guest" ? "guest-wifi" : "phone-wifi", internet: up, ip: a && a.ip, apipa: !!(a && a.kind === "apipa"), connected: !!(l && l.connected) } };
+  }
+  if (id === "rogue" && key === "admin") {
+    const g = x;
+    return { kind: "form", form: "rogue", title: "Admin page", values: { dhcpOn: g.dhcp.on }, rows: [["Model", "Home router (old)"], ["LAN address", g.lan.ip + " / " + g.lan.mask], ["DHCP server", g.dhcp.on ? "On · " + g.dhcp.start + " to " + g.dhcp.end : "Off"], ["Internet (WAN)", g.wanOk ? "Connected" : "No cable in the WAN port"], ["Clients with a lease", String(g.leases.length)]], facts: { page: "rogue-admin", dhcpOn: g.dhcp.on } };
   }
   if (id === "isp" && key === "about") return { kind: "rows", title: "About", rows: [["What it is", "The provider's network: outside the home. You can't log in here; test toward it from inside (ping, tracert)."], ["Provider DNS servers", sim.net.isp.dns.join(", ")]], facts: { page: "isp" } };
   return { kind: "rows", title: key, rows: [], facts: {} };
@@ -164,6 +181,7 @@ export function physical(sim, act) {
   sim.apply(act);
   if (act.t === "reseat") return { text: c[act.end].seated && before === JSON.stringify([c.a, c.b, c.cond]) ? "Pushed it home: it was already clicked in." : "Plugged it back in until it clicked.", facts: { phys: "reseat", cable: act.cable, end: act.end } };
   if (act.t === "replace") return { text: "Swapped in a new, tested patch cable.", facts: { phys: "replace", cable: act.cable } };
+  if (act.t === "unplug") return { text: "Unplugged it.", facts: { phys: "unplug", cable: act.cable, end: act.end } };
   if (act.t === "tighten") return { text: before === JSON.stringify([c.a, c.b, c.cond]) ? "Already snug: no change." : "Screwed the connector on finger-tight.", facts: { phys: "tighten", cable: act.cable, end: act.end } };
   if (act.t === "power") return { text: "Restarted the " + (/^[A-Z][a-z]/.test(sim.d[act.dev].label) ? sim.d[act.dev].label[0].toLowerCase() + sim.d[act.dev].label.slice(1) : sim.d[act.dev].label) + ". It's back up a minute later.", facts: { phys: "power", dev: act.dev } };
   return { text: "", facts: {} };

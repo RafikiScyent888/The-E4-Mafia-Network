@@ -15,7 +15,7 @@ const PAGE = document.body.dataset.page;
 const S = load();
 const DEFS = {}; HOME_TICKETS.forEach(function (d) { DEFS[d.id] = d; });
 const LIST = HOME_TICKETS.map(function (d) { return { id: d.id, n: d.n, tier: d.tier, title: d.title, built: true }; }).concat(HOME_COMING.map(function (c) { return Object.assign({ built: false }, c); }));
-const DEVICES = ["pc", "switch", "router", "modem", "printer", "camera", "tv", "mesh", "laptop", "phone"];
+const DEVICES = ["pc", "switch", "router", "modem", "printer", "camera", "tv", "mesh", "laptop", "phone", "guest"];   /* an undocumented box gets no button: find it on the floor plan */
 const $ = function (id) { return document.getElementById(id); };
 let replateMap = null;
 
@@ -30,7 +30,14 @@ const ctx = {
     persist(); renderLive();
     return r;
   },
-  view: function (dev, key) { if (key === "cmd") return; E.act(ctx.T, { t: "view", dev: dev, key: key }); persist(); renderNotebook(); },
+  view: function (dev, key) {
+    if (key === "cmd") return;
+    const was = ctx.T.solved, proven = ctx.T.proven, partial = ctx.T.partial;
+    E.act(ctx.T, { t: "view", dev: dev, key: key });   /* opening a page can prove a fix (a link back at 1 Gb/s, a phone showing internet) */
+    if (ctx.T.solved && !was) S.solved[ctx.T.def.id] = (S.solved[ctx.T.def.id] || 0) + 1;
+    persist(); renderNotebook();
+    if (ctx.T.solved !== was || ctx.T.proven !== proven || ctx.T.partial !== partial) { renderBoardNow(); renderLeft(); }
+  },
   guess: function (id) {
     const was = ctx.T.solved, r = E.guess(ctx.T, id);
     if (ctx.T.solved && !was) S.solved[ctx.T.def.id] = (S.solved[ctx.T.def.id] || 0) + 1;

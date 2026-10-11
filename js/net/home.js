@@ -31,7 +31,9 @@ export const LAYOUT = {
   camera: { x: 580, y: 430, px: 720, py: 448, room: "porch" },
   mesh: { x: 610, y: 265, px: 850, py: 110, room: "upstairs", lab: "left" },
   phone: { x: 760, y: 250, px: 480, py: 245, room: "living" },
-  laptop: { x: 755, y: 420, px: 905, py: 195, room: "upstairs" }
+  laptop: { x: 755, y: 420, px: 905, py: 195, room: "upstairs" },
+  guest: { x: 780, y: 130, px: 520, py: 360, room: "kitchen" },
+  rogue: { px: 330, py: 235, room: "office" }   /* not on the logical diagram: nobody documented it */
 };
 export const ROOMS = { office: "Office", living: "Living room", kitchen: "Kitchen", garage: "Garage", upstairs: "Back bedroom (upstairs)", porch: "Front door" };
 
@@ -66,11 +68,11 @@ export function makeHome(seed) {
       firmware: "2.1." + r.int(10, 60)
     },
     switch: { id: "switch", kind: "switch", label: "5-port switch", sub: "unmanaged", on: true, ports: 5 },
-    pc: { id: "pc", kind: "pc", label: "Office PC", sub: "DHCP", on: true, os: "windows", user: "front-desk", host: "OFFICE-PC",
+    pc: { id: "pc", kind: "pc", label: "Office PC", sub: "DHCP", on: true, os: "windows", user: "front-desk", host: "OFFICE-PC", printer: { name: "Office printer", port: prefix + "." + printerHost },
       ifaces: [{ name: "Ethernet", type: "eth", port: "NIC", mac: mac(r), desc: "Gigabit Network Connection", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] },
     printer: { id: "printer", kind: "printer", label: "Printer", sub: prefix + "." + printerHost, on: true,
       ifaces: [{ name: "Wired", type: "eth", port: "NET", mac: mac(r), cfg: { mode: "static", ip: prefix + "." + printerHost, mask: mask, gw: gw, dns: [gw] }, lease: null, apipa: null }] },
-    camera: { id: "camera", kind: "camera", label: "IP camera", sub: prefix + "." + camHost, on: true,
+    camera: { id: "camera", kind: "camera", label: "IP camera", sub: prefix + "." + camHost, on: true, listens: [443, 554],
       ifaces: [{ name: "LAN", type: "eth", port: "LAN", mac: mac(r), cfg: { mode: "dhcp" }, lease: null, apipa: null }] },
     tv: { id: "tv", kind: "tv", label: "Smart TV", sub: "DHCP", on: true,
       ifaces: [{ name: "Wired", type: "eth", port: "LAN", mac: mac(r), cfg: { mode: "dhcp" }, lease: null, apipa: null }] },
@@ -104,7 +106,7 @@ export function makeHome(seed) {
 
   return {
     seed: seed, client: client, prefix: prefix, mask: mask, range: range,
-    isp: { up: true, outage: false, gw: "198.51.100.1", core: "203.0.113.1", dns: ["203.0.113.53", "203.0.113.54"], wanIp: "198.51.100." + r.int(20, 240) },
+    isp: { up: true, outage: false, plan: 500, gw: "198.51.100.1", core: "203.0.113.1", dns: ["203.0.113.53", "203.0.113.54"], wanIp: "198.51.100." + r.int(20, 240) },
     devices: dev, cables: cables, neighbours: neighbours, ports: P,
     rooms: { pc: "office", switch: "office", printer: "office", router: "living", modem: "living", tv: "living", phone: "living", camera: "porch", mesh: "upstairs", laptop: "upstairs" },
     extra: {}

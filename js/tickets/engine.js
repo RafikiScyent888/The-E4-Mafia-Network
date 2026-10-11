@@ -14,7 +14,7 @@ import { exec } from "../net/cmd.js";
 import { page, physical } from "../net/pages.js";
 import { rng, hash } from "../net/util.js";
 
-const STATE_CHANGING = { cmd: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1, router: 1, client: 1 };
+const STATE_CHANGING = { cmd: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1, router: 1, client: 1, rogue: 1, print: 1, speed: 1, outside: 1, rejoin: 1, pcprinter: 1 };   /* print, speed and outside change nothing, but they draw on the same counter as ping, so replay needs them */
 const PHYSICAL = { look: 1, test: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1 };
 
 /* open a ticket on a seed; if a generated network ever failed to show its fault, move to the next seed */
@@ -27,7 +27,7 @@ export function open(def, seed) {
   }
   if (!built) throw new Error(def.id + ": the fault would not show on any seed");
   const opts = rng(hash(def.id + "/opts/" + s)).shuffle(def.options(built.v, built.sim));
-  return { def: def, seed: s, sim: built.sim, v: built.v, opts: opts, reds: [], struck: [], wrong: 0, rung: 0, diagnosed: false, fixed: false, proven: false, solved: false, evidence: [], net: [], fixHint: 0, notes: "" };
+  return { def: def, seed: s, sim: built.sim, v: built.v, opts: opts, reds: [], struck: [], wrong: 0, rung: 0, diagnosed: false, fixed: false, proven: false, solved: false, evidence: [], net: [], fixHint: 0, notes: "", partial: null };
 }
 
 /* rebuild the network for a saved ticket and replay what changed it */
@@ -47,7 +47,9 @@ export function act(T, a) {
   const res = apply(T, a, false);
   if (res && res.facts) observe(T, res.facts);
   T.fixed = T.def.fixed(T.sim, T.v);
-  if (res && res.facts && T.fixed && !T.proven && T.def.proves(res.facts, T.sim, T.v)) { T.proven = true; res.proved = true; }
+  if (res && res.facts && T.fixed && !T.proven && T.def.proves(res.facts, T.sim, T.v)) { T.proven = true; res.proved = true; T.partial = null; }
+  /* it works, but the cause is still there (a symptom treated): Mason says so */
+  else if (res && res.facts && !T.fixed && !T.proven && T.def.partial && T.def.proves(res.facts, T.sim, T.v)) { T.partial = T.def.partial(T.v, T.sim); res.partial = T.partial; }
   if (!T.solved && T.diagnosed && T.fixed && T.proven) { T.solved = true; res.solved = true; }
   return res;
 }
@@ -58,7 +60,13 @@ function apply(T, a, replay) {
   if (a.t === "view") return page(T.sim, a.dev, a.key);
   if (PHYSICAL[a.t]) return physical(T.sim, a);
   if (a.t === "router") { const r = T.sim.apply(a); return { result: r, facts: r.ok ? { saved: a.page } : {} }; }
-  if (a.t === "client") { const r = T.sim.apply(a); return { result: r, facts: {} }; }
+  if (a.t === "client") { const r = T.sim.apply(a); return { result: r, facts: r.ok ? { client: a.dev, saved: true } : {} }; }
+  if (a.t === "rogue") { const r = T.sim.apply(a); return { result: r, facts: { rogueDhcp: T.sim.d.rogue.dhcp.on } }; }
+  if (a.t === "pcprinter") { const r = T.sim.apply(a); return { result: r, facts: r.ok ? { pcprinter: a.ip } : {} }; }
+  if (a.t === "print") { const r = T.sim.apply(a); return { result: r, facts: { print: r.ok ? "ok" : "fail", port: r.port, who: r.who, conflict: !!r.conflict } }; }
+  if (a.t === "speed") { const r = T.sim.apply(a); return { result: r, facts: { speed: r.ok ? r.down : 0, dev: a.dev, link: r.link } }; }
+  if (a.t === "outside") { const r = T.sim.apply(a); return { result: r, facts: { outside: true, ok: !!r.ok, why: r.why, port: a.port, target: r.target } }; }
+  if (a.t === "rejoin") { const r = T.sim.apply(a); const ad = T.sim.addr(a.dev); return { result: r, facts: { rejoin: r.result, dev: a.dev, ip: ad && ad.ip, apipa: !!(ad && ad.kind === "apipa"), internet: !!(ad && T.sim.route(a.dev, "203.0.113.80").internet) } }; }
   return null;
 }
 

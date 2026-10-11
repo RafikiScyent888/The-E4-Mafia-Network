@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { HOME_TICKETS } from "../js/tickets/home.js";
 import * as E from "../js/tickets/engine.js";
 import { exec } from "../js/net/cmd.js";
+import { page } from "../js/net/pages.js";
 
 const N = Number(process.env.SEEDS || 150);
 const byId = Object.fromEntries(HOME_TICKETS.map((d) => [d.id, d]));
@@ -21,7 +22,23 @@ const FIX = {
   "HOME-04": (T) => [{ t: "router", page: "wifi", values: { ch24: String(T.v.clear) } }],
   "HOME-05": (T) => [{ t: "tighten", cable: "c-coax", end: T.v.end }]
 };
+const free = (T, n) => T.sim.net.prefix + "." + n;
+FIX["HOME-06"] = (T) => {
+  const k = T.seed % 3;
+  if (k === 0) { const ip = free(T, 251); return [{ t: "client", dev: "printer", values: { mode: "static", ip: ip, mask: T.sim.d.router.lan.mask, gw: T.sim.d.router.lan.ip } }, { t: "pcprinter", ip: ip }]; }
+  if (k === 1) return [{ t: "router", page: "reservation-add", values: { name: "Printer", mac: T.v.prMac, ip: T.v.ip } }, { t: "power", dev: "tv" }];
+  const n = +T.v.ip.split(".")[3] + 1; return [{ t: "router", page: "dhcp", values: { start: free(T, n) } }, { t: "power", dev: "tv" }];
+};
+FIX["HOME-07"] = (T) => { const base = +T.sim.d.router.dhcp.start.split(".")[3]; return [{ t: "router", page: "dhcp", values: { end: free(T, base + 100) } }, { t: "rejoin", dev: "guest" }]; };
+FIX["HOME-08"] = () => [{ t: "replace", cable: "c-switch-pc" }];
+FIX["HOME-09"] = (T) => { const a = T.sim.addr("camera").ip; return [{ t: "router", page: "reservation-add", values: { name: "IP camera", mac: T.sim.d.camera.ifaces[0].mac, ip: a } }, { t: "router", page: "forward", values: { ext: 8443, ip: a } }]; };
+FIX["HOME-10"] = (T) => [T.seed % 2 ? { t: "unplug", cable: "c-rogue", end: "a" } : { t: "rogue", values: { dhcpOn: false } }, { t: "cmd", dev: "laptop", line: "ipconfig /renew" }, { t: "power", dev: "tv" }];
 const PROOF = {
+  "HOME-06": () => ({ t: "print" }),
+  "HOME-07": () => ({ t: "view", dev: "guest", key: "wifi" }),
+  "HOME-08": () => ({ t: "speed", dev: "pc" }),
+  "HOME-09": () => ({ t: "outside", port: 8443 }),
+  "HOME-10": () => ({ t: "cmd", dev: "laptop", line: "ping 203.0.113.80" }),
   "HOME-01": (T) => ({ t: "cmd", dev: "pc", line: "ping " + gw(T) }),
   "HOME-02": (T) => ({ t: "cmd", dev: "laptop", line: "ping " + gw(T) }),
   "HOME-03": () => ({ t: "cmd", dev: "laptop", line: "nslookup rafiki-it.example" }),
@@ -37,6 +54,11 @@ const WRONG = {
   "HOME-04": (T) => [[{ t: "router", page: "wifi", values: { ch24: String(T.v.busy) } }], [{ t: "router", page: "wifi", values: { ch24: "7" } }], [{ t: "power", dev: "mesh" }, { t: "power", dev: "router" }], [{ t: "cmd", dev: "laptop", line: "ipconfig /renew" }]],
   "HOME-05": (T) => [[{ t: "tighten", cable: "c-coax", end: T.v.end === "a" ? "b" : "a" }], [{ t: "power", dev: "modem" }, { t: "power", dev: "router" }], [{ t: "reseat", cable: "c-modem-router", end: "a" }]]
 };
+WRONG["HOME-06"] = (T) => [[{ t: "power", dev: "printer" }], [{ t: "power", dev: "tv" }], [{ t: "power", dev: "router" }, { t: "power", dev: "tv" }], [{ t: "reseat", cable: "c-switch-printer", end: "b" }]];
+WRONG["HOME-07"] = () => [[{ t: "router", page: "dhcp", values: { leaseH: 1 } }, { t: "rejoin", dev: "guest" }], [{ t: "power", dev: "router" }, { t: "rejoin", dev: "guest" }], [{ t: "rejoin", dev: "guest" }]];
+WRONG["HOME-08"] = () => [[{ t: "reseat", cable: "c-switch-pc", end: "a" }, { t: "reseat", cable: "c-switch-pc", end: "b" }], [{ t: "power", dev: "pc" }, { t: "power", dev: "switch" }], [{ t: "unplug", cable: "c-switch-pc", end: "b" }, { t: "reseat", cable: "c-switch-pc", end: "b" }]];
+WRONG["HOME-09"] = (T) => { const a = T.sim.addr("camera").ip; return [[{ t: "power", dev: "camera" }], [{ t: "router", page: "forward", values: { ext: 8443, ip: a } }], [{ t: "router", page: "reservation-add", values: { name: "IP camera", mac: T.sim.d.camera.ifaces[0].mac, ip: a } }]]; };
+WRONG["HOME-10"] = () => [[{ t: "cmd", dev: "laptop", line: "ipconfig /renew" }, { t: "power", dev: "tv" }], [{ t: "power", dev: "router" }, { t: "cmd", dev: "laptop", line: "ipconfig /release" }, { t: "cmd", dev: "laptop", line: "ipconfig /renew" }], [{ t: "unplug", cable: "c-rogue", end: "a" }]];
 /* what the student would see that shows the fault, in real command output */
 const SYMPTOM = {
   "HOME-01": (T) => { assert.match(exec(T.sim, "pc", "ipconfig").out, /Media disconnected/); assert.match(exec(T.sim, "pc", "ping " + gw(T)).out, /General failure/); assert.match(exec(T.sim, "laptop", "ping 203.0.113.80").out, /Reply from 203\.0\.113\.80/); },
@@ -46,6 +68,11 @@ const SYMPTOM = {
   "HOME-05": (T) => { assert.match(exec(T.sim, "pc", "ping " + gw(T)).out, new RegExp("Reply from " + gw(T).replace(/\./g, "\\.") + ":")); assert.match(exec(T.sim, "pc", "ping 203.0.113.80").out, /Destination net unreachable/); }
 };
 
+SYMPTOM["HOME-06"] = (T) => { const outs = [0, 1, 2, 3].map(() => E.act(T, { t: "print" }).facts.print); assert.ok(outs.includes("ok") && outs.includes("fail"), "prints sometimes, fails sometimes: " + outs); const p = page(T.sim, "router", "clients"); assert.ok(p.rows.some((r) => r[0] === "Smart TV" && r[2] === T.v.ip)); assert.match(exec(T.sim, "pc", "ping " + T.v.ip).out, /Reply from/); };
+SYMPTOM["HOME-07"] = (T) => { const g = page(T.sim, "guest", "wifi"); assert.ok(g.rows.some((r) => /^169\.254\./.test(r[1])), JSON.stringify(g.rows)); assert.ok(g.rows.some((r) => r[1] === "No internet")); const c = page(T.sim, "router", "clients"); assert.equal(c.facts.count, c.facts.size); };
+SYMPTOM["HOME-08"] = (T) => { const s = page(T.sim, "pc", "settings"); assert.ok(s.rows.some((r) => r[1] === "100/100 (Mbps)")); const pc = T.sim.speedTest("pc"), lap = T.sim.speedTest("laptop"); assert.ok(pc.down < 100 && lap.down > 200, pc.down + " vs " + lap.down); assert.match(page(T.sim, "switch", "lights").ports.find((p) => p.port === T.v.port).state, /amber/); };
+SYMPTOM["HOME-09"] = (T) => { const o = T.sim.outside(8443); assert.equal(o.ok, false); assert.equal(o.why, "refused"); const f = page(T.sim, "router", "forward"); assert.equal(f.rules[0].ip, T.v.old); assert.notEqual(T.sim.addr("camera").ip, T.v.old); };
+SYMPTOM["HOME-10"] = (T) => { assert.match(exec(T.sim, "laptop", "ipconfig").out, /IPv4 Address[ .]*: 10\.0\.0\./); assert.match(exec(T.sim, "laptop", "ipconfig /all").out, /DHCP Server[ .]*: 10\.0\.0\.1\n/); assert.match(exec(T.sim, "laptop", "ping 203.0.113.80").out, /Reply from 10\.0\.0\.1: Destination net unreachable/); assert.match(exec(T.sim, "pc", "ping 203.0.113.80").out, /Reply from 203\.0\.113\.80/); };
 const seeds = Array.from({ length: N }, (_, i) => 1000 + i * 7919);
 
 for (const def of HOME_TICKETS) {
@@ -80,9 +107,10 @@ for (const def of HOME_TICKETS) {
   test(def.id + ": a proof run before the fix does not count, and a ping to itself never proves anything", () => {
     const T = E.open(def, seeds[3]); E.act(T, PROOF[def.id](T)); assert.equal(T.proven, false);
     E.guess(T, "right"); for (const a of FIX[def.id](T)) E.act(T, a); assert.equal(T.fixed, true);
-    const own = T.sim.addr(def.affected).ip;
+    const byFix = T.proven;   /* some fixes show their own proof (the guest phone's page says Internet OK as it rejoins) */
+    const own = (T.sim.addr(def.affected) || {}).ip;
     for (const dev of ["pc", "laptop"]) { E.act(T, { t: "cmd", dev: dev, line: "ping 127.0.0.1" }); E.act(T, { t: "cmd", dev: dev, line: "ping -n 6 " + (T.sim.addr(dev) || { ip: "127.0.0.1" }).ip }); }
-    assert.equal(T.proven, false, "pinging itself proves nothing about the network (own address " + own + ")");
+    assert.equal(T.proven, byFix, "pinging itself proves nothing about the network (own address " + own + ")");
     E.act(T, PROOF[def.id](T)); assert.equal(T.proven, true);
   });
   test(def.id + ": the ladder climbs 0, 0, rung 1, rung 2, then narrows to two after a reset", () => {
@@ -103,16 +131,18 @@ for (const def of HOME_TICKETS) {
   test(def.id + ": a saved ticket replays exactly", () => {
     for (const s of seeds.slice(0, 25)) {
       const T = E.open(def, s);
-      E.act(T, { t: "cmd", dev: def.affected, line: "ipconfig /all" });
-      E.act(T, { t: "cmd", dev: def.affected, line: "ping -n 3 " + gw(T) });
+      const win = ["pc", "laptop"].includes(def.affected) ? def.affected : "laptop";
+      E.act(T, { t: "cmd", dev: win, line: "ipconfig /all" });
+      E.act(T, { t: "cmd", dev: win, line: "ping -n 3 " + gw(T) });
+      E.act(T, { t: "print" }); E.act(T, { t: "speed", dev: "pc" });
       for (const a of FIX[def.id](T)) E.act(T, a);
-      const after = exec(T.sim, def.affected, "ping -n 5 203.0.113.80").out;
+      const after = exec(T.sim, win, "ping -n 5 203.0.113.80").out;
       const R = E.restore(def, JSON.parse(JSON.stringify(E.save(T))));
       assert.equal(R.fixed, T.fixed);
       assert.deepEqual(R.evidence, T.evidence);
       /* the restored ticket gets the same ping, draw for draw */
       const T2 = E.restore(def, JSON.parse(JSON.stringify(E.save(T))));
-      assert.equal(exec(T2.sim, def.affected, "ping -n 5 203.0.113.80").out.replace(/time[<=]\d+ms/g, ""), after.replace(/time[<=]\d+ms/g, ""));
+      assert.equal(exec(T2.sim, win, "ping -n 5 203.0.113.80").out.replace(/time[<=]\d+ms/g, ""), after.replace(/time[<=]\d+ms/g, ""));
     }
   });
   test(def.id + ": the brief and every hint never name the right answer word for word", () => {

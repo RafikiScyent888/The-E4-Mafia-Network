@@ -1,33 +1,221 @@
 [
- {"name": "desk: fresh HOME-01", "page": "index.html"},
- {"name": "bench: fresh, shelves open", "page": "lab-bench.html"},
- {"name": "map: fresh, client homes", "page": "service-map.html"},
- {"name": "map: data center picked", "page": "service-map.html", "setup": "document.querySelector('#map [data-site=dc]').dispatchEvent(new MouseEvent('click',{bubbles:true}))"},
- {"name": "desk: physical view", "page": "index.html#physical"},
- {"name": "desk: step through after a ping", "page": "index.html", "setup": "__e4.act({t:'cmd',dev:'laptop',line:'ping 203.0.113.80'}); document.getElementById('tStep').click()"},
- {"name": "board: three wrong, rung 1", "page": "index.html", "setup": "__e4.T.opts.filter(o=>!o.right).slice(0,3).forEach(o=>__e4.guess(o.id))"},
- {"name": "board: rung 3, struck with reasons", "page": "index.html", "setup": "const w=__e4.T.opts.filter(o=>!o.right); w.slice(0,4).forEach(o=>__e4.guess(o.id)); __e4.resetBoard(); __e4.guess(w[4].id)"},
- {"name": "board: fix stage with Mason's hint", "page": "index.html", "setup": "__e4.guess('right'); __e4.askFix(); __e4.askFix()"},
- {"name": "board: solved summary", "page": "index.html", "setup": "const T=__e4.T; __e4.guess('right'); __e4.act(T.v.kind==='crushed'?{t:'replace',cable:'c-switch-pc'}:{t:'reseat',cable:'c-switch-pc',end:T.v.kind==='pc-end'?'b':'a'}); __e4.act({t:'cmd',dev:'pc',line:'ping '+T.sim.d.router.lan.ip})"},
- {"name": "window: router status", "page": "index.html", "setup": "document.querySelector('#devtabs [data-d=router]').click()"},
- {"name": "window: router DHCP form with an error", "page": "index.html", "setup": "document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='LAN & DHCP').click(); const f=document.querySelector('.devform'); f.start.value='10.9.9.9'; f.requestSubmit()"},
- {"name": "window: router DHCP saved", "page": "index.html", "setup": "document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='LAN & DHCP').click(); document.querySelector('.devform').requestSubmit()"},
- {"name": "window: DHCP clients", "page": "index.html", "setup": "document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='DHCP clients').click()"},
- {"name": "window: router Wi-Fi saved", "page": "index.html", "setup": "document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Wi-Fi').click(); document.querySelector('.devform').requestSubmit()"},
- {"name": "window: modem lights (HOME-05)", "page": "index.html", "ticket": "HOME-05", "setup": "document.querySelector('#devtabs [data-d=modem]').click()"},
- {"name": "window: modem status page (HOME-05)", "page": "index.html", "ticket": "HOME-05", "setup": "document.querySelector('#devtabs [data-d=modem]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Status page').click()"},
- {"name": "window: switch lights", "page": "index.html", "setup": "document.querySelector('#devtabs [data-d=switch]').click()"},
- {"name": "window: PC physical, look and test", "page": "index.html", "setup": "[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click(); [...document.querySelectorAll('.cabs button')].find(b=>b.textContent.startsWith('Look')).click(); [...document.querySelectorAll('.cabs button')].find(b=>b.textContent.startsWith('Test')).click(); [...document.querySelectorAll('.phys button')].find(b=>b.textContent.startsWith('Restart')).click()"},
- {"name": "window: modem physical, coax", "page": "index.html", "ticket": "HOME-05", "setup": "document.querySelector('#devtabs [data-d=modem]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click(); [...document.querySelectorAll('.cabs button')].filter(b=>b.textContent.startsWith('Look')).forEach(b=>b.click())"},
- {"name": "window: PC network settings", "page": "index.html", "setup": "[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Network settings').click()"},
- {"name": "window: laptop Wi-Fi (HOME-04)", "page": "index.html", "ticket": "HOME-04", "setup": "document.querySelector('#devtabs [data-d=laptop]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Wi-Fi').click()"},
- {"name": "window: printer, camera, TV, mesh, phone", "page": "index.html", "setup": "['printer','camera','tv','mesh','phone'].forEach(d=>{document.querySelector('#devtabs [data-d='+d+']').click();})"},
- {"name": "window: TV network status", "page": "index.html", "ticket": "HOME-03", "setup": "document.querySelector('#devtabs [data-d=tv]').click()"},
- {"name": "window: mesh status", "page": "index.html", "setup": "document.querySelector('#devtabs [data-d=mesh]').click()"},
- {"name": "window: camera page", "page": "index.html", "setup": "document.querySelector('#devtabs [data-d=camera]').click()"},
- {"name": "window: printer panel", "page": "index.html", "setup": "document.querySelector('#devtabs [data-d=printer]').click()"},
- {"name": "window: phone Wi-Fi", "page": "index.html", "setup": "document.querySelector('#devtabs [data-d=phone]').click()"},
- {"name": "HOME-02 fresh (APIPA laptop)", "page": "index.html", "ticket": "HOME-02", "setup": "__e4.act({t:'cmd',dev:'laptop',line:'ipconfig /all'})"},
- {"name": "HOME-03 with notebook evidence", "page": "lab-bench.html", "ticket": "HOME-03", "setup": "['ping 203.0.113.80','nslookup rafiki-it.example','ipconfig /all'].forEach(l=>__e4.act({t:'cmd',dev:'laptop',line:l}))"},
- {"name": "help dialog (viewport)", "page": "index.html", "mode": "view", "setup": "document.getElementById('mHelp').click()"}
+ {
+  "name": "desk: fresh HOME-01",
+  "page": "index.html"
+ },
+ {
+  "name": "bench: fresh, shelves open",
+  "page": "lab-bench.html"
+ },
+ {
+  "name": "map: fresh, client homes",
+  "page": "service-map.html"
+ },
+ {
+  "name": "map: data center picked",
+  "page": "service-map.html",
+  "setup": "document.querySelector('#map [data-site=dc]').dispatchEvent(new MouseEvent('click',{bubbles:true}))"
+ },
+ {
+  "name": "desk: physical view",
+  "page": "index.html#physical"
+ },
+ {
+  "name": "desk: step through after a ping",
+  "page": "index.html",
+  "setup": "__e4.act({t:'cmd',dev:'laptop',line:'ping 203.0.113.80'}); document.getElementById('tStep').click()"
+ },
+ {
+  "name": "board: three wrong, rung 1",
+  "page": "index.html",
+  "setup": "__e4.T.opts.filter(o=>!o.right).slice(0,3).forEach(o=>__e4.guess(o.id))"
+ },
+ {
+  "name": "board: rung 3, struck with reasons",
+  "page": "index.html",
+  "setup": "const w=__e4.T.opts.filter(o=>!o.right); w.slice(0,4).forEach(o=>__e4.guess(o.id)); __e4.resetBoard(); __e4.guess(w[4].id)"
+ },
+ {
+  "name": "board: fix stage with Mason's hint",
+  "page": "index.html",
+  "setup": "__e4.guess('right'); __e4.askFix(); __e4.askFix()"
+ },
+ {
+  "name": "board: solved summary",
+  "page": "index.html",
+  "setup": "const T=__e4.T; __e4.guess('right'); __e4.act(T.v.kind==='crushed'?{t:'replace',cable:'c-switch-pc'}:{t:'reseat',cable:'c-switch-pc',end:T.v.kind==='pc-end'?'b':'a'}); __e4.act({t:'cmd',dev:'pc',line:'ping '+T.sim.d.router.lan.ip})"
+ },
+ {
+  "name": "window: router status",
+  "page": "index.html",
+  "setup": "document.querySelector('#devtabs [data-d=router]').click()"
+ },
+ {
+  "name": "window: router DHCP form with an error",
+  "page": "index.html",
+  "setup": "document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='LAN & DHCP').click(); const f=document.querySelector('.devform'); f.start.value='10.9.9.9'; f.requestSubmit()"
+ },
+ {
+  "name": "window: router DHCP saved",
+  "page": "index.html",
+  "setup": "document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='LAN & DHCP').click(); document.querySelector('.devform').requestSubmit()"
+ },
+ {
+  "name": "window: DHCP clients",
+  "page": "index.html",
+  "setup": "document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='DHCP clients').click()"
+ },
+ {
+  "name": "window: router Wi-Fi saved",
+  "page": "index.html",
+  "setup": "document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Wi-Fi').click(); document.querySelector('.devform').requestSubmit()"
+ },
+ {
+  "name": "window: modem lights (HOME-05)",
+  "page": "index.html",
+  "ticket": "HOME-05",
+  "setup": "document.querySelector('#devtabs [data-d=modem]').click()"
+ },
+ {
+  "name": "window: modem status page (HOME-05)",
+  "page": "index.html",
+  "ticket": "HOME-05",
+  "setup": "document.querySelector('#devtabs [data-d=modem]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Status page').click()"
+ },
+ {
+  "name": "window: switch lights",
+  "page": "index.html",
+  "setup": "document.querySelector('#devtabs [data-d=switch]').click()"
+ },
+ {
+  "name": "window: PC physical, look and test",
+  "page": "index.html",
+  "setup": "[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click(); [...document.querySelectorAll('.cabs button')].find(b=>b.textContent.startsWith('Look')).click(); [...document.querySelectorAll('.cabs button')].find(b=>b.textContent.startsWith('Test')).click(); [...document.querySelectorAll('.phys button')].find(b=>b.textContent.startsWith('Restart')).click()"
+ },
+ {
+  "name": "window: modem physical, coax",
+  "page": "index.html",
+  "ticket": "HOME-05",
+  "setup": "document.querySelector('#devtabs [data-d=modem]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click(); [...document.querySelectorAll('.cabs button')].filter(b=>b.textContent.startsWith('Look')).forEach(b=>b.click())"
+ },
+ {
+  "name": "window: PC network settings",
+  "page": "index.html",
+  "setup": "[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Network settings').click()"
+ },
+ {
+  "name": "window: laptop Wi-Fi (HOME-04)",
+  "page": "index.html",
+  "ticket": "HOME-04",
+  "setup": "document.querySelector('#devtabs [data-d=laptop]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Wi-Fi').click()"
+ },
+ {
+  "name": "window: printer, camera, TV, mesh, phone",
+  "page": "index.html",
+  "setup": "['printer','camera','tv','mesh','phone'].forEach(d=>{document.querySelector('#devtabs [data-d='+d+']').click();})"
+ },
+ {
+  "name": "window: TV network status",
+  "page": "index.html",
+  "ticket": "HOME-03",
+  "setup": "document.querySelector('#devtabs [data-d=tv]').click()"
+ },
+ {
+  "name": "window: mesh status",
+  "page": "index.html",
+  "setup": "document.querySelector('#devtabs [data-d=mesh]').click()"
+ },
+ {
+  "name": "window: camera page",
+  "page": "index.html",
+  "setup": "document.querySelector('#devtabs [data-d=camera]').click()"
+ },
+ {
+  "name": "window: printer panel",
+  "page": "index.html",
+  "setup": "document.querySelector('#devtabs [data-d=printer]').click()"
+ },
+ {
+  "name": "window: phone Wi-Fi",
+  "page": "index.html",
+  "setup": "document.querySelector('#devtabs [data-d=phone]').click()"
+ },
+ {
+  "name": "help dialog (viewport)",
+  "page": "index.html",
+  "mode": "view",
+  "setup": "document.getElementById('mHelp').click()"
+ },
+ {
+  "name": "HOME-02 fresh (APIPA laptop)",
+  "page": "index.html",
+  "ticket": "HOME-02",
+  "setup": "__e4.act({t:'cmd',dev:'laptop',line:'ipconfig /all'})"
+ },
+ {
+  "name": "HOME-03 with notebook evidence",
+  "page": "lab-bench.html",
+  "ticket": "HOME-03",
+  "setup": "['ping 203.0.113.80','nslookup rafiki-it.example','ipconfig /all'].forEach(l=>__e4.act({t:'cmd',dev:'laptop',line:l}))"
+ },
+ {
+  "name": "HOME-06: PC printers, test pages",
+  "page": "index.html",
+  "ticket": "HOME-06",
+  "setup": "[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Printers').click(); document.querySelector('.pane .btn.ghost').click(); document.querySelector('.pane .btn.ghost').click()"
+ },
+ {
+  "name": "HOME-06: printer control panel, error",
+  "page": "index.html",
+  "ticket": "HOME-06",
+  "setup": "document.querySelector('#devtabs [data-d=printer]').click(); const f=document.querySelector('.devform'); f.ip.value='10.1.1.1'; f.requestSubmit()"
+ },
+ {
+  "name": "HOME-06: DHCP clients with reservations",
+  "page": "index.html",
+  "ticket": "HOME-06",
+  "setup": "document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='DHCP clients').click(); document.querySelector('.pane button[aria-label^=Reserve]').click(); [...document.querySelectorAll('.devform')].pop().requestSubmit()"
+ },
+ {
+  "name": "HOME-07: guest phone after rejoin",
+  "page": "index.html",
+  "ticket": "HOME-07",
+  "setup": "document.querySelector('#devtabs [data-d=guest]').click(); [...document.querySelectorAll('.pane button')].find(b=>b.textContent.startsWith('Turn')).click()"
+ },
+ {
+  "name": "HOME-08: PC settings with speed test",
+  "page": "lab-bench.html",
+  "ticket": "HOME-08",
+  "setup": "[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Network settings').click(); [...document.querySelectorAll('.pane button')].find(b=>b.textContent.startsWith('Run')).click()"
+ },
+ {
+  "name": "HOME-08: switch lights, amber port",
+  "page": "index.html",
+  "ticket": "HOME-08",
+  "setup": "document.querySelector('#devtabs [data-d=switch]').click()"
+ },
+ {
+  "name": "HOME-09: port forwarding page",
+  "page": "index.html",
+  "ticket": "HOME-09",
+  "setup": "document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Port forwarding').click()"
+ },
+ {
+  "name": "HOME-09: phone camera app, partial fix message",
+  "page": "service-map.html",
+  "ticket": "HOME-09",
+  "setup": "__e4.guess('right'); __e4.act({t:'router',page:'forward',values:{ext:8443,ip:__e4.T.sim.addr('camera').ip}}); document.querySelector('#devtabs [data-d=phone]').click(); [...document.querySelectorAll('.pane button')].find(b=>b.textContent.startsWith('Open the camera')).click()"
+ },
+ {
+  "name": "HOME-10: old router admin, floor plan",
+  "page": "index.html#physical",
+  "ticket": "HOME-10",
+  "setup": "document.querySelector('#plan [data-d=rogue]').dispatchEvent(new MouseEvent('click',{bubbles:true}))"
+ },
+ {
+  "name": "HOME-10: switch physical, unknown cable unplugged",
+  "page": "index.html",
+  "ticket": "HOME-10",
+  "setup": "document.querySelector('#devtabs [data-d=switch]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click(); [...document.querySelectorAll('.cabs li')].find(l=>/not on the diagram/.test(l.textContent)).querySelector('button:nth-child(3)').click()"
+ }
 ]

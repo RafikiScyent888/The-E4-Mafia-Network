@@ -205,7 +205,8 @@ export class Sim {
     if (!this.hasLink(id)) return { result: "media" };
     const servers = this.dhcpServers(id);
     let ans = null, server = null;
-    const order = servers.slice().sort(function (a, b) { return (hash(f.mac + a) % 7) - (hash(f.mac + b) % 7); });   /* whoever answers first */
+    const wins = (this.net.extra && this.net.extra.rogueWins) || [];
+    const order = servers.slice().sort(function (a, b) { const ra = this.d[a].kind === "rogue", rb = this.d[b].kind === "rogue"; return wins.indexOf(id) >= 0 ? (rb - ra) : (ra - rb); }.bind(this));   /* whoever answers first: a rogue server beats the router for the devices it is quicker to */
     for (const sid of order) { const ip = this.offer(sid, f.mac, f.lease && f.lease.server === this.d[sid].lan.ip ? f.lease.ip : null); if (ip) { ans = ip; server = sid; break; } }
     if (!ans) {
       if (!f.apipa) f.apipa = "169.254." + (1 + hash(f.mac) % 254) + "." + (1 + hash(f.mac + "x") % 254);
@@ -312,6 +313,12 @@ export class Sim {
         break;
       }
       case "router": res = this.setRouter(act.page, act.values); break;
+      case "rogue": { const g = this.d.rogue; if ("dhcpOn" in act.values) g.dhcp.on = !!act.values.dhcpOn; res = { ok: true }; break; }
+      case "print": res = this.printTest(); break;
+      case "speed": res = this.speedTest(act.dev); break;
+      case "outside": res = this.outside(act.port); break;
+      case "rejoin": res = this.hasLink(act.dev) ? this.dhcp(act.dev, "rejoin") : { result: "no-wifi" }; break;
+      case "pcprinter": { const ip = String(act.ip || "").trim(); if (!isIp(ip)) { res = { ok: false, errs: ["The printer port must be an IPv4 address"] }; break; } this.d.pc.printer.port = ip; res = { ok: true }; break; }
       case "client": res = this.setClient(act.dev, act.values); break;
       case "cmd": res = { ok: true }; break;                    /* commands are replayed by the command runner */
       default: res = { ok: false, err: "unknown action" };
@@ -345,15 +352,32 @@ export class Sim {
       return { ok: true };
     }
     if (page === "reservation-add") {
-      if (!isIp(v.ip) || !sameSubnet(v.ip, r.lan.ip, r.lan.mask)) return { ok: false, errs: ["The reserved address must be in " + this.net.prefix + ".x"] };
+      if (!/^([0-9a-f]{2}[-:]){5}[0-9a-f]{2}$/i.test(String(v.mac || "").trim())) return { ok: false, errs: ["The hardware address must look like 02-1a-2b-3c-4d-5e"] };
+      v = Object.assign({}, v, { mac: String(v.mac).trim().toLowerCase().replace(/:/g, "-") });
+      if (!isIp(v.ip) || !sameSubnet(v.ip, r.lan.ip, r.lan.mask) || v.ip === r.lan.ip) return { ok: false, errs: ["The reserved address must be in " + this.net.prefix + ".x"] };
       r.dhcp.reservations = r.dhcp.reservations.filter(function (x) { return x.mac !== v.mac; });
       r.dhcp.reservations.push({ name: v.name || "Device", mac: v.mac, ip: v.ip }); return { ok: true };
+    }
+    if (page === "forward") {
+      const f = r.forwards.find(function (x) { return String(x.ext) === String(v.ext); });
+      if (!f) return { ok: false, errs: ["No forward for that port"] };
+      if (!isIp(v.ip) || !sameSubnet(v.ip, r.lan.ip, r.lan.mask) || v.ip === r.lan.ip) return { ok: false, errs: ["The internal address must be a device in " + this.net.prefix + ".x"] };
+      f.ip = String(v.ip).trim(); return { ok: true };
     }
     if (page === "reservation-del") { r.dhcp.reservations = r.dhcp.reservations.filter(function (x) { return x.mac !== v.mac; }); return { ok: true }; }
     return { ok: false, errs: ["Unknown page"] };
   }
   setClient(id, v) {
-    const f = this.d[id].ifaces[0];
+    const f = this.d[id].ifaces[0], r = this.d.router;
+    if (v.mode === "static") {
+      const errs = [];
+      if (!isIp(v.ip) || !sameSubnet(v.ip, r.lan.ip, r.lan.mask)) errs.push("The IP address must be in " + this.net.prefix + ".x");
+      else if (v.ip === r.lan.ip) errs.push("That's the router's own address");
+      if (String(v.mask).trim() !== r.lan.mask) errs.push("The subnet mask for this network is " + r.lan.mask);
+      if (String(v.gw).trim() !== r.lan.ip) errs.push("The gateway for this network is the router, " + r.lan.ip);
+      if (errs.length) return { ok: false, errs: errs };
+      v = Object.assign({}, v, { ip: v.ip.trim(), mask: r.lan.mask, gw: r.lan.ip, dns: [r.lan.ip] });
+    }
     if ("mode" in v) f.cfg.mode = v.mode;
     if ("ip" in v) f.cfg.ip = v.ip;
     if ("mask" in v) f.cfg.mask = v.mask;
@@ -362,6 +386,37 @@ export class Sim {
     if ("dnsMode" in v) f.cfg.dnsMode = v.dnsMode;
     if (f.cfg.mode === "dhcp" && this.hasLink(id)) this.dhcp(id, "change");
     return { ok: true };
+  }
+
+  /* a connection from the internet to the house's public address on a port (port forwarding, NAT) */
+  outside(port) {
+    if (!this.wanUp()) return { ok: false, why: "wan" };
+    const f = this.d.router.forwards.find(function (x) { return +x.ext === +port; });
+    if (!f) return { ok: false, why: "no-forward" };
+    const o = this.owners(f.ip, this.domain("router:lan"));
+    if (!o.length) return { ok: false, why: "nobody", target: f.ip, forward: f };
+    const who = o[0], d = this.d[who];
+    if (d.listens && d.listens.indexOf(+f.port) >= 0) return { ok: true, who: who, target: f.ip, forward: f };
+    return { ok: false, why: "refused", who: who, target: f.ip, forward: f };
+  }
+  /* an internet speed test from a device: the slowest of the plan, the link and the Wi-Fi */
+  speedTest(id) {
+    const r = this.route(id, "203.0.113.80");
+    if (!r.internet) return { ok: false, why: r.fail || "no-internet" };
+    const plan = this.net.isp.plan || 500, x = this.d[id], f = x.ifaces[0];
+    let link = 1000;
+    if (f.type === "wifi") { const l = this.wifiLink(id); link = l ? l.rate * 0.62 * (1 - l.loss) : 0; }
+    else link = this.speed(this.cableAt(id, f.port)) * 0.94;
+    const R = this.r("speed" + id), v = Math.min(plan * 0.96, link) * (0.97 + R() * 0.03);
+    return { ok: true, down: Math.round(v), up: Math.round(Math.min(plan * 0.04, link) * 10) / 10, plan: plan, link: f.type === "wifi" ? null : this.speed(this.cableAt(id, f.port)) };
+  }
+  /* the office PC sends a test page to its printer port; with two devices on one address, it goes to whoever answers ARP */
+  printTest() {
+    const ip = this.d.pc.printer.port, r = this.route("pc", ip);
+    if (!r.local) return { ok: false, why: r.fail || "beyond", port: ip };
+    const who = r.owner[this.n % r.owner.length];
+    this.arp.pc[ip] = this.macOf(who);
+    return who === "printer" ? { ok: true, port: ip } : { ok: false, why: "wrong-device", who: who, port: ip, conflict: r.owner.length > 1 };
   }
 
   /* a per-action random source, so replays give the same pings */

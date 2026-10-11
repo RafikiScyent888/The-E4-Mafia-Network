@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (11 October 2026): the real site, build 1, is live** (not yet linked
+**Status (11 October 2026): the real site, builds 1 and 2, is live: all ten home tickets** (not yet linked
 from the Under the Hood tile). See "The real site" below. The owner, 11
 October 2026: **"Build it like the preview you gave me just keep the layout
 exactly the same just remove the C with A bars."** Confirmed with the owner
@@ -390,7 +390,36 @@ the provider's 203.0.113.53 from the welcome letter); HOME-04 2.4 GHz
 channel 6 crowded by neighbours in the back bedroom (fix: the quiet one
 of 1 and 11; the other has a strong neighbour too); HOME-05 a loose coax
 F-connector at the modem or the wall (DS blinking, ONLINE off). HOME-06
-to 10 show in the queue as "Coming next".
+to 10 showed in the queue as "Coming next" until build 2.
+
+**Built in build 2 (11 October 2026), the five harder ones:** HOME-06 IP
+conflict (the printer's fixed address is the DHCP range's first address;
+the new TV asked first and got it too; test pages print or fail depending
+on who answers ARP; fixes: move the printer out of the range and repoint
+the PC's printer port, or reserve the address and restart the TV, or
+shrink the range and restart the TV; restarting the TV alone gets it the
+same address back); HOME-07 pool exhausted (ten addresses leased for a
+week, last weekend's party guests' leases still held; the guest's phone
+joins and gives itself 169.254; fix: widen the range, then turn the
+phone's Wi-Fi off and on; a shorter lease does not free today's leases);
+HOME-08 damaged pairs 4, 5, 7, 8 (the link comes up at 100 Mb/s, amber on
+the switch; speed test on the PC about 94 Mb/s against the laptop's
+hundreds; the kink shows at one end only; fix: swap the cable; reseating
+can't help); HOME-09 port forward to the camera's old address (no
+reservation; after the power cut the phone got the camera's old address;
+the camera app on mobile data is refused; fixed only when the forward
+points at the camera AND the camera's address is reserved: the forward
+alone works for now, and Mason says so, "Will it still work after the
+next power cut?"); HOME-10 rogue DHCP (an old router on a free switch
+port, not on the documented diagram, only on the floor plan; it answers
+the laptop and the TV first; fix: unplug it or turn its DHCP off, then
+renew the laptop and restart the TV). Engine additions: a rogue router
+(`net.extra.rogueWins` decides who it answers first), port forwarding
+with `outside(port)`, a speed test, the PC's printer port and test page,
+"turn Wi-Fi off and on" on phones, reservations and port forwards on the
+router's pages, the printer's own TCP/IP panel. A ticket solved by just
+opening a page (HOME-07, HOME-08) is counted like any other: the drive
+test found the first version didn't count it.
 
 **The Physical tab** shows stills of the 3D models (`assets/stills/`,
 rendered from the real models). The live, turnable models showing each

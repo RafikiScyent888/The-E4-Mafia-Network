@@ -31,6 +31,7 @@ export function renderBoard(host, ctx) {
     const st = el("div", { class: "stage" });
     st.appendChild(el("h3", null, "Fix it at the source, then prove it works"));
     st.appendChild(el("ul", { class: "checks" }, el("li", { class: "done" }, "Diagnosis: " + T.opts.find(function (o) { return o.right; }).text), el("li", { class: T.proven ? "done" : "" }, "Prove it: " + def.proofText)));
+    if (T.partial) st.appendChild(el("p", { class: "mason-says", role: "status" }, el("b", null, "Mason: "), T.partial));
     if (ctx.fixHint) st.appendChild(el("p", { class: "mason-says", role: "status" }, el("b", null, "Mason: "), ctx.fixHint));
     st.appendChild(el("div", { class: "boardbar" },
       el("button", { type: "button", class: "btn ghost small", onclick: function () { ctx.askFix(); } }, "Ask Mason about the fix"),

@@ -6,6 +6,7 @@
    prove each fault really shows on the model. */
 import { page } from "./pages.js";
 import { prompt } from "./cmd.js";
+import { POE } from "./sim.js";
 
 /* the model each device is drawn with (the old router in HOME-10 is a home router too) */
 export const MODEL_OF = { modem: "modem", router: "router", rogue: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", injector: "injector" };
@@ -21,7 +22,7 @@ const PORTS = {
 const SAY_PORT = { switch: function (p) { return "Port " + p; } };
 
 export function physicalState(sim, id) {
-  const model = MODEL_OF[id]; if (!model) return null;
+  const model = MODEL_OF[id] || (sim.d[id] && sim.d[id].kind === "injector" ? "injector" : null); if (!model) return null;   /* build mode's second injector is an injector too */
   const x = sim.d[id], ports = [], leds = [], says = [], opts = {};
   const on = sim.on(id);
   PORTS[model].forEach(function (pp) {
@@ -53,7 +54,7 @@ export function physicalState(sim, id) {
     L("POWER", "Power", on ? "on" : "off");
     opts.plugged = ports.map(function (p) { return p.plug !== "none"; });
   } else if (model === "mesh") {
-    const ok = on && x.backhaul && x.backhaul.ok && sim.on("router");
+    const ok = on && sim.meshLink().ok;
     L("STATUS", "Status ring", on ? "on" : "off", ok ? "green" : "amber"); L("LINK", "Side light", on && !ok ? "on" : "off", "amber");
     opts.weak = !ok;
   } else if (model === "printer") {
@@ -66,9 +67,10 @@ export function physicalState(sim, id) {
   } else if (model === "laptop") {
     opts.screen = [prompt(sim, id) + "_"];   /* Command Prompt open and waiting: what it says is for the student to find out */
   } else if (model === "camera") {
-    opts.ipLine = "IP: set by DHCP";
+    opts.ipLine = "IP: set by DHCP"; if (x.draw > POE.af.pd) opts.poe = "PoE+ 802.3at";
   } else if (model === "injector") {
-    L("POWER", "Power", x.power ? "on" : "off"); L("PoE", "PoE", sim.on("camera") ? "on" : "off");
+    const fed = sim.cablesOf(id).map(function (c) { return c.a.dev === id && c.a.port === "PoE OUT" ? c.b.dev : c.b.dev === id && c.b.port === "PoE OUT" ? c.a.dev : null; }).filter(Boolean)[0];
+    L("POWER", "Power", x.power ? "on" : "off"); L("PoE", "PoE", fed && sim.d[fed].poe && sim.on(fed) ? "on" : "off");   /* lit while it powers the device on its PoE OUT */
     opts.std = x.std;
   }
 
@@ -92,8 +94,8 @@ export function physicalState(sim, id) {
   if (model === "mesh") says.push("No network cables: it reaches the router over Wi-Fi.");
   if (model === "printer") says.push("Control panel screen: " + opts.screen.status + ", IP address " + opts.screen.ip + ".");
   if (model === "tv") says.push("Screen: Network Status, wired (LAN) " + (opts.screen.connected ? "connected" : "not connected") + "; " + opts.screen.rows.slice(0, 3).map(function (r) { return r[0] + " " + r[1]; }).join("; ") + ".");
-  if (model === "camera") { says.push("Printed beside its port: PoE 802.3af (it takes its power down the cable). Its label gives the model and says the address is set by DHCP; the hardware address is covered."); if (!on) says.push("No power: the camera is dark."); }
-  if (model === "injector") says.push("Its label: " + (x.std === "passive" ? "PASSIVE PoE INJECTOR, OUTPUT 24V ⎓ 1A" : "PoE INJECTOR, IEEE 802.3af, OUTPUT 48V ⎓ 0.32A (15.4W)") + ".");
+  if (model === "camera") { says.push("Printed beside its port: " + (x.draw > POE.af.pd ? "PoE+ 802.3at, up to " + x.draw + " W (heater on)" : "PoE 802.3af") + " (it takes its power down the cable). Its label gives the model and says the address is set by DHCP; the hardware address is covered."); if (!on) says.push("No power: the camera is dark."); else if (sim.poeShort(id)) says.push("Its status light blinks amber: running on limited power."); }
+  if (model === "injector") says.push("Its label: " + (x.std === "passive" ? "PASSIVE PoE INJECTOR, OUTPUT 24V ⎓ 1A" : x.std === "at" ? "PoE+ INJECTOR, IEEE 802.3at, OUTPUT 54V ⎓ 0.56A (30W)" : "PoE INJECTOR, IEEE 802.3af, OUTPUT 48V ⎓ 0.32A (15.4W)") + ".");
   return { id: id, model: model, label: x.label, ports: ports, leds: leds, opts: opts, says: says };
 }
 

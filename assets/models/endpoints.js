@@ -492,7 +492,8 @@ function opticalToslink() {
    the recessed port pocket: the cable gland with the cable out of it,
    the gigabit PoE port with its lights on and the patch cable plugged
    in, and the rubber weather cap lying beside it. */
-/* o.ipLine: the address line printed on the label ("IP: 192.168.1.50" by default) */
+/* o.ipLine: the address line printed on the label ("IP: 192.168.1.50" by default); o.poe: the PoE class printed by the port
+   ("PoE 802.3af" by default; build mode's camera with a heater says "PoE+ 802.3at": the same housing) */
 export function ipCamera(o = {}) {
   const g = new THREE.Group(), R = 62, white = plastic(0xf3f3f0, { rough: 0.38 }), grey = plastic(0xb5b8bc, { rough: 0.5 });
   /* the wall, straight to 33 mm, then the shoulder up to the top at 44 */
@@ -528,9 +529,9 @@ export function ipCamera(o = {}) {
   const glCable = new THREE.Group(); at(glCable, 0, 0, 3.2); gl.add(glCable);
   glCable.userData.exitZ = 0; glCable.userData.cable = { r: 3.3, color: 0x4a4e53, text: "OUTDOOR CAT6 UTP  ·  UV RESISTANT  ·  23AWG", ink: "rgba(225,225,225,0.55)" };
   glCable.rotation.y = Math.PI;   /* cableFrom runs a cable off the -Z end */
-  /* PoE port, with PoE 802.3af printed beside it */
+  /* PoE port, with its PoE class printed beside it */
   const pj = rj45Jack({ name: "PoE", metal: true, on: [true, true] }); at(pj, 12.5, 0.4, 0.4); pk.add(pj);
-  pk.add(at(up(text("PoE 802.3af", 18, 3, { color: "#2b2e33", weight: "700" })), 2.0, 0, 0.45));
+  pk.add(at(up(text(o.poe || "PoE 802.3af", 18, 3, { color: "#2b2e33", weight: "700" })), 2.0, 0, 0.45));
   const cpl = patch(pj, { boot: 0x5e6267, jacket: 0x5e6267 });
   /* the printing on the base wall above the pocket, and the label */
   g.add(curvedPrint(["<···>  (Data + Power)  <···>", "Gigabit IP Camera Port · 10/100/1000"], 64, 5.6, pth, 30.2, rAt));

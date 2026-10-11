@@ -30,13 +30,14 @@ export const LAYOUT = {
   printer: { x: 400, y: 440, px: 360, py: 140, room: "office" },
   camera: { x: 580, y: 430, px: 720, py: 448, room: "porch" },
   injector: { x: 500, y: 360, px: 170, py: 222, room: "office", lab: "right" },   /* the PoE injector on the office shelf, between the switch and the camera's long run */
+  injector2: { x: 500, y: 360, lab: "right" },   /* build mode's PoE+ injector: wherever it's put on the plan */
   mesh: { x: 610, y: 265, px: 850, py: 110, room: "upstairs", lab: "left" },
   phone: { x: 760, y: 250, px: 480, py: 245, room: "living" },
   laptop: { x: 755, y: 420, px: 905, py: 195, room: "upstairs" },
   guest: { x: 130, y: 250, px: 520, py: 360, room: "kitchen" },   /* the open space under the modem: the right side is full */
   rogue: { px: 330, py: 235, room: "office" }   /* not on the logical diagram: nobody documented it */
 };
-export const ROOMS = { office: "Office", living: "Living room", kitchen: "Kitchen", garage: "Garage", upstairs: "Back bedroom (upstairs)", porch: "Front door" };
+export const ROOMS = { office: "Office", living: "Living room", kitchen: "Kitchen", garage: "Garage", upstairs: "Back bedroom (upstairs)", landing: "Landing (top of the stairs)", porch: "Front door" };
 
 export function makeHome(seed) {
   const r = rng(seed);

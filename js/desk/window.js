@@ -191,8 +191,8 @@ function physicalPane(id, P, ctx, rerender) {
   if (P.injector) {   /* the injector's own power adapter, and swapping the injector itself */
     const j = P.injector, say = function (r) { const f = r && r.facts; return f ? "The injector's power is " + (f.power ? "plugged in" : "unplugged") + ". The camera: " + (f.camera ? "it powers up (its lights come on)" : "still dark") + "." : ""; };
     wrap.appendChild(el("div", { class: "acts", style: "margin-top:10px" },
-      el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "injector", values: { power: !j.power } }); physLog[id]["power"] = (j.power ? "Unplugged its power adapter. " : "Plugged its power adapter in. ") + say(r); rerender(); } }, j.power ? "Unplug its power adapter" : "Plug its power adapter in"),
-      el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "injector", values: { swap: true } }); physLog[id]["power"] = "Swapped in a new 802.3af PoE injector, same cables and adapter. " + say(r); rerender(); } }, "Swap in a new 802.3af injector")));
+      el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "injector", dev: id, values: { power: !j.power } }); physLog[id]["power"] = (j.power ? "Unplugged its power adapter. " : "Plugged its power adapter in. ") + say(r); rerender(); } }, j.power ? "Unplug its power adapter" : "Plug its power adapter in"),
+      j.swap ? el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "injector", dev: id, values: { swap: true } }); physLog[id]["power"] = "Swapped in a new 802.3af PoE injector, same cables and adapter. " + say(r); rerender(); } }, "Swap in a new 802.3af injector") : null));
   }
   wrap.appendChild(rr);
   return wrap;
@@ -257,6 +257,15 @@ function forwardForm(P, ctx, rerender) {
     f.addEventListener("submit", function (e) { e.preventDefault(); const x = ctx.act({ t: "router", page: "forward", values: { ext: r.ext, ip: new FormData(f).get("ip") } }); if (x && x.result && x.result.ok) { ctx.flash = "Saved."; rerender(); } else { msg.className = "msg err"; msg.textContent = "Not saved: " + ((x && x.result && x.result.errs) || []).join(". ") + "."; } });
     wrap.appendChild(f);
   });
+  if (P.add) {   /* a router fresh from its box: forwards are added here (and can be taken away) */
+    P.rules.forEach(function (r) { wrap.appendChild(el("div", { class: "acts" }, el("button", { type: "button", class: "btn ghost small", "aria-label": "Remove the forward for outside port " + r.ext, onclick: function () { ctx.act({ t: "router", page: "forward-del", values: { ext: r.ext } }); ctx.flash = "Removed the forward for outside port " + r.ext + "."; rerender(); } }, "Remove the forward for port " + r.ext))); });
+    const msg = el("p", { class: "msg", role: "status" });
+    const f = el("form", { novalidate: true }, el("fieldset", null, el("legend", null, "Add a port forward"), field("Name", "name", "", { inputmode: "text" }),
+      el("div", { class: "row2" }, field("Outside port", "ext", "", { inputmode: "numeric" }), field("Goes to address", "ip", "")), field("Port on that device", "port", "", { inputmode: "numeric" }),
+      el("div", { class: "acts" }, el("button", { class: "btn", type: "submit" }, "Add"))), msg);
+    f.addEventListener("submit", function (e) { e.preventDefault(); const d = new FormData(f); const x = ctx.act({ t: "router", page: "forward-add", values: { name: d.get("name"), ext: d.get("ext"), ip: d.get("ip"), port: d.get("port") } }); if (x && x.result && x.result.ok) { ctx.flash = "Added: outside port " + String(d.get("ext")).trim() + " goes to " + String(d.get("ip")).trim() + ", port " + String(d.get("port")).trim() + "."; rerender(); } else { msg.className = "msg err"; msg.textContent = "Not added: " + ((x && x.result && x.result.errs) || []).join(". ") + "."; } });
+    wrap.appendChild(f);
+  }
   if (ctx.flash) { wrap.appendChild(el("p", { class: "msg ok", role: "status" }, ctx.flash)); ctx.flash = null; }
   return wrap;
 }

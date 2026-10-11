@@ -41,7 +41,7 @@ const SETUP = {
     views: [["Ports close-up", { focus: "panel:Connection panel", view: [-0.25, 0.1, -1] }], ["Screen", { view: [0, 0.08, 1], light: [0.3, 1.0, 1.0] }]] },
   injector: { build: function (o) { return GEAR.poeInjector({ std: o.std }); }, view: [0.75, 0.6, 1], light: [0.6, 1.3, 0.9], frame: [-60, 0, -70, 60, 40, 90],
     views: [["Ports close-up", { focus: "panel:Ports", view: [0.15, 0.3, 1] }], ["Label and lights", { view: [0.05, 1, 0.25], frame: [-34, 30, -56, 34, 34, 58], light: [0.3, 1.3, 0.5] }], ["Power adapter", { view: [0.5, 0.35, -1], frame: [-30, 0, -100, 40, 34, -40], light: [0.4, 1.2, -1.0] }]] },
-  camera: { build: function (o) { return END.ipCamera({ ipLine: o.ipLine }); }, stage: "concrete", view: [1, 0.5, 0.75], light: [0.7, 1.3, 0.9], frame: [-70, 0, -70, 125, 112, 125],
+  camera: { build: function (o) { return END.ipCamera({ ipLine: o.ipLine, poe: o.poe }); }, stage: "concrete", view: [1, 0.5, 0.75], light: [0.7, 1.3, 0.9], frame: [-70, 0, -70, 125, 112, 125],
     views: [["Port close-up", { focus: "panel:PoE port", view: [0.91, 0.3, 0.41] }]] }
 };
 const DAMAGE = { split: { split: { at: 64, len: 16 } }, crushed: { crush: [-196, -140] } };   /* the crushed stretch where the run meets the floor behind the desk */

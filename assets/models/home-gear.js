@@ -304,15 +304,16 @@ function polarity() {
 /* A desktop PoE injector, built from the standard design (no photograph
    yet: send one and it will be matched part by part): a black box, DATA IN
    and PoE OUT side by side on the front with their cables in, POWER and
-   PoE lights on top, the label (802.3af, or a passive 24 V one: o.std
-   "passive"), and the power adapter's DC plug in the back. */
+   PoE lights on top, the label (802.3af; 802.3at PoE+: o.std "at"; or a
+   passive 24 V one: o.std "passive"), and the power adapter's DC plug in
+   the back. */
 export function poeInjector(o = {}) {
   const g = new THREE.Group(), W = 66, H = 30, D = 112, Y0 = 2, passive = o.std === "passive";
   g.add(at(rbox(W, H, D, 5, plastic(0x18191b, { rough: 0.5 })), 0, Y0 + H / 2, 0));
   [[-24, 42], [24, 42], [-24, -42], [24, -42]].forEach(function (p) { g.add(at(cyl(5, Y0, rubber(0x202124), 20), p[0], Y0 / 2, p[1])); });
   /* the top: the label, the two lights near the front */
   const top = new THREE.Group(); at(top, 0, Y0 + H + 0.05, 0, -Math.PI / 2, 0, 0); g.add(top);
-  const lb = label(passive ? ["PASSIVE PoE INJECTOR", "OUTPUT 24V ⎓ 1A", "DATA IN → PoE OUT", "S/N: " + COVERED] : ["PoE INJECTOR · IEEE 802.3af", "OUTPUT 48V ⎓ 0.32A (15.4W)", "DATA IN → PoE OUT", "S/N: " + COVERED], { w: 54, h: 36, marks: true });
+  const lb = label(passive ? ["PASSIVE PoE INJECTOR", "OUTPUT 24V ⎓ 1A", "DATA IN → PoE OUT", "S/N: " + COVERED] : o.std === "at" ? ["PoE+ INJECTOR · IEEE 802.3at", "OUTPUT 54V ⎓ 0.56A (30W)", "DATA IN → PoE OUT", "S/N: " + COVERED] : ["PoE INJECTOR · IEEE 802.3af", "OUTPUT 48V ⎓ 0.32A (15.4W)", "DATA IN → PoE OUT", "S/N: " + COVERED], { w: 54, h: 36, marks: true });
   at(lb, 0, 6, 0.2); top.add(lb);
   [["POWER", -14], ["PoE", 14]].forEach(function (it) {
     const l = led(COL.ledGreen, true, 1.5); l.userData.role = it[0]; top.add(at(l, it[1], -44, 0.4));

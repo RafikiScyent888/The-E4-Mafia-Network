@@ -22,7 +22,7 @@ export const ICONS = {
   injector: '<rect x="10" y="22" width="44" height="22" rx="4" class="ib"/><path d="M35 25l-7 9h7l-5 8" class="il"/><circle cx="18" cy="29" r="1.8" class="ok"/>',
   ap: '<ellipse cx="32" cy="38" rx="20" ry="8" class="ib"/><path d="M22 26q10-8 20 0M26 20q6-5 12 0" class="il"/>'
 };
-const ICON_OF = { isp: "cloud", modem: "modem", router: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", tv: "tv", camera: "camera", mesh: "mesh", phone: "phone", guest: "phone", rogue: "router", injector: "injector" };
+const ICON_OF = { isp: "cloud", modem: "modem", router: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", tv: "tv", camera: "camera", mesh: "mesh", phone: "phone", guest: "phone", rogue: "router", injector: "injector", injector2: "injector" };
 function defs(svg, prefix) {
   const d = document.createElementNS(NS, "defs");
   d.innerHTML = Object.keys(ICONS).map(function (k) { return '<symbol id="' + prefix + k + '" viewBox="0 0 64 64">' + ICONS[k] + "</symbol>"; }).join("");
@@ -39,20 +39,21 @@ function pos(sim, id) {
 }
 /* build mode puts devices where the student chooses: each one in its usual spot when that's its room and the spot
    is clear, otherwise the first clear place in the room it's in, its tile and its name kept off everything else's */
-const ROOM_BOX = { office: [30, 30, 420, 300], living: [420, 30, 760, 300], garage: [30, 300, 420, 520], kitchen: [420, 300, 760, 520], upstairs: [790, 30, 980, 260], porch: [764, 280, 990, 490] };
+/* a build house's upstairs is the back bedroom and the landing at the top of the stairs, drawn taller in the space below */
+const ROOM_BOX = { office: [30, 30, 420, 300], living: [420, 30, 760, 300], garage: [30, 300, 420, 520], kitchen: [420, 300, 760, 520], upstairs: [790, 30, 980, 200], landing: [790, 200, 980, 330], porch: [764, 340, 990, 490] };
 function planSpots(sim, ids) {
   const out = {}, taken = [];
   if (!sim.net.extra.build) { for (const id of ids) { const p = pos(sim, id); out[id] = { px: p.px, py: p.py }; } return out; }   /* the tickets' houses are drawn exactly as laid out */
-  const box = function (x, y) { return [x - 46, y - 26, x + 46, y + 54]; };
+  const box = function (x, y) { return [x - 44, y - 26, x + 44, y + 54]; };
   const clear = function (b) { return taken.every(function (t) { return b[2] < t[0] || b[0] > t[2] || b[3] < t[1] || b[1] > t[3]; }); };
-  const usual = function (id) { const p = pos(sim, id), room = sim.net.rooms[id]; return p.px != null && (!LAYOUT[id].room || LAYOUT[id].room === room || (id === "laptop" && (room === "living" || room === "kitchen"))) ? p : null; };
+  const usual = function (id) { const p = pos(sim, id), room = sim.net.rooms[id]; return p.px != null && room !== "upstairs" && (!LAYOUT[id].room || LAYOUT[id].room === room || (id === "laptop" && (room === "living" || room === "kitchen"))) ? p : null; };   /* upstairs is laid out afresh: it's split in two */
   for (const id of ids) { const p = usual(id); if (p && clear(box(p.px, p.py))) { out[id] = { px: p.px, py: p.py }; taken.push(box(p.px, p.py)); } }
   for (const id of ids) {
     if (out[id]) continue;
     const R = ROOM_BOX[sim.net.rooms[id]] || ROOM_BOX.office;
     taken.push([R[0], R[1], R[0] + 140, R[1] + 42]);   /* the room's name, top left */
     let spot = null;
-    for (let y = R[1] + 70; y <= R[3] - 56 && !spot; y += 26) for (let x = R[0] + 60; x <= R[2] - 50 && !spot; x += 30) if (clear(box(x, y))) spot = { px: x, py: y };
+    for (let y = R[1] + 44; y <= R[3] - 56 && !spot; y += 26) for (let x = R[0] + 50; x <= R[2] - 50 && !spot; x += 30) if (clear(box(x, y))) spot = { px: x, py: y };
     taken.pop();
     out[id] = spot || { px: (R[0] + R[2]) / 2, py: (R[1] + R[3]) / 2 };
     taken.push(box(out[id].px, out[id].py));
@@ -76,18 +77,19 @@ export function linksOf(sim) {
   for (const c of sim.net.cables) {
     if (c.kind === "coax") continue;
     if (sim.d[c.a.dev].undocumented || sim.d[c.b.dev].undocumented) continue;   /* the diagram is the documentation: an undocumented box isn't on it */
-    out.push({ a: c.a.dev, b: c.b.dev, kind: "copper", up: sim.cableUp(c), pa: c.a.dev === "injector" ? "" : c.a.port, pb: c.b.dev === "injector" ? "" : c.b.port, cable: c.id });   /* the injector's own port names are on its Physical tab: the diagram has no room for them */
+    out.push({ a: c.a.dev, b: c.b.dev, kind: "copper", up: sim.cableUp(c), pa: sim.d[c.a.dev].kind === "injector" ? "" : c.a.port, pb: sim.d[c.b.dev].kind === "injector" ? "" : c.b.port, cable: c.id });   /* the injector's own port names are on its Physical tab: the diagram has no room for them */
   }
   const m = sim.d.mesh;
-  if (m && shown(sim, "mesh") && shown(sim, "router")) out.push({ a: "router", b: "mesh", kind: "wifi", up: m.backhaul.ok && sim.on("mesh") && sim.on("router") });
+  if (m && shown(sim, "mesh") && shown(sim, "router") && sim.meshLink().kind !== "wired") out.push({ a: "router", b: "mesh", kind: "wifi", up: sim.meshLink().ok });   /* wired: its cable is drawn with the others */
   for (const id of ["phone", "laptop", "guest"]) { if (!sim.d[id]) continue; const l = sim.wifiLink(id); if (l && l.connected && !(sim.d[l.ap.id] && sim.d[l.ap.id].undocumented)) out.push({ a: l.ap.id, b: id, kind: "wifi", up: true }); }   /* joined to something not in the house: no line to draw */
   return out;
 }
 
 export function drawLogical(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "i-");
-  const ids = ["isp", "modem", "router", "tv", "switch", "pc", "printer", "injector", "camera", "mesh", "phone", "laptop", "guest"].filter(function (id) { return shown(sim, id) && !sim.d[id].undocumented; });
+  const ids = ["isp", "modem", "router", "tv", "switch", "pc", "printer", "injector", "injector2", "camera", "mesh", "phone", "laptop", "guest"].filter(function (id) { return shown(sim, id) && !sim.d[id].undocumented; });
   const P = {}; ids.forEach(function (id) { P[id] = pos(sim, id); });
+  if (P.injector && P.injector2) Object.assign(P.injector2, { x: 520, y: 190 });   /* both injectors out of the van: the second one moves up out of the way */
   const below = function (id) { return !P[id].lab || P[id].lab === "below"; };
   const gl = mk("g", {}), gn = mk("g", {}), gp = mk("g", {});
   svg.appendChild(gl); svg.appendChild(gn); svg.appendChild(gp);   /* port dots and labels sit above every line and device */
@@ -137,13 +139,16 @@ const RUNS = {
   "c-inj-camera": ["M170 222 C 200 420 600 440 720 448"],
   "c-rogue": ["M250 200 L 330 235"]
 };
-const PLAN_NAME = { injector: "PoE injector", modem: "Modem", router: "Router", tv: "Smart TV", switch: "Switch", pc: "Office PC", printer: "Printer", camera: "Camera", mesh: "Mesh node", laptop: "Laptop", phone: "Phone", guest: "Guest's phone", rogue: "Old router" };
+const PLAN_NAME = { injector: "PoE injector", injector2: "PoE+ injector", modem: "Modem", router: "Router", tv: "Smart TV", switch: "Switch", pc: "Office PC", printer: "Printer", camera: "Camera", mesh: "Mesh node", laptop: "Laptop", phone: "Phone", guest: "Guest's phone", rogue: "Old router" };
 export function drawPlan(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "p-");
+  const build = sim.net.extra.build;   /* a build house shows upstairs as the back bedroom and the landing */
   let h = '<rect class="room" x="30" y="30" width="390" height="270"/><rect class="room" x="420" y="30" width="340" height="270"/><rect class="room" x="30" y="300" width="390" height="220"/><rect class="room" x="420" y="300" width="340" height="220"/>' +
-    '<rect class="room" x="790" y="30" width="190" height="230"/><path class="door" d="M380 300h30M520 300h40M420 400v40"/>' +
-    '<text class="rl" x="46" y="60">OFFICE</text><text class="rl" x="436" y="60">LIVING ROOM</text><text class="rl" x="46" y="330">GARAGE</text><text class="rl" x="436" y="330">KITCHEN</text><text class="rl" x="806" y="60">UPSTAIRS</text>' +
-    '<text class="rl" x="800" y="512">FRONT DOOR</text><rect class="plate" x="413" y="98" width="14" height="24"/><rect class="plate" x="714" y="32" width="16" height="10"/>';
+    (build ? '<rect class="room" x="790" y="30" width="190" height="170"/><rect class="room" x="790" y="200" width="190" height="130"/><path class="door" d="M850 200h40"/>' : '<rect class="room" x="790" y="30" width="190" height="230"/>') +
+    '<path class="door" d="M380 300h30M520 300h40M420 400v40"/><rect class="plate" x="413" y="98" width="14" height="24"/><rect class="plate" x="714" y="32" width="16" height="10"/>';
+  /* the rooms' names go above the cable runs: a run the student lays can cross one, and the name stays on its own plate */
+  const names = '<text class="rl" x="46" y="60">OFFICE</text><text class="rl" x="436" y="60">LIVING ROOM</text><text class="rl" x="46" y="330">GARAGE</text><text class="rl" x="436" y="330">KITCHEN</text>' +
+    (build ? '<text class="rl" x="806" y="60">BACK BEDROOM</text><text class="rl" x="806" y="230">LANDING</text>' : '<text class="rl" x="806" y="60">UPSTAIRS</text>') + '<text class="rl" x="800" y="512">FRONT DOOR</text>';
   const ids = Object.keys(PLAN_NAME).filter(function (id) { return shown(sim, id); }), P = planSpots(sim, ids);
   let anyDown = false;
   const runs = [];
@@ -165,7 +170,7 @@ export function drawPlan(svg, sim, o) {
     const up = sim.cableUp(r.c); if (!up) anyDown = true;
     for (const d of r.d) h += '<path class="' + (up ? (r.c.kind === "coax" ? "run-coax" : "run") : "run-bad") + '" d="' + d + '"/>';
   }
-  svg.innerHTML += h;
+  svg.innerHTML += h + names;
   for (const id of ids) {
     const p = P[id];
     const g = mk("g", { class: "pdev" + (o.open === id ? " open" : ""), tabindex: "0", role: "button", transform: "translate(" + p.px + " " + p.py + ")", "aria-label": "Open " + sim.d[id].label + " in the terminal" });

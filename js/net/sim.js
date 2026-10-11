@@ -14,21 +14,25 @@ export const SITES = { "rafiki-it.example": "203.0.113.80", "www.rafiki-it.examp
 
 /* Wi-Fi signal (percent) from an access point's room to a client's room, by band */
 const SIGNAL = {
-  living: { living: [95, 90], kitchen: [80, 68], office: [70, 52], garage: [55, 34], porch: [62, 42], upstairs: [44, 24] },
-  upstairs: { upstairs: [86, 78], living: [50, 36], office: [42, 28], kitchen: [40, 26], garage: [30, 14], porch: [34, 18] },
-  /* an access point in any other room (build mode puts the router where the student chooses) */
-  office: { office: [95, 90], living: [70, 52], kitchen: [58, 40], garage: [72, 56], porch: [50, 30], upstairs: [38, 20] },
-  kitchen: { kitchen: [95, 90], living: [80, 68], office: [58, 40], garage: [62, 44], porch: [70, 52], upstairs: [40, 22] },
-  garage: { garage: [95, 90], office: [72, 56], kitchen: [62, 44], living: [55, 34], porch: [45, 26], upstairs: [28, 12] },
-  porch: { porch: [95, 90], living: [62, 42], kitchen: [70, 52], office: [50, 30], garage: [45, 26], upstairs: [30, 14] }
+  living: { living: [95, 90], kitchen: [80, 68], office: [70, 52], garage: [55, 34], porch: [62, 42], upstairs: [44, 24], landing: [72, 56] },
+  upstairs: { upstairs: [86, 78], living: [50, 36], office: [42, 28], kitchen: [40, 26], garage: [30, 14], porch: [34, 18], landing: [80, 70] },
+  /* an access point in any other room (build mode puts the router, or a mesh node, where the student chooses) */
+  office: { office: [95, 90], living: [70, 52], kitchen: [58, 40], garage: [72, 56], porch: [50, 30], upstairs: [38, 20], landing: [50, 34] },
+  kitchen: { kitchen: [95, 90], living: [80, 68], office: [58, 40], garage: [62, 44], porch: [70, 52], upstairs: [40, 22], landing: [55, 38] },
+  garage: { garage: [95, 90], office: [72, 56], kitchen: [62, 44], living: [55, 34], porch: [45, 26], upstairs: [28, 12], landing: [35, 18] },
+  porch: { porch: [95, 90], living: [62, 42], kitchen: [70, 52], office: [50, 30], garage: [45, 26], upstairs: [30, 14], landing: [40, 22] },
+  /* the landing at the top of the stairs: one floor up, one door from the back bedroom */
+  landing: { landing: [95, 90], upstairs: [88, 80], living: [72, 56], office: [50, 34], kitchen: [55, 38], garage: [35, 18], porch: [40, 22] }
 };
 
 /* build mode: the ports each kind of device has (the sim's names), where some devices have to go,
    and how long a cable run is between two rooms of the house, in metres, as it really goes (walls, ceilings) */
-export const PORTS = { router: ["WAN", "LAN 1", "LAN 2", "LAN 3", "LAN 4"], switch: ["1", "2", "3", "4", "5"], modem: ["ETH"], pc: ["NIC"], printer: ["NET"], camera: ["LAN"], tv: ["LAN"], injector: ["DATA IN", "PoE OUT"] };
+export const PORTS = { router: ["WAN", "LAN 1", "LAN 2", "LAN 3", "LAN 4"], switch: ["1", "2", "3", "4", "5"], modem: ["ETH"], pc: ["NIC"], printer: ["NET"], camera: ["LAN"], tv: ["LAN"], injector: ["DATA IN", "PoE OUT"], mesh: ["WAN", "LAN"] };
+/* what a PoE injector can send down the cable: at the injector, and what reaches the device after the cable's loss (IEEE 802.3af and 802.3at) */
+export const POE = { af: { pse: 15.4, pd: 12.95 }, at: { pse: 30, pd: 25.5 } };
 export const PORT_NAME = { WAN: "INTERNET (WAN)", ETH: "ETHERNET", NIC: "Ethernet", NET: "NETWORK", LAN: "LAN" };
 export const FIXED_ROOM = { modem: ["living", "by the cable outlet: there's one, in the living room"], camera: ["porch", "on its mount by the front door"] };
-const RUN = { office: { living: 14, kitchen: 18, garage: 12, porch: 38, upstairs: 20 }, living: { kitchen: 10, garage: 22, porch: 20, upstairs: 15 }, kitchen: { garage: 16, porch: 14, upstairs: 22 }, garage: { porch: 30, upstairs: 28 }, porch: { upstairs: 32 } };
+const RUN = { office: { living: 14, kitchen: 18, garage: 12, porch: 38, upstairs: 20, landing: 18 }, living: { kitchen: 10, garage: 22, porch: 20, upstairs: 15, landing: 8 }, kitchen: { garage: 16, porch: 14, upstairs: 22, landing: 14 }, garage: { porch: 30, upstairs: 28, landing: 24 }, porch: { upstairs: 32, landing: 22 }, upstairs: { landing: 6 } };
 export function runLength(a, b) { if (a === b) return 3; return (RUN[a] && RUN[a][b]) || (RUN[b] && RUN[b][a]) || 40; }
 export const COPPER_MAX = 100;
 
@@ -43,24 +47,29 @@ export class Sim {
   cableAt(dev, port) { return this.net.cables.find(function (c) { return (c.a.dev === dev && c.a.port === port) || (c.b.dev === dev && c.b.port === port); }); }
   cablesOf(dev) { return this.net.cables.filter(function (c) { return c.a.dev === dev || c.b.dev === dev; }); }
   on(id) { const x = this.d[id]; if (!x || x.on === false || x.boxed) return false; return x.poe ? this.poePowered(id) : true; }   /* boxed: still in its box (build mode), not set up */
-  /* a PoE device is on only while power comes down its cable: from the injector's PoE OUT, the injector
-     plugged in, and the kind of PoE the device expects (802.3af: 48 V after a handshake; passive 24 V won't do) */
-  poePowered(id) {
-    const c = this.cablesOf(id)[0]; if (!c || c.kind === "coax") return false;
+  /* the injector a PoE device's cable comes from (its PoE OUT, both plugs in, the pairs intact), or null */
+  poeSource(id) {
+    const c = this.cablesOf(id)[0]; if (!c || c.kind === "coax") return null;
     const me = c.a.dev === id ? c.a : c.b, far = c.a.dev === id ? c.b : c.a, inj = this.d[far.dev];
-    if (!me.seated || !far.seated || c.cond === "crushed") return false;
-    return far.dev === "injector" && far.port === "PoE OUT" && !!inj.power && inj.std === "af";
+    if (!me.seated || !far.seated || c.cond === "crushed") return null;
+    return inj && inj.kind === "injector" && far.port === "PoE OUT" ? inj : null;
   }
+  /* a PoE device is on only while power comes down its cable: the injector plugged in, and a kind of PoE the device
+     can use (802.3af or 802.3at: 48 V after a handshake; passive 24 V won't do) */
+  poePowered(id) { const inj = this.poeSource(id); return !!inj && !!inj.power && !!POE[inj.std]; }
+  /* powered, but by less than it can draw: it starts, in a reduced mode (an 802.3at camera on 802.3af: no heater, no night vision) */
+  poeShort(id) { const inj = this.poeSource(id); return this.poePowered(id) && POE[inj.std].pd < (this.d[id].draw || 6.5); }
   cableUp(c) {
     if (!c) return false;
     if (c.kind === "coax") return c.a.tight && c.b.tight && c.cond === "good";
     if (c.length > COPPER_MAX) return false;                /* past 100 m the signal has faded too far for Ethernet to hold a link */
     if (!c.a.seated || !c.b.seated) return false;
     if (c.cond === "crushed") return false;                 /* pairs 1-2 or 3-6 open: no link at all */
-    if (c.a.dev === "injector" || c.b.dev === "injector") {  /* an injector passes the data pairs straight through: the link is end to end */
-      const o = this.cablesOf("injector").filter(function (k) { return k !== c; });
+    const ij = [c.a, c.b].find(function (e) { return this.d[e.dev] && this.d[e.dev].kind === "injector"; }, this);
+    if (ij) {  /* an injector passes the data pairs straight through: the link is end to end */
+      const o = this.cablesOf(ij.dev).filter(function (k) { return k !== c; });
       if (o.length !== 1 || !o[0].a.seated || !o[0].b.seated || o[0].cond === "crushed") return false;
-      return [c.a, c.b, o[0].a, o[0].b].filter(function (e) { return e.dev !== "injector"; }).every(function (e) { return this.on(e.dev); }, this);
+      return [c.a, c.b, o[0].a, o[0].b].filter(function (e) { return e.dev !== ij.dev; }).every(function (e) { return this.on(e.dev); }, this);
     }
     return this.on(c.a.dev) && this.on(c.b.dev);
   }
@@ -98,11 +107,29 @@ export class Sim {
     const tw = this.d.twin;
     if (tw && this.on("twin")) out.push({ id: "twin", node: "twin:lan", band: 24, ch: tw.ch, ssid: tw.ssid, mac: tw.mac, sec: "Open", heard: tw.heard });
     const m = this.d.mesh;
-    if (m && this.on("mesh") && m.backhaul.ok && this.on("router")) {
+    if (m && this.meshLink().ok) {   /* wired or wireless back to the router, it broadcasts the house's Wi-Fi */
       out.push({ id: "mesh", node: "mesh", room: this.net.rooms.mesh, band: 24, ch: this.ch24(), ssid: r.wifi.ssid, mac: m.ifaces[0].mac, sec: r.wifi.sec });
       out.push({ id: "mesh", node: "mesh", room: this.net.rooms.mesh, band: 5, ch: 149, ssid: r.wifi.ssid, mac: bump(m.ifaces[0].mac), sec: r.wifi.sec });
     }
     return out;
+  }
+  /* the mesh node's link back to the router. The tickets set it; in a build house it's worked out from where the node is:
+     a cable from its WAN or LAN port that leads to the router's house side, or else the 5 GHz signal between the two rooms
+     (40% or more holds a backhaul) */
+  meshLink() {
+    const m = this.d.mesh; if (!m || !this.on("mesh") || !this.on("router")) return { ok: false, kind: null };
+    if (!this.net.extra.build) return { ok: !!m.backhaul.ok, kind: "wifi", signal: m.backhaul.ok ? 74 : 0 };
+    if (this.cablesOf("mesh").some(function (c) { return this.cableUp(c); }, this) && this.wiredTo("mesh", "router:lan")) return { ok: true, kind: "wired" };
+    const s = this.signal(this.net.rooms.router, this.net.rooms.mesh, 5);
+    return { ok: s >= 40, kind: "wifi", signal: s };
+  }
+  /* is a node joined to another over working cables alone (no Wi-Fi)? */
+  wiredTo(from, to) {
+    const e = [];
+    for (const c of this.net.cables) if (c.kind !== "coax" && this.cableUp(c)) e.push([this.nodeOf(c.a.dev, c.a.port), this.nodeOf(c.b.dev, c.b.port)]);
+    const seen = new Set([from]), q = [from];
+    while (q.length) { const v = q.shift(); for (const [a, b] of e) { const w = a === v ? b : b === v ? a : null; if (w && !seen.has(w)) { seen.add(w); q.push(w); } } }
+    return seen.has(to);
   }
   ch24() { const w = this.d.router.wifi; return w.ch24mode === "auto" ? this.bestChannel(this.net.rooms.router) : w.ch24; }
   /* what Auto picks: the non-overlapping channel with the least heard around the router */
@@ -168,7 +195,7 @@ export class Sim {
       e.push([this.nodeOf(c.a.dev, c.a.port), this.nodeOf(c.b.dev, c.b.port)]);
     }
     const m = this.d.mesh;
-    if (m && this.on("mesh") && this.on("router") && m.backhaul.ok) e.push(["mesh", "router:lan"]);
+    if (m && this.meshLink().ok && this.meshLink().kind === "wifi") e.push(["mesh", "router:lan"]);   /* a wired link is a cable: it's in the edges already */
     for (const id in this.d) { const l = this.wifiLink(id); if (l && l.connected) e.push([id, l.ap.node]); }
     return e;
   }
@@ -183,7 +210,7 @@ export class Sim {
     const x = this.d[id]; if (!x || !this.on(id)) return false;
     const f = x.ifaces && x.ifaces[0]; if (!f) return false;
     if (f.type === "wifi") { const l = this.wifiLink(id); return !!(l && l.connected); }
-    if (f.type === "bridge") return x.backhaul ? x.backhaul.ok && this.on("router") : true;
+    if (f.type === "bridge") return x.backhaul ? this.meshLink().ok : true;
     return this.cableUp(this.cableAt(id, f.port));
   }
 
@@ -375,7 +402,7 @@ export class Sim {
       case "place": res = this.place(act.dev, act.room); break;
       case "lay": res = this.lay(act.a, act.b); break;
       case "pull": { const i = this.net.cables.findIndex(function (c) { return c.id === act.cable; }); if (i < 0 || this.net.cables[i].kind === "coax") { res = { ok: false, errs: ["There's no such cable to pull"] }; break; } this.net.cables.splice(i, 1); res = { ok: true }; break; }
-      case "injector": { const j = this.d.injector; if ("power" in act.values) j.power = !!act.values.power; if (act.values.swap) j.std = "af"; res = { ok: true, power: j.power, std: j.std }; break; }   /* swap: a new 802.3af injector in the same place, same cables, same adapter */
+      case "injector": { const j = this.d[act.dev || "injector"]; if ("power" in act.values) j.power = !!act.values.power; if (act.values.swap) j.std = "af"; res = { ok: true, power: j.power, std: j.std }; break; }   /* swap: a new 802.3af injector in the same place, same cables, same adapter */
       case "rogue": { const g = this.d.rogue; if ("dhcpOn" in act.values) g.dhcp.on = !!act.values.dhcpOn; res = { ok: true }; break; }
       case "print": res = this.printTest(); break;
       case "speed": res = this.speedTest(act.dev); break;
@@ -437,6 +464,15 @@ export class Sim {
       if (!isIp(v.ip) || !sameSubnet(v.ip, r.lan.ip, r.lan.mask) || v.ip === r.lan.ip) return { ok: false, errs: ["The internal address must be a device in " + this.net.prefix + ".x"] };
       f.ip = String(v.ip).trim(); return { ok: true };
     }
+    if (page === "forward-add") {   /* build mode: a new forward from the outside port to a device's port */
+      const ext = parseInt(v.ext, 10), port = parseInt(v.port, 10), ip = String(v.ip || "").trim(), name = String(v.name || "").trim() || "Forward";
+      if (!(ext >= 1 && ext <= 65535) || String(ext) !== String(v.ext).trim()) return { ok: false, errs: ["The outside port must be a number from 1 to 65535"] };
+      if (!(port >= 1 && port <= 65535) || String(port) !== String(v.port).trim()) return { ok: false, errs: ["The device's port must be a number from 1 to 65535"] };
+      if (!isIp(ip) || !sameSubnet(ip, r.lan.ip, r.lan.mask) || ip === r.lan.ip) return { ok: false, errs: ["The internal address must be a device in " + this.net.prefix + ".x"] };
+      r.forwards = r.forwards.filter(function (x) { return +x.ext !== ext; });
+      r.forwards.push({ name: name.slice(0, 32), ext: ext, ip: ip, port: port }); return { ok: true };
+    }
+    if (page === "forward-del") { r.forwards = r.forwards.filter(function (x) { return +x.ext !== +v.ext; }); return { ok: true }; }
     if (page === "admin") { if (v.newPassword) r.admin = { gen: ((r.admin && r.admin.gen) || 1) + 1 }; return { ok: true }; }   /* the password for the router's own pages */
     if (page === "reservation-del") { r.dhcp.reservations = r.dhcp.reservations.filter(function (x) { return x.mac !== v.mac; }); return { ok: true }; }
     return { ok: false, errs: ["Unknown page"] };

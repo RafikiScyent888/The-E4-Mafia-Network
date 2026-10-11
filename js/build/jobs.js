@@ -10,8 +10,8 @@ import { Sim } from "../net/sim.js";
 import { rng, hash, ip2n, sameSubnet } from "../net/util.js";
 
 const PUBLIC = "203.0.113.80";
-export const NAME = { router: "router", modem: "modem", pc: "office PC", tv: "smart TV", switch: "switch", printer: "printer", phone: "phone", laptop: "laptop", camera: "IP camera", injector: "PoE injector", mesh: "mesh node" };
-export const IN = { office: "the office", living: "the living room", kitchen: "the kitchen", garage: "the garage", upstairs: "the back bedroom upstairs", porch: "by the front door" };
+export const NAME = { router: "router", modem: "modem", pc: "office PC", tv: "smart TV", switch: "switch", printer: "printer", phone: "phone", laptop: "laptop", camera: "camera", injector: "PoE injector", injector2: "PoE+ injector", mesh: "mesh node" };
+export const IN = { office: "the office", living: "the living room", kitchen: "the kitchen", garage: "the garage", upstairs: "the back bedroom upstairs", landing: "the landing at the top of the stairs", porch: "by the front door" };
 const cap = function (s) { return s[0].toUpperCase() + s.slice(1); };
 const C = function (id, on, text, not, ev, skip) { return { id: id, on: !!on, text: text, not: not, ev: ev, skip: !!skip }; };
 const placed = function (sim, id) { return !!sim.d[id] && !sim.d[id].boxed; };
@@ -186,21 +186,23 @@ const J1 = {
 };
 
 /* ---------------------------------------------------------------- J2 */
-function printerCauses(sim) {
-  const x = sim.d.printer, f = x.ifaces[0], r = sim.d.router, a = sim.addr("printer");
-  const base = wiredCauses(sim, "printer", "office").slice(0, 5);   /* in its box, the room, the cable, the link, the house side */
+/* a device others must always find (a printer, a camera): a fixed address on the router's network that the router never
+   hands out, or one reserved for it on the router and picked up. base: what has to be right before its address matters */
+function fixedCauses(sim, id, base) {
+  const f = sim.d[id].ifaces[0], r = sim.d.router, a = sim.addr(id), N = NAME[id];
   const res = r.dhcp.reservations.find(function (v) { return v.mac === f.mac; }), st = f.cfg.mode === "static";
   const onNet = st && sameSubnet(f.cfg.ip, r.lan.ip, r.lan.mask) && f.cfg.mask === r.lan.mask;
   const inRange = st && ip2n(f.cfg.ip) >= ip2n(r.dhcp.start) && ip2n(f.cfg.ip) <= ip2n(r.dhcp.end);
-  const twins = a ? sim.owners(a.ip, sim.domain(sim.homeNode("printer"))).filter(function (o) { return o !== "printer"; }) : [];
+  const twins = a ? sim.owners(a.ip, sim.domain(sim.homeNode(id))).filter(function (o) { return o !== id; }) : [];
   return base.concat([
-    C("float", !st && !res, "The printer takes whatever address the router hands it", "It keeps one address.", "The printer gets its address from the router, with nothing to keep it the same: it can change when its lease runs out."),
-    C("stale", !st && res && (!a || a.ip !== res.ip), "The printer hasn't picked up its reserved address yet", "It's using its reserved address.", res ? "The router has " + res.ip + " reserved for the printer, but the printer is still on " + (a ? a.ip : "no address") + ": it hasn't asked for an address since." : ""),
-    C("net", st && !onNet, "Its fixed address or mask doesn't fit the router's network", "Its fixed address and mask fit the router's network.", "The printer has fixed settings, but they don't fit the network the router runs."),
-    C("range", st && onNet && inRange, "Its fixed address is inside the range the router hands out", "Its fixed address is outside the range the router hands out.", "The printer's fixed address is one the router can also hand to another device."),
-    C("twin", st && (f.cfg.ip === r.lan.ip || twins.length > 0), "Another device has the same address", "Nothing else answers at its address.", "Two devices answer at the printer's address.")
+    C("float", !st && !res, "The " + N + " takes whatever address the router hands it", "It keeps one address.", "The " + N + " gets its address from the router, with nothing to keep it the same: it can change when its lease runs out."),
+    C("stale", !st && res && (!a || a.ip !== res.ip), "The " + N + " hasn't picked up its reserved address yet", "It's using its reserved address.", res ? "The router has " + res.ip + " reserved for the " + N + ", but the " + N + " is still on " + (a ? a.ip : "no address") + ": it hasn't asked for an address since." : ""),
+    C("net", st && !onNet, "Its fixed address or mask doesn't fit the router's network", "Its fixed address and mask fit the router's network.", "The " + N + " has fixed settings, but they don't fit the network the router runs."),
+    C("range", st && onNet && inRange, "Its fixed address is inside the range the router hands out", "Its fixed address is outside the range the router hands out.", "The " + N + "'s fixed address is one the router can also hand to another device."),
+    C("twin", st && (f.cfg.ip === r.lan.ip || twins.length > 0), "Another device has the same address", "Nothing else answers at its address.", "Two devices answer at the " + N + "'s address.")
   ]);
 }
+function printerCauses(sim) { return fixedCauses(sim, "printer", wiredCauses(sim, "printer", "office").slice(0, 5)); }   /* in its box, the room, the cable, the link, the house side */
 function printCauses(sim) {
   const port = sim.d.pc.printer.port, pa = sim.addr("printer"), pc = sim.addr("pc");
   const rt = port && pc ? sim.route("pc", port) : null;
@@ -281,9 +283,170 @@ const J2 = {
   }
 };
 
-export const JOBS = [J1, J2];
+/* ---------------------------------------------------------------- the house after J1 and J2 */
+const J2_START = [{ t: "place", dev: "router", room: "living" }, { t: "place", dev: "tv", room: "living" }, { t: "lay", a: E("modem", "ETH"), b: E("router", "WAN") }, { t: "lay", a: E("router", "LAN 2"), b: E("tv", "LAN") }];
+function afterJ2(seed, devices, rooms) {
+  const f = factory(seed, ["switch", "pc", "printer", "tv"].concat(devices), Object.assign({ laptop: "kitchen", phone: "living" }, rooms || {}));
+  const sim = new Sim(f.net), v = { home: f.home, surname: surname(f.net) };
+  settle(sim, f.home, J2_START);
+  for (const a of J2.solve(v, sim)) sim.apply(a);   /* the home office as J2 left it: switch, PC, printer fixed and printing */
+  return { sim: sim, v: v, net: f.net };
+}
+/* the lines of a later job that ask for everything that worked to keep working */
+function keepCauses(sim, extra) {
+  if (!sim.wanUp()) return routerCauses(sim);
+  const down = firstDown(sim, [["tv", function (s) { return wiredCauses(s, "tv", "living"); }], ["pc", function (s) { return wiredCauses(s, "pc", "office"); }], ["phone", wifiCauses], ["laptop", wifiCauses]].filter(function (x) { return !extra || extra.indexOf(x[0]) < 0; }));
+  if (down.some(function (c) { return c.on; })) return down;
+  return printCauses(sim);
+}
+const L_KEEP = function (skip, what) {
+  return {
+    id: "keep", text: "Everything that worked before still works: " + what,
+    causes: function (sim) { return keepCauses(sim, skip); },
+    ok: function () { return cap(what) + ": all still working."; },
+    rung1: function () { return "Open each device the check names and read its network page. What did you move or change that it depended on?"; },
+    rung2: function () { return "A technician leaves a house better than they found it, never worse. Before you move a cable that works, know what it carries."; }
+  };
+};
+
+/* ---------------------------------------------------------------- J3 */
+function cameraCauses(sim) {
+  const x = sim.d.camera, c = sim.cableAt("camera", "LAN"), far = c && (c.a.dev === "camera" ? c.b : c.a), inj = far && sim.d[far.dev];
+  const isInj = !!inj && inj.kind === "injector" && far.port === "PoE OUT", a = sim.addr("camera");
+  const lan = sim.on("router") && sim.domain(sim.homeNode("camera")).has("router:lan");
+  return [
+    C("box", x.boxed, "The camera is still in its box", "It's out of its box, on its mount.", "The camera is still in its box."),
+    C("cable", !c, "Nothing is plugged into the camera", "Its port has a cable in it.", "The camera is dark: nothing is plugged into it."),
+    C("poe", c && !isInj, "Its cable doesn't come from a PoE injector's PoE OUT, so no power comes down it", "Its cable comes from an injector's PoE OUT.", "The camera is dark: no power comes down its cable."),
+    C("plug", isInj && !inj.power, "The injector's own power adapter isn't plugged in", "The injector is plugged in.", "The camera is dark, and so is the injector's Power light."),
+    C("data", isInj && !sim.cableAt(far.dev, "DATA IN"), "Nothing joins the injector's DATA IN to the network", "The injector's DATA IN is cabled.", "The camera has power (its light is on), but no link to the network."),
+    C("lan", !lan, "The injector's DATA IN doesn't lead to the router's house side", "It leads to the router's house side.", "The camera has power and a link, but no address came: " + (a && a.kind === "apipa" ? "it gave itself " + a.ip + "." : "nothing answers at the router's address.")),
+    C("addr", !a || a.kind === "apipa", "No address came from the router", "It has an address from the router.", "The camera has power, but no address.")
+  ];
+}
+function awayCauses(sim) {
+  const a = sim.addr("camera"), f = sim.d.router.forwards.find(function (x) { return +x.ext === 8443; }), o = sim.outside(8443);
+  return [
+    C("cam", !a || a.kind === "apipa", "The camera isn't on the network yet", "The camera is on the network.", "The camera isn't on the network yet."),
+    C("wan", !sim.wanUp(), "The router isn't online", "The router is online.", "The router has no internet."),
+    C("none", !f, "Nothing comes in from outside on port 8443", "The router forwards port 8443.", "The camera app on mobile data can't connect: the router lets nothing in on port 8443."),
+    C("where", f && f.ip !== a.ip, "Port 8443 is forwarded to an address that isn't the camera's", "Port 8443 goes to the camera's address.", "The camera app on mobile data can't connect: " + (o.why === "nobody" ? "nothing answered." : "the connection was refused.")),
+    C("port", f && f.port !== 443, "Port 8443 reaches the camera, but not the port its app uses", "It reaches the camera's app port.", "The camera app on mobile data connects to something, but gets no picture.")
+  ];
+}
+const J3 = {
+  id: "J3", title: "The porch camera, powered over its cable",
+  start(seed) {
+    const b = afterJ2(seed, ["camera", "injector"]), d = b.net.devices, heat = rng(hash("J3:" + seed))() < 0.5;
+    d.injector.label = "PoE injector (802.3af)"; d.injector.std = "af"; d.injector.power = true;
+    d.injector2 = Object.assign(JSON.parse(JSON.stringify(d.injector)), { id: "injector2", label: "PoE+ injector (802.3at)", sub: "802.3at", std: "at", boxed: true });
+    b.net.rooms.injector2 = "office";
+    d.camera.draw = heat ? 25.5 : 6.5; d.camera.sub = "DHCP";
+    b.v.heat = heat;
+    return { sim: b.sim, v: b.v };
+  },
+  brief(v) { return { quote: "I want a camera by the front door, and I want to see it on my phone when I'm away, at work or on holiday. " + (v.heat ? "I bought the one with a heater in it, for the winters here; the box is on the hall table. " : "The box is on the hall table. ") + "There's no power socket out on the porch, and I'm not having one put in.", from: "a camera for the porch" }; },
+  mason: "Read every label before you lay a cable. The power has to come down the same cable as the network.",
+  limits: function (v) { return ["The camera's box says: " + (v.heat ? "PoE+ (IEEE 802.3at), up to 25.5 W with its heater on." : "PoE (IEEE 802.3af), up to 6.5 W."), "In the van: an 802.3af PoE injector (15.4 W out) and an 802.3at PoE+ injector (30 W out).", "No power socket on the porch. A copper run is 100 m at most: each run's length shows as you lay it.", "No budget limit: use what the job needs."]; },
+  reqs: [{
+    id: "cam", text: "The camera on the porch, powered over its cable, on the network",
+    causes: function (sim) { return cameraCauses(sim).concat([C("wan", !sim.wanUp(), "The router itself isn't online", "The router is online.", "The camera has an address, but the router has no internet.")]); },
+    ok: function (sim) { return "The camera is on the porch, powered over its cable, at " + sim.addr("camera").ip + "."; },
+    rung1: function () { return "Open the camera's Web page and its Physical tab, then follow its cable back: what is at the other end, and which of its ports is it in?"; },
+    rung2: function () { return "Power over Ethernet comes from the PSE end: a PoE switch, or an injector between an ordinary switch and the device. The injector's DATA IN takes the network; its PoE OUT sends the network and the power on to the device."; }
+  }, {
+    id: "power", text: "Enough power for everything the camera does, night vision and all",
+    causes: function (sim, v) { return [C("off", !sim.on("camera"), "The camera isn't powered yet", "It's powered.", "The camera isn't powered yet."), C("short", sim.poeShort("camera"), "The injector gives less power than the camera can draw", "The injector gives it all it can draw.", "The camera's page says its power is limited: the heater and night vision are off.")]; },
+    ok: function (sim) { return "The camera runs on full power from the " + (sim.poeSource("camera").std === "at" ? "802.3at PoE+" : "802.3af PoE") + " injector."; },
+    rung1: function () { return "Compare two labels: the camera's box (in the limits) and the injector's (its Physical tab). Then read the Power line on the camera's Web page."; },
+    rung2: function () { return "Every PoE device has a power class. An 802.3af injector delivers about 13 W to the device; an 802.3at (PoE+) one about 25.5 W. A device that needs more than it gets may start, with its hungriest parts switched off."; }
+  }, {
+    id: "fixed", text: "The camera's address never changes",
+    causes: function (sim) { return fixedCauses(sim, "camera", cameraCauses(sim)); },
+    ok: function (sim) { const f = sim.d.camera.ifaces[0]; return f.cfg.mode === "static" ? "The camera is fixed at " + f.cfg.ip + ", outside the range the router hands out." : "The router always gives the camera " + sim.addr("camera").ip + ": it's reserved for its hardware address."; },
+    rung1: function () { return "Compare the camera's Web page with the router's DHCP clients page and its LAN & DHCP page."; },
+    rung2: function () { return "Anything that has to be found at the same address every time (a camera the router forwards to, a printer) needs an address that never moves: reserved for it on the router, or set by hand outside the range the router hands out."; }
+  }, {
+    id: "away", text: "The client can see the camera from away: the camera app on the phone, over mobile data",
+    causes: awayCauses,
+    ok: function (sim) { const o = sim.outside(8443); return "Port 8443 from outside reaches the camera at " + o.target + ": the camera app on mobile data shows the porch."; },
+    rung1: function () { return "Read the camera's Web page (how its app connects), then the router's Port forwarding page. Try the camera app on the phone, on mobile data."; },
+    rung2: function () { return "From the internet, only the router's public address can be reached. A port forward tells the router which device, and which port on it, gets the connections that arrive on an outside port. It only keeps working if that device's address doesn't change."; }
+  }, L_KEEP(null, "the internet, the TV, the office PC and its printer, the phone and the laptop")],
+  solve(v, sim) {
+    const inj = v.heat ? "injector2" : "injector", r = sim.d.router, ip = sim.net.prefix + "." + (+r.dhcp.end.split(".")[3] - 1);
+    return [{ t: "place", dev: inj, room: "office" }, { t: "place", dev: "camera", room: "porch" },
+      { t: "lay", a: E("switch", "4"), b: E(inj, "DATA IN") }, { t: "lay", a: E(inj, "PoE OUT"), b: E("camera", "LAN") },
+      { t: "router", page: "reservation-add", values: { name: "IP camera", mac: sim.d.camera.ifaces[0].mac, ip: ip } }, { t: "power", dev: "camera" },
+      { t: "router", page: "forward-add", values: { name: "Camera", ext: "8443", ip: ip, port: "443" } }];
+  },
+  answer(v, sim) {
+    return ["Read the camera's box: " + (v.heat ? "it needs 802.3at (PoE+): up to 25.5 W. The 802.3af injector would start it with no heater and no night vision; use the PoE+ injector." : "802.3af is enough (up to 6.5 W): either injector works."),
+      "Place the injector in the office by the switch, and the camera on the porch (its mount is fixed). A free switch port to the injector's DATA IN; the injector's PoE OUT to the camera (38 m, under 100 m).",
+      "Fix the camera's address: on the router's DHCP clients page, reserve one for its hardware address, then restart the camera (its Physical tab) so it asks again. Or set it by hand outside the range.",
+      "On the router's Port forwarding page: outside port 8443 to the camera's address, port 443 (the camera's Web page says so). Test it with the phone's camera app on mobile data."];
+  },
+  summary(v, sim) {
+    return ["The camera on the porch takes its power and its network down one cable, from the " + (sim.poeSource("camera").std === "at" ? "802.3at PoE+" : "802.3af PoE") + " injector in the office" + (v.heat ? ": enough for its heater and night vision." : "."),
+      "Its address never changes, so the forward to it keeps working after every power cut.",
+      "Port 8443 from the internet reaches the camera's port 443: the client sees the porch from anywhere.",
+      "Everything that worked before still works."];
+  }
+};
+
+/* ---------------------------------------------------------------- J4 */
+function bedroomCauses(sim) {
+  const l = sim.wifiLink("laptop");
+  const list = wifiCauses(sim, "laptop");
+  if (list.some(function (c) { return c.on; })) return list;
+  return list.concat([C("weak", l.signal < 45, "The signal in the back bedroom is too weak for video calls", "The signal there is strong.", "Laptop in the back bedroom: on " + l.ap.ssid + " at " + l.signal + "% (" + (l.band === 5 ? "5 GHz" : "2.4 GHz") + "), from the " + (l.ap.id === "mesh" ? "mesh node" : "router") + " in " + IN[l.ap.room] + ". Video calls break up below about 45%.")]);
+}
+function meshCauses(sim) {
+  const m = sim.d.mesh, ml = sim.meshLink(), cabled = sim.cablesOf("mesh").length > 0;
+  return [
+    C("box", m.boxed, "The mesh node is still in its box", "It's out of its box.", "The mesh node is still in its box."),
+    C("wire", cabled && !ml.ok, "The mesh node's cable doesn't lead to the router's house side", "Its cable leads to the router's house side.", "The mesh node's status ring is amber, and its cable doesn't lead back to the router's house side."),
+    C("weak", !ml.ok, "The mesh node is too far from the router for its wireless link", "Its wireless link to the router is strong.", "The mesh node's status ring is amber: its link back to the router is lost.")
+  ];
+}
+const J4 = {
+  id: "J4", title: "Wi-Fi to every room",
+  start(seed) {
+    const b = afterJ2(seed, ["mesh"], { laptop: "upstairs" });
+    b.net.devices.laptop.label = "Laptop"; b.net.devices.mesh.sub = "mesh node";
+    return { sim: b.sim, v: b.v };
+  },
+  brief(v) { return { quote: "My son's laptop has moved up to the back bedroom and his video calls keep breaking up. The Wi-Fi works everywhere downstairs. I bought a mesh node, it's still in the box. Can you sort it out so it reaches him?", from: "the Wi-Fi upstairs" }; },
+  mason: "Look at what the laptop sees before you place anything. A mesh node is only as good as its own link back to the router.",
+  limits: function () { return ["One mesh node, in its box. It joins the router's network by itself once it's set up and powered.", "A copper run is 100 m at most: each run's length shows as you lay it.", "No budget limit: use what the job needs."]; },
+  reqs: [{
+    id: "bedroom", text: "Video calls in the back bedroom upstairs: the laptop there on a strong Wi-Fi signal",
+    causes: bedroomCauses,
+    ok: function (sim) { const l = sim.wifiLink("laptop"); return "Laptop in the back bedroom: " + l.signal + "% (" + (l.band === 5 ? "5 GHz" : "2.4 GHz") + "), from the " + (l.ap.id === "mesh" ? "mesh node" : "router") + ". Plenty for video calls."; },
+    rung1: function () { return "Open the laptop's Wi-Fi tab (signal, band, channel), then the mesh node's Status page. Look at the house plan: which rooms are near the back bedroom?"; },
+    rung2: function () { return "Wi-Fi weakens with every wall, floor and metre, and 5 GHz weakens faster than 2.4 GHz. An extra access point helps the room it's near, if it can still reach the router."; }
+  }, {
+    id: "mesh", text: "The mesh node set up, with a good link back to the router",
+    causes: meshCauses,
+    ok: function (sim) { const ml = sim.meshLink(); return "The mesh node's link back to the router is " + (ml.kind === "wired" ? "a cable (wired backhaul)." : "strong: the router's 5 GHz signal there is " + ml.signal + "%."); },
+    rung1: function () { return "Open the mesh node's Status page and its Physical tab: what does it say about its backhaul, and what colour is its status ring?"; },
+    rung2: function () { return "A mesh node repeats the router's Wi-Fi, so it needs its own good link back (the backhaul): a cable to the router's house side, or a strong 5 GHz signal. Halfway between the router and the dead spot is the classic place."; }
+  }, L_KEEP(["laptop"], "the internet, the TV, the office PC and its printer, and the phone")],
+  solve() { return [{ t: "place", dev: "mesh", room: "landing" }]; },
+  answer() {
+    return ["The laptop upstairs gets about 44% from the router downstairs: not enough. The mesh node goes between them.",
+      "Either: place the mesh node on the landing at the top of the stairs (the router's 5 GHz reaches it at 56%, and it reaches the bedroom at 80%).",
+      "Or: place it in the back bedroom and give it a wired backhaul, a cable from a free router LAN port to its WAN port (15 m). In the bedroom with no cable its link is lost (24%)."];
+  },
+  summary(v, sim) {
+    const ml = sim.meshLink(), l = sim.wifiLink("laptop");
+    return ["The mesh node is " + (ml.kind === "wired" ? "wired back to the router (wired backhaul)" : "on " + IN[sim.net.rooms.mesh] + ", with a strong wireless link back to the router (" + ml.signal + "%)") + ".",
+      "The laptop in the back bedroom now gets " + l.signal + "%: video calls hold.",
+      "Everything that worked before still works."];
+  }
+};
+
+export const JOBS = [J1, J2, J3, J4];
 export const JOBS_COMING = [
-  { id: "J3", title: "The porch camera, powered over its cable" },
-  { id: "J4", title: "Wi-Fi to every room" },
   { id: "J5", title: "A guest Wi-Fi kept apart" }
 ];

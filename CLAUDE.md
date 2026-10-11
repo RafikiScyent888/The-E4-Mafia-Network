@@ -527,7 +527,7 @@ showed it first. The owner said "Keep going", so it is built with the
 defaults stated to them: the flow is place, cable, set up, then "Check the
 job"; placing and cabling are done from lists (keyboard and screen-reader
 friendly; drag can come later if wanted); the five jobs as previewed. It
-goes up in three verified pushes: **B1** (this one) the build page, its
+goes up in three verified pushes: **B1** the build page, its
 engine and checker, J1 and J2; **B2** J3 (the porch camera and the PoE
 budget) and J4 (Wi-Fi to every room: mesh placement); **B3** J5 (a guest
 Wi-Fi kept apart), free build, the five extra jobs, then the Under the Hood
@@ -577,8 +577,8 @@ tile link (decision 6). The Tickets | Build switch is in every page's bar.
   to it; one cable through the office wall (a switch shares it); everything
   that worked still works. A printer inside the range prints today and
   fails the check, which says why.
-- **The page** (`js/build/app.js`): the jobs list (J3 to J5 and free build
-  "Coming next"); the work order (the client's words, Mason, the order's
+- **The page** (`js/build/app.js`): the jobs list (after B2: J5 and free
+  build "Coming next"); the work order (the client's words, Mason, the order's
   lines, the limits); what's still in its box; Place or move a device;
   Lay a cable (the run's length shown before it is laid; ports in use
   listed but not choosable); Undo the last change; Put the house back as
@@ -601,6 +601,50 @@ tile link (decision 6). The Tickets | Build switch is in every page's bar.
   any way the network accepts passes), all of Mason's help, clearing build
   progress.
 
+**Build mode, B2 (11 October 2026): J3 and J4.**
+- **J3 The porch camera** (PoE budget). The house starts as J2 left it.
+  In the van: an 802.3af PoE injector (15.4 W out, about 13 W at the
+  device) and an 802.3at PoE+ one (30 W out, 25.5 W at the device), two
+  devices of kind `injector` (`injector`, `injector2`). The camera is one
+  of two by the house: a plain one (up to 6.5 W, 802.3af: either injector
+  works) or one with a heater for the winters (up to 25.5 W, 802.3at). On
+  802.3af the heater camera starts on limited power, with no heater and no
+  night vision (`sim.poeShort`, `POE`); its Web page says so, its status
+  light blinks amber, and its box label in the limits says what it needs.
+  Lines: the camera on the porch powered over its cable and on the network
+  (no power from a switch port or from DATA IN; the injector's adapter;
+  DATA IN cabled to the house side); enough power for everything it does;
+  its address never changes (the printer's line made general:
+  `fixedCauses`); viewable from away (the phone's camera app over mobile
+  data: a forward of outside port 8443 to the camera's port 443, which the
+  camera's Web page states, as its manual would); everything that worked
+  still works. A router fresh from its box has an "Add a port forward"
+  form and Remove buttons on its Port forwarding page.
+- **J4 Wi-Fi to every room** (mesh placement). The laptop is in the back
+  bedroom upstairs, on 44% from the router downstairs; video calls need
+  about 45%. In a build house the mesh node's link back to the router is
+  worked out (`sim.meshLink`): a cable from its WAN or LAN port that
+  leads to the router's house side (wired backhaul), or the router's
+  5 GHz signal where it stands, 40% or more. A build house's upstairs is
+  drawn as the back bedroom and a new **landing** at the top of the stairs
+  (the router's 5 GHz reaches it at 56%; it reaches the bedroom at 80%).
+  Two right answers: the node on the landing, or in the bedroom with a
+  cable back. In the bedroom with no cable its link is lost (24%): the
+  status ring is amber and its page says why. The tickets' mesh and
+  injector are unchanged (a test holds them to it).
+- **3D models:** the camera prints its PoE class by its port (the heater
+  camera says "PoE+ 802.3at": the photographed housing, only the printed
+  text changes); the injector model has an 802.3at label too. Neither is
+  a new shape. **The PoE injector is still built from the standard design:
+  send a photograph and it will be matched.**
+- Found by the new checks while building: a mesh node wired back to the
+  router broadcast no Wi-Fi (its access points had been limited to the
+  wireless case); the Place form left out a device with a fixed place
+  still in its box (the camera could not be unboxed onto its mount); and
+  AAA caught the 38 m camera run painting over "KITCHEN" at 1.01:1 (the
+  plan drew runs over the rooms' names, which the tickets' fixed runs
+  had always missed): the rooms' names now go above the runs.
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for
@@ -622,7 +666,7 @@ ways; a wrong fix not solving; putting the network back; reload keeps
 progress; the three views; easier reading persisting; the instructor
 tools: a wrong PIN refused, 3693 unlocking, the demo opening the chosen
 house, nothing revealed on the board, the PIN not in the code); AAA on painted
-pixels across 69 states (15 of them build mode) plus scrolled positions,
+pixels across 75 states (21 of them build mode) plus scrolled positions,
 measured with WebGL on so
 the 3D model's buttons and the Enlarge window are measured too (and one
 state with it off, for the fallback); `node tools/models.mjs` (the 3D
@@ -643,7 +687,11 @@ the modem-in-a-LAN-port cause never named; on the page, the inset rule or
 the mark removed from an unmet line, progress lost on reload, the modem's
 cable diverted to a LAN port). The AAA tool now scrolls to the top before
 a full-page measurement: a focused button had scrolled the page, and a
-full-page shot then paints the sticky bars over the middle of it.
+full-page shot then paints the sticky bars over the middle of it. B2's
+plants: no PoE budget, any backhaul holding, any cable counting as wired,
+a forward to any camera port accepted, power taken from DATA IN, the
+weak-signal line at 40% (the house's 44% would pass); on the page, a
+boxed camera missing from the Place form.
 
 ## Objectives
 

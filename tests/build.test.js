@@ -11,6 +11,9 @@ import * as B from "../js/build/engine.js";
 import { exec } from "../js/net/cmd.js";
 import { runLength } from "../js/net/sim.js";
 import { rng } from "../js/net/util.js";
+import { HOME_TICKETS as TICKETS } from "../js/tickets/home.js";
+import * as TE from "../js/tickets/engine.js";
+import { physicalState } from "../js/net/physical.js";
 
 const N = Number(process.env.SEEDS || 150);
 const byId = Object.fromEntries(JOBS.map((d) => [d.id, d]));
@@ -25,7 +28,7 @@ test("every job starts with its work still to do, for the real reason", () => {
   for (const def of JOBS) for (const s of seeds(def.id)) {
     const J = B.open(def, s), c = B.check(J);
     for (const r of c.res) {
-      if (def.id === "J2" && r.id === "keep") { assert.ok(r.ok, "J2 starts with the house working"); continue; }
+      if (r.id === "keep") { assert.ok(r.ok, def.id + " starts with the house working"); continue; }
       assert.equal(r.ok, false, def.id + " " + r.id + " met before any work, seed " + s);
       assert.ok(r.ev && r.ev.length > 10, def.id + " " + r.id + ": no evidence");
     }
@@ -146,6 +149,103 @@ test("J2: the tempting wrong ways fail the right line, for the right reason", ()
   }
 });
 
+test("J3: the tempting wrong ways fail the right line, for the right reason; other right ways pass", () => {
+  let heat = 0;
+  for (const s of seeds("J3").slice(0, 80)) {
+    const def = byId.J3, J0 = B.open(def, s), v = J0.v, sol = def.solve(v, J0.sim), inj = v.heat ? "injector2" : "injector", other = v.heat ? "injector" : "injector2";
+    if (v.heat) heat++;
+    const tryIt = function (acts) { const J = B.open(def, s); run(J, acts); return J; };
+    const swapInj = (a) => JSON.parse(JSON.stringify(a).split('"' + inj + '"').join('"' + other + '"'));
+    /* the other injector: right for the plain camera, short for the one with the heater */
+    let J = tryIt(sol.map(swapInj));
+    if (v.heat) { assert.equal(line(J, "power").real.id, "short"); assert.ok(line(J, "cam").ok, "it starts, on limited power"); assert.match(line(J, "power").ev, /limited/); }
+    else assert.ok(solved(J), "the plain camera runs on either injector");
+    /* straight into the switch: no power; the injector the wrong way round: no power either */
+    J = tryIt([{ t: "place", dev: "camera", room: "porch" }, { t: "lay", a: E("switch", "4"), b: E("camera", "LAN") }]);
+    assert.equal(line(J, "cam").real.id, "poe"); assert.equal(line(J, "power").real.id, "off");
+    J = tryIt([{ t: "place", dev: inj, room: "office" }, { t: "place", dev: "camera", room: "porch" }, { t: "lay", a: E("switch", "4"), b: E(inj, "PoE OUT") }, { t: "lay", a: E(inj, "DATA IN"), b: E("camera", "LAN") }]);
+    assert.equal(line(J, "cam").real.id, "poe");
+    /* powered, but the injector's DATA IN left empty; the injector's own adapter pulled */
+    J = tryIt(sol.slice(0, 2).concat([sol[3]]));
+    assert.equal(line(J, "cam").real.id, "data"); assert.equal(J.sim.on("camera"), true);
+    J = tryIt(sol.concat([{ t: "injector", dev: inj, values: { power: false } }]));
+    assert.equal(line(J, "cam").real.id, "plug");
+    /* its address: on DHCP with nothing to hold it; reserved but not restarted */
+    J = tryIt(sol.slice(0, 4));
+    assert.equal(line(J, "fixed").real.id, "float"); assert.ok(line(J, "cam").ok);
+    const lease = J.sim.addr("camera").ip, want = sol[4].values.ip;
+    J = tryIt(sol.slice(0, 5));
+    if (lease !== want) assert.equal(line(J, "fixed").real.id, "stale");
+    /* the forward: none, to the wrong address, to the wrong port */
+    J = tryIt(sol.slice(0, 6));
+    assert.equal(line(J, "away").real.id, "none"); assert.ok(line(J, "fixed").ok);
+    J = tryIt(sol.slice(0, 6).concat([{ t: "router", page: "forward-add", values: { name: "Camera", ext: "8443", ip: J0.sim.net.prefix + ".5", port: "443" } }]));
+    assert.equal(line(J, "away").real.id, "where", "forwarded to the printer");
+    J = tryIt(sol.slice(0, 6).concat([{ t: "router", page: "forward-add", values: { name: "Camera", ext: "8443", ip: want, port: "554" } }]));
+    assert.equal(line(J, "away").real.id, "port");
+    /* other right ways: the injector by the camera on the porch, and the camera fixed by hand outside the range */
+    J = tryIt([{ t: "place", dev: inj, room: "porch" }].concat(sol.slice(1)));
+    assert.ok(solved(J), "the injector on the porch, the long run before it");
+    J = tryIt(sol.slice(0, 4).concat([{ t: "client", dev: "camera", values: { mode: "static", ip: J0.sim.net.prefix + ".6", mask: J0.sim.d.router.lan.mask, gw: J0.sim.d.router.lan.ip } }, { t: "router", page: "forward-add", values: { name: "Cam", ext: "8443", ip: J0.sim.net.prefix + ".6", port: "443" } }]));
+    assert.ok(solved(J), "fixed by hand outside the range: " + JSON.stringify(J.last.res.filter((x) => !x.ok)));
+  }
+  assert.ok(heat > 15 && heat < 65, "both cameras generated (" + heat + " of 80 with the heater)");
+});
+
+test("J4: in the dead spot with no way back fails; the landing, or the bedroom with a cable back, passes", () => {
+  for (const s of seeds("J4").slice(0, 80)) {
+    const def = byId.J4, J0 = B.open(def, s), free = ["LAN 1", "LAN 3", "LAN 4"].find((p) => !J0.sim.cableAt("router", p));
+    const tryIt = function (acts) { const J = B.open(def, s); run(J, acts); return J; };
+    let J = tryIt([{ t: "place", dev: "mesh", room: "upstairs" }]);
+    assert.equal(line(J, "mesh").real.id, "weak"); assert.equal(line(J, "bedroom").real.id, "weak");
+    assert.match(line(J, "bedroom").ev, /44%/);
+    J = tryIt([{ t: "place", dev: "mesh", room: "living" }]);
+    assert.ok(line(J, "mesh").ok); assert.equal(line(J, "bedroom").real.id, "weak", "beside the router it helps nobody upstairs");
+    J = tryIt([{ t: "place", dev: "mesh", room: "kitchen" }]);
+    assert.equal(line(J, "bedroom").real.id, "weak");
+    J = tryIt([{ t: "place", dev: "mesh", room: "landing" }]);
+    assert.ok(solved(J), "the landing");
+    assert.equal(J.sim.wifiLink("laptop").ap.id, "mesh");
+    J = tryIt([{ t: "place", dev: "mesh", room: "upstairs" }, { t: "lay", a: E("router", free), b: E("mesh", "WAN") }]);
+    assert.ok(solved(J), "the bedroom, wired back: " + JSON.stringify(J.last.res.filter((x) => !x.ok)));
+    assert.equal(J.sim.meshLink().kind, "wired");
+    /* a cable that leads nowhere: the TV's freed port */
+    J = tryIt([{ t: "pull", cable: J0.sim.cableAt("tv", "LAN").id }, { t: "place", dev: "mesh", room: "upstairs" }, { t: "place", dev: "tv", room: "living" }, { t: "lay", a: E("tv", "LAN"), b: E("mesh", "LAN") }]);
+    assert.equal(line(J, "mesh").real.id, "wire"); assert.equal(line(J, "keep").real.id, "lan");
+  }
+});
+
+test("the 3D models show B2's states: the mesh node's ring, the PoE+ labels, the camera on limited power", () => {
+  for (const s of seeds("J4").slice(0, 30)) {
+    const J = B.open(byId.J4, s);
+    run(J, [{ t: "place", dev: "mesh", room: "upstairs" }]);
+    let M = physicalState(J.sim, "mesh"), ring = M.leds.find((l) => l.role === "STATUS");
+    assert.deepEqual([ring.state, ring.color], ["on", "amber"], "no link back: the ring is amber");
+    run(J, [{ t: "place", dev: "mesh", room: "landing" }]);
+    M = physicalState(J.sim, "mesh"); ring = M.leds.find((l) => l.role === "STATUS");
+    assert.deepEqual([ring.state, ring.color], ["on", "green"]);
+  }
+  for (const s of seeds("J3").slice(0, 40)) {
+    const J = B.open(byId.J3, s), sol = byId.J3.solve(J.v, J.sim);
+    run(J, sol.map((a) => JSON.parse(JSON.stringify(a).split('"injector2"').join('"injector"'))));   /* always the 802.3af one */
+    const C2 = physicalState(J.sim, "camera"), says = C2.says.join(" ");
+    if (J.v.heat) { assert.equal(C2.opts.poe, "PoE+ 802.3at"); assert.match(says, /PoE\+ 802\.3at, up to 25\.5 W/); assert.match(says, /limited power/); }
+    else { assert.equal(C2.opts.poe, undefined); assert.doesNotMatch(says, /limited/); }
+    run(J, [{ t: "place", dev: "injector2", room: "office" }]);
+    const I2 = physicalState(J.sim, "injector2");
+    assert.equal(I2.model, "injector"); assert.equal(I2.opts.std, "at"); assert.match(I2.says.join(" "), /IEEE 802\.3at/);
+    assert.equal(I2.leds.find((l) => l.role === "PoE").state, "off", "the spare injector powers nothing");
+    assert.equal(physicalState(J.sim, "injector").leds.find((l) => l.role === "PoE").state, "on");
+  }
+});
+
+test("the tickets' mesh and injector behave exactly as before (build houses only work them out)", () => {
+  for (const id of ["HOME-04", "HOME-13"]) for (const s of [1, 2, 3, 4, 5]) {
+    const T = TE.open(TICKETS.find((d) => d.id === id), s);
+    if (T.sim.d.mesh) assert.deepEqual(T.sim.meshLink(), { ok: T.sim.d.mesh.backhaul.ok && T.sim.on("mesh") && T.sim.on("router"), kind: T.sim.on("mesh") && T.sim.on("router") ? "wifi" : null, signal: T.sim.on("mesh") && T.sim.on("router") ? (T.sim.d.mesh.backhaul.ok ? 74 : 0) : undefined });
+  }
+});
+
 test("cabled in any order: a PC on a switch that reaches the router later still gets its address", () => {
   for (const s of seeds("J2").slice(0, 40)) {
     const def = byId.J2, J = B.open(def, s);
@@ -223,7 +323,10 @@ test("a saved job replays exactly", () => {
 test("Mason: nothing for two failing checks, then where to look, the principle, and two options forever", () => {
   for (const def of JOBS) for (const s of seeds(def.id).slice(0, 40)) {
     const J = B.open(def, s);
-    const wrong = def.id === "J1" ? [{ t: "place", dev: "router", room: "living" }, { t: "place", dev: "pc", room: "office" }, { t: "lay", a: E("modem", "ETH"), b: E("router", "LAN 1") }] : [{ t: "place", dev: "pc", room: "office" }, { t: "place", dev: "switch", room: "office" }, { t: "lay", a: E("switch", "1"), b: E("pc", "NIC") }];
+    const wrong = { J1: [{ t: "place", dev: "router", room: "living" }, { t: "place", dev: "pc", room: "office" }, { t: "lay", a: E("modem", "ETH"), b: E("router", "LAN 1") }],
+      J2: [{ t: "place", dev: "pc", room: "office" }, { t: "place", dev: "switch", room: "office" }, { t: "lay", a: E("switch", "1"), b: E("pc", "NIC") }],
+      J3: [{ t: "place", dev: "camera", room: "porch" }, { t: "lay", a: E("switch", "4"), b: E("camera", "LAN") }],   /* straight into the switch: no power */
+      J4: [{ t: "place", dev: "mesh", room: "upstairs" }] }[def.id];   /* in the dead spot itself, with no way back */
     run(J, wrong);
     const seen = [];
     for (let k = 1; k <= 12; k++) { B.check(J); const m = B.mason(J); seen.push(m ? m.rung : 0); if (m && m.rung === 3) {

@@ -398,5 +398,37 @@
   "name": "desk: the Tickets/Build switch, hovered",
   "page": "index.html",
   "after": "document.querySelector('.chrome nav[aria-label=Mode] a[href=\"build.html\"]').focus()"
+ },
+ {
+  "name": "build: J3 heater camera on 802.3af, its page and Mason",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; let s=1; for(;s<60;s++){ c.openJob('J3',true,s); if(c.T.v.heat) break; } const J=c.T; J.def.solve(J.v,J.sim).map(a=>JSON.parse(JSON.stringify(a).split('\"injector2\"').join('\"injector\"'))).forEach(a=>c.act(a)); for(let i=0;i<4;i++) c.check(); document.querySelector('#devtabs [data-d=camera]').click(); "
+ },
+ {
+  "name": "build: J3 router port forwarding, a rule and the Add form",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J3',true,4242); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Port forwarding').click(); "
+ },
+ {
+  "name": "build: J3 PoE+ injector, 3D model",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; let s=1; for(;s<60;s++){ c.openJob('J3',true,s); if(c.T.v.heat) break; } const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); document.querySelector('#devtabs [data-d=injector2]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click(); ",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "build: J3 camera with the heater, 3D model on limited power",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; let s=1; for(;s<60;s++){ c.openJob('J3',true,s); if(c.T.v.heat) break; } const J=c.T; J.def.solve(J.v,J.sim).map(a=>JSON.parse(JSON.stringify(a).split('\"injector2\"').join('\"injector\"'))).forEach(a=>c.act(a)); for(let i=0;i<4;i++) c.check(); document.querySelector('#devtabs [data-d=camera]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click(); ",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "build: J4 mesh node in the bedroom, link lost",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J4',true,4242); c.act({t:'place',dev:'mesh',room:'upstairs'}); for(let i=0;i<5;i++) c.check(); document.querySelector('#devtabs [data-d=mesh]').click(); "
+ },
+ {
+  "name": "build: J4 done, mesh on the landing, logical view",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J4',true,4242); c.act({t:'place',dev:'mesh',room:'landing'}); c.check(); document.getElementById('vLog').click(); document.querySelector('#devtabs [data-d=laptop]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Wi-Fi').click(); "
  }
 ]

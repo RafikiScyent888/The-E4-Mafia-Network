@@ -15,8 +15,8 @@ import { setupInstructor } from "../desk/instructor.js";
 
 const KEY = "e4-build-v1";
 const DEFS = {}; JOBS.forEach(function (d) { DEFS[d.id] = d; });
-const ORDER = ["modem", "router", "switch", "pc", "printer", "tv", "injector", "camera", "mesh", "phone", "laptop"];
-const ROOM_ORDER = ["living", "office", "kitchen", "garage", "upstairs", "porch"];
+const ORDER = ["modem", "router", "switch", "pc", "printer", "tv", "injector", "injector2", "camera", "mesh", "phone", "laptop"];
+const ROOM_ORDER = ["living", "office", "kitchen", "garage", "upstairs", "landing", "porch"];
 const $ = function (id) { return document.getElementById(id); };
 const cap = function (s) { return s[0].toUpperCase() + s.slice(1); };
 const S = load();
@@ -89,14 +89,14 @@ function renderBuild() {
   const J = ctx.T, sim = J.sim, host = $("bm"), keepFocus = document.activeElement && host.contains(document.activeElement) ? document.activeElement.id : null;
   host.innerHTML = "";
   host.appendChild(el("h3", null, "Limits on this job"));
-  const lim = el("ul", { class: "limits" }); J.def.limits.forEach(function (t) { lim.appendChild(el("li", null, t)); }); host.appendChild(lim);
+  const lim = el("ul", { class: "limits" }); (typeof J.def.limits === "function" ? J.def.limits(J.v, J.sim) : J.def.limits).forEach(function (t) { lim.appendChild(el("li", null, t)); }); host.appendChild(lim);
   const boxed = devices(sim).filter(function (id) { return sim.d[id].boxed; });
   host.appendChild(el("h3", null, "In the box, not placed yet"));
   if (boxed.length) { const tr = el("ul", { class: "tray" }); boxed.forEach(function (id) { tr.appendChild(el("li", null, sim.d[id].label)); }); host.appendChild(tr); }
   else host.appendChild(el("p", { class: "note", style: "margin:4px 0 0" }, "Nothing: everything is out of its box."));
 
   /* place or move */
-  const movable = devices(sim).filter(function (id) { return !FIXED_ROOM[sim.d[id].kind]; });
+  const movable = devices(sim).filter(function (id) { return !FIXED_ROOM[sim.d[id].kind] || sim.d[id].boxed; });   /* a device with a fixed place can still come out of its box (onto its mount); once there it stays */
   const dsel = el("select", { id: "bmDev", name: "dev" }), rsel = el("select", { id: "bmRoom", name: "room" });
   movable.forEach(function (id) { dsel.appendChild(el("option", { value: id }, sim.d[id].label + (sim.d[id].boxed ? " (in its box)" : " (in " + IN[sim.net.rooms[id]] + ")"))); });
   if (boxed.length) dsel.value = boxed.filter(function (id) { return movable.indexOf(id) >= 0; })[0] || dsel.value;

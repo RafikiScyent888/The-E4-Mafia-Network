@@ -7,7 +7,7 @@ import { isIp } from "./util.js";
 const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh" };
 
 export function tabsFor(sim, id) {
-  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || id === "injector" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
+  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
   const T = {
     pc: [["cmd", "Command Prompt"], ["settings", "Network settings"], ["printers", "Printers"]],
     laptop: [["cmd", "Command Prompt"], ["wifi", "Wi-Fi"]],
@@ -70,8 +70,8 @@ export function page(sim, id, key) {
       const cx = sim.cable("c-coax"); cables.forEach(function (k) { if (k.cable === "c-coax") k.name = "Coax cable at the modem's CABLE IN"; });
       cables.push({ cable: "c-coax", end: "a", name: "Coax cable at the wall outlet (behind the TV stand)", acts: ["look", "tighten"] });
     }
-    const inj = id === "injector" ? { power: !!x.power, std: x.std } : null;
-    return { kind: "physical", still: STILL[id] ? "assets/stills/" + STILL[id] + ".jpg" : null, label: x.label, cables: cables, restart: id !== "injector", injector: inj,
+    const inj = x.kind === "injector" ? { power: !!x.power, std: x.std, swap: !sim.net.extra.build } : null;   /* in a build house the right injector comes out of the van, not a swap */
+    return { kind: "physical", still: STILL[id] ? "assets/stills/" + STILL[id] + ".jpg" : null, label: x.label, cables: cables, restart: x.kind !== "injector", injector: inj,
       facts: { page: id + "-physical", rogue: id === "rogue", injector: inj, camera: id === "camera" ? sim.on("camera") : undefined } };
   }
   if (id === "router") {
@@ -98,7 +98,7 @@ export function page(sim, id, key) {
       return { kind: "table", title: "DHCP clients", head: ["Device", "Hardware address", "IP address", "Type"], rows: rows, reserve: true, reservations: resv.map(function (v) { return [v.name, v.mac, v.ip]; }), leaseH: r.dhcp.leaseH,
         note: inRange + " of " + size + " addresses in the range are leased. Leases last " + r.dhcp.leaseH + " hours; a device keeps its address that long even after it leaves.", facts: { page: "router-clients", count: inRange, size: size, rows: rows, leaseH: r.dhcp.leaseH } };
     }
-    if (key === "forward") return { kind: "form", form: "router-forward", title: "Port forwarding", rules: r.forwards.map(function (f) { return { name: f.name, ext: f.ext, ip: f.ip, port: f.port }; }), wan: sim.wan() ? sim.wan().ip : "0.0.0.0", facts: { page: "router-forward", rules: r.forwards.map(function (f) { return { ext: f.ext, ip: f.ip, port: f.port }; }) } };
+    if (key === "forward") return { kind: "form", form: "router-forward", title: "Port forwarding", add: !!r.factorySsid, rules: r.forwards.map(function (f) { return { name: f.name, ext: f.ext, ip: f.ip, port: f.port }; }), wan: sim.wan() ? sim.wan().ip : "0.0.0.0", facts: { page: "router-forward", rules: r.forwards.map(function (f) { return { ext: f.ext, ip: f.ip, port: f.port }; }) } };
     if (key === "wifi") return { kind: "form", form: "router-wifi", title: "Wi-Fi", values: { ssid: r.wifi.ssid, sec: r.wifi.sec, changed: (r.wifi.gen || 1) > 1, rename: !!r.factorySsid, factory: !!r.factorySsid && (r.wifi.gen || 1) === 1, bssids: sim.aps().filter(function (a) { return a.id === "router"; }).map(function (a) { return [a.band === 5 ? "5 GHz" : "2.4 GHz", a.mac.toUpperCase().replace(/-/g, ":")]; }), ch24: r.wifi.ch24mode === "auto" ? "auto" : String(r.wifi.ch24), ch24now: sim.ch24(), ch5: String(r.wifi.ch5) }, facts: { page: "router-wifi", ch24: sim.ch24(), mode: r.wifi.ch24mode, sec: r.wifi.sec } };
   }
   if (id === "modem") {
@@ -158,15 +158,22 @@ export function page(sim, id, key) {
   if (id === "camera" && key === "web") {
     const a = sim.addr("camera"), up = a && sim.route("camera", "203.0.113.80").internet;
     if (!a) return { kind: "rows", title: "Web page", rows: [["Camera's page", "This page can't be reached: nothing answers at the camera's address"]], facts: { page: "camera-web", ip: null, online: false } };
-    return { kind: "rows", title: "Web page", rows: [["Camera", a ? "Online, recording" : "Offline"], ["IP address", a ? a.ip + (a.kind === "dhcp" ? " (from DHCP)" : " (static)") : "--"], ["Gateway", a && a.gw || "--"], ["Cloud viewing", up ? "Connected" : "Can't reach the internet"]], facts: { page: "camera-web", ip: a && a.ip, online: true } };
+    const rows = [["Camera", a ? "Online, recording" : "Offline"], ["IP address", a ? a.ip + (a.kind === "dhcp" ? " (from DHCP)" : " (static)") : "--"], ["Gateway", a && a.gw || "--"], ["Cloud viewing", up ? "Connected" : "Can't reach the internet"]];
+    if (sim.net.extra.build) {   /* build mode: what it's powered by, and how the app reaches it from away (as its manual says) */
+      const inj = sim.poeSource("camera"), short = sim.poeShort("camera");
+      rows.push(["Power", (inj.std === "at" ? "PoE+ (802.3at)" : "PoE (802.3af)") + (short ? ": limited. The heater and night vision are off (they need up to " + x.draw + " W)" : ": full")]);
+      rows.push(["Viewing from away", "The app connects to the house's public address on port 8443. Forward that port to this camera's port 443."]);
+    }
+    return { kind: "rows", title: "Web page", rows: rows, facts: { page: "camera-web", ip: a && a.ip, online: true } };
   }
   if (id === "tv" && key === "net") {
     const a = sim.addr("tv"), up = a && sim.route("tv", "203.0.113.80").internet, dns = a && a.dns.some(function (s) { return sim.dnsServerWorks("tv", s); });
     return { kind: "rows", title: "Network status", rows: [["Wired (LAN)", a ? "Connected" : "Not connected"], ["IP address", a ? a.ip : "--"], ["Gateway", a && a.gw || "--"], ["DNS", a && a.dns.length ? a.dns.join(", ") : "--"], ["Internet", up && dns ? "Connected" : up ? "Connected, but names don't look up" : "No internet"]], facts: { page: "tv-net", internet: !!(up && dns) } };
   }
   if (id === "mesh" && key === "status") {
-    const m = x, a = sim.addr("mesh"), n = Object.keys(sim.d).filter(function (k) { const l = sim.wifiLink(k); return l && l.connected && l.ap.id === "mesh"; }).length;
-    return { kind: "rows", title: "Status", rows: [["Mode", "Access point (wireless bridge to the router)"], ["Backhaul to the router", m.backhaul.ok && sim.on("router") ? "5 GHz, good (signal 74%, 866 Mb/s)" : "Lost: can't reach the router"], ["2.4 GHz channel", String(sim.ch24()) + " (follows the router)"], ["Clients on this node", String(n)], ["IP address", a ? a.ip : "--"]], facts: { page: "mesh-status", backhaul: m.backhaul.ok, clients: n } };
+    const m = x, a = sim.addr("mesh"), n = Object.keys(sim.d).filter(function (k) { const l = sim.wifiLink(k); return l && l.connected && l.ap.id === "mesh"; }).length, ml = sim.meshLink();
+    const bh = ml.ok ? (ml.kind === "wired" ? "Wired (Ethernet), 1 Gb/s" : "5 GHz, good (signal " + ml.signal + "%, " + (ml.signal > 70 ? 866 : 400) + " Mb/s)") : ml.kind === "wifi" && sim.net.extra.build ? "Lost: the router's 5 GHz signal here is " + ml.signal + "%, too weak to hold a link (it needs 40%)" : "Lost: can't reach the router";
+    return { kind: "rows", title: "Status", rows: [["Mode", ml.kind === "wired" ? "Access point (wired to the router)" : "Access point (wireless bridge to the router)"], ["Backhaul to the router", bh], ["2.4 GHz channel", String(sim.ch24()) + " (follows the router)"], ["Clients on this node", String(n)], ["IP address", a ? a.ip : "--"]], facts: { page: "mesh-status", backhaul: ml.ok, clients: n } };
   }
   if (x.kind === "phone" && key === "wifi") {
     const l = sim.wifiLink(id), a = sim.addr(id), up = !!(a && sim.route(id, "203.0.113.80").internet);

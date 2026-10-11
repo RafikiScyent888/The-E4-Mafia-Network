@@ -244,16 +244,18 @@ const place = async (p, d, room) => { await p.selectOption("#bmDev", d); await p
 const lay = async (p, a, ap, b, bp) => { await p.selectOption("#bmAd", a); await p.selectOption("#bmAp", ap); await p.selectOption("#bmBd", b); await p.selectOption("#bmBp", bp); await p.click("#bmLay"); await p.waitForTimeout(40); };
 const checkJob = async (p) => { await p.click("#doCheck"); await p.waitForTimeout(40); return p.$eval("#check", (n) => n.textContent); };
 const BJ = (p, f) => p.evaluate(f);
-for (const job of ["J1", "J2"].filter((k) => !process.env.ONLY || k === process.env.ONLY)) for (const seed of [11, 2025, 777777]) {
+for (const job of ["J1", "J2", "J3", "J4"].filter((k) => !process.env.ONLY || k === process.env.ONLY)) for (const seed of [11, 2025, 777777, 3]) {
+  if (seed === 3 && job !== "J3") continue;   /* house 3 has the camera with the heater: J3 is driven on both cameras */
   const { p, ctx } = await bpage(job, seed);
   const tag = "build " + job + " " + seed + ": ";
   try {
   check((await BJ(p, () => window.__e4b.T.seed)) === seed && (await BJ(p, () => window.__e4b.T.def.id)) === job, tag + "opens the job on the house asked for");
   const boxed = await BJ(p, () => Object.keys(window.__e4b.T.sim.d).filter((k) => window.__e4b.T.sim.d[k].boxed));
-  check(boxed.length >= 3 && (await p.$$eval(".tray li", (l) => l.length)) === boxed.length, tag + "everything still boxed is in the tray");
+  check(boxed.length >= 1 && (await p.$$eval(".tray li", (l) => l.length)) === boxed.length, tag + "everything still boxed is in the tray");
+  check(await p.$$eval("#bmDev option", (l, bx) => bx.every((id) => l.some((o) => o.value === id)), boxed), tag + "every boxed device can be placed from the form");
   check(boxed.every((k) => true) && !(await p.$('#plan [data-d="' + boxed[0] + '"]')) && !(await p.$('#devtabs [data-d="' + boxed[0] + '"]')), tag + "a boxed device is on neither the plan nor the device buttons");
   let t = await checkJob(p);
-  check(/Check 1:/.test(t) && (await p.$$("#check .rq.bad")).length >= 4, tag + "the first check finds the work to do");
+  check(/Check 1:/.test(t) && (await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => q.id !== "keep").length)), tag + "the first check finds the work to do (every line but keeping what works)");
   check(await p.$$eval("#check .rq.bad", (l) => l.every((x) => { const mk = x.querySelector(".mk"), st = getComputedStyle(mk); return /Not met yet/.test(x.textContent) && /✕/.test(mk.textContent) && st.display !== "none" && st.visibility !== "hidden" && parseFloat(st.fontSize) >= 14 && getComputedStyle(x).boxShadow !== "none"; })), tag + "each unmet line is marked three ways (the words, the cross, the inset rule), never colour alone");
   if (job === "J1") {
     await place(p, "router", "living"); await place(p, "pc", "office"); await place(p, "tv", "living");
@@ -286,6 +288,38 @@ for (const job of ["J1", "J2"].filter((k) => !process.env.ONLY || k === process.
     await dev(p, "phone"); await p.click('.pane button:text-is("Join ' + home + ' (enter the password)")'); await p.waitForTimeout(40);
     check(/Joined/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the phone joins by name");
     await dev(p, "laptop"); await tab(p, "Wi-Fi"); await p.click('.pane li:has-text("' + home + '") button:text-is("Connect (enter the password)")'); await p.waitForTimeout(40);
+  } else if (job === "J3") {
+    const heat = await BJ(p, () => window.__e4b.T.v.heat), inj = heat ? "injector2" : "injector";
+    check(/In the van: an 802\.3af PoE injector \(15\.4 W out\) and an 802\.3at PoE\+ injector \(30 W out\)/.test(await p.$eval("#bm", (n) => n.textContent)), tag + "the limits name both injectors' budgets");
+    if (heat) {   /* the 802.3af one first: it starts, on limited power, and the camera's own page says so */
+      await place(p, "injector", "office"); await place(p, "camera", "porch");
+      await lay(p, "switch", "4", "injector", "DATA IN"); await lay(p, "injector", "PoE OUT", "camera", "LAN");
+      await dev(p, "camera"); check(/limited\. The heater and night vision are off/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the camera's page says its power is limited");
+      t = await checkJob(p); check(/its power is limited/.test(t), tag + "the check says the power is limited");
+      await p.click('#runs tr:has-text("PoE OUT") button:text-is("Pull")'); await p.waitForTimeout(40);
+      await p.click('#runs tr:has-text("DATA IN") button:text-is("Pull")'); await p.waitForTimeout(40);
+      await place(p, "injector2", "office");
+      await lay(p, "switch", "4", "injector2", "DATA IN"); await lay(p, "injector2", "PoE OUT", "camera", "LAN");
+    } else {
+      await place(p, inj, "office"); await place(p, "camera", "porch");
+      await lay(p, "switch", "4", inj, "DATA IN"); await lay(p, inj, "PoE OUT", "camera", "LAN");
+    }
+    check(/38 m, the office to by the front door/.test(await p.$eval("#runs", (n) => n.textContent)), tag + "the run to the porch is 38 m");
+    await dev(p, "camera"); check(/Power(PoE\+ \(802\.3at\)|PoE \(802\.3af\)): full/.test((await p.$eval(".pane", (n) => n.textContent)).replace(/\s+/g, "")) || /: full/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the camera's page says full power");
+    const cam = await BJ(p, () => window.__e4b.T.sim.addr("camera").ip);
+    await dev(p, "router"); await tab(p, "DHCP clients"); await p.click('.pane button[aria-label^="Reserve ' + cam + '"]'); await p.waitForTimeout(40);
+    await tab(p, "Port forwarding");
+    await p.fill('.devform input[name="name"]', "Camera"); await p.fill('.devform input[name="ext"]', "8443"); await p.fill('.devform input[name="ip"]', cam); await p.fill('.devform input[name="port"]', "443");
+    await p.click('.devform button:text-is("Add")'); await p.waitForTimeout(40);
+    check(/Added: outside port 8443 goes to/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the router says the forward was added");
+    await dev(p, "phone"); await p.click('.pane button:text-is("Open the camera app on mobile data")'); await p.waitForTimeout(40);
+    check(/Camera app: connected/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the camera app connects from outside");
+  } else if (job === "J4") {
+    await place(p, "mesh", "upstairs");   /* in the dead spot itself: its link back is lost */
+    t = await checkJob(p); check(/status ring is amber/.test(t) && /44%/.test(t), tag + "in the bedroom with no way back: the check says the ring is amber and the laptop still gets 44%");
+    await dev(p, "mesh"); check(/too weak to hold a link/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the mesh node's page says its backhaul is too weak");
+    await place(p, "mesh", "landing");
+    await dev(p, "laptop"); await tab(p, "Wi-Fi"); check(/5 GHz/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the laptop moves to the mesh node's 5 GHz");
   } else {
     await place(p, "switch", "office"); await place(p, "pc", "office"); await place(p, "printer", "office");
     await lay(p, "router", "LAN 1", "switch", "1"); await lay(p, "switch", "2", "pc", "NIC"); await lay(p, "switch", "3", "printer", "NET");

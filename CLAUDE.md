@@ -123,6 +123,13 @@ build step, served from `main` by GitHub Pages.
 6. **Placement:** the Under the Hood Labs tile (repo `under-the-hood-labs`
    and the Command Center's tile), **between A+ Core 2 and Security
    Start-up Firewall**. Add the link only once the first slice is live.
+   **Done 11 October 2026**, once the home level's tickets and build mode
+   were live: "The E4 Mafia Network" is link 3 of 5 on the standalone
+   tile page (`under-the-hood-labs`, commit adcee28) and in the Command
+   Center 2.0 hub's Under the Hood tile (commit 88eb475), linking to
+   https://rafikiscyent888.github.io/The-E4-Mafia-Network/ (the address
+   GitHub's own Pages deployment reports). Both repos' `verify/page.mjs`
+   expect it in that place.
 
 ## Built like the real world, as one giant teaching tool
 
@@ -531,7 +538,8 @@ goes up in three verified pushes: **B1** the build page, its
 engine and checker, J1 and J2; **B2** J3 (the porch camera and the PoE
 budget) and J4 (Wi-Fi to every room: mesh placement); **B3** J5 (a guest
 Wi-Fi kept apart), free build, the five extra jobs, then the Under the Hood
-tile link (decision 6). The Tickets | Build switch is in every page's bar.
+tile link (decision 6). All three are live (B3 went up as B3a, B3b and the
+tile link, 11 October 2026). The Tickets | Build switch is in every page's bar.
 
 - **The house as the technician finds it** (`js/build/jobs.js`,
   `factory`): the modem already in by the living-room outlet (the

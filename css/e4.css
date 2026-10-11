@@ -213,7 +213,7 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, summary:focus-v
 .notebook label { display: block; padding: 4px 14px 0; font-weight: 700; color: var(--muted); font-size: 0.92rem; }
 .notebook textarea { display: block; width: calc(100% - 28px); margin: 4px 14px 12px; min-height: 70px; padding: 8px; border: 1px solid #5d6a8c; border-radius: 8px; color: var(--ink); background: #ffffff; resize: vertical; }
 
-/* the diagnosis: six options, red stays red */
+/* the diagnosis: six options, red stays red (its "solved" box is scoped to .diag: the queue uses .st.solved for its status words) */
 .diag .body { padding: 12px 14px; }
 .diag p { margin: 0 0 10px; }
 .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; }
@@ -236,10 +236,10 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, summary:focus-v
 .checks li::before { content: "\25CB  "; color: var(--muted); }
 .checks li.done::before { content: "\2713  "; color: var(--good); font-weight: 900; }
 .checks li.done { color: var(--good); font-weight: 700; }
-.solved { margin-top: 12px; padding: 12px 14px; border: 2px solid var(--good); border-radius: 10px; background: #f1f8f3; }
-.solved h3 { margin: 0 0 6px; color: var(--good); font-size: 1.15rem; }
-.solved p { margin: 0 0 8px; }
-.solved ol { margin: 0 0 8px; padding-left: 1.3rem; }
+.diag .solved { margin-top: 12px; padding: 12px 14px; border: 2px solid var(--good); border-radius: 10px; background: #f1f8f3; }
+.diag .solved h3 { margin: 0 0 6px; color: var(--good); font-size: 1.15rem; }
+.diag .solved p { margin: 0 0 8px; }
+.diag .solved ol { margin: 0 0 8px; padding-left: 1.3rem; }
 
 /* below the desk */
 .org { margin: 0 12px 12px; padding: 16px 18px; }

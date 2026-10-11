@@ -103,6 +103,7 @@ for (const [id, plan] of Object.entries(PLAN)) for (const seed of [11, 2025, 777
   await p.reload(); await p.waitForTimeout(350);
   check(await p.$("#board .solved") !== null, id + ": still solved after a reload");
   check(/Solved 1×|solved 1×/.test(await p.$eval('#queue [data-t="' + id + '"]', (n) => n.textContent)), id + ": the queue counts it solved");
+  check(await p.$eval('#queue [data-t="' + id + '"] .st', (n) => getComputedStyle(n).borderTopStyle === "none" && parseFloat(getComputedStyle(n).paddingTop) === 0), id + ": the solved status is words in the queue, not the summary's box");
   const s1 = await T(p, () => window.__e4.T.seed);
   await p.click('#board button:text-is("Try another one like this")'); await p.waitForTimeout(80);
   check((await T(p, () => window.__e4.T.seed)) !== s1 && !(await T(p, () => window.__e4.T.solved)), id + ": a fresh house, unsolved");

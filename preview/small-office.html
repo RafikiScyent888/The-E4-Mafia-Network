@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Small office preview · The E4 Mafia Network</title>
+<meta name="description" content="Preview of level 2, the small office: the first managed switch from its console, subnetting by hand on the IPAM sheet, and levels that open as each one is finished.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e3a8a'/%3E%3Ccircle cx='16' cy='9' r='3.2' fill='%23f3f6ff'/%3E%3Ccircle cx='8' cy='23' r='3.2' fill='%23f3f6ff'/%3E%3Ccircle cx='24' cy='23' r='3.2' fill='%23f3f6ff'/%3E%3Cpath d='M16 9L8 23M16 9l8 14M8 23h16' stroke='%23ffd84d' stroke-width='1.8'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../css/e4.css">
+<style>
+  /* preview only: the banner, the levels, the lock, the rack drawing, the IPAM sheet, the console */
+  .pv { background: #4b2a85; color: #ffffff; padding: 10px 18px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+  .pv b { letter-spacing: 0.04em; }
+  .pv .seg { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+  .pv button { background: #2c1757; color: #ffffff; border: 1px solid #c9b6f0; border-radius: 8px; padding: 6px 12px; min-height: 38px; }
+  .pv button[aria-pressed="true"] { background: #ffffff; color: #2c1757; font-weight: 700; }
+  .pv button:focus-visible { outline: 3px solid #ffd84d; outline-offset: 2px; }
+  .levels ol { list-style: none; margin: 0; padding: 6px; display: grid; gap: 6px; }
+  .levels button { width: 100%; text-align: left; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; min-height: 44px; display: grid; gap: 2px; }
+  .levels button[aria-current="true"] { border: 2px solid var(--royal); box-shadow: inset 4px 0 0 var(--royal); }
+  .levels .lv { font-weight: 800; color: var(--ink); }
+  .levels .lvst { font-size: 0.88rem; color: var(--muted); }
+  .levels .done .lvst { color: var(--good); font-weight: 700; }
+  .levels .locked button { background: #eef0f5; border-style: dashed; }
+  .levels .locked .lvst { color: #4a3a00; font-weight: 700; }
+  .objs { margin: 0; padding: 6px 10px 10px; list-style: none; display: grid; gap: 6px; font-size: 0.92rem; }
+  .objs li { border-top: 1px solid var(--line); padding-top: 6px; }
+  .objs q { display: block; font-style: italic; color: var(--ink); }
+  .objs q::before, .objs q::after { content: ""; }
+  .objs small { color: var(--muted); display: block; }
+  .qlist { list-style: none; margin: 0; padding: 4px 8px 10px; display: grid; gap: 4px; font-size: 0.92rem; }
+  .qlist .num { font-weight: 800; color: var(--royal); margin-right: 6px; }
+  .qlist .soon { color: var(--muted); font-size: 0.85rem; }
+  .lockpanel { padding: 16px 18px; }
+  .lockpanel h3 { margin: 0 0 6px; font-size: 1.15rem; }
+  .lockpanel .tag { display: inline-block; border: 2px solid #4a3a00; color: #4a3a00; background: #fff4c2; border-radius: 999px; padding: 2px 10px; font-weight: 800; margin-bottom: 8px; }
+  .wo { padding: 12px 16px; display: grid; gap: 10px; }
+  .wo blockquote { margin: 0; padding: 10px 14px; background: var(--soft); border-left: 4px solid var(--royal); border-radius: 6px; }
+  .wo .mason { background: #f2edfb; border-left-color: var(--purple); }
+  .reqs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .reqs li { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; grid-template-columns: 28px 1fr; gap: 2px 8px; }
+  .reqs .mk { grid-row: span 2; font-weight: 900; font-size: 1.15rem; text-align: center; }
+  .reqs .ev { grid-column: 2; color: var(--muted); font-size: 0.92rem; }
+  .reqs li.met { border-color: #0d5524; box-shadow: inset 4px 0 0 #0d5524; }
+  .reqs li.met .mk { color: var(--good); }
+  .reqs li.bad { border-color: var(--bad); background: var(--bad-bg); box-shadow: inset 4px 0 0 var(--bad); }
+  .reqs li.bad .mk { color: var(--bad); }
+  .row2 { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .btn2 { background: var(--royal); color: #ffffff; border: 1px solid var(--royal); border-radius: 8px; padding: 7px 14px; min-height: 40px; font-weight: 700; }
+  .btn2.ghost { background: #ffffff; color: var(--royal); }
+  .figs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 0 16px 14px; }
+  .figs svg { width: 100%; height: auto; max-height: 520px; background: #f7f8fb; border: 1px solid var(--line); border-radius: 8px; }
+  .ipam { padding: 12px 16px 16px; display: grid; gap: 10px; }
+  .tablewrap2 { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+  .sheet { display: grid; gap: 10px; }
+  .blk { margin: 0; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px 10px; }
+  .blk legend { font-weight: 800; padding: 0 6px; }
+  .blkgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 12px; }
+  .blkgrid label { display: grid; gap: 2px; font-size: 0.88rem; color: var(--muted); font-weight: 600; }
+  .ipam input { width: 100%; padding: 5px 7px; border: 1px solid #5a6688; border-radius: 6px; background: #ffffff; color: var(--ink); font-family: Consolas, "DejaVu Sans Mono", monospace; font-size: 0.95rem; }
+  @media (max-width: 700px) { .blkgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .ipam input[aria-invalid="true"] { border: 2px solid var(--bad); background: var(--bad-bg); }
+  .ipam .res { list-style: none; margin: 4px 0 0; padding: 0; font-size: 0.9rem; }
+  .ipam .res li { padding: 2px 0; }
+  .ipam .res .x { color: var(--bad); font-weight: 700; }
+  .ipam .res .ok { color: var(--good); font-weight: 700; }
+  .ipam .res .nt { color: var(--muted); }
+  .blk.badrow { border-color: var(--bad); box-shadow: inset 4px 0 0 var(--bad); }
+  .blk.goodrow { border-color: var(--good); box-shadow: inset 4px 0 0 var(--good); }
+  .con { background: var(--term); color: #d6d6d6; font: 0.84rem/1.4 Consolas, "DejaVu Sans Mono", "Courier New", monospace; padding: 10px 12px; height: 430px; overflow: auto; white-space: pre; }   /* a terminal keeps its columns: wide lines scroll sideways */
+  .con .in { color: #ffffff; }
+  .conline { display: flex; align-items: center; gap: 0; background: var(--term); padding: 0 12px 10px; font: 0.92rem/1.4 Consolas, "DejaVu Sans Mono", monospace; color: #ffffff; }
+  .conline label { white-space: pre; color: #ffffff; }
+  .conline input { flex: 1; min-width: 0; background: transparent; color: #ffffff; border: 0; border-bottom: 1px solid #6b6b6b; font: inherit; padding: 2px 4px; caret-color: #ffd84d; }
+  .conline input:focus-visible { outline: 2px solid #ffd84d; outline-offset: 1px; }
+  .tips { padding: 10px 14px; font-size: 0.92rem; }
+  .tips code { background: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  .devtabs2 { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
+  .devtabs2 button { background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; min-height: 36px; }
+  .devtabs2 button[aria-pressed="true"] { background: var(--royal); color: #ffffff; border-color: var(--royal); font-weight: 700; }
+  .devtabs2 button:disabled { color: var(--muted); border-style: dashed; cursor: not-allowed; }
+  .modelink { padding: 0 16px 12px; }
+  .modelink a { color: var(--royal); font-weight: 700; }
+</style>
+</head>
+<body data-page="preview">
+<div class="pv" role="region" aria-label="About this preview">
+  <b>PREVIEW · LEVEL 2, THE SMALL OFFICE · NOT LINKED FROM THE SITE</b>
+  <span>See it as:</span>
+  <span class="seg" role="group" aria-label="Whose screen this is">
+    <button type="button" data-as="done" aria-pressed="true">A student who finished Home</button>
+    <button type="button" data-as="home" aria-pressed="false">A student still on Home</button>
+    <button type="button" data-as="inst" aria-pressed="false">The instructor (PIN entered)</button>
+  </span>
+</div>
+<nav class="views" aria-label="Views"><a href="../lab-bench.html">Lab Bench</a><a href="../service-map.html">Service Map</a><a href="../index.html">Ticket Desk</a></nav>
+<section class="chrome" aria-label="Workspace bars">
+  <div class="appbar">
+    <span class="brand2">THE E4 MAFIA <span>NETWORK</span></span>
+    <nav class="menu" aria-label="Menu"><a href="../lab-bench.html">Labs</a><button type="button">Job</button><button type="button">View</button><button type="button">Notes</button><button type="button">Help</button><button type="button">Instructor</button></nav>
+    <span class="spacer"></span>
+    <button id="dys" type="button" aria-pressed="false">Easier reading: off</button>
+  </div>
+  <div class="toolbar">
+    <div class="seg2" role="group" aria-label="View"><button type="button" id="vLog" aria-pressed="false">Logical</button><button type="button" id="vPhy" aria-pressed="true">Physical</button></div>
+    <div class="labtitle" id="labtitle">SO-J1 · Out of the box: the office's first managed switch<small>Bright Ledger Accounting · 9 desks, a printer, the Wi-Fi</small></div>
+    <span class="spacer"></span>
+    <nav class="seg2" aria-label="Mode"><a href="../index.html">Tickets</a><a href="../build.html" aria-current="page">Build</a></nav>
+  </div>
+</section>
+<main class="desk">
+  <section class="box left" aria-label="Levels and the small office's work" id="left">
+    <div class="levels"><h2 class="sr">Levels</h2><ol id="levels"></ol></div>
+    <h2>What the small office teaches</h2>
+    <ul class="objs" id="objs"></ul>
+    <h2>Small office: work orders</h2>
+    <ol class="qlist" id="jobs"></ol>
+    <h2>Small office: tickets</h2>
+    <ol class="qlist" id="tickets"></ol>
+  </section>
+  <div class="mainc">
+    <section class="box" id="order" aria-labelledby="woh"></section>
+    <section class="box" id="figs" aria-labelledby="figh">
+      <h2 id="figh">The office closet</h2>
+      <div class="figs">
+        <svg id="rack" viewBox="0 0 640 420" role="img" aria-label="Rack diagram of the office closet's 6U wall rack, unit by unit."></svg>
+        <svg id="logical" viewBox="0 0 640 420" role="img" aria-label="Logical diagram of the small office network." hidden></svg>
+      </div>
+      <p class="modelink">The same rack, the switch and the console cable in 3D: <a href="models.html#rack-office">the model previews</a> (Small office group).</p>
+    </section>
+    <section class="box" id="ipamBox" aria-labelledby="iph">
+      <h2 id="iph">SO-J4 preview · The IPAM sheet: subnet the office by hand</h2>
+      <div class="ipam">
+        <p>The office has <b id="blk">192.168.40.0/24</b>. Plan one block for each group, each only as big as it needs, none overlapping, and write every value yourself. The sheet checks what you wrote and says what's wrong, never what the answer is.</p>
+        <div id="sheet" class="sheet"></div>
+        <div class="row2"><button type="button" class="btn2" id="ipCheck">Check the sheet</button><button type="button" class="btn2 ghost" id="ipDemo">Show what it catches (a plan with mistakes)</button><button type="button" class="btn2 ghost" id="ipClear">Clear the sheet</button></div>
+        <p id="ipSum" aria-live="polite"></p>
+      </div>
+    </section>
+  </div>
+  <aside class="side" aria-label="Terminal">
+    <section class="box" aria-label="Terminal">
+      <div class="termhead">
+        <h2 id="termtitle">Terminal · Office switch (console)</h2>
+        <div class="devtabs2" role="group" aria-label="Open a device in the terminal">
+          <button type="button" aria-pressed="true">Office switch (console)</button>
+          <button type="button" disabled title="In the build: the PC's Command Prompt, and SSH to the switch from it">Office PC</button>
+          <button type="button" disabled title="In the build: the router's pages">Router</button>
+        </div>
+      </div>
+      <div class="con" id="con" role="log" aria-live="polite" aria-label="Console output" tabindex="0"></div>
+      <form class="conline" id="conform" autocomplete="off"><label for="cmd" id="prompt">Switch&gt;</label><input id="cmd" name="cmd" spellcheck="false" autocapitalize="off" aria-describedby="contips"></form>
+      <div class="tips" id="contips">
+        <p><b>This is the switch's own console:</b> the laptop's serial terminal on the console cable, the way a new switch is first set up. Press <b>Enter</b> to run a line, <b>Tab</b> to finish a word, <b>?</b> for what can come next. Any unique start of a word works (<code>conf t</code>, <code>sh run</code>).</p>
+        <p>Start with <code>?</code>, then <code>enable</code>. Nothing you type here is saved after you leave this preview.</p>
+      </div>
+    </section>
+  </aside>
+</main>
+<section class="box org" aria-labelledby="orgh">
+  <h2 id="orgh">How the small office works</h2>
+  <p>The second level. You set up the office's first managed switch from its console, then from the office PC over SSH, you configure its ports and you plan the office's addresses by hand. Tickets break those same things for you to find with the show commands.</p>
+  <ol>
+    <li><b>Finish a level to open the next.</b> A level is finished when every one of its tickets and work orders is done: that's every objective it teaches. Your instructor's PIN opens every level.</li>
+    <li><b>Show before configure.</b> Look with the show commands, change with the configuration ones, then show again to prove it.</li>
+    <li><b>Save it.</b> Only what you save survives a reload or a power cut.</li>
+  </ol>
+</section>
+<footer>Cyber Warrior Program — built by an instructor, for students, to make certification study more interactive. For educational purposes only. Not affiliated with, endorsed by, or sponsored by CompTIA®. All trademarks belong to their respective owners.</footer>
+<script type="module" src="small-office.js"></script>
+</body>
+</html>

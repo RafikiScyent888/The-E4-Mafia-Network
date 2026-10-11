@@ -12,6 +12,7 @@ import * as GEAR from "../assets/models/home-gear.js";
 import * as CAB from "../assets/models/cables.js";
 import * as END from "../assets/models/endpoints.js";
 import * as TOOL from "../assets/models/tools.js";
+import * as OFF from "../assets/models/office-gear.js";
 
 /* how a cable lies on the bench behind its plug: [x, y, dz] back from the jacket's end, dropping to the bench */
 const RUN_L = [[0, -0.6, 8], [0, -2.0, 18], [-3, -2.55, 34], [-14, -2.55, 62], [-36, -2.55, 100], [-64, -2.55, 140]];
@@ -92,6 +93,24 @@ const MODELS = [
     photo: "From your photo of the coax F-connector.",
     shows: ["A compression F-type on black RG6: sleeve, knurled body, 7/16-inch hex nut", "The copper centre conductor standing just proud of the nut"],
     standards: ["A male F-type's nut is threaded on the INSIDE (it screws onto the modem's threaded barrel). Your photo shows threads outside; the model follows the real connector."] },
+  { id: "msw", view: [0.42, 0.42, 1], light: [0.5, 1.3, 1.0], frame: [-250, 0, -140, 250, 50, 260], group: "Small office (level 2)", name: "Managed 24-port switch, 4 SFP", build: function () { return OFF.managedSwitch(); },
+    photo: "From your photo of the managed switch, front (11 October 2026).",
+    shows: ["MANAGED SWITCH 24-PORT + 4 SFP and MODEL: MSW-2800G; the Speed/Link and Link/Activity key", "24 ports in two rows in their grey frames, green lights in each jack's corners; a grey patch cable in port 10", "SFP1 to SFP4 in their bracket: fiber in three (grey, grey, orange), the fourth empty", "Power and fan lights under the power symbol; CONSOLE over the console port, MGMT under it; the USB console port; SYSTEM and POWER", "Silver rack ears with their slots; vent holes down the sides"] },
+  { id: "msw-front", focus: "panel:Front", view: [0.06, 0.12, 1], light: [0.3, 1.2, 1.0], group: "Small office (level 2)", name: "Managed switch, front close-up", build: function () { return OFF.managedSwitch(); },
+    photo: "The same switch, close in on its front.",
+    shows: ["Ports numbered as stacked jacks are: odd on top, even below (the photo's numbering repeats; a 24-port switch has 12 columns)"] },
+  { id: "msw-rear", view: [0.5, 0.3, -1], light: [0.5, 1.3, -1.0], frame: [-40, 0, -150, 250, 50, -110], group: "Small office (level 2)", name: "Managed switch, rear", build: function () { return OFF.managedSwitch(); },
+    photo: "From your photo of the switch's rear.",
+    shows: ["The name, the AC inlet, AC INPUT 100-240V~ 2A (the photo's ⎓ is the DC sign; this input is AC)", "The fan with its guard and four screws, VENTILATION beside it", "The regulatory label and the MAC label, the address covered"] },
+  { id: "rack", stage: "none", view: [0.25, 0.12, 1], light: [-0.4, 1.1, 1.0], frame: [-270, 0, -60, 270, 320, 60], group: "Small office (level 2)", name: "6U wall rack, as photographed", build: function () { return OFF.wallRack6U(); },
+    photo: "From your photo of the wall rack (11 October 2026).",
+    shows: ["The light grey frame on the wall, the front rails with square holes three to a U", "The 24-port Cat6 patch panel: four groups of six, a write-on tab over each jack, its number under it; grey cords looping down from ports 6 to 13", "The rack's own panel: 6U Wall Rack and its marks", "The vented shelf with the 8-port gigabit switch: its grid of lights, seven grey cords looping down"] },
+  { id: "rack-office", stage: "none", view: [0.25, 0.12, 1], light: [-0.4, 1.1, 1.0], frame: [-270, 0, -60, 270, 320, 60], group: "Small office (level 2)", name: "The small office's rack: patch panel and managed switch", build: function () { return OFF.wallRack6U({ managed: true }); },
+    photo: "The same rack as the small office will use it: the managed switch mounted under the patch panel.",
+    shows: ["Short blue cords from patch panel ports 1 to 10 down to switch ports 1 to 10", "The empty shelf below, ready for more gear"] },
+  { id: "console", view: [0.1, 0.62, 1], light: [0.4, 1.3, 0.9], frame: [-220, 0, -100, 480, 120, 470], group: "Small office (level 2)", name: "Console cable and serial adapters", build: function () { return OFF.consoleKit(); },
+    photo: "From your photo of the console cable (11 October 2026).",
+    shows: ["The grey console cable: its RJ45 in the switch's CONSOLE port, the cord coiled on the bench", "Its DB-9 (female: the computer end) joined to the USB serial adapter's DB-9 (male), metal hoods with knurled thumbscrews", "The adapter's grey cord to its USB-C plug in the laptop", "A USB-A serial adapter lying in front, for a computer without USB-C", "The photo's captions are left off the parts; a console runs at 9600 baud by default (the caption's 115200 is not the default)", "The switch's brand mark in the photo is left off"] },
   { id: "pc", view: "back3", light: [0.6, 1.3, -1.0], frame: [-115, 0, -250, 115, 270, 195], group: "Devices on the network", name: "Desktop PC", build: END.desktopPC,
     photo: "From your photo of the desktop PC's back, cables plugged in as photographed.",
     shows: ["The brushed I/O plate with every port standing on end, as in a tower: Wi-Fi antenna connectors, DP (x2), HDMI, USB 3.2 (x4), USB-C, USB 2.0, LAN, and six audio jacks", "The Ethernet cable plugged in, link light on, running down to the bench", "The fan behind its wire guard, VENTILATION printed above and beside it", "MADE IN TAIWAN and the MAC sticker with its barcode", "The PSU's honeycomb face, its I/O switch, the mains cord plugged in, PSU (1000W) printed beside it", "The model label PC MODEL: XTR-5800 with its regulatory marks; serial and MAC covered"],

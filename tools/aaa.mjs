@@ -25,7 +25,7 @@ for (const st of states) {
     if (st.wait) await p.waitForFunction(st.wait, null, { timeout: 120000, polling: 250 });
     if (st.after) { await p.evaluate(st.after); await p.waitForTimeout(300); }
     if (plant) await p.addStyleTag({ content: plant });
-    if (hov) { await p.hover('nav.views a'); await p.waitForTimeout(120); }
+    if (hov) { if (!(await p.$('nav.views a'))) { await ctx.close(); continue; } await p.hover('nav.views a'); await p.waitForTimeout(120); }   /* a page without the view buttons (the model previews) has nothing to hover */
     await p.evaluate(() => document.querySelectorAll('details').forEach(d => { d.open = true; })); await p.waitForTimeout(60);
     const view = st.mode === 'view';
     if (!view) { await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(60); }   /* full page: the sticky bars belong at the top; scrolled (by a focused button), a full-page shot paints them over the middle */

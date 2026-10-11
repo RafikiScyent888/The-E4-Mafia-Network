@@ -169,7 +169,8 @@ function fanUnit(d) {
    (open round the plug, its link and activity lights on), two blue
    SuperSpeed USB-A in black frames, USB-C, the headset jack, each with
    its label above, and the vents. On screen: Command Prompt. */
-/* o.screen: the lines in the Command Prompt window (ipconfig, as photographed, by default) */
+/* o.screen: the lines in the Command Prompt window (ipconfig, as photographed, by default); o.title: another
+   program's name in its title bar (a serial terminal, for a console session) */
 export function laptop(o = {}) {
   const g = new THREE.Group(), W = 324, D = 226, HL = 8.5, HU = 12.5, H = HL + HU;
   /* bead-blasted aluminium: a fine, even matte metal (not brushed) */
@@ -190,7 +191,7 @@ export function laptop(o = {}) {
   const lid = new THREE.Group(); lid.position.set(0, H + 1.5, -D / 2 + 6); lid.rotation.x = -0.33; g.add(lid);
   lid.add(at(rbox(W, 214, 5.5, 3.5, alu), 0, 108, -2.4));
   lid.add(at(box(W - 4, 210, 0.4, gloss(0x0b0b0c, { rough: 0.1 })), 0, 108, 0.4));             // the black glass over the bezel
-  const scr = new THREE.Mesh(new THREE.PlaneGeometry(300, 187.5), new THREE.MeshBasicMaterial({ map: cmdScreen(o.screen), toneMapped: false }));
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(300, 187.5), new THREE.MeshBasicMaterial({ map: cmdScreen(o.screen, o.title), toneMapped: false }));
   scr.position.set(0, 114, 0.65); lid.add(scr);
   lid.add(at(new THREE.Mesh(new THREE.CircleGeometry(1.2, 20), mat(0x15233a, { metal: 0.6, rough: 0.1, grain: false })), 0, 210.5, 0.66));   // the webcam
   /* the left side: ports from the hinge end forward, labels above */
@@ -242,7 +243,7 @@ function keyboard(deck, cx, cy) {
 }
 /* what's on the screen: the desktop, and Command Prompt showing ipconfig
    exactly as Windows prints it (the dot leaders end in one column) */
-function cmdScreen(lines) {
+function cmdScreen(lines, title) {
   const c = document.createElement("canvas"); c.width = 1600; c.height = 1000; const g = c.getContext("2d");
   const bg = g.createLinearGradient(0, 0, 1600, 1000); bg.addColorStop(0, "#1e3a8a"); bg.addColorStop(1, "#4c1d95"); g.fillStyle = bg; g.fillRect(0, 0, 1600, 1000);
   g.fillStyle = "#1b1d22"; g.fillRect(0, 944, 1600, 56);                                   // the taskbar
@@ -250,7 +251,7 @@ function cmdScreen(lines) {
   const x0 = 110, y0 = 70, w = 1380, h = 820;
   g.fillStyle = "rgba(0,0,0,0.35)"; g.fillRect(x0 + 8, y0 + 10, w, h);
   g.fillStyle = "#f3f3f3"; g.fillRect(x0, y0, w, 46);                                      // the title bar
-  g.fillStyle = "#1b1b1b"; g.textAlign = "left"; g.font = "500 24px 'Segoe UI', Arial, sans-serif"; g.fillText("Command Prompt", x0 + 56, y0 + 24);
+  g.fillStyle = "#1b1b1b"; g.textAlign = "left"; g.font = "500 24px 'Segoe UI', Arial, sans-serif"; g.fillText(title || "Command Prompt", x0 + 56, y0 + 24);
   g.fillStyle = "#0c0c0c"; g.fillRect(x0 + 16, y0 + 12, 26, 22); g.fillStyle = "#cccccc"; g.font = "700 14px Consolas, monospace"; g.fillText(">_", x0 + 19, y0 + 24);
   g.strokeStyle = "#1b1b1b"; g.lineWidth = 2; g.beginPath(); g.moveTo(x0 + w - 150, y0 + 24); g.lineTo(x0 + w - 132, y0 + 24); g.stroke(); g.strokeRect(x0 + w - 92, y0 + 15, 18, 18);
   g.beginPath(); g.moveTo(x0 + w - 40, y0 + 14); g.lineTo(x0 + w - 20, y0 + 34); g.moveTo(x0 + w - 20, y0 + 14); g.lineTo(x0 + w - 40, y0 + 34); g.stroke();

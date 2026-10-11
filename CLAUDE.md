@@ -772,6 +772,95 @@ photographed, then each one):
   missed the "any cable passes through" plant; the runs table reads the
   network itself and catches it.)
 
+## Level 2, the small office: agreed 11 October 2026, preview first
+
+Proposed to the owner after the injectors went live, with the objectives doc
+re-read the same day (Network+ V9 unchanged). The owner: **"Yes to the
+scope."** On subnetting by hand on the IPAM sheet: **"I really like this."**
+**"Yes to all of what you propose. that is what I am looking for."**
+
+- **Scope:** one managed switch in a small closet rack. The command line
+  first: the console cable, the modes, `?` and Tab, the hostname and
+  passwords, a management address on VLAN 1 with a default gateway, SSH only
+  (no Telnet), port speed, duplex and descriptions, unused ports shut,
+  saving; then SSH to it from the office PC. Subnetting by hand on the IPAM
+  sheet (the network catches overlaps, wrong masks and gateways outside the
+  subnet; it never computes the answer). VLANs wait for the small business.
+  Five work orders and ten tickets (five common, five harder), plus the
+  standing five extra of each; the base is the Network-Sims Switch CLI Output
+  Analysis, Switch Port Configuration and VLSM-CIDR sims.
+- **Levels lock** (owner): **"I want the student to finish each level before
+  moving on and when they finish the objectives that they are suppose to be
+  learning, the next level unlocks for them. This is self pace and guided
+  learning lab."** And: **"Yes, instructor pin unlocks everything."** A level
+  is finished when every one of its tickets and work orders is done (each
+  objective lists the work that teaches it); free build doesn't count.
+- **Photographs received** (11 October 2026): the managed switch, 24 ports
+  and 4 SFP, front and rear (model MSW-2800G); a 6U wall rack with a 24-port
+  Cat6 patch panel, its own "6U Wall Rack" panel and a shelf with an 8-port
+  gigabit switch; the console cable (RJ45 to DB-9) with a USB-C serial
+  adapter, a USB-A one and a laptop.
+- **3D models** (`assets/models/office-gear.js`, on `preview/models.html`
+  under "Small office (level 2)", not yet in any live page):
+  `managedSwitch` (ports `port:1` to `port:24`, `port:SFP1` to `SFP4`,
+  `port:CONSOLE`, `port:MGMT`, `port:USB CONSOLE`, `port:AC IN`; lights by
+  role: SYSTEM, POWER, PSU, FAN and their FAULT lights, the key), `sfpCage`,
+  `sfpModule` (with its LC duplex cord), `patchPanel24` (`port:P1` to `P24`),
+  `desktopSwitch8`, `wallRack6U` (as photographed; `{ managed: true }` for
+  the office's version with the managed switch under the patch panel),
+  `db9Plug`, `usbCPlug`, `usbAPlug`, `consoleKit`. The laptop takes an
+  optional `title` for its screen's window (a serial terminal in the console
+  scene; the default is unchanged). Differences from the photos, told to
+  the owner on the comparison sheet: 12 port columns numbered odd on top,
+  even below (the photo shows 15 with repeats); "(FRONT)"/"(REAR)" captions
+  left off; MGMT under CONSOLE (the photo has a USB symbol); AC INPUT
+  100-240V~ (the photo's ⎓ is DC); the unlabelled light cluster drawn as
+  power and fan lights with amber fault lights; a fourth, empty SFP slot;
+  the console photo's brand, logo and captions left off (a console runs at
+  9600 baud by default, not the caption's 115200); the console cable's DB-9
+  female, joined to the adapter's male.
+- **The switch's command line** (`js/net/swcli.js`, pure, node-tested in
+  `tests/office.test.js`): user and privileged EXEC, global, interface,
+  interface-range and line configuration; `?` help (after a space: what
+  comes next; after letters: the words starting with them; `do` gets EXEC's
+  help); Tab completion; any unique abbreviation; "% Ambiguous command",
+  "% Incomplete command.", "% Invalid input detected at '^' marker." with the
+  caret under the bad word; `| include/exclude/begin/section`. Running vs
+  startup configuration: only `copy running-config startup-config` or
+  `write memory` survives `reload` (which asks to save unsaved changes);
+  enable secret (stored as a hash, never shown in plain text), enable
+  password, console and vty passwords with `login` / `login local`,
+  `username ... secret`, `ip domain-name`, `crypto key generate rsa` (needs a
+  hostname other than Switch and a domain), `transport input ssh`, VLAN 1's
+  address (refused on a physical port, with the reason), `ip default-gateway`,
+  speed/duplex/description/shutdown; a forced speed the far end doesn't
+  match drops the link; show running-config, startup-config, version,
+  ip interface brief, interfaces (status, one port with counters), mac
+  address-table. Our own unbranded switch: no brand word anywhere (a test
+  walks every help list and output).
+- **The IPAM checker** (`js/net/ipam.js`): per row (network, mask or prefix,
+  first and last usable, broadcast, gateway) it catches a mask too small for
+  the hosts, a network that isn't where its block begins, a block outside
+  the office's, overlaps (on both rows), wrong first/last/broadcast, a
+  gateway outside the block or on its network or broadcast address; a note
+  when a smaller block would do (VLSM). A test proves no message ever
+  contains a right value.
+- **The preview page** (`preview/small-office.html`, not linked): the
+  site's bars and three columns; the levels with the lock (see it as a
+  student who finished Home, one still on Home, or the instructor); what the
+  level teaches, objective by objective from the doc; the work orders and
+  tickets planned (each ticket's planned fault shown in the preview only);
+  work order SO-J1 with a live check that reads the switch you configured
+  (marked three ways); the rack diagram and the logical diagram; the IPAM
+  sheet as cards, with a plan full of mistakes to show what it catches; the
+  live console on the right. AAA on painted pixels across its states,
+  scrolled positions too; the checker caught the switch's label spilling out
+  of its dark box with easier reading on (fixed), and SVG text painted with
+  a fill attribute it couldn't hide (now `fill: currentColor`, as on the
+  site's own diagrams). `tools/aaa.mjs` skips its hover step on a page
+  without the view buttons (the model previews).
+- **Next:** the owner's go-ahead on the preview, then the build.
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

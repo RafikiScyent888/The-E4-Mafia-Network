@@ -32,7 +32,7 @@ export const LAYOUT = {
   mesh: { x: 610, y: 265, px: 850, py: 110, room: "upstairs", lab: "left" },
   phone: { x: 760, y: 250, px: 480, py: 245, room: "living" },
   laptop: { x: 755, y: 420, px: 905, py: 195, room: "upstairs" },
-  guest: { x: 780, y: 130, px: 520, py: 360, room: "kitchen" },
+  guest: { x: 130, y: 250, px: 520, py: 360, room: "kitchen" },   /* the open space under the modem: the right side is full */
   rogue: { px: 330, py: 235, room: "office" }   /* not on the logical diagram: nobody documented it */
 };
 export const ROOMS = { office: "Office", living: "Living room", kitchen: "Kitchen", garage: "Garage", upstairs: "Back bedroom (upstairs)", porch: "Front door" };

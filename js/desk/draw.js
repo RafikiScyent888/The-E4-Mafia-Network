@@ -80,7 +80,7 @@ export function drawLogical(svg, sim, o) {
       else gp.appendChild(mk("rect", { x: px - 6, y: py - 6, width: 12, height: 12, transform: "rotate(45 " + px + " " + py + ")", class: "pd pd-down" }));
       if (e[2]) {
         let tx, ty, anc;
-        if (Math.abs(dy2) < 0.5) { tx = px; ty = py - 15; anc = dx2 > 0 ? "start" : "end"; }
+        if (Math.abs(dy2) < 0.5) { tx = px; ty = e[1] === 1 ? py - 15 : py + 27; anc = dx2 > 0 ? "start" : "end"; }   /* across: the near end's label above the line, the far end's below, so two never collide (easier reading widens them) */
         else { const side = Math.abs(dx2) < 0.2 ? 1 : Math.sign(dx2); tx = px + side * 18; ty = py + 5; anc = side > 0 ? "start" : "end"; }
         const t = mk("text", { x: tx, y: ty, "text-anchor": anc, class: "pl" }); t.textContent = e[2]; gp.appendChild(t);
       }

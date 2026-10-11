@@ -85,6 +85,7 @@ export function page(sim, id, key) {
         ["Wi-Fi 2.4 GHz", r.wifi.ssid + " · channel " + sim.ch24() + (r.wifi.ch24mode === "auto" ? " (Auto)" : "")],
         ["Wi-Fi 5 GHz", r.wifi.ssid + " · channel " + r.wifi.ch5],
         ["Clients with a lease", String(lanUsed)], ["Firmware", r.firmware]];
+      if (r.guest) rows.push(["Guest network", r.guest.on ? r.guest.ssid + (r.guest.sec === "Open" ? " · open, no password" : " · secured") + (r.guest.isolate ? " · guests kept off the home network" : " · guests can reach the home network") : "Off"]);
       if (r.admin) rows.push(["Admin password", r.admin.gen > 1 ? "Changed from the factory one" : "The factory one, printed on the router's label"]);   /* build mode: a router fresh from its box */
       return { kind: "rows", title: "Status", rows: rows, admin: !!r.admin, facts: { page: "router-status", wan: !!w, dhcpOn: r.dhcp.on } };
     }
@@ -92,14 +93,15 @@ export function page(sim, id, key) {
       facts: { page: "router-dhcp", on: r.dhcp.on, start: r.dhcp.start, end: r.dhcp.end, dnsMode: r.dhcp.dnsMode, dns: r.dhcp.dns.filter(Boolean) } };
     if (key === "clients") {
       const resv = r.dhcp.reservations;
-      const rows = r.leases.map(function (l) { return [l.name, l.mac, l.ip, resv.some(function (v) { return v.mac === l.mac; }) ? "Reserved" : "DHCP"]; });
+      const rows = r.leases.map(function (l) { return [l.name, l.mac, l.ip, resv.some(function (v) { return v.mac === l.mac; }) ? "Reserved" : "DHCP"]; })
+        .concat(r.guest && r.guest.on ? r.guest.leases.map(function (l) { return [l.name, l.mac, l.ip, "Guest network"]; }) : []);   /* guests' leases are on their own subnet */
       const size = (function () { const a = r.dhcp.start.split(".").map(Number)[3], b = r.dhcp.end.split(".").map(Number)[3]; return b - a + 1; })();
       const inRange = r.leases.filter(function (l) { const n = +l.ip.split(".")[3]; return n >= +r.dhcp.start.split(".")[3] && n <= +r.dhcp.end.split(".")[3]; }).length;
       return { kind: "table", title: "DHCP clients", head: ["Device", "Hardware address", "IP address", "Type"], rows: rows, reserve: true, reservations: resv.map(function (v) { return [v.name, v.mac, v.ip]; }), leaseH: r.dhcp.leaseH,
         note: inRange + " of " + size + " addresses in the range are leased. Leases last " + r.dhcp.leaseH + " hours; a device keeps its address that long even after it leaves.", facts: { page: "router-clients", count: inRange, size: size, rows: rows, leaseH: r.dhcp.leaseH } };
     }
     if (key === "forward") return { kind: "form", form: "router-forward", title: "Port forwarding", add: !!r.factorySsid, rules: r.forwards.map(function (f) { return { name: f.name, ext: f.ext, ip: f.ip, port: f.port }; }), wan: sim.wan() ? sim.wan().ip : "0.0.0.0", facts: { page: "router-forward", rules: r.forwards.map(function (f) { return { ext: f.ext, ip: f.ip, port: f.port }; }) } };
-    if (key === "wifi") return { kind: "form", form: "router-wifi", title: "Wi-Fi", values: { ssid: r.wifi.ssid, sec: r.wifi.sec, changed: (r.wifi.gen || 1) > 1, rename: !!r.factorySsid, factory: !!r.factorySsid && (r.wifi.gen || 1) === 1, bssids: sim.aps().filter(function (a) { return a.id === "router"; }).map(function (a) { return [a.band === 5 ? "5 GHz" : "2.4 GHz", a.mac.toUpperCase().replace(/-/g, ":")]; }), ch24: r.wifi.ch24mode === "auto" ? "auto" : String(r.wifi.ch24), ch24now: sim.ch24(), ch5: String(r.wifi.ch5) }, facts: { page: "router-wifi", ch24: sim.ch24(), mode: r.wifi.ch24mode, sec: r.wifi.sec } };
+    if (key === "wifi") return { kind: "form", form: "router-wifi", title: "Wi-Fi", values: { ssid: r.wifi.ssid, sec: r.wifi.sec, changed: (r.wifi.gen || 1) > 1, rename: !!r.factorySsid, factory: !!r.factorySsid && (r.wifi.gen || 1) === 1, guest: r.guest ? { on: r.guest.on, ssid: r.guest.ssid, isolate: r.guest.isolate, open: r.guest.sec === "Open", subnet: r.guest.lan.ip.replace(/\.\d+$/, ".x") } : null, bssids: sim.aps().filter(function (a) { return a.id === "router"; }).map(function (a) { return [a.band === 5 ? "5 GHz" : "2.4 GHz", a.mac.toUpperCase().replace(/-/g, ":")]; }), ch24: r.wifi.ch24mode === "auto" ? "auto" : String(r.wifi.ch24), ch24now: sim.ch24(), ch5: String(r.wifi.ch5) }, facts: { page: "router-wifi", ch24: sim.ch24(), mode: r.wifi.ch24mode, sec: r.wifi.sec } };
   }
   if (id === "modem") {
     const L = sim.modemLights(), syn = sim.modemSynced();
@@ -181,7 +183,9 @@ export function page(sim, id, key) {
     /* not joined to the house's network as it's called now (build mode: a new phone, or the network renamed) and it's in range: join it by name */
     const w = sim.d.router.wifi, f = x.ifaces[0], hear = sim.aps().some(function (ap) { return ap.id === "router" && ap.ssid === w.ssid && sim.heardAt(ap, sim.net.rooms[id]) >= 20; });
     const join = !(l && l.connected) && f.saved.ssid !== w.ssid && hear ? w.ssid : null;
-    return { kind: "rows", title: "Wi-Fi", rows: rows, join: join, rejoin: !(l && l.reason === "auth") && !join, reenter: !!(l && l.reason === "auth"), cameraApp: id === "phone" && sim.d.router.forwards.length > 0, facts: { page: id === "guest" ? "guest-wifi" : "phone-wifi", internet: up, ip: a && a.ip, apipa: !!(a && a.kind === "apipa"), connected: !!(l && l.connected) } };
+    const nets = [], seen = {};   /* more than one network to pick from (build mode's guest network): the list, as a phone shows it */
+    for (const ap of sim.aps()) { const sg = sim.heardAt(ap, sim.net.rooms[id]); if (sg < 15) continue; const k = ap.ssid + (ap.sec === "Open" ? "|open" : "|sec"); if (seen[k]) { seen[k].signal = Math.max(seen[k].signal, sg); continue; } seen[k] = { ssid: ap.ssid, open: ap.sec === "Open", sec: ap.sec, signal: sg, now: !!(l && l.connected && l.ap.ssid === ap.ssid && (l.ap.sec === "Open") === (ap.sec === "Open")) }; nets.push(seen[k]); }
+    return { kind: "rows", title: "Wi-Fi", rows: rows, join: join, networks: sim.net.extra.build && nets.length > 1 ? nets : null, rejoin: !(l && l.reason === "auth") && !join, reenter: !!(l && l.reason === "auth"), cameraApp: id === "phone" && sim.d.router.forwards.length > 0, facts: { page: id === "guest" ? "guest-wifi" : "phone-wifi", internet: up, ip: a && a.ip, apipa: !!(a && a.kind === "apipa"), connected: !!(l && l.connected) } };
   }
   if (id === "rogue" && key === "admin") {
     const g = x;

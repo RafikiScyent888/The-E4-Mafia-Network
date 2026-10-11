@@ -89,7 +89,7 @@ function pagePane(id, key, ctx, rerender) {
     pane.appendChild(f);
   } else if (P.kind === "table") {
     const head = el("tr"); P.head.forEach(function (h) { head.appendChild(el("th", { scope: "col" }, h)); });
-    const tb = el("tbody"); P.rows.forEach(function (r) { tb.appendChild(el("tr", null, el("td", null, r[0]), el("td", { class: "mono" }, r[1]), el("td", { class: "mono" }, r[2]), el("td", null, r[3] === "Reserved" || !P.reserve ? r[3] : el("button", { type: "button", class: "btn ghost small", "aria-label": "Reserve " + r[2] + " for " + r[0], onclick: function () { const x = ctx.act({ t: "router", page: "reservation-add", values: { name: r[0], mac: r[1], ip: r[2] } }); ctx.flash = x && x.result && x.result.ok ? "Reserved " + r[2] + " for " + r[0] + "." : "Not reserved."; rerender(); } }, "Reserve")))); });
+    const tb = el("tbody"); P.rows.forEach(function (r) { tb.appendChild(el("tr", null, el("td", null, r[0]), el("td", { class: "mono" }, r[1]), el("td", { class: "mono" }, r[2]), el("td", null, r[3] !== "DHCP" || !P.reserve ? r[3] : el("button", { type: "button", class: "btn ghost small", "aria-label": "Reserve " + r[2] + " for " + r[0], onclick: function () { const x = ctx.act({ t: "router", page: "reservation-add", values: { name: r[0], mac: r[1], ip: r[2] } }); ctx.flash = x && x.result && x.result.ok ? "Reserved " + r[2] + " for " + r[0] + "." : "Not reserved."; rerender(); } }, "Reserve")))); });
     pane.appendChild(el("table", { class: "grid" }, el("thead", null, head), tb));
     if (P.note) pane.appendChild(el("p", { class: "note" }, P.note));
     if (P.reserve) pane.appendChild(reservations(P, ctx, rerender));
@@ -160,7 +160,26 @@ function wifiForm(v, ctx, rerender) {
   });
   if (ctx.flash) { msg.className = "msg ok"; msg.textContent = ctx.flash; ctx.flash = null; }
   const pw = el("div", { class: "acts", style: "margin-top:10px" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "router", page: "wifi", values: { newPassword: true } }); if (r && r.result && r.result.ok) { ctx.flash = "Saved: a new Wi-Fi password. Every Wi-Fi device has to be given it again."; rerender(); } } }, "Change the Wi-Fi password"));
-  return el("div", null, f, pw, v.changed ? el("p", { class: "note" }, "The Wi-Fi password was changed today.") : null);
+  return el("div", null, f, pw, v.changed ? el("p", { class: "note" }, "The Wi-Fi password was changed today.") : null, v.guest ? guestForm(v.guest, ctx, rerender) : null);
+}
+/* build mode: the router's guest network, its own name and password, on its own subnet, kept off the home network or not */
+function guestForm(g, ctx, rerender) {
+  const msg = el("p", { class: "msg", role: "status" });
+  const iso = el("input", { type: "checkbox", name: "isolate" }); iso.checked = !!g.isolate;
+  const f = el("form", { class: "devform", novalidate: true, style: "margin-top:14px" }, el("fieldset", null, el("legend", null, "Guest network"),
+    el("div", { class: "radio" }, radio("gon", "1", g.on, "On"), radio("gon", "0", !g.on, "Off")),
+    field("Guest network name (SSID)", "gssid", g.ssid, { inputmode: "text", maxlength: "32" }),
+    el("label", { class: "radio" }, iso, "Keep guests off the home network (they get the internet only)"),
+    el("p", { class: "note", style: "margin:0" }, "Guests get addresses on their own subnet, " + g.subnet + ". " + (g.on ? (g.open ? "No password yet: anyone in range can join." : "It has a password of its own.") : "")),
+    el("div", { class: "acts" }, el("button", { class: "btn", type: "submit" }, "Save the guest network"))), msg);
+  f.addEventListener("submit", function (e) {
+    e.preventDefault(); const d = new FormData(f);
+    const x = ctx.act({ t: "router", page: "guest", values: { on: d.get("gon") === "1", ssid: d.get("gssid"), isolate: iso.checked } });
+    if (x && x.result && x.result.ok) { ctx.flash2 = "Saved the guest network."; rerender(); } else { msg.className = "msg err"; msg.textContent = "Not saved: " + ((x && x.result && x.result.errs) || []).join(". ") + "."; }
+  });
+  if (ctx.flash2) { msg.className = "msg ok"; msg.textContent = ctx.flash2; ctx.flash2 = null; }
+  const pw = el("div", { class: "acts", style: "margin-top:8px" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "router", page: "guest", values: { newPassword: true } }); if (r && r.result && r.result.ok) { ctx.flash2 = "Saved: a password for the guest network, its own, written on a card for the client's visitors."; rerender(); } } }, "Set a guest password"));
+  return el("div", null, f, pw);
 }
 
 /* "Office PC" reads "office PC" mid-sentence; "IP camera" stays as it is */
@@ -294,7 +313,7 @@ function networksList(id, P, ctx, rerender) {
   P.networks.forEach(function (n) {
     const label = n.open ? "Open: no password" : "Secured (" + n.sec + ")";
     ul.appendChild(el("li", null, el("p", { class: "nm" }, n.ssid), el("p", { style: "margin:0 0 6px" }, label + " · signal " + n.signal + "%" + (n.now ? " · connected" : "")),
-      n.now ? null : el("div", { class: "acts" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "join", dev: id, open: n.open }); const f = r && r.facts; said[id].net = "Connect to " + n.ssid + (n.open ? " (open)" : "") + ": " + (f && f.ap ? "connected, address " + f.ip + ". Internet: " + (f.internet ? "OK" : "none") + "." : "couldn't connect."); rerender(); } }, "Connect" + (n.open ? " (open)" : " (enter the password)")))));
+      n.now ? null : el("div", { class: "acts" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "join", dev: id, open: n.open, ssid: n.ssid }); const f = r && r.facts; said[id].net = "Connect to " + n.ssid + (n.open ? " (open)" : "") + ": " + (f && f.ap ? "connected, address " + f.ip + ". Internet: " + (f.internet ? "OK" : "none") + "." : "couldn't connect."); rerender(); } }, "Connect" + (n.open ? " (open)" : " (enter the password)")))));
   });
   wrap.appendChild(ul);
   if (P.forget) wrap.appendChild(el("div", { class: "acts", style: "margin-top:8px" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { ctx.act({ t: "forget", dev: id }); said[id].net = "Forgot the saved network: the laptop won't join it again by itself."; rerender(); } }, "Forget the saved network")));

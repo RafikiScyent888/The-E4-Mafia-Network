@@ -134,6 +134,9 @@ function factory(seed, devices, rooms) {
   const home = r.wifi.ssid;
   r.factorySsid = "ROUTER-" + R.int(4096, 65535).toString(16).toUpperCase(); r.wifi.ssid = r.factorySsid; r.wifi.gen = 1; r.admin = { gen: 1 };
   r.dhcp.reservations = []; r.forwards = []; r.leases = [];
+  /* the router's guest network, off as it comes from the box: its own subnet and pool, kept off the home network by default */
+  const gp = "192.168." + ((+net.prefix.split(".")[2] + 100) % 256);
+  r.guest = { kind: "router", on: false, ssid: "", sec: "Open", gen: 1, isolate: true, lan: { ip: gp + ".1", mask: "255.255.255.0" }, dhcp: { on: true, start: gp + ".10", end: gp + ".60", leaseH: 8, dnsMode: "router", dns: ["", ""], reservations: [] }, leases: [] };
   for (const id of ["router"].concat(devices)) d[id].boxed = true;
   ["phone", "laptop"].forEach(function (id) { d[id].ifaces[0].saved = { ssid: null, passOk: false }; });
   Object.assign(net.rooms, rooms || {});
@@ -446,7 +449,165 @@ const J4 = {
   }
 };
 
-export const JOBS = [J1, J2, J3, J4];
-export const JOBS_COMING = [
-  { id: "J5", title: "A guest Wi-Fi kept apart" }
-];
+/* ---------------------------------------------------------------- J5 */
+function guestNetCauses(sim) {
+  const r = sim.d.router, g = r.guest;
+  return [
+    C("off", !g.on, "The router's guest network isn't switched on", "It's on.", "The router has no guest network: visitors would have to be given the home network's password."),
+    C("open", g.sec === "Open", "The guest network has no password", "It has a password of its own.", "The guest network " + (g.ssid ? g.ssid + " " : "") + "is open: anyone in range can join it, no password asked.")
+  ];
+}
+function visitorCauses(sim) {
+  const g = sim.d.router.guest, f = sim.d.guest.ifaces[0], l = sim.wifiLink("guest"), a = sim.addr("guest");
+  const onHome = l && l.connected && l.ap.node === "router:lan";
+  return [
+    C("net", !g.on, "There's no guest network for the visitor to join", "The guest network is on.", "There's no guest network to join yet."),
+    C("home", onHome, "The visitor's phone is on the home network", "It isn't on the home network.", "The visitor's phone is on " + sim.d.router.wifi.ssid + ", the house's own network."),
+    C("join", !(l && l.connected && l.ap.node === "router:guest"), "The visitor's phone hasn't joined the guest network", "It's on the guest network.", "The visitor's phone: " + (l && l.reason === "auth" ? "can't join " + l.ap.ssid + ": the password it has is old." : "not on the guest network.")),
+    C("addr", !a || a.kind === "apipa", "No address came from the guest network", "It has an address from the guest network.", "The visitor's phone is on the guest network, but no address came."),
+    C("wan", !sim.route("guest", PUBLIC).internet, "The router isn't online", "The router is online.", "The visitor's phone is on the guest network, but has no internet.")
+  ];
+}
+function apartCauses(sim) {
+  const g = sim.d.router.guest, l = sim.wifiLink("guest");
+  const onGuest = !!(l && l.connected && l.ap.node === "router:guest" && sim.addr("guest"));
+  const see = ["pc", "printer"].filter(function (id) { const a = sim.addr(id); return a && sim.route("guest", a.ip).local; });
+  return [
+    C("visitor", !onGuest, "The visitor's phone isn't on the guest network yet", "It's on the guest network.", "Can't be checked yet: the visitor's phone isn't on the guest network."),
+    C("iso", see.length > 0, "Guests can reach the house's own devices", "Guests can't reach them.", "From the visitor's phone the house's " + see.map(function (id) { return NAME[id]; }).join(" and the ") + " answer" + (see.length === 1 ? "s" : "") + ": guests can reach the home network.")
+  ];
+}
+function ownCauses(sim) {
+  const on = ["phone", "laptop"].filter(function (id) { const l = sim.wifiLink(id); return l && l.connected && l.ap.node === "router:guest"; });
+  if (on.length) return [C("guest", true, "One of the house's own devices is on the guest network", "They're all on the home network.", "The house's " + on.map(function (id) { return NAME[id]; }).join(" and ") + " " + (on.length === 1 ? "is" : "are") + " on the guest network: cut off from the printer and the rest of the house.")];
+  return keepCauses(sim);
+}
+const J5 = {
+  id: "J5", title: "A guest Wi-Fi kept apart",
+  start(seed) {
+    const b = afterJ2(seed, [], {}), d = b.net.devices;
+    d.guest = { id: "guest", kind: "phone", label: "Visitor's phone", sub: "Wi-Fi", on: true,
+      ifaces: [{ name: "Wi-Fi", type: "wifi", mac: "02-6a-" + (1000 + seed % 9000).toString(16).padStart(4, "0").replace(/(..)(..)/, "$1-$2") + "-5e-71", bands: [24, 5], saved: { ssid: null, passOk: false }, cfg: { mode: "dhcp" }, lease: null, apipa: null }] };
+    b.net.rooms.guest = "kitchen"; b.sim.arp.guest = {};
+    return { sim: b.sim, v: b.v };
+  },
+  brief() { return { quote: "We have visitors all the time, and I give them the Wi-Fi password. My son says that's how his friend printed rubbish on our printer from the driveway. I want visitors to have their own Wi-Fi, with its own password, that gets them the internet and nothing else. One of them is here now, in the kitchen.", from: "a guest Wi-Fi" }; },
+  mason: "Two networks, one router. Decide what each one is allowed to reach before you switch anything on.",
+  limits: function () { return ["The router has a guest network, off as it comes from the box. Its guests get addresses on a subnet of their own.", "The home network keeps its name and password: the house's own devices stay on it.", "No budget limit: use what the job needs."]; },
+  reqs: [{
+    id: "guestnet", text: "A guest Wi-Fi with a name and a password of its own",
+    causes: guestNetCauses,
+    ok: function (sim) { return "The guest network " + sim.d.router.guest.ssid + " is on, with a password of its own."; },
+    rung1: function () { return "Open the router's Wi-Fi page and read all of it, down to the bottom."; },
+    rung2: function () { return "A guest network is a second network on the same router: its own name, its own password, its own subnet. Visitors get that password, never the home network's."; }
+  }, {
+    id: "visitor", text: "The visitor's phone online, on the guest Wi-Fi",
+    causes: visitorCauses,
+    ok: function (sim) { return "The visitor's phone is on " + sim.d.router.guest.ssid + " with " + sim.addr("guest").ip + ", and online."; },
+    rung1: function () { return "Open the visitor's phone: which networks does it see, and which is it on? Compare its address with the router's guest network."; },
+    rung2: function () { return "A device joins the network whose name and password it's given. Give a visitor the home network's password, and they're on the home network, guest network or not."; }
+  }, {
+    id: "apart", text: "Guests get the internet and nothing else: none of the house's devices answer them",
+    causes: apartCauses,
+    ok: function () { return "From the visitor's phone the office PC and the printer don't answer: the guest network reaches the internet only."; },
+    rung1: function () { return "Read the guest network's settings on the router's Wi-Fi page, and the visitor's address beside the printer's."; },
+    rung2: function () { return "Segmentation keeps devices that don't trust each other apart. A guest network's isolation lets guests out to the internet while the router drops anything they send towards the home network."; }
+  }, {
+    id: "keep", text: "The house's own devices stay on the home network, and everything still works",
+    causes: ownCauses,
+    ok: function () { return "The phone and the laptop are on the home network; the TV, the office PC and its printer all work."; },
+    rung1: function () { return "Open the house's own phone and laptop: which network is each on?"; },
+    rung2: function () { return "A household device on the guest network is cut off from the printer and the rest of the house: isolation works both ways."; }
+  }],
+  solve(v, sim) { return [{ t: "router", page: "guest", values: { on: true, ssid: v.surname.toUpperCase() + "-GUEST", isolate: true } }, { t: "router", page: "guest", values: { newPassword: true } }, { t: "join", dev: "guest", ssid: v.surname.toUpperCase() + "-GUEST" }]; },
+  answer(v) {
+    return ["On the router's Wi-Fi page, Guest network: On, a name of its own (for example " + v.surname.toUpperCase() + "-GUEST), \"Keep guests off the home network\" ticked, Save. Then Set a guest password.",
+      "On the visitor's phone (its Wi-Fi page, the networks list): connect to the guest network, not the home one.",
+      "Check from the visitor's phone that the printer doesn't answer; leave the house's own phone and laptop on the home network."];
+  },
+  summary(v, sim) {
+    const g = sim.d.router.guest;
+    return ["The router runs a second network, " + g.ssid + ", with a password of its own, on its own subnet (" + g.lan.ip.replace(/\.\d+$/, ".x") + ").",
+      "Guests get the internet and nothing else: the router keeps them off the home network.",
+      "The house's own devices stay on " + sim.d.router.wifi.ssid + "."];
+  }
+};
+
+/* ---------------------------------------------------------------- free build */
+/* no work order: whatever the student builds, the network checks its health */
+const LIVE = ["router", "switch", "pc", "printer", "tv", "injector", "injector2", "camera", "mesh"];
+function healthCauses(sim) {
+  const set = LIVE.filter(function (id) { return placed(sim, id); });
+  const list = [C("none", set.length === 0, "Nothing is set up yet", "Devices are set up.", "Nothing is out of its box yet: the house has only the modem.")];
+  if (!set.length) return list;
+  if (!placed(sim, "router")) return list.concat([C("router", true, "Nothing hands out addresses: the router is still in its box", "The router is set up.", "The router is still in its box: nothing set up can get an address or reach the internet.")]);
+  const order = [["router", routerCauses]].concat(["pc", "printer", "tv"].filter(function (id) { return placed(sim, id); }).map(function (id) { return [id, function (s) { return wiredCauses(s, id); }]; }));
+  if (placed(sim, "camera")) order.push(["camera", function (s) { return cameraCauses(s).concat([C("wan", !s.wanUp(), "The router itself isn't online", "The router is online.", "The camera has an address, but the router has no internet.")]); }]);
+  for (const it of order) { const c = it[1](sim, it[0]); if (c.some(function (x) { return x.on; })) return list.concat(c); }
+  if (placed(sim, "mesh") && !sim.meshLink().ok) return list.concat(meshCauses(sim));
+  return list.concat(firstDown(sim, [["phone", wifiCauses], ["laptop", wifiCauses]]));
+}
+function clashCauses(sim) {
+  const seen = {}, clash = [];
+  for (const id of Object.keys(sim.d)) { const a = sim.addr(id); if (!a || a.kind === "apipa" || id === "router") continue; if (seen[a.ip] && sim.domain(sim.homeNode(id)).has(seen[a.ip])) clash.push([seen[a.ip], id, a.ip]); else seen[a.ip] = id; }
+  const r = sim.d.router, onRouter = Object.keys(sim.d).filter(function (id) { const f = sim.d[id].ifaces && sim.d[id].ifaces[0]; return f && f.cfg.mode === "static" && f.cfg.ip === r.lan.ip && placed(sim, id); });
+  return [C("none", !LIVE.some(function (id) { return placed(sim, id); }), "Nothing is set up yet", "Devices are set up.", "Nothing is set up yet."), C("clash", clash.length > 0 || onRouter.length > 0, "Two devices have the same address", "Every address is used once.", clash.length ? "The " + NAME[clash[0][0]] + " and the " + NAME[clash[0][1]] + " both answer at " + clash[0][2] + "." : onRouter.length ? "The " + NAME[onRouter[0]] + " is set to the router's own address." : "")];
+}
+function hardenedCauses(sim) {
+  const r = sim.d.router;
+  return [C("box", r.boxed, "The router is still in its box", "It's out of its box.", "The router is still in its box.")].concat(L_WIFISEC.causes(sim).slice(1), L_ADMIN.causes(sim).slice(1));
+}
+function runsCauses(sim) {
+  const runs = sim.net.cables.filter(function (c) { return c.kind !== "coax"; });
+  const long = runs.find(function (c) { return c.length > 100; }), dead = runs.find(function (c) { return !sim.cableUp(c); });
+  return [
+    C("none", runs.length === 0, "No cables laid yet", "Cables are laid.", "No cables are laid yet."),
+    C("long", !!long, "A run is longer than copper Ethernet can carry", "Every run is 100 m or less.", long ? "The run from the " + NAME[long.a.dev] + " to the " + NAME[long.b.dev] + " is " + long.length + " m: over 100 m there's no link." : ""),
+    C("dead", !!dead, "A cable has no link", "Every cable has a link.", dead ? "The cable from the " + NAME[dead.a.dev] + " to the " + NAME[dead.b.dev] + " has no link." : "")
+  ];
+}
+const FB = {
+  id: "FB", title: "Free build: an empty house, every device in the van", free: true,
+  start(seed) {
+    const f = factory(seed, ["switch", "pc", "printer", "tv", "camera", "injector", "mesh"], { laptop: "kitchen", phone: "living" }), d = f.net.devices;
+    d.injector.label = "PoE injector (802.3af)"; d.injector.power = true;
+    d.injector2 = Object.assign(JSON.parse(JSON.stringify(d.injector)), { id: "injector2", label: "PoE+ injector (802.3at)", sub: "802.3at", std: "at", boxed: true }); f.net.rooms.injector2 = "office";
+    d.camera.draw = 6.5;
+    const sim = new Sim(f.net); sim.boot();
+    return { sim: sim, v: { home: f.home, surname: surname(f.net) } };
+  },
+  brief() { return { quote: "No client on this one: the house is yours. Everything's in the van. Build the network you'd want, then check it.", from: "free build" }; },
+  mason: "Build it the way you would for a client, then let the network tell you how it stands.",
+  limits: function () { return ["Every device in the van: router, switch, PC, printer, TV, camera, both PoE injectors, a mesh node. Use any of them, in any room.", "The modem stays by the living-room outlet. A copper run is 100 m at most.", "No budget limit. Check as often as you like: the check tests whatever you've built."]; },
+  reqs: [{
+    id: "online", text: "Every device you've set up is online",
+    causes: healthCauses,
+    ok: function (sim) { const n = LIVE.filter(function (id) { return placed(sim, id); }).length; return n + " device" + (n === 1 ? "" : "s") + " set up, and everything that should be online is."; },
+    rung1: function () { return "Open the device the check names: its own page, its Physical tab, and where its cable goes."; },
+    rung2: function () { return "Work from the bottom up: power and the cable, then the link, then an address from the router, then the way out to the internet."; }
+  }, {
+    id: "clash", text: "No two devices share an address",
+    causes: clashCauses,
+    ok: function () { return "Every address on the network is used once."; },
+    rung1: function () { return "Compare the router's DHCP clients page with the settings of every device you gave a fixed address."; },
+    rung2: function () { return "An address belongs to one device. Fixed addresses go outside the range the router hands out, and never on the router's own."; }
+  }, {
+    id: "hardened", text: "The router hardened: its own Wi-Fi name and password, its own admin password",
+    causes: hardenedCauses,
+    ok: function (sim) { return "The Wi-Fi is " + sim.d.router.wifi.ssid + " with its own password, and the admin password is changed."; },
+    rung1: function () { return "Read the router's Status and Wi-Fi pages, and what's printed on its label."; },
+    rung2: function () { return "A router's factory name and passwords are printed on it for anyone to read. Change them before anything else."; }
+  }, {
+    id: "runs", text: "Every cable within 100 m, and every one with a link",
+    causes: runsCauses,
+    ok: function () { return "Every cable is within 100 m and has a link."; },
+    rung1: function () { return "Read the Cable runs list: the length and the link on every row."; },
+    rung2: function () { return "A cable with no link is unplugged, broken, too long, or leads to something off or still in its box."; }
+  }],
+  solve(v) { return J1.solve(v); },   /* one build that passes: J1's (any healthy build does) */
+  answer() { return ["There's no one answer: any network whose devices are all online, with no clashing addresses, a hardened router and every cable working, passes."]; },
+  summary(v, sim) { const n = LIVE.filter(function (id) { return placed(sim, id); }).length; return ["Your build: " + n + " device" + (n === 1 ? "" : "s") + " set up, every one online, no address used twice, the router hardened, every cable working."]; }
+};
+
+export const JOBS = [J1, J2, J3, J4, J5, FB];
+export const JOBS_COMING = [];

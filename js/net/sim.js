@@ -102,6 +102,11 @@ export class Sim {
     if (this.on("router")) {
       out.push({ id: "router", node: "router:lan", room: this.net.rooms.router, band: 24, ch: this.ch24(), ssid: r.wifi.ssid, mac: r.mac, sec: r.wifi.sec });
       out.push({ id: "router", node: "router:lan", room: this.net.rooms.router, band: 5, ch: r.wifi.ch5, ssid: r.wifi.ssid, mac: bump(r.mac), sec: r.wifi.sec });
+      if (this.guestOn()) {   /* the guest network: its own name and password on the same radios, its own subnet behind them */
+        const g = r.guest, gm = bump(bump(r.mac));
+        out.push({ id: "router", node: "router:guest", room: this.net.rooms.router, band: 24, ch: this.ch24(), ssid: g.ssid, mac: gm, sec: g.sec, gen: g.gen, guest: true });
+        out.push({ id: "router", node: "router:guest", room: this.net.rooms.router, band: 5, ch: r.wifi.ch5, ssid: g.ssid, mac: bump(gm), sec: g.sec, gen: g.gen, guest: true });
+      }
     }
     /* a hotspot outside the house broadcasting the house's own network name, open (HOME-15) */
     const tw = this.d.twin;
@@ -173,7 +178,7 @@ export class Sim {
     }
     if (!best) return { connected: false, reason: "no-network", room: room };
     if (!this.canSec(f, best.ap.sec)) return { connected: false, reason: "security", ap: best.ap, signal: best.signal, room: room };
-    if (best.ap.sec !== "Open" && (!f.saved.passOk || (f.saved.gen || 1) !== (this.d.router.wifi.gen || 1))) return { connected: false, reason: "auth", ap: best.ap, signal: best.signal, room: room };   /* the password it has saved isn't the network's (any more) */
+    if (best.ap.sec !== "Open" && (!f.saved.passOk || (f.saved.gen || 1) !== (best.ap.gen || this.d.router.wifi.gen || 1))) return { connected: false, reason: "auth", ap: best.ap, signal: best.signal, room: room };   /* the password it has saved isn't the network's (any more) */
     const crowd = best.ap.band === 24 ? this.crowd(best.ap.ch, room) : 0;
     const weak = best.signal < 35 ? (35 - best.signal) / 60 : 0;
     const loss = Math.min(0.6, Math.max(0, (crowd - 0.35) * 0.55) + weak);
@@ -234,7 +239,7 @@ export class Sim {
     const out = [];
     for (const id in this.d) {
       const x = this.d[id];
-      if (x.kind === "router" || x.kind === "rogue") { if (dom.has(id + ":lan") && this.on(id) && x.lan.ip === ip) out.push(id); continue; }
+      if (x.kind === "router" || x.kind === "rogue") { if ((dom.has(id + ":lan") && this.on(id) && x.lan.ip === ip) || (id === "router" && this.guestOn() && dom.has("router:guest") && x.guest.lan.ip === ip)) out.push(id); continue; }
       if (!x.ifaces) continue;
       if (!dom.has(id)) continue;
       const a = this.addr(id); if (a && a.ip === ip) out.push(id);
@@ -251,11 +256,16 @@ export class Sim {
       const s = this.d[sid];
       if ((s.kind === "router" || s.kind === "rogue") && this.on(sid) && s.dhcp && s.dhcp.on && dom.has(sid + ":lan")) out.push(sid);
     }
+    if (this.guestOn() && dom.has("router:guest")) out.push("router:guest");   /* the guest network has its own pool, on its own subnet */
     return out;
   }
+  /* a DHCP server by its key: a router's LAN side ("router", "rogue") or the router's guest network ("router:guest") */
+  srv(key) { return key === "router:guest" ? this.d.router.guest : this.d[key]; }
+  guestOn() { const r = this.d.router; return !!(r && r.guest && r.guest.on && this.on("router")); }
+  inGuest(ip) { const g = this.d.router && this.d.router.guest; return !!(g && ip && sameSubnet(ip, g.lan.ip, g.lan.mask)); }
   /* the lowest free address in a server's pool (reservations kept for their owners) */
   offer(sid, mac, want) {
-    const s = this.d[sid], dh = s.dhcp, lo = ip2n(dh.start), hi = ip2n(dh.end);
+    const s = this.srv(sid), dh = s.dhcp, lo = ip2n(dh.start), hi = ip2n(dh.end);
     const res = dh.reservations.find(function (r) { return r.mac === mac; });
     if (res) return res.ip;
     const taken = new Set();
@@ -275,14 +285,14 @@ export class Sim {
     const servers = this.dhcpServers(id);
     let ans = null, server = null;
     const wins = (this.net.extra && this.net.extra.rogueWins) || [];
-    const order = servers.slice().sort(function (a, b) { const ra = this.d[a].kind === "rogue", rb = this.d[b].kind === "rogue"; return wins.indexOf(id) >= 0 ? (rb - ra) : (ra - rb); }.bind(this));   /* whoever answers first: a rogue server beats the router for the devices it is quicker to */
-    for (const sid of order) { const ip = this.offer(sid, f.mac, f.lease && f.lease.server === this.d[sid].lan.ip ? f.lease.ip : null); if (ip) { ans = ip; server = sid; break; } }
+    const order = servers.slice().sort(function (a, b) { const ra = this.srv(a).kind === "rogue", rb = this.srv(b).kind === "rogue"; return wins.indexOf(id) >= 0 ? (rb - ra) : (ra - rb); }.bind(this));   /* whoever answers first: a rogue server beats the router for the devices it is quicker to */
+    for (const sid of order) { const ip = this.offer(sid, f.mac, f.lease && f.lease.server === this.srv(sid).lan.ip ? f.lease.ip : null); if (ip) { ans = ip; server = sid; break; } }
     if (!ans) {
       if (!f.apipa) f.apipa = "169.254." + (1 + hash(f.mac) % 254) + "." + (1 + hash(f.mac + "x") % 254);
       f.lease = null;
       return { result: servers.length ? "no-offer" : "timeout", servers: servers };
     }
-    const s = this.d[server];
+    const s = this.srv(server);
     s.leases = s.leases.filter(function (l) { return l.mac !== f.mac; });
     s.leases.push({ mac: f.mac, ip: ans, name: x.label, host: x.host || x.label.replace(/\s+/g, "-").toUpperCase() });
     const dns = s.dhcp.dnsMode === "router" ? [s.lan.ip] : s.dhcp.dns.filter(Boolean);
@@ -292,7 +302,7 @@ export class Sim {
   }
   release(id) {
     const f = this.d[id].ifaces[0];
-    if (f.lease) { const s = Object.values(this.d).find(function (v) { return (v.kind === "router" || v.kind === "rogue") && v.lan.ip === f.lease.server; }); if (s) s.leases = s.leases.filter(function (l) { return l.mac !== f.mac; }); }
+    if (f.lease) { const s = Object.values(this.d).concat(this.d.router && this.d.router.guest ? [this.d.router.guest] : []).find(function (v) { return (v.kind === "router" || v.kind === "rogue") && v.lan.ip === f.lease.server; }); if (s) s.leases = s.leases.filter(function (l) { return l.mac !== f.mac; }); }
     f.lease = null; f.apipa = null;
   }
   /* bring the house up: everyone asks for an address, in a realistic order */
@@ -335,6 +345,13 @@ export class Sim {
     }
     /* through a router */
     const gwId = owners[0], g = this.d[gwId];
+    if (g.kind === "router" && this.inGuest(a.ip) && this.guestOn()) {   /* from the guest network: the internet yes; the home network only if the router allows it */
+      if (sameSubnet(dst, g.lan.ip, g.lan.mask) || dst === this.d.modem.mgmt) {
+        if (g.guest.isolate) return { fail: "blocked", via: gwId, addr: a, hops: [g.guest.lan.ip] };
+        const o = this.owners(dst, this.domain("router:lan"));
+        return o.length ? { local: true, owner: o, via: gwId, addr: a, next: dst, hops: [g.guest.lan.ip] } : { fail: "host-unreachable", addr: a, next: dst };
+      }
+    }
     if (g.kind === "router") {
       if (dst === this.d.modem.mgmt) return this.on("modem") && this.cableUp(this.wanCable()) ? { via: gwId, modem: true, addr: a, hops: [g.lan.ip, dst] } : { fail: "beyond", via: gwId, addr: a, hops: [g.lan.ip] };
       if (sameSubnet(dst, g.lan.ip, g.lan.mask)) return { fail: "host-unreachable", addr: a, next: dst };
@@ -409,9 +426,10 @@ export class Sim {
       case "outside": res = this.outside(act.port); break;
       case "rejoin": res = this.hasLink(act.dev) ? this.dhcp(act.dev, "rejoin") : { result: "no-wifi" }; break;
       case "forget": { const f = this.d[act.dev].ifaces[0]; f.saved = { ssid: null, passOk: false }; this.release(act.dev); res = { ok: true }; break; }
-      case "join": {                                            /* join the house's network by name: the secured one with its current password, or (open) a copy with none */
-        const f = this.d[act.dev].ifaces[0], w = this.d.router.wifi;
-        f.saved = act.open ? { ssid: w.ssid, passOk: true, sec: "Open" } : { ssid: w.ssid, passOk: true, gen: w.gen || 1 }; this.release(act.dev);   /* open: the copy with no password */
+      case "join": {                                            /* join the house's network by name: the secured one with its current password, or (open) a copy with none; or (ssid) the guest network */
+        const f = this.d[act.dev].ifaces[0], w = this.d.router.wifi, g = this.d.router.guest;
+        if (g && act.ssid && act.ssid === g.ssid) f.saved = g.sec === "Open" ? { ssid: g.ssid, passOk: true, sec: "Open" } : { ssid: g.ssid, passOk: true, gen: g.gen };
+        else f.saved = act.open ? { ssid: w.ssid, passOk: true, sec: "Open" } : { ssid: w.ssid, passOk: true, gen: w.gen || 1 }; this.release(act.dev);   /* open: the copy with no password */
         res = this.hasLink(act.dev) ? this.dhcp(act.dev, "join") : { result: "no-wifi" }; break;
       }
       case "pcprinter": { const ip = String(act.ip || "").trim(); if (!isIp(ip)) { res = { ok: false, errs: ["The printer port must be an IPv4 address"] }; break; } this.d.pc.printer.port = ip; res = { ok: true }; break; }
@@ -443,12 +461,12 @@ export class Sim {
       r.dhcp = nd; return { ok: true };
     }
     if (page === "wifi") {
-      if ("ssid" in v) { const n = String(v.ssid || "").trim(); if (!n || n.length > 32 || !/^[\x20-\x7e]+$/.test(n)) return { ok: false, errs: ["The network name must be 1 to 32 letters, numbers or symbols"] }; }
+      if ("ssid" in v) { const n = String(v.ssid || "").trim(); if (!n || n.length > 32 || !/^[\x20-\x7e]+$/.test(n)) return { ok: false, errs: ["The network name must be 1 to 32 letters, numbers or symbols"] }; if (r.guest && r.guest.ssid === n) return { ok: false, errs: ["That's the guest network's name: the home network needs its own"] }; }
       if ("ch24" in v) { if (v.ch24 === "auto") r.wifi.ch24mode = "auto"; else { const c = parseInt(v.ch24, 10); if (!(c >= 1 && c <= 11)) return { ok: false, errs: ["2.4 GHz channel must be 1 to 11, or Auto"] }; r.wifi.ch24mode = "manual"; r.wifi.ch24 = c; } }
       if ("ch5" in v) { const c = parseInt(v.ch5, 10); if ([36, 40, 44, 48, 149, 153, 157, 161].indexOf(c) < 0) return { ok: false, errs: ["5 GHz channel must be one of 36, 40, 44, 48, 149, 153, 157, 161"] }; r.wifi.ch5 = c; }
       if (v.newPassword) r.wifi.gen = (r.wifi.gen || 1) + 1;   /* a new Wi-Fi password: every device has to be given it again */
       if ("ssid" in v) r.wifi.ssid = String(v.ssid).trim();   /* a new name: devices joined to the old one have to join the new one */
-      if ("sec" in v) { if (SECURITY.indexOf(v.sec) < 0) return { ok: false, errs: ["Security must be one of " + SECURITY.join(", ")] }; r.wifi.sec = v.sec; }
+      if ("sec" in v) { if (SECURITY.indexOf(v.sec) < 0) return { ok: false, errs: ["Security must be one of " + SECURITY.join(", ")] }; r.wifi.sec = v.sec; if (r.guest && r.guest.sec !== "Open") r.guest.sec = v.sec; }
       return { ok: true };
     }
     if (page === "reservation-add") {
@@ -463,6 +481,15 @@ export class Sim {
       if (!f) return { ok: false, errs: ["No forward for that port"] };
       if (!isIp(v.ip) || !sameSubnet(v.ip, r.lan.ip, r.lan.mask) || v.ip === r.lan.ip) return { ok: false, errs: ["The internal address must be a device in " + this.net.prefix + ".x"] };
       f.ip = String(v.ip).trim(); return { ok: true };
+    }
+    if (page === "guest" && r.guest) {   /* build mode: the router's guest network */
+      const g = r.guest;
+      if ("ssid" in v) { const n = String(v.ssid || "").trim(); if (!n || n.length > 32 || !/^[\x20-\x7e]+$/.test(n)) return { ok: false, errs: ["The guest network's name must be 1 to 32 letters, numbers or symbols"] }; if (n === r.wifi.ssid) return { ok: false, errs: ["The guest network needs a name of its own, not the home network's"] }; }
+      if ("on" in v) g.on = !!v.on;
+      if ("ssid" in v) g.ssid = String(v.ssid).trim();
+      if ("isolate" in v) g.isolate = !!v.isolate;
+      if (v.newPassword) { g.gen = (g.gen || 1) + 1; g.sec = r.wifi.sec; }   /* a password of its own: from now on it's secured like the home network */
+      return { ok: true };
     }
     if (page === "forward-add") {   /* build mode: a new forward from the outside port to a device's port */
       const ext = parseInt(v.ext, 10), port = parseInt(v.port, 10), ip = String(v.ip || "").trim(), name = String(v.name || "").trim() || "Forward";

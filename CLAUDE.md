@@ -577,8 +577,8 @@ tile link (decision 6). The Tickets | Build switch is in every page's bar.
   to it; one cable through the office wall (a switch shares it); everything
   that worked still works. A printer inside the range prints today and
   fails the check, which says why.
-- **The page** (`js/build/app.js`): the jobs list (after B2: J5 and free
-  build "Coming next"); the work order (the client's words, Mason, the order's
+- **The page** (`js/build/app.js`): the jobs list (work orders, then
+  "Your own": free build); the work order (the client's words, Mason, the order's
   lines, the limits); what's still in its box; Place or move a device;
   Lay a cable (the run's length shown before it is laid; ports in use
   listed but not choosable); Undo the last change; Put the house back as
@@ -645,6 +645,35 @@ tile link (decision 6). The Tickets | Build switch is in every page's bar.
   plan drew runs over the rooms' names, which the tickets' fixed runs
   had always missed): the rooms' names now go above the runs.
 
+**Build mode, B3a (11 October 2026): J5 and free build.**
+- **J5 A guest Wi-Fi kept apart** (segmentation, guest networks). Every
+  build house's router has a guest network, off as it comes from the box
+  (`router.guest`): its own name, its own password (open until one is
+  set), its own subnet (`192.168.<home + 100>.x`) with its own DHCP pool,
+  and "Keep guests off the home network" ticked by default. Guests reach
+  the internet; with isolation on, the router drops anything they send
+  towards the home network (`route` fails "blocked", so a ping times
+  out), and the home side can't reach them either. The router's Wi-Fi
+  page has the Guest network section; Status shows it; DHCP clients list
+  guests' leases. A phone with more than one network in range shows the
+  list to pick from. A visitor's phone waits in the kitchen. Lines: a
+  guest network with its own name and password; the visitor online on it
+  (given the home password, it's on the home network: the check says so);
+  guests reach none of the house's devices; the house's own devices stay
+  on the home network. A second guest password change makes the visitor
+  join again; the home network is untouched by it.
+- **Free build** ("Your own" in the jobs list): an empty house, every
+  device in the van (router, switch, PC, printer, TV, camera, both PoE
+  injectors, mesh node). No work order: the check tests the health of
+  whatever is built: every device set up is online (worked from the bottom
+  up: the router, the wired devices, the camera, the mesh node's link,
+  the phone and laptop), no two devices share an address (nor the
+  router's own), the router hardened, every cable within 100 m and with a
+  link. Mason's ladder works on it like any job.
+- Found by the drive: the visitor's phone had no device button on the
+  build page (the page's own device list didn't include it), so a check
+  now asserts every device out of its box has one.
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for
@@ -666,7 +695,7 @@ ways; a wrong fix not solving; putting the network back; reload keeps
 progress; the three views; easier reading persisting; the instructor
 tools: a wrong PIN refused, 3693 unlocking, the demo opening the chosen
 house, nothing revealed on the board, the PIN not in the code); AAA on painted
-pixels across 75 states (21 of them build mode) plus scrolled positions,
+pixels across 81 states (27 of them build mode) plus scrolled positions,
 measured with WebGL on so
 the 3D model's buttons and the Enlarge window are measured too (and one
 state with it off, for the fallback); `node tools/models.mjs` (the 3D

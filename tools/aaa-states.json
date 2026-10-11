@@ -430,5 +430,35 @@
   "name": "build: J4 done, mesh on the landing, logical view",
   "page": "build.html",
   "setup": "const c=window.__e4b; c.openJob('J4',true,4242); c.act({t:'place',dev:'mesh',room:'landing'}); c.check(); document.getElementById('vLog').click(); document.querySelector('#devtabs [data-d=laptop]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Wi-Fi').click(); "
+ },
+ {
+  "name": "build: J5 router Wi-Fi page, guest network open",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J5',true,4242); const J=c.T; const g=J.v.surname.toUpperCase()+'-GUEST'; c.act({t:'router',page:'guest',values:{on:true,ssid:g,isolate:true}}); document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Wi-Fi').click(); "
+ },
+ {
+  "name": "build: J5 visitor's phone, the networks list",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J5',true,4242); const J=c.T; const g=J.v.surname.toUpperCase()+'-GUEST'; c.act({t:'router',page:'guest',values:{on:true,ssid:g,isolate:true}}); c.act({t:'router',page:'guest',values:{newPassword:true}}); document.querySelector('#devtabs [data-d=guest]').click(); "
+ },
+ {
+  "name": "build: J5 visitor on the home network, five checks",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J5',true,4242); const J=c.T; const g=J.v.surname.toUpperCase()+'-GUEST'; c.act({t:'router',page:'guest',values:{on:true,ssid:g,isolate:true}}); c.act({t:'router',page:'guest',values:{newPassword:true}}); c.act({t:'join',dev:'guest'}); for(let i=0;i<5;i++) c.check(); document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='DHCP clients').click(); "
+ },
+ {
+  "name": "build: J5 done, router status with the guest network",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J5',true,4242); const J=c.T; const g=J.v.surname.toUpperCase()+'-GUEST'; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); document.querySelector('#devtabs [data-d=router]').click(); "
+ },
+ {
+  "name": "build: free build, everything in the van",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('FB',true,4242);"
+ },
+ {
+  "name": "build: free build, a printer left unplugged, Mason",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('FB',true,4242); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.act({t:'place',dev:'printer',room:'office'}); for(let i=0;i<5;i++) c.check(); document.getElementById('vLog').click();"
  }
 ]

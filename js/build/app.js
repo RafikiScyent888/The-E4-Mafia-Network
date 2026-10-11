@@ -15,7 +15,7 @@ import { setupInstructor } from "../desk/instructor.js";
 
 const KEY = "e4-build-v1";
 const DEFS = {}; JOBS.forEach(function (d) { DEFS[d.id] = d; });
-const ORDER = ["modem", "router", "switch", "pc", "printer", "tv", "injector", "injector2", "camera", "mesh", "phone", "laptop"];
+const ORDER = ["modem", "router", "switch", "pc", "printer", "tv", "injector", "injector2", "camera", "mesh", "phone", "laptop", "guest"];
 const ROOM_ORDER = ["living", "office", "kitchen", "garage", "upstairs", "landing", "porch"];
 const $ = function (id) { return document.getElementById(id); };
 const cap = function (s) { return s[0].toUpperCase() + s.slice(1); };
@@ -57,14 +57,15 @@ function renderLeft() {
   host.appendChild(el("h2", null, "Client jobs · Home"));
   const ol = el("ol", { id: "queue" });
   ol.appendChild(el("li", { class: "tier" }, "Work orders"));
-  JOBS.forEach(function (d) {
+  const item = function (d) {
     const n = S.done[d.id] || 0, cur = ctx.T && d.id === ctx.T.def.id;
     const st = cur ? "Open · you" + (n ? " · done " + n + "×" : "") : n ? "Done " + n + "×" : "New";
     ol.appendChild(el("li", null, el("button", { type: "button", "data-j": d.id, "aria-current": cur ? "true" : null, onclick: function () { openJob(d.id, false); } }, el("span", { class: "num" }, d.id), el("span", { class: "what" }, d.title), el("span", { class: "st" + (n ? " solved" : "") }, st))));
-  });
+  };
+  JOBS.filter(function (d) { return !d.free; }).forEach(item);
   JOBS_COMING.forEach(function (c) { ol.appendChild(el("li", null, el("button", { type: "button", "aria-disabled": "true" }, el("span", { class: "num" }, c.id), el("span", { class: "what" }, c.title), el("span", { class: "st" }, "Coming next")))); });
   ol.appendChild(el("li", { class: "tier" }, "Your own"));
-  ol.appendChild(el("li", null, el("button", { type: "button", "aria-disabled": "true" }, el("span", { class: "num" }, "FB"), el("span", { class: "what" }, "Free build: an empty house, every device in the van"), el("span", { class: "st" }, "Coming next"))));
+  JOBS.filter(function (d) { return d.free; }).forEach(item);
   host.appendChild(ol);
 }
 function renderTitle() {
@@ -210,7 +211,7 @@ function renderCheck() {
       body.appendChild(box);
     }
     if (J.done) {
-      const s = J.def.summary(J.v, J.sim), next = JOBS[JOBS.indexOf(J.def) + 1] || null;   /* only a later job: the last one doesn't loop back */
+      const orders = JOBS.filter(function (d) { return !d.free; }), s = J.def.summary(J.v, J.sim), next = J.def.free ? null : orders[orders.indexOf(J.def) + 1] || null;   /* only a later work order: the last one doesn't loop back, and free build has none */
       const box = el("div", { class: "solved", role: "status" }, el("h3", null, "Job " + J.def.id + " done"), el("p", null, el("b", null, "What you built:")));
       const ul = el("ul"); s.forEach(function (t) { ul.appendChild(el("li", null, t)); }); box.appendChild(ul);
       box.appendChild(el("p", null, "Every line of the order checked by the network itself, in " + last.n + " check" + (last.n === 1 ? "" : "s") + "."));

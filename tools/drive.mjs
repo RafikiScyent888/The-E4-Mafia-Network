@@ -244,14 +244,15 @@ const place = async (p, d, room) => { await p.selectOption("#bmDev", d); await p
 const lay = async (p, a, ap, b, bp) => { await p.selectOption("#bmAd", a); await p.selectOption("#bmAp", ap); await p.selectOption("#bmBd", b); await p.selectOption("#bmBp", bp); await p.click("#bmLay"); await p.waitForTimeout(40); };
 const checkJob = async (p) => { await p.click("#doCheck"); await p.waitForTimeout(40); return p.$eval("#check", (n) => n.textContent); };
 const BJ = (p, f) => p.evaluate(f);
-for (const job of ["J1", "J2", "J3", "J4"].filter((k) => !process.env.ONLY || k === process.env.ONLY)) for (const seed of [11, 2025, 777777, 3]) {
+for (const job of ["J1", "J2", "J3", "J4", "J5", "FB"].filter((k) => !process.env.ONLY || k === process.env.ONLY)) for (const seed of [11, 2025, 777777, 3]) {
   if (seed === 3 && job !== "J3") continue;   /* house 3 has the camera with the heater: J3 is driven on both cameras */
   const { p, ctx } = await bpage(job, seed);
   const tag = "build " + job + " " + seed + ": ";
   try {
   check((await BJ(p, () => window.__e4b.T.seed)) === seed && (await BJ(p, () => window.__e4b.T.def.id)) === job, tag + "opens the job on the house asked for");
   const boxed = await BJ(p, () => Object.keys(window.__e4b.T.sim.d).filter((k) => window.__e4b.T.sim.d[k].boxed));
-  check(boxed.length >= 1 && (await p.$$eval(".tray li", (l) => l.length)) === boxed.length, tag + "everything still boxed is in the tray");
+  check((await p.$$eval(".tray li", (l) => l.length)) === boxed.length, tag + "everything still boxed is in the tray, and nothing else");
+  check(await p.$$eval("#devtabs [data-d]", (l, ids) => ids.every((id) => l.some((b) => b.dataset.d === id)), await BJ(p, () => Object.keys(window.__e4b.T.sim.d).filter((k) => !["isp", "wall"].includes(k) && !window.__e4b.T.sim.d[k].boxed))), tag + "every device out of its box has a device button");
   check(await p.$$eval("#bmDev option", (l, bx) => bx.every((id) => l.some((o) => o.value === id)), boxed), tag + "every boxed device can be placed from the form");
   check(boxed.every((k) => true) && !(await p.$('#plan [data-d="' + boxed[0] + '"]')) && !(await p.$('#devtabs [data-d="' + boxed[0] + '"]')), tag + "a boxed device is on neither the plan nor the device buttons");
   let t = await checkJob(p);
@@ -314,6 +315,28 @@ for (const job of ["J1", "J2", "J3", "J4"].filter((k) => !process.env.ONLY || k 
     check(/Added: outside port 8443 goes to/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the router says the forward was added");
     await dev(p, "phone"); await p.click('.pane button:text-is("Open the camera app on mobile data")'); await p.waitForTimeout(40);
     check(/Camera app: connected/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the camera app connects from outside");
+  } else if (job === "J5") {
+    const g = (await BJ(p, () => window.__e4b.T.v.surname)).toUpperCase() + "-GUEST", home = await BJ(p, () => window.__e4b.T.sim.d.router.wifi.ssid);
+    await dev(p, "router"); await tab(p, "Wi-Fi");
+    await p.check('.devform input[name="gon"][value="1"]'); await p.fill('.devform input[name="gssid"]', g);
+    check(await p.isChecked('.devform input[name="isolate"]'), tag + "the guest network keeps guests off the home network by default");
+    await p.click('.devform button:text-is("Save the guest network")'); await p.waitForTimeout(40);
+    check(/No password yet: anyone in range can join/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the router says the new guest network has no password yet");
+    await p.click('.pane button:text-is("Set a guest password")'); await p.waitForTimeout(40);
+    await dev(p, "guest"); await p.click('.pane button:text-is("Join ' + home + ' (enter the password)")'); await p.waitForTimeout(40);   /* the old habit: the home password */
+    t = await checkJob(p); check(/the house's own network/.test(t), tag + "the check says the visitor is on the house's own network");
+    await dev(p, "guest"); await p.click('.pane li:has-text("' + g + '") button:text-is("Connect (enter the password)")'); await p.waitForTimeout(40);
+    check(/connected, address 192\.168\.\d+\.\d+/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the visitor's phone joins the guest network");
+  } else if (job === "FB") {
+    check(/every device in the van/i.test(await p.$eval("#bm", (n) => n.textContent)) && (await p.$$(".tray li")).length >= 8, tag + "free build: everything is in the van");
+    const home = await BJ(p, () => window.__e4b.T.v.home);
+    await place(p, "router", "living"); await place(p, "tv", "living");
+    await lay(p, "modem", "ETH", "router", "WAN"); await lay(p, "router", "LAN 2", "tv", "LAN");
+    await dev(p, "router"); await tab(p, "Wi-Fi"); await p.fill('.devform input[name="ssid"]', home); await p.click('.devform button:text-is("Save")'); await p.waitForTimeout(40);
+    await p.click('.pane button:text-is("Change the Wi-Fi password")'); await p.waitForTimeout(40);
+    await tab(p, "Status"); await p.click('.pane button:text-is("Change the admin password")'); await p.waitForTimeout(40);
+    await dev(p, "phone"); await p.click('.pane button:text-is("Join ' + home + ' (enter the password)")'); await p.waitForTimeout(40);
+    await dev(p, "laptop"); await tab(p, "Wi-Fi"); await p.click('.pane li:has-text("' + home + '") button:text-is("Connect (enter the password)")'); await p.waitForTimeout(40);
   } else if (job === "J4") {
     await place(p, "mesh", "upstairs");   /* in the dead spot itself: its link back is lost */
     t = await checkJob(p); check(/status ring is amber/.test(t) && /44%/.test(t), tag + "in the bedroom with no way back: the check says the ring is amber and the laptop still gets 44%");

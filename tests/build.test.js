@@ -189,7 +189,8 @@ test("J3: the tempting wrong ways fail the right line, for the right reason; oth
     J = tryIt(sol.slice(0, 4).concat([{ t: "client", dev: "camera", values: { mode: "static", ip: J0.sim.net.prefix + ".6", mask: J0.sim.d.router.lan.mask, gw: J0.sim.d.router.lan.ip } }, { t: "router", page: "forward-add", values: { name: "Cam", ext: "8443", ip: J0.sim.net.prefix + ".6", port: "443" } }]));
     assert.ok(solved(J), "fixed by hand outside the range: " + JSON.stringify(J.last.res.filter((x) => !x.ok)));
   }
-  assert.ok(heat > 15 && heat < 65, "both cameras generated (" + heat + " of 80 with the heater)");
+  const n = seeds("J3").slice(0, 80).length;
+  assert.ok(heat > n * 0.2 && heat < n * 0.8, "both cameras generated (" + heat + " of " + n + " with the heater)");
 });
 
 test("J4: in the dead spot with no way back fails; the landing, or the bedroom with a cable back, passes", () => {
@@ -212,6 +213,54 @@ test("J4: in the dead spot with no way back fails; the landing, or the bedroom w
     /* a cable that leads nowhere: the TV's freed port */
     J = tryIt([{ t: "pull", cable: J0.sim.cableAt("tv", "LAN").id }, { t: "place", dev: "mesh", room: "upstairs" }, { t: "place", dev: "tv", room: "living" }, { t: "lay", a: E("tv", "LAN"), b: E("mesh", "LAN") }]);
     assert.equal(line(J, "mesh").real.id, "wire"); assert.equal(line(J, "keep").real.id, "lan");
+  }
+});
+
+test("J5: the visitor on the home network, an open guest network, guests let in, a house device on the guest side: each fails its line", () => {
+  for (const s of seeds("J5").slice(0, 80)) {
+    const def = byId.J5, J0 = B.open(def, s), sol = def.solve(J0.v, J0.sim), gname = sol[0].values.ssid;
+    const tryIt = function (acts) { const J = B.open(def, s); run(J, acts); return J; };
+    let J = tryIt(sol.slice(0, 2).concat([{ t: "join", dev: "guest" }]));   /* given the home network's password */
+    assert.equal(line(J, "visitor").real.id, "home"); assert.equal(line(J, "apart").real.id, "visitor");
+    assert.ok(J.sim.route("guest", J.sim.addr("printer").ip).local, "on the home network the printer answers it");
+    J = tryIt([sol[0], sol[2]]);   /* no guest password */
+    assert.equal(line(J, "guestnet").real.id, "open"); assert.ok(line(J, "visitor").ok, "an open network lets anyone on");
+    J = tryIt([sol[0], sol[2], sol[1]]);   /* joined while open, then the password set: it has to join again */
+    assert.equal(line(J, "visitor").real.id, "join");
+    J = tryIt([{ t: "router", page: "guest", values: { on: true, ssid: gname, isolate: false } }, sol[1], sol[2]]);
+    assert.equal(line(J, "apart").real.id, "iso"); assert.match(line(J, "apart").ev, /printer/);
+    J = tryIt(sol.concat([{ t: "join", dev: "laptop", ssid: gname }]));
+    assert.equal(line(J, "keep").real.id, "guest"); assert.equal(J.sim.route("laptop", J.sim.addr("printer").ip).fail, "blocked", "isolation works both ways");
+    J = tryIt(sol.concat([sol[1]]));   /* the guest password changed again: the visitor's phone has the old one */
+    assert.equal(line(J, "visitor").real.id, "join"); assert.match(line(J, "visitor").ev, /password it has is old/);
+    assert.ok(line(J, "keep").ok, "the home network's devices don't care about the guest password");
+    J = tryIt(sol);
+    assert.ok(solved(J));
+    assert.ok(J.sim.route("guest", "203.0.113.80").internet, "guests reach the internet");
+    assert.equal(J.sim.route("guest", J.sim.addr("pc").ip).fail, "blocked");
+    assert.notEqual(J.sim.addr("guest").ip.split(".").slice(0, 3).join("."), J.sim.net.prefix, "a subnet of its own");
+    assert.equal(B.act(J, { t: "router", page: "guest", values: { ssid: J.sim.d.router.wifi.ssid } }).result.ok, false, "the guest network can't take the home network's name");
+  }
+});
+
+test("free build: an empty house fails every line; a healthy build passes; clashing addresses and long or dead runs are caught", () => {
+  for (const s of seeds("FB").slice(0, 60)) {
+    const def = byId.FB, J0 = B.open(def, s), sol = def.solve(J0.v, J0.sim);
+    const tryIt = function (acts) { const J = B.open(def, s); run(J, acts); return J; };
+    let J = tryIt(sol);
+    assert.ok(solved(J), "J1's build is a healthy one");
+    J = tryIt(sol.concat([{ t: "place", dev: "printer", room: "office" }]));
+    assert.equal(line(J, "online").real.id, "cable", "a device set up and left unplugged");
+    J = tryIt(sol.concat([{ t: "place", dev: "printer", room: "living" }, { t: "lay", a: E("router", "LAN 3"), b: E("printer", "NET") }, { t: "client", dev: "printer", values: { mode: "static", ip: J0.sim.d.router.lan.ip, mask: "255.255.255.0", gw: J0.sim.d.router.lan.ip } }]));
+    assert.equal(line(J, "clash").real.id, "clash");
+    J = tryIt(sol);
+    J.sim.cableAt("tv", "LAN").length = 130;
+    assert.equal(line(J, "runs").real.id, "long");
+    J = tryIt(sol.concat([{ t: "unplug", cable: "x" }].filter(() => false)));
+    J.sim.cableAt("tv", "LAN").a.seated = false;
+    assert.equal(line(J, "runs").real.id, "dead");
+    J = tryIt(sol.slice(0, 6));
+    assert.equal(line(J, "hardened").real.id, "name");
   }
 });
 
@@ -326,7 +375,9 @@ test("Mason: nothing for two failing checks, then where to look, the principle, 
     const wrong = { J1: [{ t: "place", dev: "router", room: "living" }, { t: "place", dev: "pc", room: "office" }, { t: "lay", a: E("modem", "ETH"), b: E("router", "LAN 1") }],
       J2: [{ t: "place", dev: "pc", room: "office" }, { t: "place", dev: "switch", room: "office" }, { t: "lay", a: E("switch", "1"), b: E("pc", "NIC") }],
       J3: [{ t: "place", dev: "camera", room: "porch" }, { t: "lay", a: E("switch", "4"), b: E("camera", "LAN") }],   /* straight into the switch: no power */
-      J4: [{ t: "place", dev: "mesh", room: "upstairs" }] }[def.id];   /* in the dead spot itself, with no way back */
+      J4: [{ t: "place", dev: "mesh", room: "upstairs" }],   /* in the dead spot itself, with no way back */
+      J5: [{ t: "router", page: "guest", values: { on: true, ssid: "VISITORS", isolate: true } }, { t: "join", dev: "guest" }],   /* the visitor given the home network */
+      FB: [{ t: "place", dev: "router", room: "living" }, { t: "lay", a: E("modem", "ETH"), b: E("router", "LAN 1") }] }[def.id];
     run(J, wrong);
     const seen = [];
     for (let k = 1; k <= 12; k++) { B.check(J); const m = B.mason(J); seen.push(m ? m.rung : 0); if (m && m.rung === 3) {

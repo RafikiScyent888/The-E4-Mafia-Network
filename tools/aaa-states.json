@@ -460,5 +460,31 @@
   "name": "build: free build, a printer left unplugged, Mason",
   "page": "build.html",
   "setup": "const c=window.__e4b; c.openJob('FB',true,4242); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.act({t:'place',dev:'printer',room:'office'}); for(let i=0;i<5;i++) c.check(); document.getElementById('vLog').click();"
+ },
+ {
+  "name": "build: J6 new router's Wi-Fi page, the client's password button",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J6',true,4242); c.act({t:'place',dev:'router',room:'living'}); c.act({t:'lay',a:{dev:'modem',port:'ETH'},b:{dev:'router',port:'WAN'}}); document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Wi-Fi').click(); "
+ },
+ {
+  "name": "build: J7 PC fixed with no DNS, five checks, Mason",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J7',true,4242); const J=c.T, r=J.sim.d.router; c.act({t:'client',dev:'pc',values:{mode:'static',ip:J.sim.net.prefix+'.6',mask:r.lan.mask,gw:r.lan.ip,dns:['','']}}); for(let i=0;i<5;i++) c.check(); document.querySelector('#devtabs [data-d=pc]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Network settings').click(); "
+ },
+ {
+  "name": "build: J8 old laptop's survey in its terminal",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J8',true,4242); for(let i=0;i<4;i++) c.check(); document.querySelector('#devtabs [data-d=laptop]').click(); ",
+  "after": "const i=document.querySelector('.term .cmdin'); i.value='netsh wlan show networks mode=bssid'; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));"
+ },
+ {
+  "name": "build: J9 router security, the old laptop cut off",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J9',true,4242); c.act({t:'router',page:'wifi',values:{sec:'WPA3-Personal'}}); for(let i=0;i<3;i++) c.check(); document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Wi-Fi').click(); "
+ },
+ {
+  "name": "build: J10 done, the TV upstairs and the printer in the kitchen",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J10',true,4242); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check();"
  }
 ]

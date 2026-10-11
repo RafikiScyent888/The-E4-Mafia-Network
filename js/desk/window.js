@@ -159,7 +159,8 @@ function wifiForm(v, ctx, rerender) {
     else { msg.className = "msg err"; msg.textContent = "Not saved: " + ((r && r.result && r.result.errs) || []).join(". ") + "."; }
   });
   if (ctx.flash) { msg.className = "msg ok"; msg.textContent = ctx.flash; ctx.flash = null; }
-  const pw = el("div", { class: "acts", style: "margin-top:10px" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "router", page: "wifi", values: { newPassword: true } }); if (r && r.result && r.result.ok) { ctx.flash = "Saved: a new Wi-Fi password. Every Wi-Fi device has to be given it again."; rerender(); } } }, "Change the Wi-Fi password"));
+  const pw = el("div", { class: "acts", style: "margin-top:10px" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "router", page: "wifi", values: { newPassword: true } }); if (r && r.result && r.result.ok) { ctx.flash = "Saved: a new Wi-Fi password. Every Wi-Fi device has to be given it again."; rerender(); } } }, "Change the Wi-Fi password"),
+    v.client ? el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "router", page: "wifi", values: { clientPassword: true } }); if (r && r.result && r.result.ok) { ctx.flash = "Saved: the Wi-Fi password is now the client's own, from the card on the fridge."; rerender(); } } }, "Type in the client's Wi-Fi password (the card on the fridge)") : null);
   return el("div", null, f, pw, v.changed ? el("p", { class: "note" }, "The Wi-Fi password was changed today.") : null, v.guest ? guestForm(v.guest, ctx, rerender) : null);
 }
 /* build mode: the router's guest network, its own name and password, on its own subnet, kept off the home network or not */

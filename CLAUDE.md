@@ -674,6 +674,41 @@ tile link (decision 6). The Tickets | Build switch is in every page's bar.
   build page (the page's own device list didn't include it), so a check
   now asserts every device out of its box has one.
 
+**Build mode, B3b (11 October 2026): the five more jobs, J6 to J10** (the
+standing rule: five more scenarios on top of every new area). Each reuses
+what the simulation already models; each starts from J2's working house.
+- **J6 The replacement router.** The old one died; the new one, a different
+  model, is in its box (its own factory name and label passwords). Lines:
+  online; the Wi-Fi as it was, the same name and the client's password
+  (typed in from "the card on the fridge", a button on its Wi-Fi page, so
+  every device rejoins by itself); everything back online; the admin
+  password changed. A new password works only if every device is joined
+  again by hand, and the check says the devices had to be touched. The
+  house's devices keep their leases, as real ones do.
+- **J7 A fixed address for the office PC.** Lines: fixed and never handed
+  out (set by hand outside the range, or reserved and restarted); still
+  online, names and all (a fixed address with no DNS is the classic
+  mistake: the check says names don't look up, and ping by name fails on
+  the PC itself); the laptop reaches it; nothing broken.
+- **J8 The old laptop in the kitchen.** An old 2.4 GHz-only, WPA2 laptop;
+  the router's 2.4 GHz on Auto, which picks the channel quiet at the
+  router. The kitchen hears that channel loud (the house decides which of
+  1, 6 and 11 is clear where). Lines: online; 50 Mb/s or more on the old
+  laptop in the kitchen; nothing broken. The way through is a survey on
+  the laptop (`netsh wlan show networks mode=bssid`) and the channel set
+  by hand.
+- **J9 WPA3, with one old laptop.** Every Wi-Fi device on the strongest
+  security it can use: WPA3 only cuts the old laptop off, WPA2 holds the
+  phone back, transition mode does both.
+- **J10 Moving day.** The TV to the back bedroom, wired; the printer to the
+  kitchen, wired, on its same fixed address, the office PC still printing
+  to it. Cables come out before devices move.
+- Each job lists the lines already met before any work (`already`: the job
+  is not to break them); the tests and the drive check exactly those. A
+  failing line always has two causes or more, so Mason's third rung can
+  narrow (J9's line was given its second, and free build's empty house its
+  router-in-its-box neighbour, when the tests caught them).
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for
@@ -695,7 +730,7 @@ ways; a wrong fix not solving; putting the network back; reload keeps
 progress; the three views; easier reading persisting; the instructor
 tools: a wrong PIN refused, 3693 unlocking, the demo opening the chosen
 house, nothing revealed on the board, the PIN not in the code); AAA on painted
-pixels across 81 states (27 of them build mode) plus scrolled positions,
+pixels across 86 states (32 of them build mode) plus scrolled positions,
 measured with WebGL on so
 the 3D model's buttons and the Enlarge window are measured too (and one
 state with it off, for the fallback); `node tools/models.mjs` (the 3D
@@ -720,7 +755,13 @@ full-page shot then paints the sticky bars over the middle of it. B2's
 plants: no PoE budget, any backhaul holding, any cable counting as wired,
 a forward to any camera port accepted, power taken from DATA IN, the
 weak-signal line at 40% (the house's 44% would pass); on the page, a
-boxed camera missing from the Place form.
+boxed camera missing from the Place form. B3's plants: guest isolation
+ignored, the guest password checked against the home one, no guest DHCP,
+address clashes or long runs never seen, the visitor on the home network
+not named, the client's password doing nothing, DNS never checked, any
+speed counting as fast, WPA2 accepted for WPA3 devices, a moved printer's
+printing not checked; on the page, the visitor's phone without a device
+button.
 
 ## Objectives
 

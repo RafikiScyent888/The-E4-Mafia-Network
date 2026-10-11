@@ -244,7 +244,7 @@ const place = async (p, d, room) => { await p.selectOption("#bmDev", d); await p
 const lay = async (p, a, ap, b, bp) => { await p.selectOption("#bmAd", a); await p.selectOption("#bmAp", ap); await p.selectOption("#bmBd", b); await p.selectOption("#bmBp", bp); await p.click("#bmLay"); await p.waitForTimeout(40); };
 const checkJob = async (p) => { await p.click("#doCheck"); await p.waitForTimeout(40); return p.$eval("#check", (n) => n.textContent); };
 const BJ = (p, f) => p.evaluate(f);
-for (const job of ["J1", "J2", "J3", "J4", "J5", "FB"].filter((k) => !process.env.ONLY || k === process.env.ONLY)) for (const seed of [11, 2025, 777777, 3]) {
+for (const job of ["J1", "J2", "J3", "J4", "J5", "J6", "J7", "J8", "J9", "J10", "FB"].filter((k) => !process.env.ONLY || k === process.env.ONLY)) for (const seed of [11, 2025, 777777, 3]) {
   if (seed === 3 && job !== "J3") continue;   /* house 3 has the camera with the heater: J3 is driven on both cameras */
   const { p, ctx } = await bpage(job, seed);
   const tag = "build " + job + " " + seed + ": ";
@@ -256,7 +256,7 @@ for (const job of ["J1", "J2", "J3", "J4", "J5", "FB"].filter((k) => !process.en
   check(await p.$$eval("#bmDev option", (l, bx) => bx.every((id) => l.some((o) => o.value === id)), boxed), tag + "every boxed device can be placed from the form");
   check(boxed.every((k) => true) && !(await p.$('#plan [data-d="' + boxed[0] + '"]')) && !(await p.$('#devtabs [data-d="' + boxed[0] + '"]')), tag + "a boxed device is on neither the plan nor the device buttons");
   let t = await checkJob(p);
-  check(/Check 1:/.test(t) && (await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => q.id !== "keep").length)), tag + "the first check finds the work to do (every line but keeping what works)");
+  check(/Check 1:/.test(t) && (await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do (every line but those already met)");
   check(await p.$$eval("#check .rq.bad", (l) => l.every((x) => { const mk = x.querySelector(".mk"), st = getComputedStyle(mk); return /Not met yet/.test(x.textContent) && /✕/.test(mk.textContent) && st.display !== "none" && st.visibility !== "hidden" && parseFloat(st.fontSize) >= 14 && getComputedStyle(x).boxShadow !== "none"; })), tag + "each unmet line is marked three ways (the words, the cross, the inset rule), never colour alone");
   if (job === "J1") {
     await place(p, "router", "living"); await place(p, "pc", "office"); await place(p, "tv", "living");
@@ -337,6 +337,44 @@ for (const job of ["J1", "J2", "J3", "J4", "J5", "FB"].filter((k) => !process.en
     await tab(p, "Status"); await p.click('.pane button:text-is("Change the admin password")'); await p.waitForTimeout(40);
     await dev(p, "phone"); await p.click('.pane button:text-is("Join ' + home + ' (enter the password)")'); await p.waitForTimeout(40);
     await dev(p, "laptop"); await tab(p, "Wi-Fi"); await p.click('.pane li:has-text("' + home + '") button:text-is("Connect (enter the password)")'); await p.waitForTimeout(40);
+  } else if (job === "J6") {
+    const home = await BJ(p, () => window.__e4b.T.v.home);
+    await place(p, "router", "living");
+    await lay(p, "modem", "ETH", "router", "WAN"); await lay(p, "router", "LAN 1", "switch", "1"); await lay(p, "router", "LAN 2", "tv", "LAN");
+    await dev(p, "phone"); check(/Not connected/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the phone waits for its network");
+    await dev(p, "router"); await tab(p, "Wi-Fi"); await p.fill('.devform input[name="ssid"]', home); await p.click('.devform button:text-is("Save")'); await p.waitForTimeout(40);
+    await p.click('.pane button:text-is("Type in the client\'s Wi-Fi password (the card on the fridge)")'); await p.waitForTimeout(40);
+    await tab(p, "Status"); await p.click('.pane button:text-is("Change the admin password")'); await p.waitForTimeout(40);
+    await dev(p, "phone"); check(/Connected to /.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the phone rejoins by itself, untouched");
+  } else if (job === "J7") {
+    const r = await BJ(p, () => ({ ip: window.__e4b.T.sim.d.router.lan.ip, mask: window.__e4b.T.sim.d.router.lan.mask, pre: window.__e4b.T.sim.net.prefix }));
+    await dev(p, "pc"); await tab(p, "Network settings");
+    await p.check('.devform input[name="mode"][value="static"]'); await p.fill('.devform input[name="ip"]', r.pre + ".6"); await p.fill('.devform input[name="mask"]', r.mask); await p.fill('.devform input[name="gw"]', r.ip);
+    await p.fill('.devform input[name="dns1"]', ""); await p.click('.devform button:text-is("Save")'); await p.waitForTimeout(40);   /* the classic: no DNS */
+    t = await checkJob(p); check(/names don't look up/.test(t), tag + "a fixed address with no DNS: the check says names don't look up");
+    await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping rafiki-it.example"); check(/could not find host/.test(await term(p)), tag + "ping by name fails on the PC itself");
+    await tab(p, "Network settings"); await p.fill('.devform input[name="dns1"]', r.ip); await p.click('.devform button:text-is("Save")'); await p.waitForTimeout(40);
+  } else if (job === "J8") {
+    const v = await BJ(p, () => window.__e4b.T.v);
+    await dev(p, "laptop"); await type(p, "netsh wlan show networks mode=bssid");
+    check(/Parker-Family/.test(await term(p)), tag + "the survey on the old laptop lists the neighbours heard in the kitchen");
+    await dev(p, "router"); await tab(p, "Wi-Fi"); await p.selectOption('.devform select[name="ch24"]', String(v.clear)); await p.click('.devform button:text-is("Save")'); await p.waitForTimeout(40);
+    await dev(p, "laptop"); await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Run a speed test")'); await p.waitForTimeout(40);
+    const sp = +((await p.$eval(".pane", (n) => n.textContent)).match(/Speed test: (\d+) Mb\/s/) || [0, 0])[1];
+    check(sp >= 50, tag + "the old laptop's own speed test is fast now (" + sp + " Mb/s)");
+  } else if (job === "J9") {
+    await dev(p, "laptop"); await type(p, "netsh wlan show drivers"); check(!/WPA3/.test(await term(p)), tag + "the old laptop's adapter lists no WPA3");
+    await dev(p, "router"); await tab(p, "Wi-Fi"); await p.selectOption('.devform select[name="sec"]', "WPA3-Personal"); await p.click('.devform button:text-is("Save")'); await p.waitForTimeout(40);
+    t = await checkJob(p); check(/Laptop: can't connect/.test(t), tag + "WPA3 only: the check says the old laptop can't connect");
+    await dev(p, "router"); await tab(p, "Wi-Fi"); await p.selectOption('.devform select[name="sec"]', "WPA2/WPA3-Personal"); await p.click('.devform button:text-is("Save")'); await p.waitForTimeout(40);
+  } else if (job === "J10") {
+    await p.click('#runs tr:has-text("Smart TV, LAN") button:text-is("Pull")'); await p.waitForTimeout(40);
+    await place(p, "tv", "upstairs"); await lay(p, "router", "LAN 2", "tv", "LAN");
+    await p.click('#runs tr:has-text("Printer, NETWORK") button:text-is("Pull")'); await p.waitForTimeout(40);
+    await place(p, "printer", "kitchen"); await lay(p, "router", "LAN 3", "printer", "NET");
+    check(/15 m, the living room to the back bedroom upstairs/.test(await p.$eval("#runs", (n) => n.textContent)), tag + "the TV's new run is 15 m upstairs");
+    await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); await p.waitForTimeout(40);
+    check(/it printed/.test(await p.$eval(".pane .res", (n) => n.textContent)), tag + "the office PC still prints to the moved printer");
   } else if (job === "J4") {
     await place(p, "mesh", "upstairs");   /* in the dead spot itself: its link back is lost */
     t = await checkJob(p); check(/status ring is amber/.test(t) && /44%/.test(t), tag + "in the bedroom with no way back: the check says the ring is amber and the laptop still gets 44%");

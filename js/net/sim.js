@@ -464,7 +464,8 @@ export class Sim {
       if ("ssid" in v) { const n = String(v.ssid || "").trim(); if (!n || n.length > 32 || !/^[\x20-\x7e]+$/.test(n)) return { ok: false, errs: ["The network name must be 1 to 32 letters, numbers or symbols"] }; if (r.guest && r.guest.ssid === n) return { ok: false, errs: ["That's the guest network's name: the home network needs its own"] }; }
       if ("ch24" in v) { if (v.ch24 === "auto") r.wifi.ch24mode = "auto"; else { const c = parseInt(v.ch24, 10); if (!(c >= 1 && c <= 11)) return { ok: false, errs: ["2.4 GHz channel must be 1 to 11, or Auto"] }; r.wifi.ch24mode = "manual"; r.wifi.ch24 = c; } }
       if ("ch5" in v) { const c = parseInt(v.ch5, 10); if ([36, 40, 44, 48, 149, 153, 157, 161].indexOf(c) < 0) return { ok: false, errs: ["5 GHz channel must be one of 36, 40, 44, 48, 149, 153, 157, 161"] }; r.wifi.ch5 = c; }
-      if (v.newPassword) r.wifi.gen = (r.wifi.gen || 1) + 1;   /* a new Wi-Fi password: every device has to be given it again */
+      if (v.newPassword) r.wifi.gen = Math.max(r.wifi.gen || 1, this.net.extra.oldWifi || 0) + 1;   /* a new Wi-Fi password: every device has to be given it again */
+      if (v.clientPassword && this.net.extra.oldWifi) r.wifi.gen = this.net.extra.oldWifi;   /* build mode: the client's own password, typed in from the card on the fridge: the house's devices know it */
       if ("ssid" in v) r.wifi.ssid = String(v.ssid).trim();   /* a new name: devices joined to the old one have to join the new one */
       if ("sec" in v) { if (SECURITY.indexOf(v.sec) < 0) return { ok: false, errs: ["Security must be one of " + SECURITY.join(", ")] }; r.wifi.sec = v.sec; if (r.guest && r.guest.sec !== "Open") r.guest.sec = v.sec; }
       return { ok: true };

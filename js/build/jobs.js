@@ -231,6 +231,7 @@ function wallCauses(sim) {
 }
 const J2 = {
   id: "J2", title: "The home office: a wired PC and a printer",
+  already: ["keep"],   /* lines met before any work: the job is not to break them */
   start(seed) {
     const f = factory(seed, ["switch", "pc", "printer", "tv"], { laptop: "kitchen", phone: "living" });
     const sim = new Sim(f.net);
@@ -300,7 +301,7 @@ function keepCauses(sim, extra) {
   if (!sim.wanUp()) return routerCauses(sim);
   const down = firstDown(sim, [["tv", function (s) { return wiredCauses(s, "tv", "living"); }], ["pc", function (s) { return wiredCauses(s, "pc", "office"); }], ["phone", wifiCauses], ["laptop", wifiCauses]].filter(function (x) { return !extra || extra.indexOf(x[0]) < 0; }));
   if (down.some(function (c) { return c.on; })) return down;
-  return printCauses(sim);
+  return extra && extra.indexOf("print") >= 0 ? down : printCauses(sim);
 }
 const L_KEEP = function (skip, what) {
   return {
@@ -339,6 +340,7 @@ function awayCauses(sim) {
 }
 const J3 = {
   id: "J3", title: "The porch camera, powered over its cable",
+  already: ["keep"],   /* lines met before any work: the job is not to break them */
   start(seed) {
     const b = afterJ2(seed, ["camera", "injector"]), d = b.net.devices, heat = rng(hash("J3:" + seed))() < 0.5;
     d.injector.label = "PoE injector (802.3af)"; d.injector.std = "af"; d.injector.power = true;
@@ -414,6 +416,7 @@ function meshCauses(sim) {
 }
 const J4 = {
   id: "J4", title: "Wi-Fi to every room",
+  already: ["keep"],   /* lines met before any work: the job is not to break them */
   start(seed) {
     const b = afterJ2(seed, ["mesh"], { laptop: "upstairs" });
     b.net.devices.laptop.label = "Laptop"; b.net.devices.mesh.sub = "mesh node";
@@ -484,6 +487,7 @@ function ownCauses(sim) {
 }
 const J5 = {
   id: "J5", title: "A guest Wi-Fi kept apart",
+  already: ["keep"],   /* lines met before any work: the job is not to break them */
   start(seed) {
     const b = afterJ2(seed, [], {}), d = b.net.devices;
     d.guest = { id: "guest", kind: "phone", label: "Visitor's phone", sub: "Wi-Fi", on: true,
@@ -539,7 +543,6 @@ const LIVE = ["router", "switch", "pc", "printer", "tv", "injector", "injector2"
 function healthCauses(sim) {
   const set = LIVE.filter(function (id) { return placed(sim, id); });
   const list = [C("none", set.length === 0, "Nothing is set up yet", "Devices are set up.", "Nothing is out of its box yet: the house has only the modem.")];
-  if (!set.length) return list;
   if (!placed(sim, "router")) return list.concat([C("router", true, "Nothing hands out addresses: the router is still in its box", "The router is set up.", "The router is still in its box: nothing set up can get an address or reach the internet.")]);
   const order = [["router", routerCauses]].concat(["pc", "printer", "tv"].filter(function (id) { return placed(sim, id); }).map(function (id) { return [id, function (s) { return wiredCauses(s, id); }]; }));
   if (placed(sim, "camera")) order.push(["camera", function (s) { return cameraCauses(s).concat([C("wan", !s.wanUp(), "The router itself isn't online", "The router is online.", "The camera has an address, but the router has no internet.")]); }]);
@@ -609,5 +612,169 @@ const FB = {
   summary(v, sim) { const n = LIVE.filter(function (id) { return placed(sim, id); }).length; return ["Your build: " + n + " device" + (n === 1 ? "" : "s") + " set up, every one online, no address used twice, the router hardened, every cable working."]; }
 };
 
-export const JOBS = [J1, J2, J3, J4, J5, FB];
+/* ---------------------------------------------------------------- the five more (J6 to J10) */
+/* J6: the router died; its replacement goes in so every device rejoins by itself */
+function sameWifiCauses(sim) {
+  const r = sim.d.router, home = sim.net.extra.homeSsid, old = sim.net.extra.oldWifi;
+  return [
+    C("box", r.boxed, "The new router is still in its box", "It's out of its box.", "The new router is still in its box."),
+    C("name", r.wifi.ssid !== home, "The new router's Wi-Fi has a different name from the old one", "It has the old network's name.", "The new router's Wi-Fi is called " + r.wifi.ssid + "; the house's phones and laptops are looking for " + home + "."),
+    C("pass", r.wifi.gen !== old, "Its Wi-Fi password isn't the one the house's devices know", "It has the client's password.", "The Wi-Fi is called " + home + " again, but the phone and the laptop can't join: the password isn't the one they know.")
+  ];
+}
+const J6 = {
+  id: "J6", title: "The replacement router",
+  start(seed) {
+    const b = afterJ2(seed, [], {}), sim = b.sim, net = b.net, r = net.devices.router, R = rng(hash("J6:" + seed));
+    net.extra.homeSsid = b.v.home; net.extra.oldWifi = r.wifi.gen;
+    net.cables = net.cables.filter(function (c) { return c.a.dev !== "router" && c.b.dev !== "router"; });   /* the dead router is gone: its cables are still in the house, unplugged */
+    r.boxed = true; r.factorySsid = "ROUTER-" + R.int(4096, 65535).toString(16).toUpperCase(); r.wifi.ssid = r.factorySsid; r.wifi.gen = 1; r.admin = { gen: 1 }; r.leases = []; r.mac = r.mac.replace(/..$/, "7e");
+    return { sim: sim, v: b.v };   /* the devices keep the leases they had: back on the same network, they carry on with them or ask again as their links come up */
+  },
+  brief() { return { quote: "The router died in the storm last night. The shop gave me a new one, still in the box. Can you put it in without me having to set up every phone, laptop and the printer all over again? The Wi-Fi password is on the card on the fridge.", from: "the router died" }; },
+  mason: "Every device in this house already knows one network: its name and its password. Make the new router be that network.",
+  limits: function () { return ["The new router is a different model: its own factory name and passwords, printed on its label.", "The house's devices stay as they are: nobody re-joins anything by hand.", "No budget limit: use what the job needs."]; },
+  reqs: [L_ROUTER, {
+    id: "same", text: "The Wi-Fi as it was: the same name and password, so every device rejoins by itself",
+    causes: sameWifiCauses,
+    ok: function (sim) { return "The Wi-Fi is " + sim.d.router.wifi.ssid + " with the client's own password: the house's devices rejoined by themselves."; },
+    rung1: function () { return "Open the phone and the laptop: which network are they looking for, and what do they say about it? Then the new router's Wi-Fi page."; },
+    rung2: function () { return "A device rejoins a network it knows: the same name and the same password. A replacement router that matches the old one's name and password is, to every device, the same network."; }
+  }, L_KEEP(null, "the internet, the TV, the office PC and its printer, the phone and the laptop"), L_ADMIN],
+  solve(v) { return [{ t: "place", dev: "router", room: "living" }, { t: "lay", a: E("modem", "ETH"), b: E("router", "WAN") }, { t: "lay", a: E("router", "LAN 1"), b: E("switch", "1") }, { t: "lay", a: E("router", "LAN 2"), b: E("tv", "LAN") },
+    { t: "router", page: "wifi", values: { ssid: v.home } }, { t: "router", page: "wifi", values: { clientPassword: true } }, { t: "router", page: "admin", values: { newPassword: true } }]; },
+  answer(v) { return ["Place the new router where the old one was and re-lay its cables: the modem to its INTERNET (WAN) port, a LAN port to the switch and one to the TV.", "On its Wi-Fi page: the old name (" + v.home + "), saved; then type in the client's Wi-Fi password from the card. Don't make a new one: every device would need it.", "Change its admin password (its Status page)."]; },
+  summary(v, sim) { return ["The new router took the old network's name and password: to every device it's the same network, so they all rejoined by themselves.", "The printer kept its fixed address, outside the new router's range, and still prints.", "The new router's admin password is changed from its label's."]; }
+};
+
+/* J7: a fixed address for the office PC, done right */
+function reachCauses(sim) {
+  const pc = sim.addr("pc"), lap = sim.addr("laptop"), rt = pc && lap ? sim.route("laptop", pc.ip) : null;
+  return [
+    C("pc", !pc || pc.kind === "apipa", "The office PC isn't on the network", "The office PC is on the network.", "The office PC isn't on the network."),
+    C("lap", !lap || lap.kind === "apipa", "The laptop isn't on the network", "The laptop is on the network.", "The laptop isn't on the network."),
+    C("reach", !(rt && rt.local && rt.owner.indexOf("pc") >= 0), "The laptop can't reach the office PC's address", "It reaches it.", "From the laptop, nothing answers at the office PC's address as the office PC.")
+  ];
+}
+const J7 = {
+  id: "J7", title: "A fixed address for the office PC",
+  already: ["online", "reach", "keep"],   /* lines met before any work: the job is not to break them */
+  start(seed) { const b = afterJ2(seed, [], {}); return { sim: b.sim, v: b.v }; },
+  brief() { return { quote: "I want to connect to the office computer from my laptop in the kitchen, and the app wants an address that never changes. Can you give the office computer a fixed one? Last time my brother tried, the computer lost the internet.", from: "a fixed address" }; },
+  mason: "A fixed address isn't one setting. Think about everything the router used to hand the PC along with its address.",
+  limits: function () { return ["The office PC is set up by hand in Windows (Network settings, Edit IP settings).", "No budget limit: use what the job needs."]; },
+  reqs: [{
+    id: "fixed", text: "The office PC on a fixed address the router will never hand to anything else",
+    causes: function (sim) { return fixedCauses(sim, "pc", wiredCauses(sim, "pc", "office").slice(0, 5)); },
+    ok: function (sim) { const f = sim.d.pc.ifaces[0]; return f.cfg.mode === "static" ? "The office PC is fixed at " + f.cfg.ip + ", outside the range the router hands out." : "The router always gives the office PC " + sim.addr("pc").ip + ": it's reserved for its hardware address."; },
+    rung1: function () { return "Compare the office PC's Network settings with the router's LAN & DHCP page."; },
+    rung2: function () { return "A fixed address must be on the router's network, outside the range the router hands out, and used by nothing else. Or reserve one for the device on the router."; }
+  }, {
+    id: "online", text: "The office PC still reaches the internet, names and all",
+    causes: function (sim) { return wiredCauses(sim, "pc", "office"); },
+    ok: function (sim) { return "The office PC reaches the internet, and names look up."; },
+    rung1: function () { return "On the office PC: ipconfig /all, then ping 203.0.113.80 and a ping by name. Which one fails?"; },
+    rung2: function () { return "Set an address by hand and you set everything DHCP used to hand over: the mask, the default gateway (the way out) and the DNS servers (names to numbers). Leave one out and that part stops."; }
+  }, {
+    id: "reach", text: "The laptop reaches the office PC at its fixed address",
+    causes: reachCauses,
+    ok: function (sim) { return "The laptop reaches the office PC at " + sim.addr("pc").ip + "."; },
+    rung1: function () { return "Compare the office PC's address and mask with the laptop's (ipconfig on each)."; },
+    rung2: function () { return "Two devices talk directly only when each sees the other inside its own network: the part of the address the mask covers has to match."; }
+  }, L_KEEP(["pc"], "the internet, the TV, the printer, the phone and the laptop")],
+  solve(v, sim) { const r = sim.d.router; return [{ t: "client", dev: "pc", values: { mode: "static", ip: sim.net.prefix + ".6", mask: r.lan.mask, gw: r.lan.ip, dns: [r.lan.ip, ""] } }]; },
+  answer(v, sim) { const r = sim.d.router; return ["On the office PC, Network settings, Edit IP settings: Manual.", "An address on " + sim.net.prefix + ".x outside the router's range (" + r.dhcp.start + " to " + r.dhcp.end + "), not the printer's, for example " + sim.net.prefix + ".6; mask " + r.lan.mask + "; gateway " + r.lan.ip + "; DNS " + r.lan.ip + " (or the provider's).", "Or leave it automatic and reserve its address on the router."]; },
+  summary(v, sim) { const f = sim.d.pc.ifaces[0]; return [f.cfg.mode === "static" ? "The office PC is fixed at " + f.cfg.ip + ", with its mask, gateway and DNS set too." : "The office PC's address is reserved for it on the router.", "It still reaches the internet by name, and the laptop finds it at the same address every time."]; }
+};
+
+/* J8: an old laptop that only does 2.4 GHz, in a kitchen full of the neighbours' Wi-Fi */
+function speedOf(sim, id) { const l = sim.wifiLink(id); return l && l.connected ? Math.round(Math.min(sim.net.isp.plan * 0.96, l.rate * 0.62 * (1 - l.loss))) : 0; }
+const J8 = {
+  id: "J8", title: "The old laptop in the kitchen",
+  already: ["online", "keep"],   /* lines met before any work: the job is not to break them */
+  start(seed) {
+    const b = afterJ2(seed, [], {}), net = b.net, R = rng(hash("J8:" + seed)), ch = R.shuffle([1, 6, 11]), L = net.devices.laptop;
+    L.label = "Old laptop"; L.ifaces[0].bands = [24]; L.ifaces[0].secs = ["WPA2-Personal"]; L.ifaces[0].desc = "Wireless-N Network Adapter";
+    const [clear, autoPick, third] = ch;   /* the router's Auto picks from where the router is: a channel the kitchen hears loud */
+    net.neighbours = [
+      { ssid: "Parker-Family", ch: autoPick, band: 24, mac: "02-5c-11-a0-3e-01", heard: { kitchen: 72, living: 12, office: 30, upstairs: 10, porch: 40, garage: 20, landing: 10 } },
+      { ssid: "Unit-12", ch: third, band: 24, mac: "02-5c-11-a0-3e-02", heard: { kitchen: 55, living: 46, office: 30, upstairs: 15, porch: 25, garage: 30, landing: 20 } },
+      { ssid: "HomeNet-7731", ch: clear, band: 24, mac: "02-5c-11-a0-3e-03", heard: { kitchen: 14, living: 64, office: 20, upstairs: 30, porch: 20, garage: 10, landing: 25 } }
+    ];
+    net.devices.router.wifi.ch24mode = "auto";
+    b.sim.dhcp("laptop", "boot");
+    b.v.clear = clear; b.v.auto = autoPick;
+    return { sim: b.sim, v: b.v };
+  },
+  brief() { return { quote: "My old laptop lives in the kitchen for recipes and the cooking videos, and the videos keep stopping. The phone's fine in there. It's an old laptop, but it's all I need. I'm not buying a new one.", from: "the old laptop" }; },
+  mason: "Look at the air where the laptop is, not where the router is.",
+  limits: function () { return ["The old laptop's Wi-Fi only does 2.4 GHz, WPA2.", "The router's 2.4 GHz channel is on Auto, as it came.", "No budget limit, but no new laptop: the client is keeping it."]; },
+  reqs: [{
+    id: "online", text: "The old laptop online over the Wi-Fi, in the kitchen",
+    causes: function (sim) { return wifiCauses(sim, "laptop"); },
+    ok: function (sim) { return "The old laptop is on " + sim.d.router.wifi.ssid + " in the kitchen, online."; },
+    rung1: function () { return "Open the old laptop's Wi-Fi tab and its Command Prompt (netsh wlan show interfaces)."; },
+    rung2: function () { return "A device joins only a network its adapter can use: the band, and the security."; }
+  }, {
+    id: "fast", text: "Fast enough in the kitchen for cooking videos: 50 Mb/s or more on the old laptop",
+    causes: function (sim) { const sp = speedOf(sim, "laptop"); return [C("off", !sp, "The old laptop isn't online", "It's online.", "The old laptop isn't online."), C("slow", sp > 0 && sp < 50, "Its 2.4 GHz channel is crowded in the kitchen", "Its channel is clear there.", "A speed test on the old laptop in the kitchen gets about " + sp + " Mb/s, and its pings to the router lose packets.")]; },
+    ok: function (sim) { return "A speed test on the old laptop in the kitchen gets about " + speedOf(sim, "laptop") + " Mb/s."; },
+    rung1: function () { return "From the old laptop in the kitchen: netsh wlan show networks mode=bssid. What's on each channel there, and how strong? Then the router's Wi-Fi page."; },
+    rung2: function () { return "On 2.4 GHz only channels 1, 6 and 11 don't overlap. A channel that's quiet at the router can be loud where the device is: survey the air at the device, and pick the channel that's clear there."; }
+  }, L_KEEP(["laptop"], "the internet, the TV, the office PC and its printer, and the phone")],
+  solve(v) { return [{ t: "router", page: "wifi", values: { ch24: String(v.clear) } }]; },
+  answer(v) { return ["In the kitchen, on the old laptop: netsh wlan show networks mode=bssid. The router's Auto picked channel " + v.auto + " (quiet at the router), but a neighbour is loud on it in the kitchen.", "On the router's Wi-Fi page set the 2.4 GHz channel by hand to " + v.clear + ", the one that's clear in the kitchen. Run a speed test on the old laptop."]; },
+  summary(v, sim) { return ["The router's 2.4 GHz is on channel " + sim.ch24() + ", the one that's clear in the kitchen, chosen from a survey on the old laptop where it's used.", "The old laptop gets about " + speedOf(sim, "laptop") + " Mb/s there: the videos play."]; }
+};
+
+/* J9: WPA3 on everything that can, with one old laptop that can't */
+function strongCauses(sim) {
+  const weak = ["phone", "laptop"].find(function (id) { const l = sim.wifiLink(id), f = sim.d[id].ifaces[0]; return l && l.connected && l.sec !== "WPA3-Personal" && sim.canSec(f, "WPA3-Personal"); });
+  const sec = sim.d.router.wifi.sec;
+  return [
+    C("wpa2", weak && sec === "WPA2-Personal", "The router offers WPA2 and nothing stronger", "The router offers WPA3.", weak ? "The " + NAME[weak] + " connects with WPA2-Personal, though it can use WPA3." : ""),
+    C("weak", !!weak, "A device that can use WPA3 is still connecting with WPA2", "Every device uses the strongest security it can.", weak ? "The " + NAME[weak] + " connects with WPA2-Personal, though it can use WPA3." : "")
+  ];
+}
+const J9 = {
+  id: "J9", title: "WPA3, with one old laptop",
+  already: ["keep"],   /* lines met before any work: the job is not to break them */
+  start(seed) { const b = afterJ2(seed, [], {}), L = b.net.devices.laptop; L.label = "Old laptop"; L.ifaces[0].secs = ["WPA2-Personal"]; L.ifaces[0].desc = "Wireless-N Network Adapter"; return { sim: b.sim, v: b.v }; },
+  brief() { return { quote: "I read that WPA3 is the safe Wi-Fi now. I want it on everything that can use it. Mind, the laptop is getting on a bit, and it still has to work.", from: "WPA3" }; },
+  mason: "Find out what each device can do before you change what the router asks of them.",
+  limits: function () { return ["The router offers WPA2, WPA2/WPA3 (transition) and WPA3 on its Wi-Fi page.", "The old laptop stays: no new adapter."]; },
+  reqs: [{
+    id: "strong", text: "Every Wi-Fi device on the strongest security it can use",
+    causes: strongCauses,
+    ok: function () { return "The phone connects with WPA3; the old laptop with WPA2, the best it can do."; },
+    rung1: function () { return "On the old laptop: netsh wlan show drivers (what it can do) and netsh wlan show interfaces (what it's using). Then the router's Wi-Fi page."; },
+    rung2: function () { return "WPA3 only shuts out devices that can't use it; WPA2 only holds back the ones that can. Transition mode offers both, and each device takes the best it can."; }
+  }, L_KEEP(null, "the internet, the TV, the office PC and its printer, the phone and the old laptop")],
+  solve() { return [{ t: "router", page: "wifi", values: { sec: "WPA2/WPA3-Personal" } }]; },
+  answer() { return ["netsh wlan show drivers on the old laptop: WPA2 only. WPA3-only would cut it off; WPA2-only would hold the phone back.", "On the router's Wi-Fi page: Security, WPA2/WPA3-Personal (transition). The phone takes WPA3, the old laptop WPA2."]; },
+  summary() { return ["The router offers WPA2 and WPA3 together (transition mode): the phone uses WPA3, the old laptop WPA2, and nothing is cut off."]; }
+};
+
+/* J10: moving day: the TV upstairs, the printer to the kitchen, nothing broken */
+const J10 = {
+  id: "J10", title: "Moving day: the TV and the printer",
+  already: ["keep"],   /* lines met before any work: the job is not to break them */
+  start(seed) { const b = afterJ2(seed, [], {}); return { sim: b.sim, v: b.v }; },
+  brief() { return { quote: "We're turning the office into a nursery. The TV goes up to the back bedroom, and the printer moves down to the kitchen. The office computer stays where it is for now, and it has to still print.", from: "moving day" }; },
+  mason: "Moving a device means its cables come out first. Know what each cable carried before you pull it.",
+  limits: function () { return ["A device's cables come out before it moves. A copper run is 100 m at most.", "No budget limit: use what the job needs."]; },
+  reqs: [L_WIRED("tv", "upstairs"), {
+    id: "printer", text: "The printer in the kitchen, still on its fixed address, and the office PC still prints to it",
+    causes: function (sim) { return fixedCauses(sim, "printer", wiredCauses(sim, "printer", "kitchen").slice(0, 5)).concat(printCauses(sim)); },
+    ok: function (sim) { return "The printer is in the kitchen at " + sim.addr("printer").ip + ", and a test page from the office PC prints."; },
+    rung1: function () { return "Open the printer's Control panel and the office PC's Printers tab, and follow the printer's cable."; },
+    rung2: function () { return "A device keeps its fixed address wherever it's plugged in on the same network; what changes is the cable. The PC finds it at the same address as before."; }
+  }, L_KEEP(["tv", "print"], "the internet, the office PC, the phone and the laptop")],
+  solve(v, sim) { return [{ t: "pull", cable: sim.cableAt("tv", "LAN").id }, { t: "place", dev: "tv", room: "upstairs" }, { t: "lay", a: E("router", "LAN 2"), b: E("tv", "LAN") },
+    { t: "pull", cable: sim.cableAt("printer", "NET").id }, { t: "place", dev: "printer", room: "kitchen" }, { t: "lay", a: E("router", "LAN 3"), b: E("printer", "NET") }]; },
+  answer() { return ["Pull the TV's cable, move the TV to the back bedroom, and lay a run from a router LAN port to it (15 m).", "Pull the printer's cable, move the printer to the kitchen, and lay a run from a free router LAN port to it (10 m). Leave its fixed address alone: the office PC prints to it as before."]; },
+  summary() { return ["The TV is wired in the back bedroom; the printer is wired in the kitchen on the same fixed address, so the office PC prints to it without a change."]; }
+};
+
+export const JOBS = [J1, J2, J3, J4, J5, J6, J7, J8, J9, J10, FB];
 export const JOBS_COMING = [];

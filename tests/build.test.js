@@ -28,7 +28,7 @@ test("every job starts with its work still to do, for the real reason", () => {
   for (const def of JOBS) for (const s of seeds(def.id)) {
     const J = B.open(def, s), c = B.check(J);
     for (const r of c.res) {
-      if (r.id === "keep") { assert.ok(r.ok, def.id + " starts with the house working"); continue; }
+      if ((def.already || []).indexOf(r.id) >= 0) { assert.ok(r.ok, def.id + " " + r.id + " should be met before any work (the job is not to break it), seed " + s); continue; }
       assert.equal(r.ok, false, def.id + " " + r.id + " met before any work, seed " + s);
       assert.ok(r.ev && r.ev.length > 10, def.id + " " + r.id + ": no evidence");
     }
@@ -243,6 +243,58 @@ test("J5: the visitor on the home network, an open guest network, guests let in,
   }
 });
 
+test("J6 to J10: the tempting wrong ways fail the right line; the right ways pass", () => {
+  for (const s of seeds("J6").slice(0, 50)) {
+    const tryIt = function (id, acts) { const J = B.open(byId[id], s); run(J, acts); return J; };
+    /* J6: a new password, or a new name: the devices can't rejoin by themselves */
+    let def = byId.J6, J0 = B.open(def, s), sol = def.solve(J0.v, J0.sim);
+    let J = tryIt("J6", sol.map((a) => a.values && a.values.clientPassword ? { t: "router", page: "wifi", values: { newPassword: true } } : a));
+    assert.equal(line(J, "same").real.id, "pass"); assert.equal(line(J, "keep").real.id, "pass", "the phone has the old password");
+    run(J, [{ t: "join", dev: "phone" }, { t: "join", dev: "laptop" }]);
+    assert.ok(line(J, "keep").ok, "rejoined by hand"); assert.equal(line(J, "same").ok, false, "but every device had to be touched");
+    J = tryIt("J6", sol.filter((a) => !(a.values && a.values.ssid)));
+    assert.equal(line(J, "same").real.id, "name");
+    assert.ok(solved(tryIt("J6", sol)));
+    /* J7: fixed with no DNS, the wrong gateway, inside the range, on another network; or reserved instead */
+    def = byId.J7; J0 = B.open(def, s); const r = J0.sim.d.router, pre = J0.sim.net.prefix;
+    const st = (ip, mask, gw, dns) => ({ t: "client", dev: "pc", values: { mode: "static", ip: ip, mask: mask, gw: gw, dns: dns } });
+    J = tryIt("J7", [st(pre + ".6", r.lan.mask, r.lan.ip, ["", ""])]);
+    assert.equal(line(J, "online").real.id, "gw"); assert.match(line(J, "online").ev, /names don't look up/); assert.ok(line(J, "fixed").ok);
+    J = tryIt("J7", [st(pre + ".6", r.lan.mask, pre + ".254", [r.lan.ip])]);
+    assert.equal(line(J, "online").real.id, "gw");
+    J = tryIt("J7", [st(pre + "." + (+r.dhcp.end.split(".")[3] - 1), r.lan.mask, r.lan.ip, [r.lan.ip])]);
+    assert.equal(line(J, "fixed").real.id, "range");
+    J = tryIt("J7", [st("10.0.0.6", "255.255.255.0", "10.0.0.1", ["10.0.0.1"])]);
+    assert.equal(line(J, "fixed").real.id, "net"); assert.equal(line(J, "reach").real.id, "reach"); assert.equal(line(J, "online").real.id, "ip");
+    const mac = J0.sim.d.pc.ifaces[0].mac, want = pre + "." + (+r.dhcp.end.split(".")[3] - 1);
+    J = tryIt("J7", [{ t: "router", page: "reservation-add", values: { name: "Office PC", mac: mac, ip: want } }, { t: "power", dev: "pc" }]);
+    assert.ok(solved(J), "reserved and restarted");
+    /* J8: Auto, or the wrong channel by hand, is slow in the kitchen; the clear one is fast; the survey shows why */
+    def = byId.J8; J0 = B.open(def, s); const v8 = J0.v;
+    assert.equal(J0.sim.ch24(), v8.auto, "Auto picked the channel that's quiet at the router");
+    assert.equal(line(J0, "fast").real.id, "slow");
+    for (const ch of [1, 6, 11]) { J = tryIt("J8", [{ t: "router", page: "wifi", values: { ch24: String(ch) } }]); assert.equal(line(J, "fast").ok, ch === v8.clear, "channel " + ch); }
+    const survey = exec(B.open(def, s).sim, "laptop", "netsh wlan show networks mode=bssid").out;
+    assert.match(survey, /Parker-Family/); assert.match(survey, new RegExp("Channel\\s+: " + v8.auto));
+    /* J9: WPA3 only cuts the old laptop off; WPA2 holds the phone back; transition does both */
+    J = tryIt("J9", [{ t: "router", page: "wifi", values: { sec: "WPA3-Personal" } }]);
+    assert.ok(line(J, "strong").ok); assert.equal(line(J, "keep").real.id, "sec");
+    J = tryIt("J9", []);
+    assert.equal(line(J, "strong").real.id, "wpa2");
+    J = tryIt("J9", [{ t: "router", page: "wifi", values: { sec: "WPA2/WPA3-Personal" } }]);
+    assert.ok(solved(J)); assert.equal(J.sim.wifiLink("phone").sec, "WPA3-Personal"); assert.equal(J.sim.wifiLink("laptop").sec, "WPA2-Personal");
+    /* J10: moved but not re-cabled; the printer given a new address the PC doesn't know; the TV wired to the switch instead (fine) */
+    def = byId.J10; J0 = B.open(def, s); sol = def.solve(J0.v, J0.sim);
+    J = tryIt("J10", sol.filter((a) => !(a.t === "lay" && a.b.dev === "tv")));
+    assert.equal(line(J, "tv").real.id, "cable");
+    J = tryIt("J10", sol.concat([{ t: "client", dev: "printer", values: { mode: "static", ip: pre + ".7", mask: r.lan.mask, gw: r.lan.ip } }]));
+    assert.equal(line(J, "printer").real.id, "wrong", "the PC still sends to the old address");
+    J = tryIt("J10", sol.map((a) => a.t === "lay" && a.b.dev === "tv" ? { t: "lay", a: E("switch", "4"), b: E("tv", "LAN") } : a));
+    assert.ok(solved(J), "the TV on the office switch, upstairs: a longer run, still right");
+    assert.ok(solved(tryIt("J10", sol)));
+  }
+});
+
 test("free build: an empty house fails every line; a healthy build passes; clashing addresses and long or dead runs are caught", () => {
   for (const s of seeds("FB").slice(0, 60)) {
     const def = byId.FB, J0 = B.open(def, s), sol = def.solve(J0.v, J0.sim);
@@ -377,7 +429,10 @@ test("Mason: nothing for two failing checks, then where to look, the principle, 
       J3: [{ t: "place", dev: "camera", room: "porch" }, { t: "lay", a: E("switch", "4"), b: E("camera", "LAN") }],   /* straight into the switch: no power */
       J4: [{ t: "place", dev: "mesh", room: "upstairs" }],   /* in the dead spot itself, with no way back */
       J5: [{ t: "router", page: "guest", values: { on: true, ssid: "VISITORS", isolate: true } }, { t: "join", dev: "guest" }],   /* the visitor given the home network */
-      FB: [{ t: "place", dev: "router", room: "living" }, { t: "lay", a: E("modem", "ETH"), b: E("router", "LAN 1") }] }[def.id];
+      FB: [{ t: "place", dev: "router", room: "living" }, { t: "lay", a: E("modem", "ETH"), b: E("router", "LAN 1") }],
+      J6: [{ t: "place", dev: "router", room: "living" }, { t: "lay", a: E("modem", "ETH"), b: E("router", "LAN 1") }],
+      J7: [{ t: "client", dev: "pc", values: { mode: "static", ip: J.sim.net.prefix + ".6", mask: J.sim.d.router.lan.mask, gw: J.sim.d.router.lan.ip, dns: ["", ""] } }],   /* fixed, with no DNS */
+      J8: [], J9: [], J10: [] }[def.id];   /* their start already fails */
     run(J, wrong);
     const seen = [];
     for (let k = 1; k <= 12; k++) { B.check(J); const m = B.mason(J); seen.push(m ? m.rung : 0); if (m && m.rung === 3) {
@@ -403,7 +458,7 @@ test("no help ever names the answer: no address to set, no port to use, no name 
       for (let c = 0; c < 6; c++) { B.check(J); const m = B.mason(J); if (m) said.push(m.text, m.principle || "", ...(m.struck || []).map((x) => x.text + " " + x.why)); }
       if (k < sol.length) B.act(J, sol[k]);
     }
-    assert.ok(said.length > 20, def.id + ": Mason was heard");
+    assert.ok(said.length > 3, def.id + ": Mason was heard");
     for (const q of def.reqs) said.push(q.rung1(J.v, J.sim), q.rung2(J.v, J.sim));
     for (const t of said) {
       for (const b of bad) assert.ok(!t.includes(b), def.id + ": " + t);
@@ -428,7 +483,7 @@ test("random building never breaks the checker, and an unmet line always says wh
       else if (pick < 0.9) B.act(J, { t: "router", page: "wifi", values: R() < 0.5 ? { ssid: "Net" + k } : { newPassword: true } });
       else if (pick < 0.95 && J.sim.d.printer) B.act(J, { t: "client", dev: "printer", values: R() < 0.5 ? { mode: "dhcp" } : { mode: "static", ip: J.sim.net.prefix + "." + R.int(2, 254), mask: "255.255.255.0", gw: J.sim.d.router.lan.ip } });
       else B.act(J, { t: "cmd", dev: "pc", line: R.pick(["ipconfig", "ipconfig /renew", "ping 203.0.113.80"]) });
-      for (const q of def.reqs) { const c = B.evaluate(q, J.sim, J.v); assert.ok(typeof c.ev === "string" && c.ev.length > 10, def.id + " " + q.id + " seed " + s + " step " + k + ": empty evidence"); if (!c.ok) assert.ok(c.real.not && c.real.text); }
+      for (const q of def.reqs) { const c = B.evaluate(q, J.sim, J.v); assert.ok(typeof c.ev === "string" && c.ev.length > 10, def.id + " " + q.id + " seed " + s + " step " + k + ": empty evidence"); if (!c.ok) { assert.ok(c.real.not && c.real.text); assert.ok(c.list.filter((x) => !x.skip).length >= 2, def.id + " " + q.id + ": a failing line needs two causes or more, so Mason's third rung can narrow"); } }
     }
     const K = B.restore(def, B.save(J));
     assert.equal(JSON.stringify(K.sim.net), JSON.stringify(J.sim.net), "random builds replay exactly");

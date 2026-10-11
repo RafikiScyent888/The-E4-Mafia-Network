@@ -5,7 +5,16 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (10 October 2026):** model previews, batches 1 to 4, are up for the
+**Status (11 October 2026): the real site, build 1, is live** (not yet linked
+from the Under the Hood tile). See "The real site" below. The owner, 11
+October 2026: **"Build it like the preview you gave me just keep the layout
+exactly the same just remove the C with A bars."** Confirmed with the owner
+the same day: the three view buttons stay above the bars as the real way to
+switch; the preview words, the "Earlier previews" line and the
+C-with-A-bars page (`preview/approach-c2.html`) are gone; students land on
+the **Ticket Desk**; the Network+ (V9) objectives read that day are current.
+
+**Earlier status (10 October 2026):** model previews, batches 1 to 4, are up for the
 owner's approval at `preview/models.html` (not linked from anywhere).
 Batch 1: cable modem, fiber ONT, home router, 5-port switch, mesh node
 (and its weak-link amber state). Batch 2: RJ45 T568B and T568A, bad
@@ -303,13 +312,15 @@ column changes, with the bar's title line and the explanation underneath:
   wider the arc); the whole row picks a site; the site's card underneath.
   Two map labels are shortened to fit (Annex, Bakery ×3); the card keeps
   the full names.
-- C, Ticket Desk: the queue, as in `approach-c2.html`.
-The earlier previews (approach-a, -b, -c, -c2) stay, linked from the
-banner. The contrast checker opens every shelf (`details`) before
-measuring and skips text that isn't on screen.
+- C, Ticket Desk: the queue.
+The earlier previews (approach-a, -b, -c) stay, linked from the banner;
+`approach-c2.html` (C with A bars) was removed at the owner's word, with
+every link to it. The contrast checker opens every shelf (`details`)
+before measuring and skips text that isn't on screen.
 
 **Home fault tickets** (owner, 11 October 2026: "lets cover the most
-common top 5 with 5 harder ones as well"), proposed, awaiting the owner:
+common top 5 with 5 harder ones as well"). Built into the real site as
+the preview showed them (HOME-01 to 05 in build 1; 06 to 10 next):
 common: HOME-01 cable unplugged or broken (no link, "Media
 disconnected"); HOME-02 no DHCP lease (APIPA 169.254); HOME-03 wrong DNS
 or gateway (connected but no websites); HOME-04 Wi-Fi interference,
@@ -320,8 +331,81 @@ pair (100 Mb/s) shown on the tester; HOME-09 double NAT or port forward
 (the camera from outside); HOME-10 rogue DHCP (a second router handing
 out 10.0.0.x). Each generates variants, plus the standing five extra.
 
-**What the student sees first**: left open by the owner ("this will get
-worked out when we talk about the above").
+**What the student sees first**: the Ticket Desk (owner, 11 October 2026).
+
+## The real site (build 1, 11 October 2026)
+
+Three pages, one desk: `index.html` (Ticket Desk, where students land),
+`lab-bench.html`, `service-map.html`. Each is a small static shell (the
+view buttons, the bars, the three columns, the how-to box, the footer,
+the Help dialog); `js/desk/app.js` fills it. Only the left column, the
+bar's title line and the how-to box differ between them. The ticket, its
+network and the progress are shared, so a ticket follows the student from
+view to view.
+
+**The engine** (`js/net/`, no page code, tested under Node):
+- `home.js`: the home template. A seed decides the client, the LAN
+  (192.168.1/0/50/86.x), the DHCP range, which switch port is which, the
+  neighbours' Wi-Fi. Layout positions for the diagram and the floor plan.
+- `sim.js`: the simulation. Cables (seated, crushed, damaged pairs: 100
+  Mb/s), the coax and the modem's sync, Wi-Fi (signal by room and band,
+  co-channel interference from the neighbours, band steering), layer 2
+  (who hears whom), DHCP (the DORA exchange, pools, reservations,
+  APIPA), ARP, routing through the router and NAT, DNS servers that
+  really answer or don't. Every change goes through `apply()`.
+- `cmd.js`: the Windows Command Prompt (ipconfig with /all /release
+  /renew /flushdns, ping with -n -t, tracert, nslookup, arp -a, netsh wlan
+  show interfaces / networks mode=bssid, getmac, hostname, cls, help).
+  Output follows Windows' own formatting (the label strings are Windows'
+  exact 39-character labels). Windows Firewall drops pings to the PCs, as
+  it does by default. Interference loses a steady share of pings spread
+  through each run, so four pings on a lossy link always show it.
+- `pages.js`: every device's tabs and pages as data: the router's admin
+  (Status, LAN & DHCP, DHCP clients, Wi-Fi), the modem's lights and
+  status page (DOCSIS log lines), the switch's port lights (green 1 Gb/s,
+  amber 10/100), the PC's network settings, the laptop's Wi-Fi, the
+  printer panel, camera, TV, mesh, phone; the Physical tab (look at a
+  plug, reseat, cable tester, swap the cable, tighten the coax, restart).
+
+**Tickets** (`js/tickets/`): `home.js` defines each ticket: `build(seed)`
+plants the fault; `exhibits` proves it is really there (a ticket moves to
+the next seed if a generated house ever fails to show it; the tests
+assert none ever does); six options (one right, five near misses each
+with the reason it's wrong); rung 1 and rung 2 text; three fix hints;
+`fixed` (the real cause is fixed); `proves` (what a command must show
+afterwards: a reply from something other than the computer itself, so
+`ping 127.0.0.1` never counts); the notebook's evidence rules; the
+summary. `engine.js` runs a ticket: actions, the board and its ladder
+(nothing for wrong picks 1 and 2, rung 1 at 3, rung 2 at 4, rung 3 at 5
+and every one after: strikes with reasons until two remain, never the
+right one; reset clears the board, not the count), the fix hints,
+putting the network back as found, saving (the seed plus the actions that
+changed the network, replayed exactly on load).
+
+**Built in build 1:** HOME-01 cable (PC end out, switch end out, or
+crushed under a chair: the tester shows pins 1, 2, 3, 6 open); HOME-02
+DHCP switched off (the new laptop gets 169.254; fix: turn it on, then
+renew); HOME-03 wrong DNS handed out by the router (a mistyped copy of
+the provider's 203.0.113.53 from the welcome letter); HOME-04 2.4 GHz
+channel 6 crowded by neighbours in the back bedroom (fix: the quiet one
+of 1 and 11; the other has a strong neighbour too); HOME-05 a loose coax
+F-connector at the modem or the wall (DS blinking, ONLINE off). HOME-06
+to 10 show in the queue as "Coming next".
+
+**The Physical tab** shows stills of the 3D models (`assets/stills/`,
+rendered from the real models). The live, turnable models showing each
+fault come in build 3.
+
+**Checks:** `npm test` (Node: every ticket on 150 houses: the fault shows
+in the commands themselves, the board, the real fix and the tempting
+wrong fixes, proof only after the fix and never from a self-ping, the
+ladder, exact replay, no hint names the answer); `node tools/drive.mjs`
+(the page: every ticket worked end to end on three houses each, through
+the terminal, the forms and the Physical tab; the rungs; red marked three
+ways; a wrong fix not solving; putting the network back; reload keeps
+progress; the three views; easier reading persisting); AAA on painted
+pixels across 31 states plus scrolled positions. Each check was shown to
+fail on planted defects.
 
 ## Objectives
 

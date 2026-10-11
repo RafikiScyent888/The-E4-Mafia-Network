@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ticket Desk · The E4 Mafia Network</title>
+<meta name="description" content="The E4 Mafia Network, Ticket Desk: work real home network tickets with real commands, lights, router pages and cables, then diagnose, fix and prove it.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e3a8a'/%3E%3Ccircle cx='16' cy='9' r='3.2' fill='%23f3f6ff'/%3E%3Ccircle cx='8' cy='23' r='3.2' fill='%23f3f6ff'/%3E%3Ccircle cx='24' cy='23' r='3.2' fill='%23f3f6ff'/%3E%3Cpath d='M16 9L8 23M16 9l8 14M8 23h16' stroke='%23ffd84d' stroke-width='1.8'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/e4.css">
+</head>
+<body data-page="desk">
+<nav class="views" aria-label="Views"><a href="lab-bench.html">Lab Bench</a><a href="service-map.html">Service Map</a><a href="index.html" aria-current="page">Ticket Desk</a></nav>
+<section class="chrome" aria-label="Workspace bars">
+  <div class="appbar">
+    <span class="brand2">THE E4 MAFIA <span>NETWORK</span></span>
+    <nav class="menu" aria-label="Menu"><a href="lab-bench.html">Labs</a><button type="button" id="mTicket">Ticket</button><button type="button" id="mView">View</button><button type="button" id="mNotes">Notebook</button><button type="button" id="mHelp">Help</button></nav>
+    <span class="spacer"></span>
+    <button id="dys" type="button" aria-pressed="false">Easier reading: off</button>
+  </div>
+  <div class="toolbar">
+    <div class="seg2" role="group" aria-label="View"><button type="button" id="vLog" aria-pressed="true">Logical</button><button type="button" id="vPhy" aria-pressed="false">Physical</button></div>
+    <div class="labtitle" id="labtitle" aria-live="polite">Opening the ticket<small>&nbsp;</small></div>
+    <span class="spacer"></span>
+    <div class="seg2" role="group" aria-label="Time"><button type="button" id="tLive" aria-pressed="true">Live</button><button type="button" id="tStep" aria-pressed="false">Step through</button></div>
+  </div>
+</section>
+<noscript><p>This lab runs in your browser and needs JavaScript switched on.</p></noscript>
+<main class="desk">
+  <section class="box left queue" id="left" aria-label="Ticket queue"></section>
+  <div class="mainc">
+    <section class="box" aria-label="The ticket" id="ticket">
+      <div class="tk" id="tk"></div>
+      <p class="hintline">Click a device to open it in the terminal on the right.</p>
+      <div class="diagram">
+        <svg id="net" viewBox="-6 -26 836 546" role="img" aria-label="Logical diagram of the client's home network. Links that are down are dashed, with a diamond at each end."></svg>
+        <svg id="plan" viewBox="20 20 970 510" role="img" aria-label="Floor plan of the client's house: the rooms, the devices and the cable runs. A run with no link is dashed, with a diamond on it." hidden></svg>
+        <div class="steps" id="steps" hidden></div>
+      </div>
+    </section>
+    <section class="box diag" id="board" aria-labelledby="dh"></section>
+  </div>
+  <aside class="side" aria-label="Terminal and notebook">
+    <section class="box" aria-label="Terminal">
+      <div class="termhead">
+        <h2 id="termtitle">Terminal</h2>
+        <div class="devtabs" id="devtabs" role="group" aria-label="Open a device in the terminal"></div>
+      </div>
+      <div id="win"></div>
+    </section>
+    <section class="box notebook" aria-label="Notebook" id="notebook"></section>
+  </aside>
+</main>
+<section class="box org" aria-labelledby="orgh">
+  <h2 id="orgh">How the Ticket Desk works</h2>
+  <p>You're a technician at Rafiki's IT Services. Tickets arrive in the queue on the left, from the most common home problems to the harder ones. Each ticket builds the client's house and network fresh, with its fault already in it, so "Try another one like this" gives you new addresses, ports and details.</p>
+  <ol>
+    <li><b>Read the ticket.</b> The client's words often hold the clue.</li>
+    <li><b>Gather the evidence.</b> Open the devices: run commands on the computers, read the lights, open the router's pages, look at the cables. Your notebook writes down what you find.</li>
+    <li><b>Diagnose.</b> Pick what's really wrong. Wrong picks stay marked, and Mason helps after the third.</li>
+    <li><b>Fix it at the source,</b> on the device where the problem really is.</li>
+    <li><b>Prove it works,</b> with a command that shows it.</li>
+  </ol>
+</section>
+<footer>Cyber Warrior Program — built by an instructor, for students, to make certification study more interactive. For educational purposes only. Not affiliated with, endorsed by, or sponsored by CompTIA®. All trademarks belong to their respective owners.</footer>
+<dialog id="help" aria-labelledby="helph">
+  <div class="dh"><h2 id="helph">Help</h2><button type="button" class="btn ghost small x">Close</button></div>
+  <div class="db">
+    <p><b>Working a ticket:</b> read the ticket, gather evidence from the devices, pick what's really wrong, fix it at the source, then prove it works. Open a device from the network map, the floor plan (Physical) or the buttons above the terminal.</p>
+    <p><b>How help works:</b> wrong picks 1 and 2, nothing; pick 3, Mason says where to look; pick 4, the principle that decides it; pick 5 and after, he narrows it to two, each option he strikes with its reason. He never names the answer. In the fix stage, "Ask Mason about the fix" climbs the same way.</p>
+    <p><b>Commands on the computers</b> (Command Prompt tab):</p>
+    <table><tbody></tbody></table>
+    <p><b>Your progress</b> is saved in this browser: each ticket, your notebook and your notes.</p>
+  </div>
+</dialog>
+<script type="module" src="js/desk/app.js"></script>
+</body>
+</html>

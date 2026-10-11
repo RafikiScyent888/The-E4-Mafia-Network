@@ -1,0 +1,8 @@
+[
+ {"name": "scrolled 500: desk", "mode": "view", "page": "index.html", "setup": "scrollTo(0,500)"},
+ {"name": "scrolled 1100: desk, board", "mode": "view", "page": "index.html", "setup": "const w=__e4.T.opts.filter(o=>!o.right); w.slice(0,3).forEach(o=>__e4.guess(o.id)); scrollTo(0,1100)"},
+ {"name": "scrolled 700: router form open", "mode": "view", "page": "index.html", "setup": "document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='LAN & DHCP').click(); scrollTo(0,700)"},
+ {"name": "scrolled 900: bench shelves", "mode": "view", "page": "lab-bench.html", "setup": "scrollTo(0,900)"},
+ {"name": "scrolled 900: map", "mode": "view", "page": "service-map.html", "setup": "scrollTo(0,900)"},
+ {"name": "scrolled 1600: solved, desk", "mode": "view", "page": "index.html", "setup": "const T=__e4.T; __e4.guess('right'); __e4.act(T.v.kind==='crushed'?{t:'replace',cable:'c-switch-pc'}:{t:'reseat',cable:'c-switch-pc',end:T.v.kind==='pc-end'?'b':'a'}); __e4.act({t:'cmd',dev:'pc',line:'ping '+T.sim.d.router.lan.ip}); scrollTo(0,1600)"}
+]

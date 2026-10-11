@@ -1,0 +1,7 @@
+{
+  "name": "the-e4-mafia-network",
+  "private": true,
+  "type": "module",
+  "description": "Static site; this file only lets the engine tests run under Node (no build step).",
+  "scripts": { "test": "node --test tests/*.test.js" }
+}

@@ -78,14 +78,15 @@ export function page(sim, id, key) {
     if (key === "status") {
       const w = sim.wan(), lanUsed = r.leases.length;
       const rows = [
-        ["Internet (WAN)", w ? "Connected" : sim.cableUp(sim.cable("c-modem-router")) ? "Disconnected: waiting for the modem (no address from the provider)" : "Disconnected: no cable in the WAN port"],
+        ["Internet (WAN)", w ? "Connected" : sim.cableUp(sim.wanCable()) ? "Disconnected: waiting for the modem (no address from the provider)" : "Disconnected: no cable from the modem in the INTERNET (WAN) port"],
         ["WAN address", w ? w.ip : "0.0.0.0"], ["WAN gateway", w ? w.gw : "0.0.0.0"],
         ["LAN address", r.lan.ip + " / " + r.lan.mask],
         ["DHCP server", r.dhcp.on ? "On · " + r.dhcp.start + " to " + r.dhcp.end : "Off"],
         ["Wi-Fi 2.4 GHz", r.wifi.ssid + " · channel " + sim.ch24() + (r.wifi.ch24mode === "auto" ? " (Auto)" : "")],
         ["Wi-Fi 5 GHz", r.wifi.ssid + " · channel " + r.wifi.ch5],
         ["Clients with a lease", String(lanUsed)], ["Firmware", r.firmware]];
-      return { kind: "rows", title: "Status", rows: rows, facts: { page: "router-status", wan: !!w, dhcpOn: r.dhcp.on } };
+      if (r.admin) rows.push(["Admin password", r.admin.gen > 1 ? "Changed from the factory one" : "The factory one, printed on the router's label"]);   /* build mode: a router fresh from its box */
+      return { kind: "rows", title: "Status", rows: rows, admin: !!r.admin, facts: { page: "router-status", wan: !!w, dhcpOn: r.dhcp.on } };
     }
     if (key === "dhcp") return { kind: "form", form: "router-dhcp", title: "LAN & DHCP", values: { lanIp: r.lan.ip, mask: r.lan.mask, on: r.dhcp.on, start: r.dhcp.start, end: r.dhcp.end, leaseH: r.dhcp.leaseH, dnsMode: r.dhcp.dnsMode, dns1: r.dhcp.dns[0], dns2: r.dhcp.dns[1] },
       facts: { page: "router-dhcp", on: r.dhcp.on, start: r.dhcp.start, end: r.dhcp.end, dnsMode: r.dhcp.dnsMode, dns: r.dhcp.dns.filter(Boolean) } };
@@ -98,7 +99,7 @@ export function page(sim, id, key) {
         note: inRange + " of " + size + " addresses in the range are leased. Leases last " + r.dhcp.leaseH + " hours; a device keeps its address that long even after it leaves.", facts: { page: "router-clients", count: inRange, size: size, rows: rows, leaseH: r.dhcp.leaseH } };
     }
     if (key === "forward") return { kind: "form", form: "router-forward", title: "Port forwarding", rules: r.forwards.map(function (f) { return { name: f.name, ext: f.ext, ip: f.ip, port: f.port }; }), wan: sim.wan() ? sim.wan().ip : "0.0.0.0", facts: { page: "router-forward", rules: r.forwards.map(function (f) { return { ext: f.ext, ip: f.ip, port: f.port }; }) } };
-    if (key === "wifi") return { kind: "form", form: "router-wifi", title: "Wi-Fi", values: { ssid: r.wifi.ssid, sec: r.wifi.sec, changed: (r.wifi.gen || 1) > 1, bssids: sim.aps().filter(function (a) { return a.id === "router"; }).map(function (a) { return [a.band === 5 ? "5 GHz" : "2.4 GHz", a.mac.toUpperCase().replace(/-/g, ":")]; }), ch24: r.wifi.ch24mode === "auto" ? "auto" : String(r.wifi.ch24), ch24now: sim.ch24(), ch5: String(r.wifi.ch5) }, facts: { page: "router-wifi", ch24: sim.ch24(), mode: r.wifi.ch24mode, sec: r.wifi.sec } };
+    if (key === "wifi") return { kind: "form", form: "router-wifi", title: "Wi-Fi", values: { ssid: r.wifi.ssid, sec: r.wifi.sec, changed: (r.wifi.gen || 1) > 1, rename: !!r.factorySsid, factory: !!r.factorySsid && (r.wifi.gen || 1) === 1, bssids: sim.aps().filter(function (a) { return a.id === "router"; }).map(function (a) { return [a.band === 5 ? "5 GHz" : "2.4 GHz", a.mac.toUpperCase().replace(/-/g, ":")]; }), ch24: r.wifi.ch24mode === "auto" ? "auto" : String(r.wifi.ch24), ch24now: sim.ch24(), ch5: String(r.wifi.ch5) }, facts: { page: "router-wifi", ch24: sim.ch24(), mode: r.wifi.ch24mode, sec: r.wifi.sec } };
   }
   if (id === "modem") {
     const L = sim.modemLights(), syn = sim.modemSynced();
@@ -170,7 +171,10 @@ export function page(sim, id, key) {
   if (x.kind === "phone" && key === "wifi") {
     const l = sim.wifiLink(id), a = sim.addr(id), up = !!(a && sim.route(id, "203.0.113.80").internet);
     const rows = [["Wi-Fi", l && l.connected ? "Connected to " + l.ap.ssid + (l.band === 5 ? " (5 GHz)" : " (2.4 GHz)") + " · signal " + l.signal + "%" : l && l.reason === "auth" ? "Can't join " + l.ap.ssid + ": the saved password is wrong" : "Not connected"], ["IP address", a ? a.ip + (a.kind === "apipa" ? " (it gave itself this: no address came)" : "") : "--"], ["Router", a && a.gw || "--"], ["Internet", up ? "OK" : "No internet"]];
-    return { kind: "rows", title: "Wi-Fi", rows: rows, rejoin: !(l && l.reason === "auth"), reenter: !!(l && l.reason === "auth"), cameraApp: id === "phone" && sim.d.router.forwards.length > 0, facts: { page: id === "guest" ? "guest-wifi" : "phone-wifi", internet: up, ip: a && a.ip, apipa: !!(a && a.kind === "apipa"), connected: !!(l && l.connected) } };
+    /* not joined to the house's network as it's called now (build mode: a new phone, or the network renamed) and it's in range: join it by name */
+    const w = sim.d.router.wifi, f = x.ifaces[0], hear = sim.aps().some(function (ap) { return ap.id === "router" && ap.ssid === w.ssid && sim.heardAt(ap, sim.net.rooms[id]) >= 20; });
+    const join = !(l && l.connected) && f.saved.ssid !== w.ssid && hear ? w.ssid : null;
+    return { kind: "rows", title: "Wi-Fi", rows: rows, join: join, rejoin: !(l && l.reason === "auth") && !join, reenter: !!(l && l.reason === "auth"), cameraApp: id === "phone" && sim.d.router.forwards.length > 0, facts: { page: id === "guest" ? "guest-wifi" : "phone-wifi", internet: up, ip: a && a.ip, apipa: !!(a && a.kind === "apipa"), connected: !!(l && l.connected) } };
   }
   if (id === "rogue" && key === "admin") {
     const g = x;

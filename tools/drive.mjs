@@ -231,6 +231,107 @@ for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY 
   check(src.indexOf("3693") < 0, "instructor: the PIN itself isn't written in the page's code");
   await ctx.close();
 }
+/* build mode: each client job done entirely through the page, as a student would, on three houses */
+async function bpage(job, seed) {
+  const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
+  await ctx.addInitScript(([j, s]) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-build-v1", JSON.stringify({ current: j, j: { [j]: { seed: s } }, done: {} })); sessionStorage.setItem("seeded", "1"); } }, [job, seed]);
+  const p = await ctx.newPage(); p.setDefaultTimeout(5000); p.on("pageerror", (e) => errs.push("build " + job + ": " + e.message));
+  await p.goto(base + "build.html"); await p.waitForTimeout(350);
+  if (plant) await p.evaluate(plant);
+  return { p, ctx };
+}
+const place = async (p, d, room) => { await p.selectOption("#bmDev", d); await p.selectOption("#bmRoom", room); await p.click("#bmPlace"); await p.waitForTimeout(40); };
+const lay = async (p, a, ap, b, bp) => { await p.selectOption("#bmAd", a); await p.selectOption("#bmAp", ap); await p.selectOption("#bmBd", b); await p.selectOption("#bmBp", bp); await p.click("#bmLay"); await p.waitForTimeout(40); };
+const checkJob = async (p) => { await p.click("#doCheck"); await p.waitForTimeout(40); return p.$eval("#check", (n) => n.textContent); };
+const BJ = (p, f) => p.evaluate(f);
+for (const job of ["J1", "J2"].filter((k) => !process.env.ONLY || k === process.env.ONLY)) for (const seed of [11, 2025, 777777]) {
+  const { p, ctx } = await bpage(job, seed);
+  const tag = "build " + job + " " + seed + ": ";
+  try {
+  check((await BJ(p, () => window.__e4b.T.seed)) === seed && (await BJ(p, () => window.__e4b.T.def.id)) === job, tag + "opens the job on the house asked for");
+  const boxed = await BJ(p, () => Object.keys(window.__e4b.T.sim.d).filter((k) => window.__e4b.T.sim.d[k].boxed));
+  check(boxed.length >= 3 && (await p.$$eval(".tray li", (l) => l.length)) === boxed.length, tag + "everything still boxed is in the tray");
+  check(boxed.every((k) => true) && !(await p.$('#plan [data-d="' + boxed[0] + '"]')) && !(await p.$('#devtabs [data-d="' + boxed[0] + '"]')), tag + "a boxed device is on neither the plan nor the device buttons");
+  let t = await checkJob(p);
+  check(/Check 1:/.test(t) && (await p.$$("#check .rq.bad")).length >= 4, tag + "the first check finds the work to do");
+  check(await p.$$eval("#check .rq.bad", (l) => l.every((x) => { const mk = x.querySelector(".mk"), st = getComputedStyle(mk); return /Not met yet/.test(x.textContent) && /✕/.test(mk.textContent) && st.display !== "none" && st.visibility !== "hidden" && parseFloat(st.fontSize) >= 14 && getComputedStyle(x).boxShadow !== "none"; })), tag + "each unmet line is marked three ways (the words, the cross, the inset rule), never colour alone");
+  if (job === "J1") {
+    await place(p, "router", "living"); await place(p, "pc", "office"); await place(p, "tv", "living");
+    check(!!(await p.$('#plan [data-d="router"]')) && !!(await p.$('#devtabs [data-d="pc"]')), tag + "placed devices appear on the plan and as device buttons");
+    /* undo takes back the last change */
+    await place(p, "tv", "garage").catch(() => {}); check(/Not placed/.test(await p.$eval("#bmPmsg", (n) => n.textContent).catch(() => "")) || (await BJ(p, () => window.__e4b.T.sim.net.rooms.tv)) === "garage", tag + "moving an uncabled device works");
+    await p.click("#bmUndo"); await p.waitForTimeout(40);
+    check((await BJ(p, () => window.__e4b.T.sim.net.rooms.tv)) === "living" && /Undone/.test(await p.$eval("#bmUmsg", (n) => n.textContent)), tag + "Undo takes back the last change");
+    /* the tempting mistake: the modem into a LAN port, and Mason's rungs on it */
+    await lay(p, "modem", "ETH", "router", "LAN 1");
+    check(/3 m/.test(await p.$eval("#runs", (n) => n.textContent)), tag + "the run's length shows in the Cable runs list");
+    await checkJob(p);   /* the router line's second failing check (the first was at the start, the router still boxed) */
+    check((await BJ(p, () => window.__e4b.T.fails.router)) === 2 && !(await p.$("#check .mason-says")), tag + "no help for two failing checks");
+    t = await checkJob(p); check(/Mason \(where to look\)/.test(t), tag + "rung 1 at the third failing check");
+    t = await checkJob(p); check(/Mason \(the principle\)/.test(t), tag + "rung 2 at the fourth");
+    t = await checkJob(p); check(/It's one of these two: .+, or .+\./.test(t) && (await p.$$("#check .struck li")).length >= 1, tag + "rung 3 narrows to two, with what it ruled out");
+    t = await checkJob(p); check(/It's one of these two/.test(t), tag + "rung 3 stays, check after check");
+    await p.click('#runs tr:has-text("Cable modem, ETHERNET") button:text-is("Pull")'); await p.waitForTimeout(40);
+    check(!(await BJ(p, () => window.__e4b.T.sim.cableAt("modem", "ETH"))), tag + "Pull takes the cable out");
+    await lay(p, "modem", "ETH", "router", "WAN"); await lay(p, "router", "LAN 1", "pc", "NIC"); await lay(p, "router", "LAN 2", "tv", "LAN");
+    check(/14 m, the living room to the office/.test(await p.$eval("#runs", (n) => n.textContent)), tag + "the run to the office is 14 m, through the wall");
+    /* the router fresh from its box: rename, new Wi-Fi password, new admin password */
+    const home = await BJ(p, () => window.__e4b.T.v.home);
+    await dev(p, "router"); await tab(p, "Wi-Fi");
+    check(/printed on the router's label/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the Wi-Fi page says the password is the label's");
+    await p.fill('.devform input[name="ssid"]', home); await p.click('.devform button:text-is("Save")'); await p.waitForTimeout(40);
+    await p.click('.pane button:text-is("Change the Wi-Fi password")'); await p.waitForTimeout(40);
+    await tab(p, "Status"); await p.click('.pane button:text-is("Change the admin password")'); await p.waitForTimeout(40);
+    check(/Changed from the factory one/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the Status page says the admin password changed");
+    await dev(p, "phone"); await p.click('.pane button:text-is("Join ' + home + ' (enter the password)")'); await p.waitForTimeout(40);
+    check(/Joined/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the phone joins by name");
+    await dev(p, "laptop"); await tab(p, "Wi-Fi"); await p.click('.pane li:has-text("' + home + '") button:text-is("Connect (enter the password)")'); await p.waitForTimeout(40);
+  } else {
+    await place(p, "switch", "office"); await place(p, "pc", "office"); await place(p, "printer", "office");
+    await lay(p, "router", "LAN 1", "switch", "1"); await lay(p, "switch", "2", "pc", "NIC"); await lay(p, "switch", "3", "printer", "NET");
+    const pre = await BJ(p, () => window.__e4b.T.sim.net.prefix), r = await BJ(p, () => ({ ip: window.__e4b.T.sim.d.router.lan.ip, mask: window.__e4b.T.sim.d.router.lan.mask, end: window.__e4b.T.sim.d.router.dhcp.end }));
+    /* first a fixed address inside the range: it prints today, and the check says why that won't do */
+    const inside = pre + "." + (+r.end.split(".")[3] - 2);
+    await dev(p, "printer"); await p.check('.devform input[name="mode"][value="static"]'); await p.fill('.devform input[name="ip"]', inside); await p.fill('.devform input[name="mask"]', r.mask); await p.fill('.devform input[name="gw"]', r.ip); await p.click('.devform button:text-is("Save")'); await p.waitForTimeout(40);
+    await dev(p, "pc"); await tab(p, "Printers"); await p.fill('.devform input[name="port"]', inside); await p.click('.devform button:text-is("Save")'); await p.waitForTimeout(40);
+    await p.click('.pane button:text-is("Print a test page")'); check(/it printed/.test(await p.$eval(".pane .res", (n) => n.textContent)), tag + "a printer inside the range prints today");
+    t = await checkJob(p); check(/one the router can also hand to another device/.test(t), tag + "the check says the address is one the router hands out");
+    await dev(p, "printer"); await p.fill('.devform input[name="ip"]', pre + ".5"); await p.click('.devform button:text-is("Save")'); await p.waitForTimeout(40);
+    await dev(p, "pc"); await tab(p, "Printers"); await p.fill('.devform input[name="port"]', pre + ".5"); await p.click('.devform button:text-is("Save")'); await p.waitForTimeout(40);
+  }
+  t = await checkJob(p);
+  const n = await BJ(p, () => window.__e4b.T.def.reqs.length);
+  check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
+  check(await p.$$eval("#check .rq.ok", (l) => l.every((x) => /Met/.test(x.textContent) && /✓/.test(x.querySelector(".mk").textContent))), tag + "met lines marked with the tick and the word too");
+  await p.reload(); await p.waitForTimeout(350);
+  check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)) && /done 1×|Done 1×/.test(await p.$eval('#queue [data-j="' + job + '"]', (n) => n.textContent)), tag + "still done after a reload, and the list counts it");
+  await p.click("#vLog"); check(!!(await p.$('#net [data-d="router"]')) && !(await p.$("#net[hidden]")), tag + "the logical view shows what was built");
+  const s1 = await BJ(p, () => window.__e4b.T.seed);
+  await p.click('#check button:text-is("Start this job again (a new house)")'); await p.waitForTimeout(80);
+  check((await BJ(p, () => window.__e4b.T.seed)) !== s1 && !(await BJ(p, () => window.__e4b.T.done)), tag + "a fresh house, the work to do again");
+  } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }   /* a broken page fails by name; it doesn't stop the run */
+  await ctx.close();
+}
+{
+  const { p, ctx } = await bpage("J1", 4242);
+  await p.click('.chrome nav[aria-label="Mode"] a:text-is("Tickets")'); await p.waitForTimeout(300);
+  check(/index\.html$/.test(p.url()) && !!(await p.$("#board")), "mode: Tickets goes to the Ticket Desk");
+  await p.click('.chrome nav[aria-label="Mode"] a:text-is("Build")'); await p.waitForTimeout(300);
+  check(/build\.html$/.test(p.url()) && (await BJ(p, () => window.__e4b.T.seed)) === 4242, "mode: Build comes back to the same job");
+  await p.click("#mInst"); await p.fill("#instpin", "3693"); await p.press("#instpin", "Enter");
+  check(await p.$("#inst #instt") !== null, "build instructor: 3693 unlocks");
+  if (await p.$("#inst #instt")) {
+    await p.selectOption("#instt", "J2"); await p.fill("#insts", "5150"); await p.click('#inst button:text-is("Open it")'); await p.waitForTimeout(80);
+    check((await BJ(p, () => window.__e4b.T.def.id)) === "J2" && (await BJ(p, () => window.__e4b.T.seed)) === 5150, "build instructor: the demo opens the chosen job on the chosen house");
+    await p.click('#inst button:text-is("Show one way to do the job")');
+    check(/Place the switch/.test(await p.$eval("#inst .inst-out", (n) => n.textContent)) && !/Place the switch/.test(await p.$eval("main", (n) => n.textContent)), "build instructor: one way to do it, in the instructor's window only");
+    await p.click('#inst button:text-is("Show all of Mason\'s help")'); check(/Rung 1[\s\S]*Rung 2/.test(await p.$eval("#inst .inst-out", (n) => n.textContent)), "build instructor: all of Mason's help");
+  }
+  const src = await p.evaluate(async () => (await (await fetch("js/build/app.js")).text()) + (await (await fetch("js/build/jobs.js")).text()));
+  check(src.indexOf("3693") < 0, "build: the PIN isn't written in the page's code");
+  await ctx.close();
+}
+
 console.log(errs.length ? "PAGE ERRORS\n" + [...new Set(errs)].join("\n") : "no page errors");
 console.log(bad.length ? "FAIL\n" + bad.join("\n") : "PASS: " + steps + " checks, every built ticket worked end to end through the page (three houses each, plus one for every variant of a fault those missed), the views, the instructor tools, the reload");
 await B.close(); srv.close();

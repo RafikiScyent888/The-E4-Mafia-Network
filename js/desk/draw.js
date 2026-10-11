@@ -37,6 +37,29 @@ function pos(sim, id) {
   if (id === "laptop" && sim.net.rooms.laptop === "kitchen") Object.assign(L, { px: 640, py: 360 });
   return L;
 }
+/* build mode puts devices where the student chooses: each one in its usual spot when that's its room and the spot
+   is clear, otherwise the first clear place in the room it's in, its tile and its name kept off everything else's */
+const ROOM_BOX = { office: [30, 30, 420, 300], living: [420, 30, 760, 300], garage: [30, 300, 420, 520], kitchen: [420, 300, 760, 520], upstairs: [790, 30, 980, 260], porch: [764, 280, 990, 490] };
+function planSpots(sim, ids) {
+  const out = {}, taken = [];
+  if (!sim.net.extra.build) { for (const id of ids) { const p = pos(sim, id); out[id] = { px: p.px, py: p.py }; } return out; }   /* the tickets' houses are drawn exactly as laid out */
+  const box = function (x, y) { return [x - 46, y - 26, x + 46, y + 54]; };
+  const clear = function (b) { return taken.every(function (t) { return b[2] < t[0] || b[0] > t[2] || b[3] < t[1] || b[1] > t[3]; }); };
+  const usual = function (id) { const p = pos(sim, id), room = sim.net.rooms[id]; return p.px != null && (!LAYOUT[id].room || LAYOUT[id].room === room || (id === "laptop" && (room === "living" || room === "kitchen"))) ? p : null; };
+  for (const id of ids) { const p = usual(id); if (p && clear(box(p.px, p.py))) { out[id] = { px: p.px, py: p.py }; taken.push(box(p.px, p.py)); } }
+  for (const id of ids) {
+    if (out[id]) continue;
+    const R = ROOM_BOX[sim.net.rooms[id]] || ROOM_BOX.office;
+    taken.push([R[0], R[1], R[0] + 140, R[1] + 42]);   /* the room's name, top left */
+    let spot = null;
+    for (let y = R[1] + 70; y <= R[3] - 56 && !spot; y += 26) for (let x = R[0] + 60; x <= R[2] - 50 && !spot; x += 30) if (clear(box(x, y))) spot = { px: x, py: y };
+    taken.pop();
+    out[id] = spot || { px: (R[0] + R[2]) / 2, py: (R[1] + R[3]) / 2 };
+    taken.push(box(out[id].px, out[id].py));
+  }
+  return out;
+}
+const shown = function (sim, id) { return !!sim.d[id] && !sim.d[id].boxed; };   /* a device still in its box isn't on either drawing */
 function subOf(sim, id) {
   const x = sim.d[id];
   if (id === "router") return x.lan.ip;
@@ -56,14 +79,14 @@ export function linksOf(sim) {
     out.push({ a: c.a.dev, b: c.b.dev, kind: "copper", up: sim.cableUp(c), pa: c.a.dev === "injector" ? "" : c.a.port, pb: c.b.dev === "injector" ? "" : c.b.port, cable: c.id });   /* the injector's own port names are on its Physical tab: the diagram has no room for them */
   }
   const m = sim.d.mesh;
-  if (m) out.push({ a: "router", b: "mesh", kind: "wifi", up: m.backhaul.ok && sim.on("mesh") && sim.on("router") });
+  if (m && shown(sim, "mesh") && shown(sim, "router")) out.push({ a: "router", b: "mesh", kind: "wifi", up: m.backhaul.ok && sim.on("mesh") && sim.on("router") });
   for (const id of ["phone", "laptop", "guest"]) { if (!sim.d[id]) continue; const l = sim.wifiLink(id); if (l && l.connected && !(sim.d[l.ap.id] && sim.d[l.ap.id].undocumented)) out.push({ a: l.ap.id, b: id, kind: "wifi", up: true }); }   /* joined to something not in the house: no line to draw */
   return out;
 }
 
 export function drawLogical(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "i-");
-  const ids = ["isp", "modem", "router", "tv", "switch", "pc", "printer", "injector", "camera", "mesh", "phone", "laptop", "guest"].filter(function (id) { return sim.d[id] && !sim.d[id].undocumented; });
+  const ids = ["isp", "modem", "router", "tv", "switch", "pc", "printer", "injector", "camera", "mesh", "phone", "laptop", "guest"].filter(function (id) { return shown(sim, id) && !sim.d[id].undocumented; });
   const P = {}; ids.forEach(function (id) { P[id] = pos(sim, id); });
   const below = function (id) { return !P[id].lab || P[id].lab === "below"; };
   const gl = mk("g", {}), gn = mk("g", {}), gp = mk("g", {});
@@ -121,16 +144,30 @@ export function drawPlan(svg, sim, o) {
     '<rect class="room" x="790" y="30" width="190" height="230"/><path class="door" d="M380 300h30M520 300h40M420 400v40"/>' +
     '<text class="rl" x="46" y="60">OFFICE</text><text class="rl" x="436" y="60">LIVING ROOM</text><text class="rl" x="46" y="330">GARAGE</text><text class="rl" x="436" y="330">KITCHEN</text><text class="rl" x="806" y="60">UPSTAIRS</text>' +
     '<text class="rl" x="800" y="512">FRONT DOOR</text><rect class="plate" x="413" y="98" width="14" height="24"/><rect class="plate" x="714" y="32" width="16" height="10"/>';
+  const ids = Object.keys(PLAN_NAME).filter(function (id) { return shown(sim, id); }), P = planSpots(sim, ids);
   let anyDown = false;
-  for (const id in RUNS) {
-    const c = sim.cable(id); if (!c) continue;
-    const up = sim.cableUp(c); if (!up) anyDown = true;
-    for (const d of RUNS[id]) h += '<path class="' + (up ? (c.kind === "coax" ? "run-coax" : "run") : "run-bad") + '" d="' + d + '"/>';
+  const runs = [];
+  for (const c of sim.net.cables) {
+    let paths = RUNS[c.id] && !sim.net.extra.build ? RUNS[c.id] : null;
+    if (c.id === "c-coax") paths = RUNS[c.id];
+    if (!paths) {   /* a run the student laid (or any run in build mode): drawn between where its two devices really are, bowed a little so two never sit on one line */
+      const A = P[c.a.dev], Bp = P[c.b.dev]; if (!A || !Bp) continue;
+      const dx = Bp.px - A.px, dy = Bp.py - A.py, L = Math.hypot(dx, dy) || 1, k = 0.12 * L * (runs.length % 2 ? -1 : 1);
+      const cx = (A.px + Bp.px) / 2 - dy / L * k, cy = (A.py + Bp.py) / 2 + dx / L * k;
+      runs.push({ c: c, d: ["M" + A.px + " " + A.py + " Q " + Math.round(cx) + " " + Math.round(cy) + " " + Bp.px + " " + Bp.py], mid: [(A.px + 2 * cx + Bp.px) / 4, (A.py + 2 * cy + Bp.py) / 4] });
+      continue;
+    }
+    const n = (paths[paths.length - 1].match(/-?\d+/g) || []).map(Number);   /* halfway along the run itself: a straight line's middle, or a curve's */
+    const mid = n.length === 8 ? [(n[0] + 3 * n[2] + 3 * n[4] + n[6]) / 8, (n[1] + 3 * n[3] + 3 * n[5] + n[7]) / 8] : n.length >= 4 ? [(n[0] + n[n.length - 2]) / 2, (n[1] + n[n.length - 1]) / 2] : null;
+    runs.push({ c: c, d: paths, mid: mid });
+  }
+  for (const r of runs) {
+    const up = sim.cableUp(r.c); if (!up) anyDown = true;
+    for (const d of r.d) h += '<path class="' + (up ? (r.c.kind === "coax" ? "run-coax" : "run") : "run-bad") + '" d="' + d + '"/>';
   }
   svg.innerHTML += h;
-  for (const id in PLAN_NAME) {
-    if (!sim.d[id]) continue;
-    const p = pos(sim, id);
+  for (const id of ids) {
+    const p = P[id];
     const g = mk("g", { class: "pdev" + (o.open === id ? " open" : ""), tabindex: "0", role: "button", transform: "translate(" + p.px + " " + p.py + ")", "aria-label": "Open " + sim.d[id].label + " in the terminal" });
     g.dataset.d = id;
     g.appendChild(mk("rect", { class: "tile", x: -24, y: -24, width: 48, height: 48, rx: 9 }));
@@ -139,13 +176,10 @@ export function drawPlan(svg, sim, o) {
     svg.appendChild(g);
   }
   /* a diamond on each run that's down, and the words for it */
-  for (const id in RUNS) {
-    const c = sim.cable(id); if (!c || sim.cableUp(c)) continue;
-    const n = (RUNS[id][RUNS[id].length - 1].match(/-?\d+/g) || []).map(Number);   /* halfway along the run itself: a straight line's middle, or a curve's */
-    let x = null, y = null;
-    if (n.length === 8) { x = (n[0] + 3 * n[2] + 3 * n[4] + n[6]) / 8; y = (n[1] + 3 * n[3] + 3 * n[5] + n[7]) / 8; }
-    else if (n.length >= 4) { x = (n[0] + n[n.length - 2]) / 2; y = (n[1] + n[n.length - 1]) / 2; }
-    if (x !== null) svg.appendChild(mk("rect", { x: x - 8, y: y - 8, width: 16, height: 16, transform: "rotate(45 " + x + " " + y + ")", class: "pd-down" }));
+  for (const r of runs) {
+    if (sim.cableUp(r.c) || !r.mid) continue;
+    const x = r.mid[0], y = r.mid[1];
+    svg.appendChild(mk("rect", { x: x - 8, y: y - 8, width: 16, height: 16, transform: "rotate(45 " + x + " " + y + ")", class: "pd-down" }));
   }
   if (anyDown) { const t = mk("text", { class: "ns", x: 46, y: 505 }); t.textContent = "red dashed run: no link"; svg.appendChild(t); }   /* on the garage floor: nothing else is there */
   plates(svg, ".rl, .ns", "#f4f6fb");

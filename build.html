@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Build · The E4 Mafia Network</title>
+<meta name="description" content="The E4 Mafia Network, build mode: client jobs worked from a work order. Unbox, place, cable and set up a home network, then the network itself checks every line of the order.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e3a8a'/%3E%3Ccircle cx='16' cy='9' r='3.2' fill='%23f3f6ff'/%3E%3Ccircle cx='8' cy='23' r='3.2' fill='%23f3f6ff'/%3E%3Ccircle cx='24' cy='23' r='3.2' fill='%23f3f6ff'/%3E%3Cpath d='M16 9L8 23M16 9l8 14M8 23h16' stroke='%23ffd84d' stroke-width='1.8'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/e4.css">
+</head>
+<body data-page="build">
+<nav class="views" aria-label="Views"><a href="lab-bench.html">Lab Bench</a><a href="service-map.html">Service Map</a><a href="index.html">Ticket Desk</a></nav>
+<section class="chrome" aria-label="Workspace bars">
+  <div class="appbar">
+    <span class="brand2">THE E4 MAFIA <span>NETWORK</span></span>
+    <nav class="menu" aria-label="Menu"><a href="lab-bench.html">Labs</a><button type="button" id="mJob">Job</button><button type="button" id="mView">View</button><button type="button" id="mNotes">Notes</button><button type="button" id="mHelp">Help</button><button type="button" id="mInst">Instructor</button></nav>
+    <span class="spacer"></span>
+    <button id="dys" type="button" aria-pressed="false">Easier reading: off</button>
+  </div>
+  <div class="toolbar">
+    <div class="seg2" role="group" aria-label="View"><button type="button" id="vLog" aria-pressed="false">Logical</button><button type="button" id="vPhy" aria-pressed="true">Physical</button></div>
+    <div class="labtitle" id="labtitle" aria-live="polite">Opening the job<small>&nbsp;</small></div>
+    <span class="spacer"></span>
+    <nav class="seg2" aria-label="Mode"><a href="index.html">Tickets</a><a href="build.html" aria-current="page">Build</a></nav>
+  </div>
+</section>
+<noscript><p>This lab runs in your browser and needs JavaScript switched on.</p></noscript>
+<main class="desk">
+  <section class="box left queue" id="left" aria-label="Client jobs"></section>
+  <div class="mainc">
+    <section class="box" aria-label="The work order" id="order">
+      <div class="tk" id="tk"></div>
+      <div class="bm" id="bm"></div>
+      <p class="hintline">Click a device to open it in the terminal on the right.</p>
+      <div class="diagram">
+        <svg id="net" viewBox="-6 -26 836 546" role="img" aria-label="Logical diagram of the network as built so far. Links that are down are dashed, with a diamond at each end." hidden></svg>
+        <svg id="plan" viewBox="20 20 970 510" role="img" aria-label="Floor plan of the client's house: the rooms, the devices placed so far and the cable runs. A run with no link is dashed, with a diamond on it."></svg>
+      </div>
+      <div class="bm" id="runs"></div>
+    </section>
+    <section class="box diag" id="check" aria-labelledby="ch"></section>
+  </div>
+  <aside class="side" aria-label="Terminal and job notes">
+    <section class="box" aria-label="Terminal">
+      <div class="termhead">
+        <h2 id="termtitle">Terminal</h2>
+        <div class="devtabs" id="devtabs" role="group" aria-label="Open a device in the terminal"></div>
+      </div>
+      <div id="win"></div>
+    </section>
+    <section class="box notebook" aria-label="Job notes" id="notebook"></section>
+  </aside>
+</main>
+<section class="box org" aria-labelledby="orgh">
+  <h2 id="orgh">How build mode works</h2>
+  <p>You're the technician Rafiki's IT Services sends to set a house up. Each client job is a work order: what the client wants, and the limits you work within. The house is built fresh for you each time, so "Start this job again" gives you a new client, new addresses and a new router.</p>
+  <ol>
+    <li><b>Read the whole order,</b> and the limits, before you unbox anything.</li>
+    <li><b>Plan it:</b> which device goes in which room, and where each cable runs. Your job notes are for the plan.</li>
+    <li><b>Place the devices and lay the cables.</b> Each run comes as long as the house makes it.</li>
+    <li><b>Set things up</b> on each device, as you would for real: the router's pages, a device's own settings, joining the Wi-Fi.</li>
+    <li><b>Check the job.</b> The network tests every line of the order itself. Fix what isn't met, and check again, as often as you like. Mason helps from the third check that still fails a line.</li>
+  </ol>
+</section>
+<footer>Cyber Warrior Program — built by an instructor, for students, to make certification study more interactive. For educational purposes only. Not affiliated with, endorsed by, or sponsored by CompTIA®. All trademarks belong to their respective owners.</footer>
+<dialog id="help" aria-labelledby="helph">
+  <div class="dh"><h2 id="helph">Help</h2><button type="button" class="btn ghost small x">Close</button></div>
+  <div class="db">
+    <p><b>Working a job:</b> read the order and its limits, place each device in a room, lay the cables between their ports, set each device up, then Check the job. Open a device from the floor plan, the logical diagram or the buttons above the terminal.</p>
+    <p><b>Cables:</b> choose a device and a port for each end. A run between two rooms is as long as the house makes it, and you see the length before you lay it. To move a device, pull its cables out first. Undo takes back your last change.</p>
+    <p><b>How help works:</b> Mason helps with the first line of the order that isn't met. The first and second checks that still fail it, nothing; the third, where to look; the fourth, the principle that decides it; the fifth and every one after, he narrows it to two, with a reason for each thing he rules out. He never says what to type or where to plug.</p>
+    <p><b>Commands on the computers</b> (Command Prompt tab):</p>
+    <table><tbody></tbody></table>
+    <p><b>Your progress</b> is saved in this browser: each job, and your notes.</p>
+  </div>
+</dialog>
+<script type="importmap">{ "imports": { "three": "./assets/three/three.module.min.js", "three/addons/": "./assets/three/addons/" } }</script>
+<script type="module" src="js/build/app.js"></script>
+</body>
+</html>

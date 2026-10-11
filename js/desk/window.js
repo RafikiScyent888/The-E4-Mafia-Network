@@ -62,7 +62,7 @@ function cmdPane(id, ctx) {
 function pagePane(id, key, ctx, rerender) {
   const T = ctx.T, P = page(T.sim, id, key), x = T.sim.d[id];
   const pane = el("div", { class: "pane" });
-  if (id === "router" && key !== "physical") pane.appendChild(el("p", { class: "addr" }, "Router admin page · http://" + x.lan.ip + " · signed in as admin"));
+  if (id === "router" && key !== "physical") pane.appendChild(el("p", { class: "addr" }, "Router admin page · http://" + x.lan.ip + " · signed in as admin" + (x.admin && x.admin.gen === 1 ? ", with the password on the router's label" : "")));
   if (id === "modem" && key === "status") pane.appendChild(el("p", { class: "addr" }, "The modem's own page · http://192.168.100.1"));
   if (id === "camera" && key === "web") pane.appendChild(el("p", { class: "addr" }, "The camera's own page"));
   if (P.kind === "rows") {
@@ -73,6 +73,9 @@ function pagePane(id, key, ctx, rerender) {
     if (P.ipForm) pane.appendChild(ipForm(id, P.ipForm, ctx, rerender));
     if (P.speedTest) pane.appendChild(button(id, "speed", "Run a speed test", ctx, rerender, function () { const r = ctx.act({ t: "speed", dev: id }); const x = r && r.result; return x && x.ok ? "Speed test: " + x.down + " Mb/s down, " + x.up + " Mb/s up (the plan is " + x.plan + " Mb/s)." : "Speed test: can't reach the test server."; }));
     if (P.networks) pane.appendChild(networksList(id, P, ctx, rerender));
+    if (P.admin) pane.appendChild(button(id, "admin", "Change the admin password", ctx, rerender, function () { const r = ctx.act({ t: "router", page: "admin", values: { newPassword: true } }); return r && r.result && r.result.ok ? "Saved: a new admin password for the router's pages, written down for the client. The one on the label no longer opens them." : "Not saved."; }));
+    if (P.join) pane.appendChild(button(id, "join", "Join " + P.join + " (enter the password)", ctx, rerender, function () { const r = ctx.act({ t: "join", dev: id }); const f = r && r.facts; return f && f.ap ? "Joined " + P.join + ": address " + f.ip + ". Internet: " + (f.internet ? "OK" : "none") + "." : "Couldn't join " + P.join + "."; }));
+    else if (said[id] && said[id].join) pane.appendChild(el("p", { class: "res", role: "status" }, said[id].join));   /* joined: the button goes, what happened stays */
     if (P.reenter) pane.appendChild(button(id, "reenter", "Re-enter the Wi-Fi password", ctx, rerender, function () { const r = ctx.act({ t: "join", dev: id }); const f = r && r.facts; return f && f.ap ? "Joined with the new password: address " + f.ip + ". Internet: " + (f.internet ? "OK" : "none") + "." : "Still can't join."; }));
     if (P.rejoin) pane.appendChild(button(id, "rejoin", "Turn Wi-Fi off and on", ctx, rerender, function () { const r = ctx.act({ t: "rejoin", dev: id }); const f = r && r.facts; return f && f.ip ? "Rejoined the Wi-Fi: address " + f.ip + (f.apipa ? " (no address came; it gave itself this one)" : "") + ". Internet: " + (f.internet ? "OK" : "none") + "." : "Can't see the Wi-Fi network."; }));
     if (P.cameraApp) pane.appendChild(button(id, "camera", "Open the camera app on mobile data", ctx, rerender, function () { const r = ctx.act({ t: "outside", port: 8443 }); const x = r && r.result; return x && x.ok ? "Camera app: connected. The porch camera's picture comes up." : "Camera app: can't connect to the camera" + (x && x.why === "refused" ? " (the connection was refused)" : x && x.why === "nobody" ? " (nothing answered)" : "") + "."; }));
@@ -140,7 +143,8 @@ function wifiForm(v, ctx, rerender) {
   const s24 = el("select", { name: "ch24" }); [["auto", "Auto (now " + v.ch24now + ")"]].concat([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(function (c) { return [String(c), String(c)]; })).forEach(function (o) { const op = el("option", { value: o[0] }, o[1]); if (o[0] === v.ch24) op.selected = true; s24.appendChild(op); });
   const sec = el("select", { name: "sec" }); [["WPA2-Personal", "WPA2-Personal"], ["WPA2/WPA3-Personal", "WPA2/WPA3-Personal (transition)"], ["WPA3-Personal", "WPA3-Personal"]].forEach(function (o) { const op = el("option", { value: o[0] }, o[1]); if (o[0] === v.sec) op.selected = true; sec.appendChild(op); });
   const s5 = el("select", { name: "ch5" }); [36, 40, 44, 48, 149, 153, 157, 161].forEach(function (c) { const op = el("option", { value: String(c) }, String(c)); if (String(c) === v.ch5) op.selected = true; s5.appendChild(op); });
-  f.appendChild(el("fieldset", null, el("legend", null, "Network"), field("Network name (SSID)", "ssid", v.ssid, { readonly: true, inputmode: "text" }), el("label", { class: "f" }, "Security", sec), field("Password", "pw", "••••••••••", { readonly: true, inputmode: "text", "aria-label": "Password, covered" })));
+  f.appendChild(el("fieldset", null, el("legend", null, "Network"), field("Network name (SSID)", "ssid", v.ssid, { readonly: !v.rename, inputmode: "text", maxlength: "32" }), el("label", { class: "f" }, "Security", sec), field("Password", "pw", "••••••••••", { readonly: true, inputmode: "text", "aria-label": "Password, covered" })));
+  if (v.factory) f.appendChild(el("p", { class: "note" }, "The Wi-Fi password is the one printed on the router's label."));
   if (v.bssids) f.appendChild(el("p", { class: "note" }, "This router's radios (BSSIDs): " + v.bssids.map(function (b) { return b[0] + " " + b[1]; }).join(", ")));
   f.appendChild(el("fieldset", null, el("legend", null, "Channels"), el("div", { class: "row2" }, el("label", { class: "f" }, "2.4 GHz channel", s24), el("label", { class: "f" }, "5 GHz channel", s5))));
   f.appendChild(el("div", { class: "acts" }, el("button", { class: "btn", type: "submit" }, "Save")));
@@ -148,7 +152,9 @@ function wifiForm(v, ctx, rerender) {
   f.addEventListener("submit", function (e) {
     e.preventDefault();
     const d = new FormData(f);
-    const r = ctx.act({ t: "router", page: "wifi", values: { ch24: d.get("ch24"), ch5: d.get("ch5"), sec: d.get("sec") } });
+    const values = { ch24: d.get("ch24"), ch5: d.get("ch5"), sec: d.get("sec") };
+    if (v.rename && String(d.get("ssid") || "").trim() !== v.ssid) values.ssid = d.get("ssid");   /* a new name only when it was changed: the same name saved again moves nobody */
+    const r = ctx.act({ t: "router", page: "wifi", values: values });
     if (r && r.result && r.result.ok) { ctx.flash = "Saved. Wi-Fi devices reconnect with the new settings within a few seconds."; rerender(); }
     else { msg.className = "msg err"; msg.textContent = "Not saved: " + ((r && r.result && r.result.errs) || []).join(". ") + "."; }
   });

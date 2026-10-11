@@ -4,5 +4,7 @@
  {"name": "scrolled 700: router form open", "mode": "view", "page": "index.html", "setup": "document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='LAN & DHCP').click(); scrollTo(0,700)"},
  {"name": "scrolled 900: bench shelves", "mode": "view", "page": "lab-bench.html", "setup": "scrollTo(0,900)"},
  {"name": "scrolled 900: map", "mode": "view", "page": "service-map.html", "setup": "scrollTo(0,900)"},
- {"name": "scrolled 1600: solved, desk", "mode": "view", "page": "index.html", "setup": "const T=__e4.T; __e4.guess('right'); __e4.act(T.v.kind==='crushed'?{t:'replace',cable:'c-switch-pc'}:{t:'reseat',cable:'c-switch-pc',end:T.v.kind==='pc-end'?'b':'a'}); __e4.act({t:'cmd',dev:'pc',line:'ping '+T.sim.d.router.lan.ip}); scrollTo(0,1600)"}
+ {"name": "scrolled 1600: solved, desk", "mode": "view", "page": "index.html", "setup": "const T=__e4.T; __e4.guess('right'); __e4.act(T.v.kind==='crushed'?{t:'replace',cable:'c-switch-pc'}:{t:'reseat',cable:'c-switch-pc',end:T.v.kind==='pc-end'?'b':'a'}); __e4.act({t:'cmd',dev:'pc',line:'ping '+T.sim.d.router.lan.ip}); scrollTo(0,1600)"},
+ {"name": "scrolled 900: build, the tools and the plan", "mode": "view", "page": "build.html", "setup": "const c=window.__e4b; c.openJob('J1',true,4242); c.act({t:'place',dev:'router',room:'living'}); c.act({t:'place',dev:'pc',room:'office'}); scrollTo(0,900)"},
+ {"name": "scrolled 1700: build, check the job with Mason", "mode": "view", "page": "build.html", "setup": "const c=window.__e4b; c.openJob('J1',true,4242); c.act({t:'place',dev:'router',room:'living'}); c.act({t:'lay',a:{dev:'modem',port:'ETH'},b:{dev:'router',port:'LAN 1'}}); for(let i=0;i<5;i++) c.check(); scrollTo(0,1700)"}
 ]

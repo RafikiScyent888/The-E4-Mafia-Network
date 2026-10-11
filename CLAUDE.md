@@ -520,24 +520,101 @@ site can't truly hide anything: this keeps answers out of casual reach.)
 "Unlock any level" (on the owner's 10 October list) comes with the second
 level: only the home level exists, so nothing is locked yet.
 
-**Next: build mode (preview, 11 October 2026).** The first slice (decision
-5, 9 October) is the home level's build mode with its goal checker as well
-as the tickets, and the tile link waits for it (decision 6). Its details
-were never talked out, so `preview/build-mode.html` (not linked) shows one
-client job in the real layout: the work order and its limits (100 m runs,
-the PoE budget), devices in the box, the floor plan, the cable runs with
-their lengths, the router at factory defaults, and "Check the job", where
-the network checks each line of the order with real traffic and Mason's
-ladder helps from the third failing check. Five jobs proposed (move-in;
-home office and printer; porch camera; Wi-Fi to every room; a guest Wi-Fi
-kept apart) plus free build. Waiting on the owner's decisions before
-building.
+**Build mode, B1 (`build.html`, 11 October 2026).** The first slice
+(decision 5, 9 October) is the home level's build mode with its goal
+checker as well as the tickets; `preview/build-mode.html` (not linked)
+showed it first. The owner said "Keep going", so it is built with the
+defaults stated to them: the flow is place, cable, set up, then "Check the
+job"; placing and cabling are done from lists (keyboard and screen-reader
+friendly; drag can come later if wanted); the five jobs as previewed. It
+goes up in three verified pushes: **B1** (this one) the build page, its
+engine and checker, J1 and J2; **B2** J3 (the porch camera and the PoE
+budget) and J4 (Wi-Fi to every room: mesh placement); **B3** J5 (a guest
+Wi-Fi kept apart), free build, the five extra jobs, then the Under the Hood
+tile link (decision 6). The Tickets | Build switch is in every page's bar.
 
-**Checks:** `npm test` (Node: every ticket on 150 houses: the fault shows
+- **The house as the technician finds it** (`js/build/jobs.js`,
+  `factory`): the modem already in by the living-room outlet (the
+  provider's coax stays), the router at factory settings (Wi-Fi named
+  `ROUTER-` plus four hex digits, its Wi-Fi and admin passwords those
+  printed on the label, no reservations, no forwards), everything else in
+  its box. A later job starts from the earlier job's work already done
+  (`settle`). `net.extra.build` marks a build house.
+- **The simulation's build pieces** (`js/net/sim.js`): devices `boxed`
+  (off, on neither drawing, no device button); `place` (a room; the modem
+  and the camera have fixed places, `FIXED_ROOM`; a cabled device must have
+  its cables pulled first); `lay` (two free ports from `PORTS`; the cable
+  is as long as `runLength` says between the rooms, 3 m inside one room);
+  `pull` (never the provider's coax); a copper run over `COPPER_MAX` (100 m)
+  has no link (no room in this house is that far: the tests stretch one to
+  prove it); the Wi-Fi renamed (`ssid`, 1 to 32 printable characters) and
+  the router's admin password changed (`admin.gen`); `wanCable()` finds
+  the modem-to-WAN cable whatever it's called (into a LAN port it isn't
+  one). Wi-Fi signal rows for an access point in any room. In a build house
+  a device on 169.254 keeps asking for an address, as Windows does every
+  few minutes, so cabling the router in after the switch still works; the
+  tickets keep the moment frozen.
+- **Each line of a work order is an ordered list of causes**: everything
+  that could stop it, in the order a technician would rule them out (in its
+  box, wrong room, no cable, no link, not on the router's house side, own
+  IP settings, the router offline, gateway or DNS). The first one really
+  there is what the check saw (its evidence line); every one before it is
+  ruled out by the network itself. Mason's rung 3 (`engine.narrow`) uses
+  exactly that: the real cause and its nearest neighbour, in an order that
+  doesn't give it away, and every cause before it struck with its reason.
+  Nothing after the real cause is struck, because the network hasn't ruled
+  those out. Rung 1 is where to look, rung 2 the principle; the count is
+  per line, every failing check of it (the one at the start counts), and
+  resets when the line is met. Never what to type or where to plug.
+- **J1 Move-in:** the router online through its WAN port; the office PC
+  and the TV wired, in their rooms; the phone and the laptop on the Wi-Fi;
+  the Wi-Fi renamed with a new password; the admin password changed.
+  Joining before the rename, or before the new password, means joining
+  again (the check says the device is looking for the old name, or has the
+  old password). **J2 Home office:** the PC wired in the office; the printer
+  on a fixed address the router will never hand out (set by hand outside
+  the range, or reserved and then restarted to pick it up); the PC prints
+  to it; one cable through the office wall (a switch shares it); everything
+  that worked still works. A printer inside the range prints today and
+  fails the check, which says why.
+- **The page** (`js/build/app.js`): the jobs list (J3 to J5 and free build
+  "Coming next"); the work order (the client's words, Mason, the order's
+  lines, the limits); what's still in its box; Place or move a device;
+  Lay a cable (the run's length shown before it is laid; ports in use
+  listed but not choosable); Undo the last change; Put the house back as
+  you found it (checks, Mason's count and notes kept); the floor plan
+  (placed devices only: each in its usual spot when that's its room and
+  it's clear, otherwise the first clear place in its room, tile and name
+  kept off everything else; laid runs drawn between the devices' real
+  places, bowed so two never share a line, red dashed with a diamond when
+  down); the Cable runs table (ends, length, link marked with the words
+  and a tick or cross, Pull); Check the job (each line marked three ways:
+  the tick or cross, the colour with its inset rule, and "Met" or "Not met
+  yet", with what the check saw; "you've changed the house since this
+  check"); Mason; the Job done box (what was built, Start this job again,
+  Next job). The terminal and device pages are the Ticket Desk's own; a
+  router fresh from its box shows the label's password in its Status page
+  (Change the admin password) and on its Wi-Fi page (the name editable);
+  a phone not on the network as it's now called shows Join <name>. Job
+  notes. Progress in `e4-build-v1`. The instructor window (same PIN) has
+  build tools: a job on a chosen house number, one way to do it (`answer`;
+  any way the network accepts passes), all of Mason's help, clearing build
+  progress.
+
+**Checks:** `npm test` (Node: every client job on 150 houses: the work
+to do at the start for the real reason, the scripted solution passing,
+other right ways passing, each tempting wrong way failing its line for
+its cause, checking changing nothing, exact replay, Mason's ladder and
+two options forever, no help naming an address, a port or the network's
+name, cabling in any order, and 40-step random building never breaking
+the checker; every ticket on 150 houses: the fault shows
 in the commands themselves, the board, the real fix and the tempting
 wrong fixes, proof only after the fix and never from a self-ping, the
 ladder, exact replay, no hint names the answer); `node tools/drive.mjs`
-(the page: every ticket worked end to end on three houses each, plus a
+(the page: both client jobs done entirely through the page on three
+houses each, with the modem in a LAN port first and Mason's rungs on it,
+Pull, Undo, the printer inside the range caught, reload, the views, the
+Tickets | Build switch and the instructor's build tools; every ticket worked end to end on three houses each, plus a
 house for every variant of a fault those three missed (it found HOME-01's
 PC-end unplug and HOME-13's passive injector were never driven), through
 the terminal, the forms and the Physical tab; the rungs; red marked three
@@ -545,7 +622,8 @@ ways; a wrong fix not solving; putting the network back; reload keeps
 progress; the three views; easier reading persisting; the instructor
 tools: a wrong PIN refused, 3693 unlocking, the demo opening the chosen
 house, nothing revealed on the board, the PIN not in the code); AAA on painted
-pixels across 54 states plus scrolled positions, measured with WebGL on so
+pixels across 69 states (15 of them build mode) plus scrolled positions,
+measured with WebGL on so
 the 3D model's buttons and the Enlarge window are measured too (and one
 state with it off, for the fallback); `node tools/models.mjs` (the 3D
 models in a real browser: the colour actually drawn at each light the
@@ -555,13 +633,24 @@ DS really blinking; one WebGL context however many tabs are opened;
 Enlarge; the no-WebGL fallback). Each check was shown to fail on planted
 defects (the 3D checker: lights ignoring the sim, amber drawn green, plugs
 never pulled, the coax never loosened, the photo's cables left in, damage
-never drawn, a new renderer on every open, lights never blinking).
+never drawn, a new renderer on every open, lights never blinking; build
+mode: rung 3 striking causes the network hadn't ruled out, the Wi-Fi line
+ignoring the password, no DHCP retry, the ladder a rung early, checking
+that changed the network, two runs through the wall allowed, a printer
+inside the range accepted, no 100 m limit, a hint naming the network's
+name or a port, a replay dropping an action, a stale reservation accepted,
+the modem-in-a-LAN-port cause never named; on the page, the inset rule or
+the mark removed from an unmet line, progress lost on reload, the modem's
+cable diverted to a LAN port). The AAA tool now scrolls to the top before
+a full-page measurement: a focused button had scrolled the page, and a
+full-page shot then paints the sticky bars over the middle of it.
 
 ## Objectives
 
 Read from the owner's "All updated Objectives" Google Doc
 (`1C9MhVjNyXHJ_i3mPthaBNRmB3A0_sG8UJmzv_H3Lddo`) on 9 October 2026 and again
-on 11 October 2026 (unchanged), and shown to the owner. **Re-read it at the start of every build**: this is a
+on 11 October 2026 (unchanged), and shown to the owner; re-read again for
+build mode B1 the same day (unchanged). **Re-read it at the start of every build**: this is a
 snapshot. Domains: Networking concepts (23%), Network implementation (20%),
 Network operations (19%), Network security (14%), Network troubleshooting
 (24%). The doc gives no numbered sub-objectives; invent none.

@@ -320,5 +320,83 @@
   "seed": 1,
   "mode": "view",
   "setup": "sessionStorage.setItem('e4-instructor','1'); document.getElementById('mInst').click(); [...document.querySelectorAll('#inst button')].find(b=>b.textContent===\"Show all of Mason's help\").click(); document.querySelector('#inst .db').scrollTop = 99999;"
+ },
+ {
+  "name": "build: J1 fresh, floor plan",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J1',true,4242); const J=c.T; "
+ },
+ {
+  "name": "build: J1 partly built, logical view",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J1',true,4242); const J=c.T; c.act({t:'place',dev:'router',room:'living'}); c.act({t:'place',dev:'pc',room:'garage'}); c.act({t:'lay',a:{dev:'modem',port:'ETH'},b:{dev:'router',port:'WAN'}}); c.act({t:'lay',a:{dev:'router',port:'LAN 1'},b:{dev:'pc',port:'NIC'}}); document.getElementById('vLog').click();"
+ },
+ {
+  "name": "build: J1 wrong cable, five checks, Mason narrows to two",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J1',true,4242); const J=c.T; c.act({t:'place',dev:'router',room:'living'}); c.act({t:'place',dev:'pc',room:'office'}); c.act({t:'place',dev:'tv',room:'garage'}); c.act({t:'lay',a:{dev:'modem',port:'ETH'},b:{dev:'router',port:'LAN 1'}}); c.act({t:'lay',a:{dev:'router',port:'LAN 2'},b:{dev:'pc',port:'NIC'}}); for(let i=0;i<5;i++) c.check(); c.act({t:'place',dev:'tv',room:'kitchen'});"
+ },
+ {
+  "name": "build: J1 done",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J1',true,4242); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); "
+ },
+ {
+  "name": "build: router Wi-Fi page, fresh from the box",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J1',true,4242); const J=c.T; c.act({t:'place',dev:'router',room:'living'}); c.act({t:'lay',a:{dev:'modem',port:'ETH'},b:{dev:'router',port:'WAN'}}); document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Wi-Fi').click(); "
+ },
+ {
+  "name": "build: router Status, admin password row and its result",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J1',true,4242); const J=c.T; c.act({t:'place',dev:'router',room:'living'}); document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.pane button')].find(b=>b.textContent==='Change the admin password').click();"
+ },
+ {
+  "name": "build: phone, Join by name",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J1',true,4242); const J=c.T; c.act({t:'place',dev:'router',room:'living'}); document.querySelector('#devtabs [data-d=phone]').click(); "
+ },
+ {
+  "name": "build: phone joined, the result kept",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J1',true,4242); const J=c.T; c.act({t:'place',dev:'router',room:'living'}); document.querySelector('#devtabs [data-d=phone]').click(); [...document.querySelectorAll('.pane button')].find(b=>b.textContent.startsWith('Join')).click();"
+ },
+ {
+  "name": "build: J2 refusals (place and lay)",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J2',true,1111); const J=c.T; const d=document.getElementById('bmDev'); d.value='router'; document.getElementById('bmRoom').value='office'; document.getElementById('bmPlace').click(); const b=document.getElementById('bmBd'); b.value='router'; b.dispatchEvent(new Event('change')); document.getElementById('bmLay').click();"
+ },
+ {
+  "name": "build: J2 undone, the message",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J2',true,1111); const J=c.T; c.act({t:'place',dev:'switch',room:'office'}); document.getElementById('bmUndo').click();"
+ },
+ {
+  "name": "build: J2 done",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J2',true,1111); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); "
+ },
+ {
+  "name": "build: J1 done, router 3D model",
+  "page": "build.html",
+  "setup": "const c=window.__e4b; c.openJob('J1',true,4242); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click(); ",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "build: help dialog (viewport)",
+  "page": "build.html",
+  "mode": "view",
+  "setup": "const c=window.__e4b; c.openJob('J1',true,4242); const J=c.T; document.getElementById('mHelp').click()"
+ },
+ {
+  "name": "build: instructor, one way to do the job",
+  "page": "build.html",
+  "mode": "view",
+  "setup": "const c=window.__e4b; c.openJob('J2',true,1111); const J=c.T; sessionStorage.setItem('e4-instructor','1'); document.getElementById('mInst').click(); [...document.querySelectorAll('#inst button')].find(b=>b.textContent==='Show one way to do the job').click();"
+ },
+ {
+  "name": "desk: the Tickets/Build switch, hovered",
+  "page": "index.html",
+  "after": "document.querySelector('.chrome nav[aria-label=Mode] a[href=\"build.html\"]').focus()"
  }
 ]

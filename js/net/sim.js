@@ -15,8 +15,22 @@ export const SITES = { "rafiki-it.example": "203.0.113.80", "www.rafiki-it.examp
 /* Wi-Fi signal (percent) from an access point's room to a client's room, by band */
 const SIGNAL = {
   living: { living: [95, 90], kitchen: [80, 68], office: [70, 52], garage: [55, 34], porch: [62, 42], upstairs: [44, 24] },
-  upstairs: { upstairs: [86, 78], living: [50, 36], office: [42, 28], kitchen: [40, 26], garage: [30, 14], porch: [34, 18] }
+  upstairs: { upstairs: [86, 78], living: [50, 36], office: [42, 28], kitchen: [40, 26], garage: [30, 14], porch: [34, 18] },
+  /* an access point in any other room (build mode puts the router where the student chooses) */
+  office: { office: [95, 90], living: [70, 52], kitchen: [58, 40], garage: [72, 56], porch: [50, 30], upstairs: [38, 20] },
+  kitchen: { kitchen: [95, 90], living: [80, 68], office: [58, 40], garage: [62, 44], porch: [70, 52], upstairs: [40, 22] },
+  garage: { garage: [95, 90], office: [72, 56], kitchen: [62, 44], living: [55, 34], porch: [45, 26], upstairs: [28, 12] },
+  porch: { porch: [95, 90], living: [62, 42], kitchen: [70, 52], office: [50, 30], garage: [45, 26], upstairs: [30, 14] }
 };
+
+/* build mode: the ports each kind of device has (the sim's names), where some devices have to go,
+   and how long a cable run is between two rooms of the house, in metres, as it really goes (walls, ceilings) */
+export const PORTS = { router: ["WAN", "LAN 1", "LAN 2", "LAN 3", "LAN 4"], switch: ["1", "2", "3", "4", "5"], modem: ["ETH"], pc: ["NIC"], printer: ["NET"], camera: ["LAN"], tv: ["LAN"], injector: ["DATA IN", "PoE OUT"] };
+export const PORT_NAME = { WAN: "INTERNET (WAN)", ETH: "ETHERNET", NIC: "Ethernet", NET: "NETWORK", LAN: "LAN" };
+export const FIXED_ROOM = { modem: ["living", "by the cable outlet: there's one, in the living room"], camera: ["porch", "on its mount by the front door"] };
+const RUN = { office: { living: 14, kitchen: 18, garage: 12, porch: 38, upstairs: 20 }, living: { kitchen: 10, garage: 22, porch: 20, upstairs: 15 }, kitchen: { garage: 16, porch: 14, upstairs: 22 }, garage: { porch: 30, upstairs: 28 }, porch: { upstairs: 32 } };
+export function runLength(a, b) { if (a === b) return 3; return (RUN[a] && RUN[a][b]) || (RUN[b] && RUN[b][a]) || 40; }
+export const COPPER_MAX = 100;
 
 export class Sim {
   constructor(net) {
@@ -28,7 +42,7 @@ export class Sim {
   cable(id) { return this.net.cables.find(function (c) { return c.id === id; }); }
   cableAt(dev, port) { return this.net.cables.find(function (c) { return (c.a.dev === dev && c.a.port === port) || (c.b.dev === dev && c.b.port === port); }); }
   cablesOf(dev) { return this.net.cables.filter(function (c) { return c.a.dev === dev || c.b.dev === dev; }); }
-  on(id) { const x = this.d[id]; if (!x || x.on === false) return false; return x.poe ? this.poePowered(id) : true; }
+  on(id) { const x = this.d[id]; if (!x || x.on === false || x.boxed) return false; return x.poe ? this.poePowered(id) : true; }   /* boxed: still in its box (build mode), not set up */
   /* a PoE device is on only while power comes down its cable: from the injector's PoE OUT, the injector
      plugged in, and the kind of PoE the device expects (802.3af: 48 V after a handshake; passive 24 V won't do) */
   poePowered(id) {
@@ -40,6 +54,7 @@ export class Sim {
   cableUp(c) {
     if (!c) return false;
     if (c.kind === "coax") return c.a.tight && c.b.tight && c.cond === "good";
+    if (c.length > COPPER_MAX) return false;                /* past 100 m the signal has faded too far for Ethernet to hold a link */
     if (!c.a.seated || !c.b.seated) return false;
     if (c.cond === "crushed") return false;                 /* pairs 1-2 or 3-6 open: no link at all */
     if (c.a.dev === "injector" || c.b.dev === "injector") {  /* an injector passes the data pairs straight through: the link is end to end */
@@ -64,10 +79,12 @@ export class Sim {
       DS: !on ? "off" : sig ? "on" : "blinking",
       US: !on ? "off" : synced ? "on" : sig ? "blinking" : "off",
       ONLINE: !on ? "off" : synced ? "on" : "off",
-      LINK: !on ? "off" : this.cableUp(this.cable("c-modem-router")) ? "on" : "off"
+      LINK: !on ? "off" : this.cableUp(this.cableAt("modem", "ETH")) ? "on" : "off"
     };
   }
-  wanUp() { return this.on("router") && this.cableUp(this.cable("c-modem-router")) && this.modemSynced(); }
+  /* the cable from the modem's ETHERNET to the router's INTERNET (WAN) port, whatever it's called; into a LAN port it isn't one */
+  wanCable() { const c = this.cableAt("modem", "ETH"); return c && ((c.a.dev === "router" && c.a.port === "WAN") || (c.b.dev === "router" && c.b.port === "WAN")) ? c : null; }
+  wanUp() { return this.on("router") && this.cableUp(this.wanCable()) && this.modemSynced(); }
   wan() { return this.wanUp() ? { ip: this.net.isp.wanIp, mask: "255.255.255.0", gw: this.net.isp.gw, dns: this.net.isp.dns.slice() } : null; }
 
   /* ------------------------------------------------------------ Wi-Fi */
@@ -260,8 +277,11 @@ export class Sim {
   relink(before) {
     for (const id in this.d) {
       const x = this.d[id]; if (!x.ifaces || x.ifaces[0].cfg.mode === "static") continue;
-      const now = this.hasLink(id);
+      const now = this.hasLink(id), f = x.ifaces[0];
       if (now && !before[id]) this.dhcp(id, "link");
+      /* build mode: a device that gave itself 169.254 keeps asking (Windows tries every few minutes), so cabling the
+         router in after the switch still gets everyone an address. The tickets keep the moment frozen. */
+      else if (now && this.net.extra.build && f.apipa && !f.lease && this.dhcpServers(id).length) this.dhcp(id, "retry");
     }
   }
   links() { const o = {}; for (const id in this.d) if (this.d[id].ifaces) o[id] = this.hasLink(id); return o; }
@@ -289,7 +309,7 @@ export class Sim {
     /* through a router */
     const gwId = owners[0], g = this.d[gwId];
     if (g.kind === "router") {
-      if (dst === this.d.modem.mgmt) return this.on("modem") && this.cableUp(this.cable("c-modem-router")) ? { via: gwId, modem: true, addr: a, hops: [g.lan.ip, dst] } : { fail: "beyond", via: gwId, addr: a, hops: [g.lan.ip] };
+      if (dst === this.d.modem.mgmt) return this.on("modem") && this.cableUp(this.wanCable()) ? { via: gwId, modem: true, addr: a, hops: [g.lan.ip, dst] } : { fail: "beyond", via: gwId, addr: a, hops: [g.lan.ip] };
       if (sameSubnet(dst, g.lan.ip, g.lan.mask)) return { fail: "host-unreachable", addr: a, next: dst };
       if (!this.wanUp()) return { fail: "net-unreachable", via: gwId, addr: a, hops: [g.lan.ip] };
       if (isPublic(dst)) return { via: gwId, internet: true, addr: a, hops: [g.lan.ip, this.net.isp.gw, this.net.isp.core, dst] };
@@ -352,6 +372,9 @@ export class Sim {
         break;
       }
       case "router": res = this.setRouter(act.page, act.values); break;
+      case "place": res = this.place(act.dev, act.room); break;
+      case "lay": res = this.lay(act.a, act.b); break;
+      case "pull": { const i = this.net.cables.findIndex(function (c) { return c.id === act.cable; }); if (i < 0 || this.net.cables[i].kind === "coax") { res = { ok: false, errs: ["There's no such cable to pull"] }; break; } this.net.cables.splice(i, 1); res = { ok: true }; break; }
       case "injector": { const j = this.d.injector; if ("power" in act.values) j.power = !!act.values.power; if (act.values.swap) j.std = "af"; res = { ok: true, power: j.power, std: j.std }; break; }   /* swap: a new 802.3af injector in the same place, same cables, same adapter */
       case "rogue": { const g = this.d.rogue; if ("dhcpOn" in act.values) g.dhcp.on = !!act.values.dhcpOn; res = { ok: true }; break; }
       case "print": res = this.printTest(); break;
@@ -393,9 +416,11 @@ export class Sim {
       r.dhcp = nd; return { ok: true };
     }
     if (page === "wifi") {
+      if ("ssid" in v) { const n = String(v.ssid || "").trim(); if (!n || n.length > 32 || !/^[\x20-\x7e]+$/.test(n)) return { ok: false, errs: ["The network name must be 1 to 32 letters, numbers or symbols"] }; }
       if ("ch24" in v) { if (v.ch24 === "auto") r.wifi.ch24mode = "auto"; else { const c = parseInt(v.ch24, 10); if (!(c >= 1 && c <= 11)) return { ok: false, errs: ["2.4 GHz channel must be 1 to 11, or Auto"] }; r.wifi.ch24mode = "manual"; r.wifi.ch24 = c; } }
       if ("ch5" in v) { const c = parseInt(v.ch5, 10); if ([36, 40, 44, 48, 149, 153, 157, 161].indexOf(c) < 0) return { ok: false, errs: ["5 GHz channel must be one of 36, 40, 44, 48, 149, 153, 157, 161"] }; r.wifi.ch5 = c; }
       if (v.newPassword) r.wifi.gen = (r.wifi.gen || 1) + 1;   /* a new Wi-Fi password: every device has to be given it again */
+      if ("ssid" in v) r.wifi.ssid = String(v.ssid).trim();   /* a new name: devices joined to the old one have to join the new one */
       if ("sec" in v) { if (SECURITY.indexOf(v.sec) < 0) return { ok: false, errs: ["Security must be one of " + SECURITY.join(", ")] }; r.wifi.sec = v.sec; }
       return { ok: true };
     }
@@ -412,9 +437,37 @@ export class Sim {
       if (!isIp(v.ip) || !sameSubnet(v.ip, r.lan.ip, r.lan.mask) || v.ip === r.lan.ip) return { ok: false, errs: ["The internal address must be a device in " + this.net.prefix + ".x"] };
       f.ip = String(v.ip).trim(); return { ok: true };
     }
+    if (page === "admin") { if (v.newPassword) r.admin = { gen: ((r.admin && r.admin.gen) || 1) + 1 }; return { ok: true }; }   /* the password for the router's own pages */
     if (page === "reservation-del") { r.dhcp.reservations = r.dhcp.reservations.filter(function (x) { return x.mac !== v.mac; }); return { ok: true }; }
     return { ok: false, errs: ["Unknown page"] };
   }
+  /* build mode: take a device out of its box and put it in a room (or move it: its cables must come out first) */
+  place(id, room) {
+    const x = this.d[id];
+    if (!x) return { ok: false, errs: ["No such device"] };
+    if (!SIGNAL[room]) return { ok: false, errs: ["There's no room called " + room] };
+    const fx = FIXED_ROOM[x.kind]; if (fx && fx[0] !== room) return { ok: false, errs: ["The " + x.label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }) + " goes " + fx[1]] };
+    if (!x.boxed && this.cablesOf(id).some(function (c) { return c.kind !== "coax"; }) && this.net.rooms[id] !== room) return { ok: false, errs: ["Pull its cables out first: it's still cabled where it is"] };
+    x.boxed = false; this.net.rooms[id] = room;
+    return { ok: true, room: room };
+  }
+  /* build mode: lay a patch cable between two free ports; it comes as long as the run between the rooms */
+  lay(a, b) {
+    const errs = [], A = this.d[a && a.dev], B = this.d[b && b.dev];
+    if (!A || !B) return { ok: false, errs: ["Choose a device and a port for each end"] };
+    if (a.dev === b.dev) return { ok: false, errs: ["Both ends are on the " + A.label + ": a cable joins two devices"] };
+    [[A, a], [B, b]].forEach(function (e) {
+      if (e[0].boxed) errs.push("The " + e[0].label + " is still in its box: place it first");
+      else if ((PORTS[e[0].kind] || []).indexOf(e[1].port) < 0) errs.push("The " + e[0].label + " has no port " + e[1].port);
+      else if (this.cableAt(e[1].dev, e[1].port)) errs.push("The " + e[0].label + "'s " + (PORT_NAME[e[1].port] || "port " + e[1].port) + " already has a cable in it");
+    }, this);
+    if (errs.length) return { ok: false, errs: errs };
+    const n = (this.net.extra.runs = (this.net.extra.runs || 0) + 1), len = runLength(this.net.rooms[a.dev], this.net.rooms[b.dev]);
+    const c = { id: "c-run-" + n, kind: "cat6", a: { dev: a.dev, port: a.port, seated: true }, b: { dev: b.dev, port: b.port, seated: true }, cond: "good", length: len };
+    this.net.cables.push(c);
+    return { ok: true, cable: c.id, length: len };
+  }
+
   /* a device's own IP settings. Like a real printer or Windows, it takes any setting that is well formed,
      right or wrong for this network: what happens next is worked out like everything else. */
   setClient(id, v) {

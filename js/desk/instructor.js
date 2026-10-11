@@ -37,6 +37,7 @@ export function setupInstructor(ctx, api) {
     body.appendChild(f);
   }
   function tools() {
+    if (api.render) { api.render(body, function () { draw(); }, function () { d.close(); }); lockButton(); return; }   /* a page with tools of its own (build mode) */
     const T = ctx.T, def = T.def;
     /* a demonstration: any ticket, on a house of your choosing (the same number gives the same house every time) */
     const sel = el("select", { name: "ticket", id: "instt" });
@@ -78,6 +79,7 @@ export function setupInstructor(ctx, api) {
     const sure = el("button", { type: "button", class: "btn small", hidden: true, onclick: function () { api.clear(); d.close(); } }, "Yes, clear it");
     body.appendChild(el("h3", null, "Progress on this computer"));
     body.appendChild(el("div", { class: "acts" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { sure.hidden = false; sure.focus(); } }, "Clear all progress"), sure));
-    body.appendChild(el("div", { class: "acts", style: "margin-top:12px" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { try { sessionStorage.removeItem(KEY); } catch (e) {} draw(); } }, "Lock the instructor tools")));
+    lockButton();
   }
+  function lockButton() { body.appendChild(el("div", { class: "acts", style: "margin-top:12px" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { try { sessionStorage.removeItem(KEY); } catch (e) {} draw(); } }, "Lock the instructor tools"))); }
 }

@@ -28,6 +28,7 @@ for (const st of states) {
     if (hov) { await p.hover('nav.views a'); await p.waitForTimeout(120); }
     await p.evaluate(() => document.querySelectorAll('details').forEach(d => { d.open = true; })); await p.waitForTimeout(60);
     const view = st.mode === 'view';
+    if (!view) { await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(60); }   /* full page: the sticky bars belong at the top; scrolled (by a focused button), a full-page shot paints them over the middle */
     const pe = await p.addStyleTag({ content: '*{pointer-events:auto!important}' });
     const runs = await p.evaluate((view) => { const out = []; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let t;
       while ((t = w.nextNode())) { if (!t.textContent.trim()) continue; const el = t.parentElement; if (el.closest('canvas,script,style,noscript')) continue;

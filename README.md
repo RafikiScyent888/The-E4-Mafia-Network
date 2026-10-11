@@ -5,6 +5,7 @@ Network+ Under the Hood: an interactive home and office network you troubleshoot
 - `index.html` — the Ticket Desk (students start here)
 - `lab-bench.html` — the same labs, on shelves by exam domain
 - `service-map.html` — Rafiki's service area, site by site
+- `build.html` — build mode: client jobs worked from a work order (unbox, place, cable, set up), checked by the network itself
 
 Instructors: the Instructor menu (PIN) opens demonstrations, answers and progress tools.
 
@@ -12,8 +13,8 @@ Static HTML, CSS and vanilla JavaScript; nothing to build. GitHub Pages serves `
 
 Checks (developer tools, not needed to run the site):
 
-- `npm test` — the network engine and every ticket, under Node
-- `node tools/drive.mjs` — works every ticket end to end through the page (needs Playwright's Chromium)
+- `npm test` — the network engine, every ticket and every client job, under Node
+- `node tools/drive.mjs` — works every ticket and every client job end to end through the page (needs Playwright's Chromium)
 - `node tools/aaa.mjs tools/aaa-states.json` — WCAG AAA contrast on painted pixels
 - `node tools/models.mjs` — the live 3D models in the Physical tab: each fault's lights and plugs as actually drawn (WebGL, software)
 

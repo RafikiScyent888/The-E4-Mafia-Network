@@ -288,6 +288,26 @@ itself, or they can click right above there for quicker access."** So:
   really on top is measured), and a click test of every way to open a
   device; both shown to fail on planted defects.
 
+**A, B and C again, in the chosen layout** (owner, 11 October 2026:
+"Please add A and B and C back with layout of C with A bars", then "I
+want to see them again"; asked, the owner chose three pages in the same
+layout over one page with all three). `preview/workspace-a.html`,
+`workspace-b.html` and `workspace-c.html`, built from one template, so the
+bars, the ticket, the diagram, the diagnosis, the terminal and the
+notebook are identical (the click test compares them). Only the left
+column changes, with the bar's title line and the explanation underneath:
+- A, Lab Bench: one shelf per exam domain (with the doc's percentages),
+  labs on each; the troubleshooting shelf open on HOME-01.
+- B, Service Map: the service area drawn tall to fit the column, one site
+  per row, the links as arcs down the left (the longer the link, the
+  wider the arc); the whole row picks a site; the site's card underneath.
+  Two map labels are shortened to fit (Annex, Bakery ×3); the card keeps
+  the full names.
+- C, Ticket Desk: the queue, as in `approach-c2.html`.
+The earlier previews (approach-a, -b, -c, -c2) stay, linked from the
+banner. The contrast checker opens every shelf (`details`) before
+measuring and skips text that isn't on screen.
+
 **Home fault tickets** (owner, 11 October 2026: "lets cover the most
 common top 5 with 5 harder ones as well"), proposed, awaiting the owner:
 common: HOME-01 cable unplugged or broken (no link, "Media

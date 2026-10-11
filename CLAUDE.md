@@ -225,11 +225,56 @@ photo's pixels; RJ11 is a 6-position connector (2 conductors for one line,
 labels) is replaced with correct wording; sides a photo doesn't show follow
 the standard design for that device and are previewed before use.
 
+## Workspace and structure: under discussion (11 October 2026)
+
+The owner, 11 October 2026: **"I want it to look like packet tracer,
+however, I want to make it my own design. I want three different
+approaches. One giant network that grows really does not make sense for
+the objectives, correct? We need to talk about this some more with
+previews."** And: **"I am going to turn up the settings once I am happy
+with what we talk about. So, lets get talking."** Nothing is built until
+the owner picks.
+
+So the "one giant network" decision above is **reopened**. Three previews
+(not linked from the site) in `preview/`:
+- `approach-a.html` **Lab Bench**: separate labs on shelves by domain,
+  each its own small network (like Packet Tracer activity files); the
+  closest look to Packet Tracer (canvas, device palette, step-through
+  list, device window docked beside the network).
+- `approach-b.html` **Service Map**: Rafiki's service area as a map of
+  separate sites, each sized to its objectives, linked only where an
+  objective needs it (WAN, leased line, VPN, BGP, cloud); every topology
+  at the site where it really belongs. A table maps sites to objectives
+  and to the Network-Sims.
+- `approach-c.html` **Ticket Desk**: the help-desk queue first; each
+  ticket generates the network it needs; logical diagram plus the house
+  floor plan, device terminals, a notebook, the six-option diagnosis.
+All three use the same home network and ticket HOME-01, our own device
+icons, the photo-accurate 3D models in each device's Physical tab, AAA
+(checked on painted pixels, desk and phone, easier reading on and off,
+with plants), the persistent easier-reading toggle, the full footer.
+Diagrams keep a readable size on a phone and scroll inside their box.
+
+**Home fault tickets** (owner, 11 October 2026: "lets cover the most
+common top 5 with 5 harder ones as well"), proposed, awaiting the owner:
+common: HOME-01 cable unplugged or broken (no link, "Media
+disconnected"); HOME-02 no DHCP lease (APIPA 169.254); HOME-03 wrong DNS
+or gateway (connected but no websites); HOME-04 Wi-Fi interference,
+channel or distance; HOME-05 modem or provider down (ONLINE light off).
+Harder: HOME-06 IP address conflict (static printer inside the DHCP
+range); HOME-07 DHCP pool exhausted; HOME-08 slow link from a damaged
+pair (100 Mb/s) shown on the tester; HOME-09 double NAT or port forward
+(the camera from outside); HOME-10 rogue DHCP (a second router handing
+out 10.0.0.x). Each generates variants, plus the standing five extra.
+
+**What the student sees first**: left open by the owner ("this will get
+worked out when we talk about the above").
+
 ## Objectives
 
 Read from the owner's "All updated Objectives" Google Doc
-(`1C9MhVjNyXHJ_i3mPthaBNRmB3A0_sG8UJmzv_H3Lddo`) on 9 October 2026 and shown
-to the owner. **Re-read it at the start of every build**: this is a
+(`1C9MhVjNyXHJ_i3mPthaBNRmB3A0_sG8UJmzv_H3Lddo`) on 9 October 2026 and again
+on 11 October 2026 (unchanged), and shown to the owner. **Re-read it at the start of every build**: this is a
 snapshot. Domains: Networking concepts (23%), Network implementation (20%),
 Network operations (19%), Network security (14%), Network troubleshooting
 (24%). The doc gives no numbered sub-objectives; invent none.

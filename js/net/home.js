@@ -29,6 +29,7 @@ export const LAYOUT = {
   pc: { x: 200, y: 430, px: 110, py: 140, room: "office" },
   printer: { x: 400, y: 440, px: 360, py: 140, room: "office" },
   camera: { x: 580, y: 430, px: 720, py: 448, room: "porch" },
+  injector: { x: 500, y: 360, px: 170, py: 222, room: "office", lab: "right" },   /* the PoE injector on the office shelf, between the switch and the camera's long run */
   mesh: { x: 610, y: 265, px: 850, py: 110, room: "upstairs", lab: "left" },
   phone: { x: 760, y: 250, px: 480, py: 245, room: "living" },
   laptop: { x: 755, y: 420, px: 905, py: 195, room: "upstairs" },
@@ -72,8 +73,9 @@ export function makeHome(seed) {
       ifaces: [{ name: "Ethernet", type: "eth", port: "NIC", mac: mac(r), desc: "Gigabit Network Connection", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] },
     printer: { id: "printer", kind: "printer", label: "Printer", sub: prefix + "." + printerHost, on: true,
       ifaces: [{ name: "Wired", type: "eth", port: "NET", mac: mac(r), cfg: { mode: "static", ip: prefix + "." + printerHost, mask: mask, gw: gw, dns: [gw] }, lease: null, apipa: null }] },
-    camera: { id: "camera", kind: "camera", label: "IP camera", sub: prefix + "." + camHost, on: true, listens: [443, 554],
+    camera: { id: "camera", kind: "camera", label: "IP camera", sub: prefix + "." + camHost, on: true, poe: true, listens: [443, 554],   /* no power supply of its own: it runs on power sent down its cable */
       ifaces: [{ name: "LAN", type: "eth", port: "LAN", mac: mac(r), cfg: { mode: "dhcp" }, lease: null, apipa: null }] },
+    injector: { id: "injector", kind: "injector", label: "PoE injector", sub: "802.3af", on: true, power: true, std: "af" },   /* power: its adapter plugged in; std: "af" (48 V, IEEE 802.3af) or "passive" (24 V) */
     tv: { id: "tv", kind: "tv", label: "Smart TV", sub: "DHCP", on: true,
       ifaces: [{ name: "Wired", type: "eth", port: "LAN", mac: mac(r), cfg: { mode: "dhcp" }, lease: null, apipa: null }] },
     mesh: { id: "mesh", kind: "mesh", label: "Mesh node", sub: "upstairs", on: true, backhaul: { band: 5, ok: true },
@@ -93,7 +95,8 @@ export function makeHome(seed) {
     cab("c-router-tv", "router", "LAN 2", "tv", "LAN"),
     cab("c-switch-pc", "switch", String(P.pc), "pc", "NIC"),
     cab("c-switch-printer", "switch", String(P.printer), "printer", "NET"),
-    cab("c-switch-camera", "switch", String(P.camera), "camera", "LAN")
+    cab("c-switch-inj", "switch", String(P.camera), "injector", "DATA IN"),
+    cab("c-inj-camera", "injector", "PoE OUT", "camera", "LAN")
   ];
 
   /* the neighbours' Wi-Fi, as heard in each room: [channel, strength by room] */
@@ -108,7 +111,7 @@ export function makeHome(seed) {
     seed: seed, client: client, prefix: prefix, mask: mask, range: range,
     isp: { up: true, outage: false, plan: 500, gw: "198.51.100.1", core: "203.0.113.1", dns: ["203.0.113.53", "203.0.113.54"], wanIp: "198.51.100." + r.int(20, 240) },
     devices: dev, cables: cables, neighbours: neighbours, ports: P,
-    rooms: { pc: "office", switch: "office", printer: "office", router: "living", modem: "living", tv: "living", phone: "living", camera: "porch", mesh: "upstairs", laptop: "upstairs" },
+    rooms: { injector: "office", pc: "office", switch: "office", printer: "office", router: "living", modem: "living", tv: "living", phone: "living", camera: "porch", mesh: "upstairs", laptop: "upstairs" },
     extra: {}
   };
 }

@@ -19,9 +19,10 @@ export const ICONS = {
   phone: '<rect x="22" y="8" width="20" height="48" rx="4" class="ib"/><rect x="25" y="13" width="14" height="34" class="is"/>',
   server: '<rect x="14" y="8" width="36" height="14" rx="2" class="ib"/><rect x="14" y="25" width="36" height="14" rx="2" class="ib"/><rect x="14" y="42" width="36" height="14" rx="2" class="ib"/><circle cx="20" cy="15" r="1.8" class="ok"/><circle cx="20" cy="32" r="1.8" class="ok"/><circle cx="20" cy="49" r="1.8" class="ok"/>',
   firewall: '<rect x="8" y="14" width="48" height="36" rx="3" class="ib"/><path d="M8 26h48M8 38h48M24 14v12M40 14v12M16 26v12M32 26v12M48 26v12M24 38v12M40 38v12" class="il"/>',
+  injector: '<rect x="10" y="22" width="44" height="22" rx="4" class="ib"/><path d="M35 25l-7 9h7l-5 8" class="il"/><circle cx="18" cy="29" r="1.8" class="ok"/>',
   ap: '<ellipse cx="32" cy="38" rx="20" ry="8" class="ib"/><path d="M22 26q10-8 20 0M26 20q6-5 12 0" class="il"/>'
 };
-const ICON_OF = { isp: "cloud", modem: "modem", router: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", tv: "tv", camera: "camera", mesh: "mesh", phone: "phone", guest: "phone", rogue: "router" };
+const ICON_OF = { isp: "cloud", modem: "modem", router: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", tv: "tv", camera: "camera", mesh: "mesh", phone: "phone", guest: "phone", rogue: "router", injector: "injector" };
 function defs(svg, prefix) {
   const d = document.createElementNS(NS, "defs");
   d.innerHTML = Object.keys(ICONS).map(function (k) { return '<symbol id="' + prefix + k + '" viewBox="0 0 64 64">' + ICONS[k] + "</symbol>"; }).join("");
@@ -33,6 +34,7 @@ function mk(tag, a) { const n = document.createElementNS(NS, tag); for (const k 
 function pos(sim, id) {
   const L = Object.assign({}, LAYOUT[id]);
   if (id === "laptop" && sim.net.rooms.laptop === "living") Object.assign(L, { x: 770, y: 150, px: 610, py: 235 });
+  if (id === "laptop" && sim.net.rooms.laptop === "kitchen") Object.assign(L, { px: 640, py: 360 });
   return L;
 }
 function subOf(sim, id) {
@@ -51,17 +53,17 @@ export function linksOf(sim) {
   for (const c of sim.net.cables) {
     if (c.kind === "coax") continue;
     if (sim.d[c.a.dev].undocumented || sim.d[c.b.dev].undocumented) continue;   /* the diagram is the documentation: an undocumented box isn't on it */
-    out.push({ a: c.a.dev, b: c.b.dev, kind: "copper", up: sim.cableUp(c), pa: c.a.port, pb: c.b.port, cable: c.id });
+    out.push({ a: c.a.dev, b: c.b.dev, kind: "copper", up: sim.cableUp(c), pa: c.a.dev === "injector" ? "" : c.a.port, pb: c.b.dev === "injector" ? "" : c.b.port, cable: c.id });   /* the injector's own port names are on its Physical tab: the diagram has no room for them */
   }
   const m = sim.d.mesh;
   if (m) out.push({ a: "router", b: "mesh", kind: "wifi", up: m.backhaul.ok && sim.on("mesh") && sim.on("router") });
-  for (const id of ["phone", "laptop", "guest"]) { if (!sim.d[id]) continue; const l = sim.wifiLink(id); if (l && l.connected) out.push({ a: l.ap.id, b: id, kind: "wifi", up: true }); }
+  for (const id of ["phone", "laptop", "guest"]) { if (!sim.d[id]) continue; const l = sim.wifiLink(id); if (l && l.connected && !(sim.d[l.ap.id] && sim.d[l.ap.id].undocumented)) out.push({ a: l.ap.id, b: id, kind: "wifi", up: true }); }   /* joined to something not in the house: no line to draw */
   return out;
 }
 
 export function drawLogical(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "i-");
-  const ids = ["isp", "modem", "router", "tv", "switch", "pc", "printer", "camera", "mesh", "phone", "laptop", "guest"].filter(function (id) { return sim.d[id] && !sim.d[id].undocumented; });
+  const ids = ["isp", "modem", "router", "tv", "switch", "pc", "printer", "injector", "camera", "mesh", "phone", "laptop", "guest"].filter(function (id) { return sim.d[id] && !sim.d[id].undocumented; });
   const P = {}; ids.forEach(function (id) { P[id] = pos(sim, id); });
   const below = function (id) { return !P[id].lab || P[id].lab === "below"; };
   const gl = mk("g", {}), gn = mk("g", {}), gp = mk("g", {});
@@ -92,7 +94,7 @@ export function drawLogical(svg, sim, o) {
     g.dataset.d = id;
     g.appendChild(mk("rect", { x: -R, y: -R, width: R * 2, height: R * 2, rx: 12, class: "tile" }));
     g.appendChild(mk("use", { href: "#i-" + ICON_OF[id], x: -R * 0.8, y: -R * 0.8, width: R * 1.6, height: R * 1.6 }));
-    const ps = p.lab === "above" ? [0, -R - 30, 0, -R - 11, "middle"] : p.lab === "left" ? [-R - 12, -6, -R - 12, 13, "end"] : [0, R + 20, 0, R + 38, "middle"];
+    const ps = p.lab === "above" ? [0, -R - 30, 0, -R - 11, "middle"] : p.lab === "left" ? [-R - 12, -6, -R - 12, 13, "end"] : p.lab === "right" ? [R + 12, -6, R + 12, 13, "start"] : [0, R + 20, 0, R + 38, "middle"];
     const t1 = mk("text", { x: ps[0], y: ps[1], "text-anchor": ps[4], class: "nl" }); t1.textContent = n.label; g.appendChild(t1);
     const sub = subOf(sim, id); if (sub) { const t2 = mk("text", { x: ps[2], y: ps[3], "text-anchor": ps[4], class: "ns" }); t2.textContent = sub; g.appendChild(t2); }
     gn.appendChild(g);
@@ -108,10 +110,11 @@ const RUNS = {
   "c-router-switch": ["M560 150 C 500 150 460 110 420 110", "M420 110 L 250 200"],
   "c-switch-pc": ["M250 200 L 110 140"],
   "c-switch-printer": ["M250 200 L 360 140"],
-  "c-switch-camera": ["M250 200 C 300 400 600 430 720 448"],
+  "c-switch-inj": ["M250 200 L 170 222"],
+  "c-inj-camera": ["M170 222 C 200 420 600 440 720 448"],
   "c-rogue": ["M250 200 L 330 235"]
 };
-const PLAN_NAME = { modem: "Modem", router: "Router", tv: "Smart TV", switch: "Switch", pc: "Office PC", printer: "Printer", camera: "Camera", mesh: "Mesh node", laptop: "Laptop", phone: "Phone", guest: "Guest's phone", rogue: "Old router" };
+const PLAN_NAME = { injector: "PoE injector", modem: "Modem", router: "Router", tv: "Smart TV", switch: "Switch", pc: "Office PC", printer: "Printer", camera: "Camera", mesh: "Mesh node", laptop: "Laptop", phone: "Phone", guest: "Guest's phone", rogue: "Old router" };
 export function drawPlan(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "p-");
   let h = '<rect class="room" x="30" y="30" width="390" height="270"/><rect class="room" x="420" y="30" width="340" height="270"/><rect class="room" x="30" y="300" width="390" height="220"/><rect class="room" x="420" y="300" width="340" height="220"/>' +
@@ -138,10 +141,13 @@ export function drawPlan(svg, sim, o) {
   /* a diamond on each run that's down, and the words for it */
   for (const id in RUNS) {
     const c = sim.cable(id); if (!c || sim.cableUp(c)) continue;
-    const m = RUNS[id][RUNS[id].length - 1].match(/M\s*(-?\d+)\s+(-?\d+).*?(-?\d+)\s+(-?\d+)\s*$/);
-    if (m) { const x = (+m[1] + +m[3]) / 2, y = (+m[2] + +m[4]) / 2; svg.appendChild(mk("rect", { x: x - 8, y: y - 8, width: 16, height: 16, transform: "rotate(45 " + x + " " + y + ")", class: "pd-down" })); }
+    const n = (RUNS[id][RUNS[id].length - 1].match(/-?\d+/g) || []).map(Number);   /* halfway along the run itself: a straight line's middle, or a curve's */
+    let x = null, y = null;
+    if (n.length === 8) { x = (n[0] + 3 * n[2] + 3 * n[4] + n[6]) / 8; y = (n[1] + 3 * n[3] + 3 * n[5] + n[7]) / 8; }
+    else if (n.length >= 4) { x = (n[0] + n[n.length - 2]) / 2; y = (n[1] + n[n.length - 1]) / 2; }
+    if (x !== null) svg.appendChild(mk("rect", { x: x - 8, y: y - 8, width: 16, height: 16, transform: "rotate(45 " + x + " " + y + ")", class: "pd-down" }));
   }
-  if (anyDown) { const t = mk("text", { class: "ns", x: 46, y: 282 }); t.textContent = "red dashed run: no link"; svg.appendChild(t); }
+  if (anyDown) { const t = mk("text", { class: "ns", x: 46, y: 505 }); t.textContent = "red dashed run: no link"; svg.appendChild(t); }   /* on the garage floor: nothing else is there */
   plates(svg, ".rl, .ns", "#f4f6fb");
 }
 

@@ -4,11 +4,12 @@
    would, and a fix works only if it fixes the real cause.
    Every change goes through apply(), so a ticket can be replayed exactly
    (progress is saved as the list of actions). */
-import { rng, hash, ip2n, n2ip, sameSubnet, isIp, isApipa, isPublic, isPrivate, isLoopback, broadcast, maskBits } from "./util.js";
+import { rng, hash, ip2n, n2ip, sameSubnet, isIp, isApipa, isPublic, isPrivate, isLoopback, broadcast, network, maskBits } from "./util.js";
 
 /* each radio has its own hardware address: the 5 GHz one is the next number up */
 function bump(m) { const p = m.split("-"); p[5] = ((parseInt(p[5], 16) + 1) & 255).toString(16).padStart(2, "0"); return p.join("-"); }
 const DNS_PUBLIC = ["8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1", "9.9.9.9"];
+export const SECURITY = ["WPA2-Personal", "WPA2/WPA3-Personal", "WPA3-Personal"];
 export const SITES = { "rafiki-it.example": "203.0.113.80", "www.rafiki-it.example": "203.0.113.80", "www.example.com": "203.0.113.81", "example.com": "203.0.113.81", "learn.example.org": "203.0.113.82" };
 
 /* Wi-Fi signal (percent) from an access point's room to a client's room, by band */
@@ -27,12 +28,25 @@ export class Sim {
   cable(id) { return this.net.cables.find(function (c) { return c.id === id; }); }
   cableAt(dev, port) { return this.net.cables.find(function (c) { return (c.a.dev === dev && c.a.port === port) || (c.b.dev === dev && c.b.port === port); }); }
   cablesOf(dev) { return this.net.cables.filter(function (c) { return c.a.dev === dev || c.b.dev === dev; }); }
-  on(id) { const x = this.d[id]; return !!x && x.on !== false; }
+  on(id) { const x = this.d[id]; if (!x || x.on === false) return false; return x.poe ? this.poePowered(id) : true; }
+  /* a PoE device is on only while power comes down its cable: from the injector's PoE OUT, the injector
+     plugged in, and the kind of PoE the device expects (802.3af: 48 V after a handshake; passive 24 V won't do) */
+  poePowered(id) {
+    const c = this.cablesOf(id)[0]; if (!c || c.kind === "coax") return false;
+    const me = c.a.dev === id ? c.a : c.b, far = c.a.dev === id ? c.b : c.a, inj = this.d[far.dev];
+    if (!me.seated || !far.seated || c.cond === "crushed") return false;
+    return far.dev === "injector" && far.port === "PoE OUT" && !!inj.power && inj.std === "af";
+  }
   cableUp(c) {
     if (!c) return false;
     if (c.kind === "coax") return c.a.tight && c.b.tight && c.cond === "good";
     if (!c.a.seated || !c.b.seated) return false;
     if (c.cond === "crushed") return false;                 /* pairs 1-2 or 3-6 open: no link at all */
+    if (c.a.dev === "injector" || c.b.dev === "injector") {  /* an injector passes the data pairs straight through: the link is end to end */
+      const o = this.cablesOf("injector").filter(function (k) { return k !== c; });
+      if (o.length !== 1 || !o[0].a.seated || !o[0].b.seated || o[0].cond === "crushed") return false;
+      return [c.a, c.b, o[0].a, o[0].b].filter(function (e) { return e.dev !== "injector"; }).every(function (e) { return this.on(e.dev); }, this);
+    }
     return this.on(c.a.dev) && this.on(c.b.dev);
   }
   speed(c) { if (!this.cableUp(c)) return 0; return c.cond === "damaged" ? 100 : 1000; }   /* gigabit needs all four pairs; 100 Mb/s needs only 1-2 and 3-6 */
@@ -60,13 +74,16 @@ export class Sim {
   aps() {
     const out = [], r = this.d.router;
     if (this.on("router")) {
-      out.push({ id: "router", node: "router:lan", room: this.net.rooms.router, band: 24, ch: this.ch24(), ssid: r.wifi.ssid, mac: r.mac });
-      out.push({ id: "router", node: "router:lan", room: this.net.rooms.router, band: 5, ch: r.wifi.ch5, ssid: r.wifi.ssid, mac: bump(r.mac) });
+      out.push({ id: "router", node: "router:lan", room: this.net.rooms.router, band: 24, ch: this.ch24(), ssid: r.wifi.ssid, mac: r.mac, sec: r.wifi.sec });
+      out.push({ id: "router", node: "router:lan", room: this.net.rooms.router, band: 5, ch: r.wifi.ch5, ssid: r.wifi.ssid, mac: bump(r.mac), sec: r.wifi.sec });
     }
+    /* a hotspot outside the house broadcasting the house's own network name, open (HOME-15) */
+    const tw = this.d.twin;
+    if (tw && this.on("twin")) out.push({ id: "twin", node: "twin:lan", band: 24, ch: tw.ch, ssid: tw.ssid, mac: tw.mac, sec: "Open", heard: tw.heard });
     const m = this.d.mesh;
     if (m && this.on("mesh") && m.backhaul.ok && this.on("router")) {
-      out.push({ id: "mesh", node: "mesh", room: this.net.rooms.mesh, band: 24, ch: this.ch24(), ssid: r.wifi.ssid, mac: m.ifaces[0].mac });
-      out.push({ id: "mesh", node: "mesh", room: this.net.rooms.mesh, band: 5, ch: 149, ssid: r.wifi.ssid, mac: bump(m.ifaces[0].mac) });
+      out.push({ id: "mesh", node: "mesh", room: this.net.rooms.mesh, band: 24, ch: this.ch24(), ssid: r.wifi.ssid, mac: m.ifaces[0].mac, sec: r.wifi.sec });
+      out.push({ id: "mesh", node: "mesh", room: this.net.rooms.mesh, band: 5, ch: 149, ssid: r.wifi.ssid, mac: bump(m.ifaces[0].mac), sec: r.wifi.sec });
     }
     return out;
   }
@@ -88,6 +105,11 @@ export class Sim {
     }
     return p;
   }
+  /* Wi-Fi security: a device joins only a network whose security its adapter supports. Transition mode
+     (WPA2/WPA3) takes either: WPA3 from the devices that can, WPA2 from the ones that can't */
+  canSec(f, sec) { const can = f.secs || ["WPA2-Personal", "WPA3-Personal"]; if (sec === "Open") return true; return sec === "WPA2/WPA3-Personal" ? can.indexOf("WPA2-Personal") >= 0 || can.indexOf("WPA3-Personal") >= 0 : can.indexOf(sec) >= 0; }
+  usesSec(f, sec) { const can = f.secs || ["WPA2-Personal", "WPA3-Personal"]; return sec === "WPA2/WPA3-Personal" ? (can.indexOf("WPA3-Personal") >= 0 ? "WPA3-Personal" : "WPA2-Personal") : sec; }
+  heardAt(ap, room) { return ap.heard ? (ap.heard[room] || 0) : this.signal(ap.room, room, ap.band); }
   signal(apRoom, room, band) { const t = SIGNAL[apRoom]; if (!t || !t[room]) return 0; return t[room][band === 24 ? 0 : 1]; }
   /* a Wi-Fi client's link: which access point, band and channel, how strong, and how lossy */
   wifiLink(id) {
@@ -96,26 +118,29 @@ export class Sim {
     const room = this.net.rooms[id];
     let best = null;
     for (const ap of this.aps()) {
-      if (ap.ssid !== f.saved.ssid) continue;
+      if (!f.saved.ssid || ap.ssid !== f.saved.ssid) continue;
+      if ((ap.sec === "Open") !== (f.saved.sec === "Open")) continue;   /* a saved profile is for one kind of network: open, or secured */
       if (f.bands.indexOf(ap.band) < 0) continue;
-      const s = this.signal(ap.room, room, ap.band);
+      const s = this.heardAt(ap, room);
       if (s < 20) continue;
       const score = s + (ap.band === 5 ? 10 : 0);           /* band steering: prefers 5 GHz when it is strong enough */
       if (ap.band === 5 && s < 45) continue;
       if (!best || score > best.score) best = { ap: ap, signal: s, score: score };
     }
     if (!best) return { connected: false, reason: "no-network", room: room };
-    if (!f.saved.passOk) return { connected: false, reason: "auth", ap: best.ap, signal: best.signal, room: room };
+    if (!this.canSec(f, best.ap.sec)) return { connected: false, reason: "security", ap: best.ap, signal: best.signal, room: room };
+    if (best.ap.sec !== "Open" && (!f.saved.passOk || (f.saved.gen || 1) !== (this.d.router.wifi.gen || 1))) return { connected: false, reason: "auth", ap: best.ap, signal: best.signal, room: room };   /* the password it has saved isn't the network's (any more) */
     const crowd = best.ap.band === 24 ? this.crowd(best.ap.ch, room) : 0;
     const weak = best.signal < 35 ? (35 - best.signal) / 60 : 0;
     const loss = Math.min(0.6, Math.max(0, (crowd - 0.35) * 0.55) + weak);
     const rate = best.ap.band === 5 ? (best.signal > 70 ? 866.7 : 400) : (loss > 0.1 ? 26 : best.signal > 60 ? 144.4 : 72.2);
-    return { connected: true, ap: best.ap, band: best.ap.band, ch: best.ap.ch, signal: best.signal, loss: loss, crowd: crowd, rate: rate, room: room };
+    return { connected: true, ap: best.ap, band: best.ap.band, ch: best.ap.ch, signal: best.signal, loss: loss, crowd: crowd, rate: rate, room: room, sec: this.usesSec(f, best.ap.sec) };
   }
 
   /* ------------------------------------------------------------ layer 2: who can hear whom */
   nodeOf(dev, port) {
-    if (dev === "router" || dev === "rogue") return port === "WAN" ? dev + ":wan" : dev + ":lan";
+    const k = this.d[dev] && this.d[dev].kind;
+    if (k === "router" || k === "rogue") return port === "WAN" ? dev + ":wan" : dev + ":lan";
     return dev;
   }
   /* bridging devices pass frames between everything joined to them */
@@ -254,7 +279,13 @@ export class Sim {
     else return { fail: "no-route", addr: a };
     const owners = this.owners(next, dom);
     if (!owners.length) return { fail: next === dst ? "host-unreachable" : "gateway-unreachable", addr: a, next: next };
-    if (next === dst) return { local: true, owner: owners, addr: a, next: next };
+    if (next === dst) {
+      /* the reply has to come back too: a device whose mask puts the sender on another network sends its
+         reply to its gateway, and if that gateway isn't on its own network either, the reply never leaves */
+      const back = owners.filter((o) => this.canReply(o, a.ip, dom));
+      if (!back.length) return { fail: "no-reply", owner: owners, addr: a, next: next };
+      return { local: true, owner: back, addr: a, next: next };
+    }
     /* through a router */
     const gwId = owners[0], g = this.d[gwId];
     if (g.kind === "router") {
@@ -269,6 +300,14 @@ export class Sim {
       return { via: gwId, internet: true, addr: a, hops: [g.lan.ip, this.d.router.lan.ip, this.net.isp.gw, dst] };
     }
     return { fail: "beyond", addr: a, hops: [next] };
+  }
+  /* can this device send a reply to an address on its own LAN? */
+  canReply(id, to, dom) {
+    const x = this.d[id];
+    if (x.kind === "router" || x.kind === "rogue" || !x.ifaces) return true;
+    const b = this.addr(id); if (!b) return false;
+    if (sameSubnet(b.ip, to, b.mask)) return true;
+    return !!(b.gw && sameSubnet(b.ip, b.gw, b.mask) && this.owners(b.gw, dom).some((g) => this.d[g].kind === "router" || this.d[g].kind === "rogue"));   /* the router hands it back across the LAN */
   }
   /* the quality of the first hop: Wi-Fi loss and delay */
   hop(id) { const l = this.wifiLink(id); return l && l.connected ? { loss: l.loss, base: l.band === 5 ? 3 : 5 } : { loss: 0, base: 0 }; }
@@ -313,11 +352,18 @@ export class Sim {
         break;
       }
       case "router": res = this.setRouter(act.page, act.values); break;
+      case "injector": { const j = this.d.injector; if ("power" in act.values) j.power = !!act.values.power; if (act.values.swap) j.std = "af"; res = { ok: true, power: j.power, std: j.std }; break; }   /* swap: a new 802.3af injector in the same place, same cables, same adapter */
       case "rogue": { const g = this.d.rogue; if ("dhcpOn" in act.values) g.dhcp.on = !!act.values.dhcpOn; res = { ok: true }; break; }
       case "print": res = this.printTest(); break;
       case "speed": res = this.speedTest(act.dev); break;
       case "outside": res = this.outside(act.port); break;
       case "rejoin": res = this.hasLink(act.dev) ? this.dhcp(act.dev, "rejoin") : { result: "no-wifi" }; break;
+      case "forget": { const f = this.d[act.dev].ifaces[0]; f.saved = { ssid: null, passOk: false }; this.release(act.dev); res = { ok: true }; break; }
+      case "join": {                                            /* join the house's network by name: the secured one with its current password, or (open) a copy with none */
+        const f = this.d[act.dev].ifaces[0], w = this.d.router.wifi;
+        f.saved = act.open ? { ssid: w.ssid, passOk: true, sec: "Open" } : { ssid: w.ssid, passOk: true, gen: w.gen || 1 }; this.release(act.dev);   /* open: the copy with no password */
+        res = this.hasLink(act.dev) ? this.dhcp(act.dev, "join") : { result: "no-wifi" }; break;
+      }
       case "pcprinter": { const ip = String(act.ip || "").trim(); if (!isIp(ip)) { res = { ok: false, errs: ["The printer port must be an IPv4 address"] }; break; } this.d.pc.printer.port = ip; res = { ok: true }; break; }
       case "client": res = this.setClient(act.dev, act.values); break;
       case "cmd": res = { ok: true }; break;                    /* commands are replayed by the command runner */
@@ -349,6 +395,8 @@ export class Sim {
     if (page === "wifi") {
       if ("ch24" in v) { if (v.ch24 === "auto") r.wifi.ch24mode = "auto"; else { const c = parseInt(v.ch24, 10); if (!(c >= 1 && c <= 11)) return { ok: false, errs: ["2.4 GHz channel must be 1 to 11, or Auto"] }; r.wifi.ch24mode = "manual"; r.wifi.ch24 = c; } }
       if ("ch5" in v) { const c = parseInt(v.ch5, 10); if ([36, 40, 44, 48, 149, 153, 157, 161].indexOf(c) < 0) return { ok: false, errs: ["5 GHz channel must be one of 36, 40, 44, 48, 149, 153, 157, 161"] }; r.wifi.ch5 = c; }
+      if (v.newPassword) r.wifi.gen = (r.wifi.gen || 1) + 1;   /* a new Wi-Fi password: every device has to be given it again */
+      if ("sec" in v) { if (SECURITY.indexOf(v.sec) < 0) return { ok: false, errs: ["Security must be one of " + SECURITY.join(", ")] }; r.wifi.sec = v.sec; }
       return { ok: true };
     }
     if (page === "reservation-add") {
@@ -367,16 +415,20 @@ export class Sim {
     if (page === "reservation-del") { r.dhcp.reservations = r.dhcp.reservations.filter(function (x) { return x.mac !== v.mac; }); return { ok: true }; }
     return { ok: false, errs: ["Unknown page"] };
   }
+  /* a device's own IP settings. Like a real printer or Windows, it takes any setting that is well formed,
+     right or wrong for this network: what happens next is worked out like everything else. */
   setClient(id, v) {
-    const f = this.d[id].ifaces[0], r = this.d.router;
+    const f = this.d[id].ifaces[0];
     if (v.mode === "static") {
-      const errs = [];
-      if (!isIp(v.ip) || !sameSubnet(v.ip, r.lan.ip, r.lan.mask)) errs.push("The IP address must be in " + this.net.prefix + ".x");
-      else if (v.ip === r.lan.ip) errs.push("That's the router's own address");
-      if (String(v.mask).trim() !== r.lan.mask) errs.push("The subnet mask for this network is " + r.lan.mask);
-      if (String(v.gw).trim() !== r.lan.ip) errs.push("The gateway for this network is the router, " + r.lan.ip);
+      const errs = [], ip = String(v.ip || "").trim(), mask = String(v.mask || "").trim(), gw = String(v.gw || "").trim(), bits = maskBits(mask);
+      if (!isIp(ip)) errs.push("The IP address must be four numbers from 0 to 255, like " + this.net.prefix + ".20");
+      if (bits === null || bits < 8 || bits > 30) errs.push("That subnet mask isn't valid: it must look like 255.255.255.0");
+      if (!errs.length && (ip === network(ip, mask) || ip === broadcast(ip, mask))) errs.push(ip + " is that network's own number or its broadcast address: no device can use it");
+      if (gw && !isIp(gw)) errs.push("The gateway must be an IPv4 address, or left empty");
+      let dns = v.dns ? v.dns.map(function (d) { return String(d || "").trim(); }).filter(Boolean) : (f.cfg.dns && f.cfg.dns.length ? f.cfg.dns : (gw ? [gw] : []));
+      if (dns.some(function (d) { return !isIp(d); })) errs.push("A DNS server must be an IPv4 address, or left empty");
       if (errs.length) return { ok: false, errs: errs };
-      v = Object.assign({}, v, { ip: v.ip.trim(), mask: r.lan.mask, gw: r.lan.ip, dns: [r.lan.ip] });
+      v = { mode: "static", ip: ip, mask: mask, gw: gw, dns: dns };
     }
     if ("mode" in v) f.cfg.mode = v.mode;
     if ("ip" in v) f.cfg.ip = v.ip;
@@ -384,7 +436,8 @@ export class Sim {
     if ("gw" in v) f.cfg.gw = v.gw;
     if ("dns" in v) f.cfg.dns = v.dns;
     if ("dnsMode" in v) f.cfg.dnsMode = v.dnsMode;
-    if (f.cfg.mode === "dhcp" && this.hasLink(id)) this.dhcp(id, "change");
+    if (v.mode === "static") { this.release(id); f.cfg.dnsMode = "static"; }
+    if (v.mode === "dhcp") { f.cfg.dnsMode = "auto"; if (this.hasLink(id)) this.dhcp(id, "change"); }
     return { ok: true };
   }
 

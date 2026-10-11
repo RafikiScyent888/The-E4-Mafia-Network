@@ -18,6 +18,7 @@ export const HELP = [
   ["arp -a", "show the hardware addresses this computer has heard"],
   ["netsh wlan show interfaces", "Wi-Fi: the network, signal, band and channel (Wi-Fi only)"],
   ["netsh wlan show networks mode=bssid", "Wi-Fi: every network this computer can hear (Wi-Fi only)"],
+  ["netsh wlan show drivers", "Wi-Fi: what this computer's Wi-Fi adapter supports (Wi-Fi only)"],
   ["getmac", "show this computer's hardware address"],
   ["hostname", "show this computer's name"],
   ["cls", "clear the screen"]
@@ -88,7 +89,7 @@ function ipconfig(sim, id, args) {
     return { out: "\nUSAGE:\n    ipconfig [/all | /release | /renew | /flushdns]\n\nwhere\n    /all       Display full configuration information.\n    /release   Release the IPv4 address for the adapter.\n    /renew     Renew the IPv4 address for the adapter.\n    /flushdns  Purges the DNS Resolver cache.\n", facts: facts };
   }
   const now = sim.addr(id);
-  Object.assign(facts, { media: now ? "connected" : "disconnected", ip: now && now.ip, apipa: !!(now && now.kind === "apipa"), gw: now && now.gw, dns: now ? now.dns.slice() : [], kind: now && now.kind });
+  Object.assign(facts, { media: now ? "connected" : "disconnected", ip: now && now.ip, mask: now && now.mask, apipa: !!(now && now.kind === "apipa"), gw: now && now.gw, dns: now ? now.dns.slice() : [], kind: now && now.kind });
   if (pre.length) lines.splice(3, 0, ...pre, "");   /* messages come between the title and the adapters, as Windows prints them */
   const all = sub === "/all";
   if (all) {
@@ -130,6 +131,7 @@ function attempt(sim, id, ip, rt, i, R, phase) {
   if (rt.fail === "no-link" || rt.fail === "no-route") return { line: "PING: transmit failed. General failure.", got: false, counted: false };
   if (rt.fail === "host-unreachable" || rt.fail === "gateway-unreachable") return { line: "Reply from " + rt.addr.ip + ": Destination host unreachable.", got: false, counted: true };
   if (rt.fail === "net-unreachable") return { line: "Reply from " + rt.hops[0] + ": Destination net unreachable.", got: false, counted: true };
+  if (rt.fail === "no-reply") { sim.arp[id][ip] = sim.macOf(rt.owner[0]); return { line: "Request timed out.", got: false, counted: false }; }   /* it answered the ARP; its reply is what never comes */
   if (rt.fail) return { line: "Request timed out.", got: false, counted: false };
   const h = sim.hop(id);
   let loss = h.loss, base = h.base;
@@ -191,12 +193,13 @@ function trace(sim, id, ip, rt, ok) {
   const steps = [], a = rt.addr, me = sim.d[id];
   if (!a) { steps.push({ at: me.label, what: "No link on " + me.ifaces[0].name + ": the packet never leaves", ok: false }); return steps; }
   if (rt.fail === "no-route") { steps.push({ at: me.label, what: "No route to " + ip + " (no default gateway)", ok: false }); return steps; }
-  const next = rt.local ? ip : a.gw;
+  const next = rt.local || rt.fail === "no-reply" ? ip : a.gw;
   steps.push({ at: me.label, what: "ARP: who has " + next + "? (broadcast to ff-ff-ff-ff-ff-ff)", l2: me.ifaces[0].mac + " → ff-ff-ff-ff-ff-ff", l3: "", ok: true });
   if (rt.fail === "host-unreachable" || rt.fail === "gateway-unreachable") { steps.push({ at: me.label, what: "No answer to the ARP: nobody on this network has " + next, ok: false }); return steps; }
-  const nh = rt.local ? rt.owner[0] : rt.via;
+  const nh = rt.local || rt.fail === "no-reply" ? rt.owner[0] : rt.via;
   steps.push({ at: sim.d[nh].label, what: "ARP reply: " + next + " is at " + sim.macOf(nh), ok: true });
   steps.push({ at: me.label, what: "ICMP echo request", l2: me.ifaces[0].mac + " → " + sim.macOf(nh), l3: a.ip + " → " + ip + "  TTL " + sim.ttlOf(id), ok: true });
+  if (rt.fail === "no-reply") { const b = sim.addr(nh); steps.push({ at: sim.d[nh].label, what: "No reply: with mask " + b.mask + ", " + a.ip + " is on another network to it, and its gateway " + (b.gw || "(none)") + " isn't on its own network either, so the reply never leaves", ok: false }); return steps; }
   if (rt.local) { steps.push({ at: sim.d[nh].label, what: ok ? "ICMP echo reply" : "No reply (dropped)", l3: ip + " → " + a.ip, ok: ok }); return steps; }
   const r = sim.d[rt.via];
   if (rt.fail === "net-unreachable") { steps.push({ at: r.label, what: "No route to the internet (WAN down): sends back Destination net unreachable", ok: false }); return steps; }
@@ -279,9 +282,9 @@ function netsh(sim, id, args) {
     const l = sim.wifiLink(id), facts = { cmd: "netsh-if", dev: id, connected: !!(l && l.connected) };
     const lines = ["", "There is 1 interface on the system:", "", "    Name                   : " + f.name, "    Description            : " + (f.desc || "Wireless Adapter"), "    Physical address       : " + colonMac(f.mac)];
     if (!l || !l.connected) { lines.push("    State                  : disconnected", "    Radio status           : Hardware On", "                             Software On", "", "    Hosted network status  : Not available"); return { out: lines.join("\n") + "\n", facts: facts }; }
-    Object.assign(facts, { signal: l.signal, ch: l.ch, band: l.band, rate: l.rate, ap: l.ap.id });
+    Object.assign(facts, { signal: l.signal, ch: l.ch, band: l.band, rate: l.rate, ap: l.ap.id, bssid: colonMac(l.ap.mac), auth: l.sec });
     lines.push("    State                  : connected", "    SSID                   : " + l.ap.ssid, "    BSSID                  : " + colonMac(l.ap.mac), "    Network type           : Infrastructure",
-      "    Radio type             : " + (l.band === 5 ? "802.11ac" : "802.11n"), "    Authentication         : " + sim.d.router.wifi.sec, "    Cipher                 : CCMP", "    Connection mode        : Auto Connect",
+      "    Radio type             : " + (l.band === 5 ? "802.11ac" : "802.11n"), "    Authentication         : " + l.sec, "    Cipher                 : " + (l.sec === "Open" ? "None" : "CCMP"), "    Connection mode        : Auto Connect",
       "    Band                   : " + (l.band === 5 ? "5 GHz" : "2.4 GHz"), "    Channel                : " + l.ch, "    Receive rate (Mbps)    : " + l.rate, "    Transmit rate (Mbps)   : " + l.rate,
       "    Signal                 : " + l.signal + "%", "    Profile                : " + f.saved.ssid, "", "    Hosted network status  : Not available");
     return { out: lines.join("\n") + "\n", facts: facts };
@@ -289,18 +292,30 @@ function netsh(sim, id, args) {
   if (/^wlan show net/.test(s)) {
     const bssid = /mode=bssid/.test(s), room = sim.net.rooms[id], facts = { cmd: "netsh-nets", dev: id, bssid: bssid, heard: [] };
     const nets = {};
-    for (const ap of sim.aps()) { const sg = sim.signal(ap.room, room, ap.band); if (sg < 15) continue; (nets[ap.ssid] = nets[ap.ssid] || { auth: sim.d.router.wifi.sec, list: [] }).list.push({ mac: ap.mac, sig: sg, band: ap.band, ch: ap.ch }); }
-    for (const nb of sim.net.neighbours) { const sg = nb.heard[room] || 0; if (sg < 15) continue; (nets[nb.ssid] = nets[nb.ssid] || { auth: "WPA2-Personal", list: [] }).list.push({ mac: nb.mac, sig: sg, band: nb.band, ch: nb.ch }); }
+    /* one entry per network name and security, as Windows lists them: an open copy of a name shows as its own network */
+    for (const ap of sim.aps()) { const sg = sim.heardAt(ap, room); if (sg < 15) continue; const au = sim.usesSec(f, ap.sec), k = ap.ssid + "|" + au; (nets[k] = nets[k] || { ssid: ap.ssid, auth: au, list: [] }).list.push({ mac: ap.mac, sig: sg, band: ap.band, ch: ap.ch }); facts.auth = facts.auth || {}; if (ap.sec !== "Open" || !facts.auth[ap.ssid]) facts.auth[ap.ssid] = au; }
+    for (const nb of sim.net.neighbours) { const sg = nb.heard[room] || 0; if (sg < 15) continue; const k = nb.ssid + "|WPA2-Personal"; (nets[k] = nets[k] || { ssid: nb.ssid, auth: "WPA2-Personal", list: [] }).list.push({ mac: nb.mac, sig: sg, band: nb.band, ch: nb.ch }); }
     const names = Object.keys(nets);
+    facts.twice = names.map(function (k) { return nets[k].ssid; }).filter(function (n, i, a) { return a.indexOf(n) !== i; });
     const lines = ["", "Interface name : " + f.name, "There are " + names.length + " networks currently visible.", ""];
     names.forEach(function (n, i) {
-      lines.push("SSID " + (i + 1) + " : " + n, "    Network type            : Infrastructure", "    Authentication          : " + nets[n].auth, "    Encryption              : CCMP");
-      if (bssid) nets[n].list.forEach(function (b, k) { facts.heard.push({ ssid: n, ch: b.ch, sig: b.sig, band: b.band }); lines.push("    BSSID " + (k + 1) + "                 : " + colonMac(b.mac), "         Signal             : " + b.sig + "%", "         Radio type         : " + (b.band === 5 ? "802.11ac" : "802.11n"), "         Band               : " + (b.band === 5 ? "5 GHz" : "2.4 GHz"), "         Channel            : " + b.ch); });
+      lines.push("SSID " + (i + 1) + " : " + nets[n].ssid, "    Network type            : Infrastructure", "    Authentication          : " + nets[n].auth, "    Encryption              : " + (nets[n].auth === "Open" ? "None" : "CCMP"));
+      if (bssid) nets[n].list.forEach(function (b, k) { facts.heard.push({ ssid: nets[n].ssid, auth: nets[n].auth, mac: colonMac(b.mac), ch: b.ch, sig: b.sig, band: b.band }); lines.push("    BSSID " + (k + 1) + "                 : " + colonMac(b.mac), "         Signal             : " + b.sig + "%", "         Radio type         : " + (b.band === 5 ? "802.11ac" : "802.11n"), "         Band               : " + (b.band === 5 ? "5 GHz" : "2.4 GHz"), "         Channel            : " + b.ch); });
       lines.push("");
     });
     return { out: lines.join("\n"), facts: facts };
   }
-  return { out: "The following command was not found: " + args.join(" ") + ".\nTry: netsh wlan show interfaces   or   netsh wlan show networks mode=bssid\n", facts: { cmd: "netsh", dev: id } };
+  if (/^wlan show driver/.test(s)) {
+    /* what the adapter itself can do: the honest way to find out whether it supports WPA3 */
+    const can = f.secs || ["WPA2-Personal", "WPA3-Personal"], wpa3 = can.indexOf("WPA3-Personal") >= 0, facts = { cmd: "netsh-drivers", dev: id, secs: can.slice(), wpa3: wpa3 };
+    const L = ["", "Interface name: " + f.name, "", "    Driver                    : " + (f.desc || "Wireless Adapter"), "    Type                      : Native Wi-Fi Driver",
+      "    Radio types supported     : " + (f.bands.indexOf(5) >= 0 ? "802.11b 802.11g 802.11n 802.11a 802.11ac" : "802.11b 802.11g 802.11n"), "    FIPS 140 mode supported   : Yes",
+      "    802.11w Management Frame Protection supported : " + (wpa3 ? "Yes" : "No"), "    Hosted network supported  : No",
+      "    Authentication and cipher supported in infrastructure mode:", "                                Open            None", "                                WPA2-Personal   CCMP", "                                WPA2-Enterprise CCMP"];
+    if (wpa3) L.push("                                WPA3-Personal   CCMP", "                                WPA3-Personal   GCMP", "                                WPA3-Enterprise GCMP-256");
+    return { out: L.join("\n") + "\n", facts: facts };
+  }
+  return { out: "The following command was not found: " + args.join(" ") + ".\nTry: netsh wlan show interfaces, netsh wlan show networks mode=bssid, or netsh wlan show drivers\n", facts: { cmd: "netsh", dev: id } };
 }
 
 export function run(sim, id, line) {

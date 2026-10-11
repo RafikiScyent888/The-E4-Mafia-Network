@@ -7,7 +7,7 @@ import { isIp } from "./util.js";
 const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh" };
 
 export function tabsFor(sim, id) {
-  const k = sim.d[id].kind, P = STILL[id] || k === "rogue" ? [["physical", "Physical"]] : [];
+  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || id === "injector" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
   const T = {
     pc: [["cmd", "Command Prompt"], ["settings", "Network settings"], ["printers", "Printers"]],
     laptop: [["cmd", "Command Prompt"], ["wifi", "Wi-Fi"]],
@@ -41,7 +41,7 @@ export function cableName(sim, c, fromDev) {
   if (c.kind === "coax") return "Coax cable, wall outlet to the modem's CABLE IN";
   if (other.dev === "rogue") return "Patch cable to a box not on the diagram (" + other.port + ")";
   if (fromDev === "rogue") return "Patch cable to the 5-port switch (port " + other.port + ")";
-  return "Patch cable to the " + sim.d[other.dev].label.replace(/^(\w)/, function (m) { return m.toLowerCase(); }).replace(/^isp$/, "ISP") + (/^\d$/.test(other.port) ? " (port " + other.port + ")" : other.port ? " (" + other.port + ")" : "");
+  return "Patch cable to the " + sim.d[other.dev].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }).replace(/^isp$/, "ISP") + (/^\d$/.test(other.port) ? " (port " + other.port + ")" : other.port ? " (" + other.port + ")" : "");
 }
 
 /* what you see when you look at one end of a cable */
@@ -70,7 +70,9 @@ export function page(sim, id, key) {
       const cx = sim.cable("c-coax"); cables.forEach(function (k) { if (k.cable === "c-coax") k.name = "Coax cable at the modem's CABLE IN"; });
       cables.push({ cable: "c-coax", end: "a", name: "Coax cable at the wall outlet (behind the TV stand)", acts: ["look", "tighten"] });
     }
-    return { kind: "physical", still: STILL[id] ? "assets/stills/" + STILL[id] + ".jpg" : null, label: x.label, cables: cables, restart: true, facts: { page: id + "-physical", rogue: id === "rogue" } };
+    const inj = id === "injector" ? { power: !!x.power, std: x.std } : null;
+    return { kind: "physical", still: STILL[id] ? "assets/stills/" + STILL[id] + ".jpg" : null, label: x.label, cables: cables, restart: id !== "injector", injector: inj,
+      facts: { page: id + "-physical", rogue: id === "rogue", injector: inj, camera: id === "camera" ? sim.on("camera") : undefined } };
   }
   if (id === "router") {
     if (key === "status") {
@@ -96,7 +98,7 @@ export function page(sim, id, key) {
         note: inRange + " of " + size + " addresses in the range are leased. Leases last " + r.dhcp.leaseH + " hours; a device keeps its address that long even after it leaves.", facts: { page: "router-clients", count: inRange, size: size, rows: rows, leaseH: r.dhcp.leaseH } };
     }
     if (key === "forward") return { kind: "form", form: "router-forward", title: "Port forwarding", rules: r.forwards.map(function (f) { return { name: f.name, ext: f.ext, ip: f.ip, port: f.port }; }), wan: sim.wan() ? sim.wan().ip : "0.0.0.0", facts: { page: "router-forward", rules: r.forwards.map(function (f) { return { ext: f.ext, ip: f.ip, port: f.port }; }) } };
-    if (key === "wifi") return { kind: "form", form: "router-wifi", title: "Wi-Fi", values: { ssid: r.wifi.ssid, sec: r.wifi.sec, ch24: r.wifi.ch24mode === "auto" ? "auto" : String(r.wifi.ch24), ch24now: sim.ch24(), ch5: String(r.wifi.ch5) }, facts: { page: "router-wifi", ch24: sim.ch24(), mode: r.wifi.ch24mode } };
+    if (key === "wifi") return { kind: "form", form: "router-wifi", title: "Wi-Fi", values: { ssid: r.wifi.ssid, sec: r.wifi.sec, changed: (r.wifi.gen || 1) > 1, bssids: sim.aps().filter(function (a) { return a.id === "router"; }).map(function (a) { return [a.band === 5 ? "5 GHz" : "2.4 GHz", a.mac.toUpperCase().replace(/-/g, ":")]; }), ch24: r.wifi.ch24mode === "auto" ? "auto" : String(r.wifi.ch24), ch24now: sim.ch24(), ch5: String(r.wifi.ch5) }, facts: { page: "router-wifi", ch24: sim.ch24(), mode: r.wifi.ch24mode, sec: r.wifi.sec } };
   }
   if (id === "modem") {
     const L = sim.modemLights(), syn = sim.modemSynced();
@@ -117,7 +119,7 @@ export function page(sim, id, key) {
     const rows = [];
     for (let p = 1; p <= 5; p++) {
       const c = sim.cableAt("switch", String(p));
-      const who = c ? (function () { const o = c.a.dev === "switch" ? c.b : c.a; return sim.d[o.dev].undocumented ? "a box that isn't on the diagram" : "the " + sim.d[o.dev].label.replace(/^(\w)(?=[a-z])/, function (m) { return m.toLowerCase(); }); })() : null;
+      const who = c ? (function () { const o = c.a.dev === "switch" ? c.b : c.a; return sim.d[o.dev].undocumented ? "a box that isn't on the diagram" : "the " + sim.d[o.dev].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }); })() : null;
       const sp = c ? sim.speed(c) : 0;
       const state = !c ? "off (nothing plugged in)" : sp === 0 ? "off" : sp === 1000 ? "on, green: 1 Gb/s link" : "on, amber: 10/100 Mb/s link";
       rows.push({ port: p, who: who, state: state, up: sp > 0, speed: sp });
@@ -129,7 +131,9 @@ export function page(sim, id, key) {
     const rows = [["Ethernet", a ? "Connected" : "Not connected (unplugged)"], ["IP assignment", f.cfg.mode === "dhcp" ? "Automatic (DHCP)" : "Manual"], ["DNS server assignment", f.cfg.dnsMode === "static" ? "Manual" : "Automatic (DHCP)"],
       ["Link speed (Receive/Transmit)", sp ? sp + "/" + sp + " (Mbps)" : "--"], ["IPv4 address", a ? a.ip : "--"], ["IPv4 DNS servers", a && a.dns.length ? a.dns.join(", ") : "--"], ["Physical address (MAC)", f.mac.toUpperCase()]];
     rows.splice(4, 0, ["Speed & duplex", "Auto negotiation"]);
-    return { kind: "rows", title: "Network settings", rows: rows, speedTest: true, facts: { page: "pc-settings", speed: sp, connected: !!a } };
+    const st = f.cfg.mode === "static", dns = st ? (f.cfg.dns || []) : [];
+    return { kind: "rows", title: "Network settings", rows: rows, speedTest: true, ipForm: { mode: f.cfg.mode, ip: st ? f.cfg.ip : "", mask: st ? f.cfg.mask : "", gw: st ? f.cfg.gw || "" : "", dns1: dns[0] || "", dns2: dns[1] || "" },
+      facts: { page: "pc-settings", speed: sp, connected: !!a, mode: f.cfg.mode, ip: st ? f.cfg.ip : a && a.ip, mask: st ? f.cfg.mask : a && a.mask, gw: st ? f.cfg.gw : a && a.gw } };
   }
   if (id === "pc" && key === "printers") {
     const pr = x.printer;
@@ -137,19 +141,23 @@ export function page(sim, id, key) {
   }
   if (id === "laptop" && key === "wifi") {
     const l = sim.wifiLink("laptop"), a = sim.addr("laptop"), f = x.ifaces[0];
-    const rows = l && l.connected ? [["Wi-Fi", "Connected to " + l.ap.ssid], ["Protocol", l.band === 5 ? "Wi-Fi 5 (802.11ac)" : "Wi-Fi 4 (802.11n)"], ["Security type", sim.d.router.wifi.sec], ["Network band", l.band === 5 ? "5 GHz" : "2.4 GHz"], ["Network channel", String(l.ch)], ["Link speed (Receive/Transmit)", l.rate + "/" + l.rate + " (Mbps)"], ["IPv4 address", a ? a.ip : "--"], ["IPv4 DNS servers", a && a.dns.length ? a.dns.join(", ") : "--"]]
-      : [["Wi-Fi", l && l.reason === "auth" ? "Can't connect to this network (the password was rejected)" : "Not connected: no saved network in range"], ["Saved network", f.saved.ssid]];
-    return { kind: "rows", title: "Wi-Fi", rows: rows, speedTest: !!(l && l.connected), facts: { page: "laptop-wifi", connected: !!(l && l.connected), ch: l && l.ch, band: l && l.band, signal: l && l.signal } };
+    const rows = l && l.connected ? [["Wi-Fi", "Connected to " + l.ap.ssid], ["Protocol", l.band === 5 ? "Wi-Fi 5 (802.11ac)" : "Wi-Fi 4 (802.11n)"], ["Security type", l.sec], ["Network band", l.band === 5 ? "5 GHz" : "2.4 GHz"], ["Network channel", String(l.ch)], ["Link speed (Receive/Transmit)", l.rate + "/" + l.rate + " (Mbps)"], ["IPv4 address", a ? a.ip : "--"], ["IPv4 DNS servers", a && a.dns.length ? a.dns.join(", ") : "--"]]
+      : [["Wi-Fi", l && l.reason === "auth" ? "Can't connect to this network (the password was rejected)" : l && l.reason === "security" ? "Can't connect to this network" : f.saved.ssid ? "Not connected: no saved network in range" : "Not connected"], ["Saved network", f.saved.ssid ? f.saved.ssid + (f.saved.sec === "Open" ? " (open)" : "") : "(none)"]];
+    /* the networks Windows would list to pick from: the house's name, once per kind (secured, or an open copy) */
+    const nets = [], seen = {};
+    for (const ap of sim.aps()) { const sg = sim.heardAt(ap, sim.net.rooms.laptop); if (sg < 15) continue; const k = ap.ssid + (ap.sec === "Open" ? "|open" : "|sec"); if (seen[k]) { seen[k].signal = Math.max(seen[k].signal, sg); continue; } seen[k] = { ssid: ap.ssid, open: ap.sec === "Open", sec: ap.sec, signal: sg, now: !!(l && l.connected && l.ap.ssid === ap.ssid && (l.ap.sec === "Open") === (ap.sec === "Open")) }; nets.push(seen[k]); }
+    return { kind: "rows", title: "Wi-Fi", rows: rows, speedTest: !!(l && l.connected), networks: nets, forget: !!f.saved.ssid, facts: { page: "laptop-wifi", connected: !!(l && l.connected), reason: l && l.reason, ch: l && l.ch, band: l && l.band, signal: l && l.signal } };
   }
   if (id === "printer" && key === "panel") {
     const f = x.ifaces[0], a = sim.addr("printer");
     return { kind: "form", form: "printer", title: "Control panel", status: a ? "Ready" : "No network connection", mac: f.mac,
       values: { mode: f.cfg.mode, ip: f.cfg.mode === "static" ? f.cfg.ip : a ? a.ip : "", mask: f.cfg.mode === "static" ? f.cfg.mask : a ? a.mask : sim.d.router.lan.mask, gw: f.cfg.mode === "static" ? f.cfg.gw : a ? a.gw : sim.d.router.lan.ip },
-      facts: { page: "printer-panel", ip: f.cfg.mode === "static" ? f.cfg.ip : a && a.ip, mode: f.cfg.mode, mac: f.mac } };
+      facts: { page: "printer-panel", ip: f.cfg.mode === "static" ? f.cfg.ip : a && a.ip, mode: f.cfg.mode, mac: f.mac, mask: f.cfg.mode === "static" ? f.cfg.mask : a && a.mask, gw: f.cfg.mode === "static" ? f.cfg.gw : a && a.gw } };
   }
   if (id === "camera" && key === "web") {
     const a = sim.addr("camera"), up = a && sim.route("camera", "203.0.113.80").internet;
-    return { kind: "rows", title: "Web page", rows: [["Camera", a ? "Online, recording" : "Offline"], ["IP address", a ? a.ip + (a.kind === "dhcp" ? " (from DHCP)" : " (static)") : "--"], ["Gateway", a && a.gw || "--"], ["Cloud viewing", up ? "Connected" : "Can't reach the internet"]], facts: { page: "camera-web", ip: a && a.ip } };
+    if (!a) return { kind: "rows", title: "Web page", rows: [["Camera's page", "This page can't be reached: nothing answers at the camera's address"]], facts: { page: "camera-web", ip: null, online: false } };
+    return { kind: "rows", title: "Web page", rows: [["Camera", a ? "Online, recording" : "Offline"], ["IP address", a ? a.ip + (a.kind === "dhcp" ? " (from DHCP)" : " (static)") : "--"], ["Gateway", a && a.gw || "--"], ["Cloud viewing", up ? "Connected" : "Can't reach the internet"]], facts: { page: "camera-web", ip: a && a.ip, online: true } };
   }
   if (id === "tv" && key === "net") {
     const a = sim.addr("tv"), up = a && sim.route("tv", "203.0.113.80").internet, dns = a && a.dns.some(function (s) { return sim.dnsServerWorks("tv", s); });
@@ -161,8 +169,8 @@ export function page(sim, id, key) {
   }
   if (x.kind === "phone" && key === "wifi") {
     const l = sim.wifiLink(id), a = sim.addr(id), up = !!(a && sim.route(id, "203.0.113.80").internet);
-    const rows = [["Wi-Fi", l && l.connected ? "Connected to " + l.ap.ssid + (l.band === 5 ? " (5 GHz)" : " (2.4 GHz)") + " · signal " + l.signal + "%" : "Not connected"], ["IP address", a ? a.ip + (a.kind === "apipa" ? " (it gave itself this: no address came)" : "") : "--"], ["Router", a && a.gw || "--"], ["Internet", up ? "OK" : "No internet"]];
-    return { kind: "rows", title: "Wi-Fi", rows: rows, rejoin: true, cameraApp: id === "phone" && sim.d.router.forwards.length > 0, facts: { page: id === "guest" ? "guest-wifi" : "phone-wifi", internet: up, ip: a && a.ip, apipa: !!(a && a.kind === "apipa"), connected: !!(l && l.connected) } };
+    const rows = [["Wi-Fi", l && l.connected ? "Connected to " + l.ap.ssid + (l.band === 5 ? " (5 GHz)" : " (2.4 GHz)") + " · signal " + l.signal + "%" : l && l.reason === "auth" ? "Can't join " + l.ap.ssid + ": the saved password is wrong" : "Not connected"], ["IP address", a ? a.ip + (a.kind === "apipa" ? " (it gave itself this: no address came)" : "") : "--"], ["Router", a && a.gw || "--"], ["Internet", up ? "OK" : "No internet"]];
+    return { kind: "rows", title: "Wi-Fi", rows: rows, rejoin: !(l && l.reason === "auth"), reenter: !!(l && l.reason === "auth"), cameraApp: id === "phone" && sim.d.router.forwards.length > 0, facts: { page: id === "guest" ? "guest-wifi" : "phone-wifi", internet: up, ip: a && a.ip, apipa: !!(a && a.kind === "apipa"), connected: !!(l && l.connected) } };
   }
   if (id === "rogue" && key === "admin") {
     const g = x;
@@ -183,6 +191,6 @@ export function physical(sim, act) {
   if (act.t === "replace") return { text: "Swapped in a new, tested patch cable.", facts: { phys: "replace", cable: act.cable } };
   if (act.t === "unplug") return { text: "Unplugged it.", facts: { phys: "unplug", cable: act.cable, end: act.end } };
   if (act.t === "tighten") return { text: before === JSON.stringify([c.a, c.b, c.cond]) ? "Already snug: no change." : "Screwed the connector on finger-tight.", facts: { phys: "tighten", cable: act.cable, end: act.end } };
-  if (act.t === "power") return { text: "Restarted the " + (/^[A-Z][a-z]/.test(sim.d[act.dev].label) ? sim.d[act.dev].label[0].toLowerCase() + sim.d[act.dev].label.slice(1) : sim.d[act.dev].label) + ". It's back up a minute later.", facts: { phys: "power", dev: act.dev } };
+  if (act.t === "power") return { text: "Restarted the " + (/^[A-Z][a-z]+(\s|$)/.test(sim.d[act.dev].label) ? sim.d[act.dev].label[0].toLowerCase() + sim.d[act.dev].label.slice(1) : sim.d[act.dev].label) + ". It's back up a minute later.", facts: { phys: "power", dev: act.dev } };
   return { text: "", facts: {} };
 }

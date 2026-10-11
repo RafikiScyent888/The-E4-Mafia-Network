@@ -73,6 +73,64 @@ SYMPTOM["HOME-07"] = (T) => { const g = page(T.sim, "guest", "wifi"); assert.ok(
 SYMPTOM["HOME-08"] = (T) => { const s = page(T.sim, "pc", "settings"); assert.ok(s.rows.some((r) => r[1] === "100/100 (Mbps)")); const pc = T.sim.speedTest("pc"), lap = T.sim.speedTest("laptop"); assert.ok(pc.down < 100 && lap.down > 200, pc.down + " vs " + lap.down); assert.match(page(T.sim, "switch", "lights").ports.find((p) => p.port === T.v.port).state, /amber/); };
 SYMPTOM["HOME-09"] = (T) => { const o = T.sim.outside(8443); assert.equal(o.ok, false); assert.equal(o.why, "refused"); const f = page(T.sim, "router", "forward"); assert.equal(f.rules[0].ip, T.v.old); assert.notEqual(T.sim.addr("camera").ip, T.v.old); };
 SYMPTOM["HOME-10"] = (T) => { assert.match(exec(T.sim, "laptop", "ipconfig").out, /IPv4 Address[ .]*: 10\.0\.0\./); assert.match(exec(T.sim, "laptop", "ipconfig /all").out, /DHCP Server[ .]*: 10\.0\.0\.1\n/); assert.match(exec(T.sim, "laptop", "ping 203.0.113.80").out, /Reply from 10\.0\.0\.1: Destination net unreachable/); assert.match(exec(T.sim, "pc", "ping 203.0.113.80").out, /Reply from 203\.0\.113\.80/); };
+/* HOME-11 and 12, the five more (11 October 2026) */
+FIX["HOME-11"] = (T) => T.seed % 2 ? [{ t: "client", dev: "printer", values: { mode: "static", ip: T.v.ip, mask: "255.255.255.0", gw: gw(T) } }]
+  : [{ t: "client", dev: "printer", values: { mode: "static", ip: free(T, 251), mask: "255.255.255.0", gw: gw(T) } }, { t: "pcprinter", ip: free(T, 251) }];
+FIX["HOME-12"] = (T) => T.seed % 2 ? [{ t: "client", dev: "pc", values: { mode: "static", ip: T.v.ip, mask: T.sim.net.mask, gw: gw(T), dns: ["203.0.113.53", ""] } }] : [{ t: "client", dev: "pc", values: { mode: "dhcp" } }];
+PROOF["HOME-11"] = () => ({ t: "print" });
+PROOF["HOME-12"] = () => ({ t: "cmd", dev: "pc", line: "ping 203.0.113.80" });
+WRONG["HOME-11"] = (T) => [[{ t: "power", dev: "printer" }], [{ t: "replace", cable: "c-switch-printer" }], [{ t: "power", dev: "pc" }, { t: "power", dev: "switch" }],
+  [{ t: "client", dev: "printer", values: { mode: "static", ip: T.v.ip, mask: T.v.mask, gw: gw(T) } }, { t: "pcprinter", ip: T.v.ip }]];
+WRONG["HOME-12"] = (T) => [[{ t: "power", dev: "pc" }], [{ t: "cmd", dev: "pc", line: "ipconfig /renew" }], [{ t: "power", dev: "router" }, { t: "replace", cable: "c-switch-pc" }],
+  [{ t: "client", dev: "pc", values: { mode: "static", ip: T.v.ip, mask: T.sim.net.mask, gw: T.v.gw, dns: ["8.8.8.8", "8.8.4.4"] } }]];
+SYMPTOM["HOME-11"] = (T) => {
+  const p = exec(T.sim, "pc", "ping " + T.v.ip).out; assert.match(p, /Request timed out\./); assert.doesNotMatch(p, /Reply from/);
+  const a = exec(T.sim, "pc", "arp -a"); assert.ok(a.facts.entries.some((e) => e[0] === T.v.ip && e[1] === T.v.prMac), "the printer answered ARP");
+  assert.equal(E.act(T, { t: "print" }).facts.print, "fail");
+  assert.doesNotMatch(exec(T.sim, "laptop", "ping " + T.v.ip).out, /Reply from/);
+  assert.equal(page(T.sim, "printer", "panel").facts.mask, T.v.mask);
+  assert.match(exec(T.sim, "pc", "ping 203.0.113.80").out, /Reply from 203\.0\.113\.80/);
+};
+SYMPTOM["HOME-12"] = (T) => {
+  assert.match(exec(T.sim, "pc", "ipconfig").out, new RegExp("Default Gateway[ .]*: " + T.v.gw.replace(/\./g, "\\.") + "\\n"));
+  assert.match(exec(T.sim, "pc", "ping 203.0.113.80").out, T.v.kind === "same" ? /Destination host unreachable/ : /General failure/);
+  assert.equal(E.act(T, { t: "print" }).facts.print, "ok");
+  assert.match(exec(T.sim, "laptop", "ping 203.0.113.80").out, /Reply from 203\.0\.113\.80/);
+};
+FIX["HOME-14"] = () => [{ t: "router", page: "wifi", values: { sec: "WPA2/WPA3-Personal" } }];
+PROOF["HOME-14"] = () => ({ t: "cmd", dev: "laptop", line: "ping 203.0.113.80" });
+WRONG["HOME-14"] = () => [[{ t: "router", page: "wifi", values: { sec: "WPA2-Personal" } }], [{ t: "power", dev: "router" }, { t: "power", dev: "laptop" }], [{ t: "router", page: "wifi", values: { ch24: "1", ch5: "149" } }], [{ t: "cmd", dev: "laptop", line: "ipconfig /renew" }]];
+SYMPTOM["HOME-14"] = (T) => {
+  assert.ok(page(T.sim, "laptop", "wifi").rows.some((r) => r[1] === "Can't connect to this network"));
+  const d = exec(T.sim, "laptop", "netsh wlan show drivers").out; assert.doesNotMatch(d, /WPA3/); assert.match(d, /802\.11w Management Frame Protection supported : No/);
+  assert.match(exec(T.sim, "laptop", "netsh wlan show networks").out, new RegExp("SSID \\d+ : " + T.sim.d.router.wifi.ssid + "\\n[^\\n]*\\n    Authentication          : WPA3-Personal"));
+  assert.match(exec(T.sim, "laptop", "ipconfig").out, /Media disconnected/);
+  assert.ok(page(T.sim, "phone", "wifi").facts.internet);
+};
+FIX["HOME-15"] = () => [{ t: "forget", dev: "laptop" }, { t: "router", page: "wifi", values: { newPassword: true } }, { t: "join", dev: "laptop" }, { t: "join", dev: "phone" }];
+PROOF["HOME-15"] = () => ({ t: "cmd", dev: "laptop", line: "ping 203.0.113.80" });
+WRONG["HOME-15"] = () => [[{ t: "power", dev: "router" }, { t: "power", dev: "laptop" }], [{ t: "cmd", dev: "laptop", line: "ipconfig /release" }, { t: "cmd", dev: "laptop", line: "ipconfig /renew" }],
+  [{ t: "forget", dev: "laptop" }, { t: "join", dev: "laptop" }], [{ t: "router", page: "wifi", values: { newPassword: true } }], [{ t: "router", page: "wifi", values: { newPassword: true } }, { t: "forget", dev: "laptop" }, { t: "join", dev: "laptop" }]];
+SYMPTOM["HOME-15"] = (T) => {
+  const i = exec(T.sim, "laptop", "netsh wlan show interfaces").out; assert.match(i, /Authentication         : Open/); assert.match(i, new RegExp("BSSID                  : " + T.v.twinMac.toLowerCase()));
+  const n = exec(T.sim, "laptop", "netsh wlan show networks mode=bssid"); assert.ok(n.facts.twice.includes(T.sim.d.router.wifi.ssid), "the house name listed twice");
+  assert.match(exec(T.sim, "laptop", "ipconfig").out, /IPv4 Address[ .]*: 172\.20\.10\./);
+  assert.match(exec(T.sim, "laptop", "ping 203.0.113.80").out, /Reply from 172\.20\.10\.1: Destination net unreachable/);
+  assert.ok(page(T.sim, "phone", "wifi").facts.internet);
+  assert.ok(!page(T.sim, "router", "clients").rows.some((r) => r[1] === T.sim.d.laptop.ifaces[0].mac), "the laptop isn't a client of the router");
+};
+FIX["HOME-13"] = (T) => T.v.kind === "unplugged" ? [{ t: "injector", values: { power: true } }] : [{ t: "injector", values: { swap: true } }];
+PROOF["HOME-13"] = () => ({ t: "view", dev: "camera", key: "web" });
+WRONG["HOME-13"] = (T) => [[{ t: "power", dev: "camera" }], [{ t: "replace", cable: "c-inj-camera" }], [{ t: "power", dev: "switch" }, { t: "power", dev: "router" }],
+  [{ t: "router", page: "reservation-add", values: { name: "IP camera", mac: T.v.mac, ip: T.v.ip } }], [{ t: "reseat", cable: "c-switch-inj", end: "a" }, { t: "reseat", cable: "c-inj-camera", end: "b" }],
+  T.v.kind === "unplugged" ? [{ t: "injector", values: { swap: true } }] : [{ t: "injector", values: { power: false } }, { t: "injector", values: { power: true } }]];
+SYMPTOM["HOME-13"] = (T) => {
+  assert.equal(page(T.sim, "camera", "web").facts.online, false);
+  const L = page(T.sim, "switch", "lights").facts.ports.find((p) => p.port === T.v.port); assert.equal(L.up, false); assert.match(L.who, /PoE injector/);
+  assert.ok(!page(T.sim, "router", "clients").rows.some((r) => r[1] === T.v.mac));
+  assert.match(exec(T.sim, "pc", "ping " + T.v.ip).out, /Destination host unreachable/);   /* nothing answers at the camera's address */
+  assert.match(exec(T.sim, "pc", "ping 203.0.113.80").out, /Reply from 203\.0\.113\.80/);
+};
 const seeds = Array.from({ length: N }, (_, i) => 1000 + i * 7919);
 
 for (const def of HOME_TICKETS) {
@@ -156,4 +214,24 @@ test("HOME-01 to 05: an investigation fills the notebook with evidence", () => {
   const T = E.open(byId["HOME-01"], 4242);
   E.act(T, { t: "cmd", dev: "pc", line: "ipconfig" }); E.act(T, { t: "view", dev: "switch", key: "lights" }); E.act(T, { t: "cmd", dev: "laptop", line: "ping 203.0.113.80" });
   assert.deepEqual(T.evidence.map((e) => e.id), ["ipc", "lights", "laptop"]);
+});
+
+test("HOME-14: WPA2 alone gets the laptop online but isn't the fix; Mason says why", () => {
+  const T = E.open(byId["HOME-14"], 777); E.guess(T, "right");
+  E.act(T, { t: "router", page: "wifi", values: { sec: "WPA2-Personal" } });
+  const r = E.act(T, { t: "cmd", dev: "laptop", line: "ping 203.0.113.80" });
+  assert.match(r.out, /Reply from 203\.0\.113\.80/); assert.equal(T.fixed, false); assert.equal(T.proven, false); assert.match(T.partial, /keeps WPA3/);
+  E.act(T, { t: "router", page: "wifi", values: { sec: "WPA2/WPA3-Personal" } }); E.act(T, { t: "cmd", dev: "laptop", line: "ping 203.0.113.80" });
+  assert.equal(T.solved, true);
+  assert.match(exec(T.sim, "laptop", "netsh wlan show interfaces").out, /Authentication         : WPA2-Personal/);
+});
+
+test("HOME-15: back on the real network isn't the end: the password was given away, then every device needs the new one", () => {
+  const T = E.open(byId["HOME-15"], 99); E.guess(T, "right");
+  E.act(T, { t: "forget", dev: "laptop" }); E.act(T, { t: "join", dev: "laptop" });
+  E.act(T, { t: "cmd", dev: "laptop", line: "ping 203.0.113.80" }); assert.equal(T.proven, false); assert.match(T.partial, /given|has it now/);
+  E.act(T, { t: "router", page: "wifi", values: { newPassword: true } });
+  assert.equal(page(T.sim, "phone", "wifi").reenter, true, "the phone needs the new password");
+  E.act(T, { t: "join", dev: "laptop" }); E.act(T, { t: "cmd", dev: "laptop", line: "ping 203.0.113.80" }); assert.match(T.partial, /every other device/);
+  E.act(T, { t: "join", dev: "phone" }); E.act(T, { t: "cmd", dev: "laptop", line: "ping 203.0.113.80" }); assert.equal(T.solved, true);
 });

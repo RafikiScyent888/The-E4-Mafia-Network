@@ -248,5 +248,77 @@
   "nogl": true,
   "setup": "document.querySelector('#devtabs [data-d=pc]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click();",
   "wait": "!!document.querySelector('.m3d-still img')"
+ },
+ {
+  "name": "window: office PC Edit IP settings (HOME-12)",
+  "page": "index.html",
+  "ticket": "HOME-12",
+  "seed": 1,
+  "setup": "document.querySelector('#devtabs [data-d=pc]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Network settings').click(); "
+ },
+ {
+  "name": "window: printer control panel, its mask (HOME-11)",
+  "page": "index.html",
+  "ticket": "HOME-11",
+  "seed": 1,
+  "setup": "document.querySelector('#devtabs [data-d=printer]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Control panel').click(); "
+ },
+ {
+  "name": "window: router Wi-Fi, security and radios (HOME-14)",
+  "page": "index.html",
+  "ticket": "HOME-14",
+  "seed": 1,
+  "setup": "document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Wi-Fi').click(); "
+ },
+ {
+  "name": "window: laptop Wi-Fi, networks in range (HOME-15)",
+  "page": "index.html",
+  "ticket": "HOME-15",
+  "seed": 1,
+  "setup": "document.querySelector('#devtabs [data-d=laptop]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Wi-Fi').click(); [...document.querySelectorAll('.pane button, .phys button')].find(b=>b.textContent==='Forget the saved network').click(); "
+ },
+ {
+  "name": "window: phone asks for the new Wi-Fi password (HOME-15)",
+  "page": "index.html",
+  "ticket": "HOME-15",
+  "seed": 1,
+  "setup": "document.querySelector('#devtabs [data-d=router]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Wi-Fi').click(); [...document.querySelectorAll('.pane button, .phys button')].find(b=>b.textContent==='Change the Wi-Fi password').click(); document.querySelector('#devtabs [data-d=phone]').click(); "
+ },
+ {
+  "name": "window: PoE injector, 3D model (HOME-13)",
+  "page": "index.html",
+  "ticket": "HOME-13",
+  "seed": 1,
+  "setup": "document.querySelector('#devtabs [data-d=injector]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click(); ",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "window: camera page can't be reached (HOME-13)",
+  "page": "index.html",
+  "ticket": "HOME-13",
+  "seed": 2,
+  "setup": "document.querySelector('#devtabs [data-d=camera]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Web page').click(); "
+ },
+ {
+  "name": "instructor: asks for the PIN",
+  "page": "index.html",
+  "mode": "view",
+  "setup": "document.getElementById('mInst').click();"
+ },
+ {
+  "name": "instructor: unlocked, the fault and the fix shown",
+  "page": "index.html",
+  "ticket": "HOME-14",
+  "seed": 1,
+  "mode": "view",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); document.getElementById('mInst').click(); [...document.querySelectorAll('#inst button')].find(b=>b.textContent==='Show the fault and the fix').click();"
+ },
+ {
+  "name": "instructor: unlocked, all of Mason's help, scrolled",
+  "page": "index.html",
+  "ticket": "HOME-11",
+  "seed": 1,
+  "mode": "view",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); document.getElementById('mInst').click(); [...document.querySelectorAll('#inst button')].find(b=>b.textContent===\"Show all of Mason's help\").click(); document.querySelector('#inst .db').scrollTop = 99999;"
  }
 ]

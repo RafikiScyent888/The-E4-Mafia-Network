@@ -299,3 +299,38 @@ function polarity() {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(9, 2.9), new THREE.MeshStandardMaterial({ map: t, transparent: true, depthWrite: false, roughness: 0.7 })); m.userData.print = true; return m;
 }
+
+/* ------------------------------------------------------- PoE injector */
+/* A desktop PoE injector, built from the standard design (no photograph
+   yet: send one and it will be matched part by part): a black box, DATA IN
+   and PoE OUT side by side on the front with their cables in, POWER and
+   PoE lights on top, the label (802.3af, or a passive 24 V one: o.std
+   "passive"), and the power adapter's DC plug in the back. */
+export function poeInjector(o = {}) {
+  const g = new THREE.Group(), W = 66, H = 30, D = 112, Y0 = 2, passive = o.std === "passive";
+  g.add(at(rbox(W, H, D, 5, plastic(0x18191b, { rough: 0.5 })), 0, Y0 + H / 2, 0));
+  [[-24, 42], [24, 42], [-24, -42], [24, -42]].forEach(function (p) { g.add(at(cyl(5, Y0, rubber(0x202124), 20), p[0], Y0 / 2, p[1])); });
+  /* the top: the label, the two lights near the front */
+  const top = new THREE.Group(); at(top, 0, Y0 + H + 0.05, 0, -Math.PI / 2, 0, 0); g.add(top);
+  const lb = label(passive ? ["PASSIVE PoE INJECTOR", "OUTPUT 24V ⎓ 1A", "DATA IN → PoE OUT", "S/N: " + COVERED] : ["PoE INJECTOR · IEEE 802.3af", "OUTPUT 48V ⎓ 0.32A (15.4W)", "DATA IN → PoE OUT", "S/N: " + COVERED], { w: 54, h: 36, marks: true });
+  at(lb, 0, 6, 0.2); top.add(lb);
+  [["POWER", -14], ["PoE", 14]].forEach(function (it) {
+    const l = led(COL.ledGreen, true, 1.5); l.userData.role = it[0]; top.add(at(l, it[1], -44, 0.4));
+    top.add(at(ink(it[0], 16, 3.6), it[1], -49.5, 0.3));
+  });
+  /* the front: DATA IN and PoE OUT */
+  const front = new THREE.Group(); front.name = "panel:Ports"; at(front, 0, 0, D / 2); g.add(front);
+  const din = rj45Jack({ name: "DATA IN", metal: true, leds: false }), pout = rj45Jack({ name: "PoE OUT", metal: true, leds: false });
+  at(din, -14, Y0 + 13, 0.2); at(pout, 14, Y0 + 13, 0.2); front.add(din, pout);
+  front.add(at(ink("DATA IN", 18, 3.4), -14, Y0 + 24, 0.05)); front.add(at(ink("PoE OUT", 18, 3.4), 14, Y0 + 24, 0.05));
+  /* the back: the adapter's DC plug */
+  const back = new THREE.Group(); at(back, 0, 0, -D / 2, 0, BACK); g.add(back);
+  back.add(at(rbox(16, 15, 1.2, 2, plastic(0x0b0b0c)), 0, Y0 + 14, 0.3));
+  const dc = dcJack("DC IN"); at(dc, 0, Y0 + 14, 0.9); back.add(dc); back.add(at(ink("DC IN " + (passive ? "24V" : "48V"), 22, 3.2), 0, Y0 + 25, 0.05));
+  /* the cables: grey from the switch, the outdoor run to the camera, the adapter's cord */
+  const ci = patch(din, 0x9fa3a8), co = patch(pout, 0x4a4e53), cp = dcIn(dc);
+  cableFrom(g, ci, [[-30, Y0 + 8, D / 2 + 60], [-52, 3.05, D / 2 + 96], [-140, 3.05, D / 2 + 220]], { straight: 22 });
+  cableFrom(g, co, [[30, Y0 + 8, D / 2 + 60], [52, 3.3, D / 2 + 96], [150, 3.3, D / 2 + 230]], { straight: 22, r: 3.3 });
+  cableFrom(g, cp, [[10, 14, -D / 2 - 40], [24, 1.9, -D / 2 - 70], [80, 1.9, -D / 2 - 240]], { straight: 10 });
+  return named(g, "device:PoE injector", { type: "injector", w: W, h: H + Y0, d: D });
+}

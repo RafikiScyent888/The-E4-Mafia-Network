@@ -193,6 +193,33 @@ C.push(async () => {
   await ctx.close();
 });
 
+/* HOME-13: the PoE injector. Unplugged: its adapter's plug out, POWER and PoE dark. Passive: POWER lit, PoE dark; the camera dark either way; the fix lights PoE */
+C.push(async () => {
+  const { p, ctx } = await open(GL, "HOME-13", 1);
+  await physical(p, "injector", "Power adapter");
+  const k = await plugAt(p, "DC IN"); check(k.plug && k.off > 25, "HOME-13 unplugged: the adapter's plug is out of DC IN " + JSON.stringify(k));
+  await led(p, "HOME-13 unplugged: injector POWER", null, "POWER", "off");
+  await physical(p, "camera", "Port close-up");
+  await led(p, "HOME-13 unplugged: camera port link", "PoE", "link", "off");
+  await physical(p, "injector", "Label and lights");
+  const n = await fine(p);
+  await p.click('.phys button:text-is("Plug its power adapter in")'); await settled(p, n);
+  await led(p, "HOME-13 plugged back in: injector POWER", null, "POWER", "green");
+  await led(p, "HOME-13 plugged back in: injector PoE", null, "PoE", "green");
+  await ctx.close();
+});
+C.push(async () => {
+  const { p, ctx } = await open(GL, "HOME-13", 2);
+  await physical(p, "injector", "Label and lights");
+  await led(p, "HOME-13 passive: injector POWER", null, "POWER", "green");
+  await led(p, "HOME-13 passive: injector PoE", null, "PoE", "off");
+  check(/PASSIVE PoE INJECTOR, OUTPUT 24V/.test(await p.$eval(".m3d-says", (x) => x.textContent)), "HOME-13 passive: the words give the passive label");
+  const n = await fine(p);
+  await p.click('.phys button:text-is("Swap in a new 802.3af injector")'); await settled(p, n);
+  await led(p, "HOME-13 after the swap: injector PoE", null, "PoE", "green");
+  await ctx.close();
+});
+
 for (const c of C) { try { await c(); } catch (e) { bad.push("crashed: " + e.message.split("\n")[0]); } }
 
 /* without WebGL: the still and the words, no errors */

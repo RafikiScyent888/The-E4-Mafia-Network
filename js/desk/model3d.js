@@ -39,6 +39,8 @@ const SETUP = {
     views: [["Back ports", { focus: "panel:Ports", view: [-0.35, 0.2, -1] }], ["Control panel", { focus: "panel:Control panel", view: [0.15, 0.75, 0.66], light: [0.3, 1.3, 1.0] }]] },
   tv: { build: function (o) { return END.smartTV({ screen: o.screen }); }, view: [-0.75, 0.32, -1], light: [-0.5, 1.2, -1.0],
     views: [["Ports close-up", { focus: "panel:Connection panel", view: [-0.25, 0.1, -1] }], ["Screen", { view: [0, 0.08, 1], light: [0.3, 1.0, 1.0] }]] },
+  injector: { build: function (o) { return GEAR.poeInjector({ std: o.std }); }, view: [0.75, 0.6, 1], light: [0.6, 1.3, 0.9], frame: [-60, 0, -70, 60, 40, 90],
+    views: [["Ports close-up", { focus: "panel:Ports", view: [0.15, 0.3, 1] }], ["Label and lights", { view: [0.05, 1, 0.25], frame: [-34, 30, -56, 34, 34, 58], light: [0.3, 1.3, 0.5] }], ["Power adapter", { view: [0.5, 0.35, -1], frame: [-30, 0, -100, 40, 34, -40], light: [0.4, 1.2, -1.0] }]] },
   camera: { build: function (o) { return END.ipCamera({ ipLine: o.ipLine }); }, stage: "concrete", view: [1, 0.5, 0.75], light: [0.7, 1.3, 0.9], frame: [-70, 0, -70, 125, 112, 125],
     views: [["Port close-up", { focus: "panel:PoE port", view: [0.91, 0.3, 0.41] }]] }
 };
@@ -149,7 +151,7 @@ function build(S) {
     if (p.plug === "none") { if (plug) removePlug(plug); closeJaw(jack); }
     else if (p.plug === "out") { if (plug) pullOut(jack, plug, p.damage && DAMAGE[p.damage]); }
     else if (plug && p.damage) relay(plug, DAMAGE[p.damage]);
-    jackLeds(jack, p.lights);
+    if (p.lights) jackLeds(jack, p.lights);
   });
   const blink = [];
   S.leds.forEach(function (l) {

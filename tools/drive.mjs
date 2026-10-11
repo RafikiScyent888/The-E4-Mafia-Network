@@ -8,6 +8,13 @@
    Optional plant: node tools/drive.mjs "<js run in the page after load>" */
 import http from "node:http"; import fs from "node:fs"; import path from "node:path"; import url from "node:url";
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "..");
+const { HOME_TICKETS } = await import("../js/tickets/home.js"); const EN = await import("../js/tickets/engine.js");
+/* three houses each, plus more until every variant of the fault (which end, which kind) has been driven through the page */
+function seedsFor(id) {
+  const def = HOME_TICKETS.find((d) => d.id === id), key = (T) => JSON.stringify([T.v.kind, T.v.end, T.v.kink]), out = [11, 2025, 777777], seen = new Set(out.map((s) => key(EN.open(def, s))));
+  for (let s = 1; s < 400; s++) { const k = key(EN.open(def, s)); if (!seen.has(k)) { seen.add(k); out.push(s); } }
+  return out;
+}
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".jpg": "image/jpeg" };
 const srv = http.createServer((q, r) => { const rel = decodeURIComponent(q.url.split("?")[0].split("#")[0]).slice(1) || "index.html"; fs.readFile(path.join(ROOT, rel), (e, b) => { r.writeHead(e ? 404 : 200, { "content-type": MIME[path.extname(rel)] || "application/octet-stream" }); r.end(e ? "" : b); }); }).listen(0);
 const pw = await import(process.env.PLAYWRIGHT || "/opt/node22/lib/node_modules/playwright/index.mjs"); const { chromium } = pw.default || pw;
@@ -102,14 +109,46 @@ const PLAN = {
     wrong: async (p) => { await dev(p, "laptop"); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); },
     fix: async (p) => { await dev(p, "switch"); await tab(p, "Physical"); await p.click('.cabs li:has-text("not on the diagram") button:text-is("Unplug it")'); await dev(p, "laptop"); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); await dev(p, "tv"); await tab(p, "Physical"); await p.click('.phys button:text-is("Restart (power off and on)")'); },
     proof: async (p) => { await dev(p, "laptop"); await tab(p, "Command Prompt"); await type(p, "ping 203.0.113.80"); }
+  },
+  "HOME-11": {
+    look: async (p, v) => { await dev(p, "pc"); await type(p, "ping " + v.ip); check(/Request timed out/.test(await term(p)), "HOME-11: pings to the printer time out"); await type(p, "arp -a"); check(new RegExp(v.ip.replace(/\./g, "\\.") + " +" + v.prMac).test(await term(p)), "HOME-11: arp -a shows the printer answered ARP"); },
+    wrong: async (p) => { await dev(p, "printer"); await tab(p, "Physical"); await p.click('.phys button:text-is("Restart (power off and on)")'); },
+    fix: async (p) => { await dev(p, "printer"); await tab(p, "Control panel"); await p.fill('.devform input[name="mask"]', "255.255.255.0"); await p.click('.devform button:text-is("Save")'); },
+    proof: async (p) => { await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); }
+  },
+  "HOME-12": {
+    look: async (p, v) => { await dev(p, "pc"); await type(p, "ipconfig"); check((await term(p)).indexOf(v.gw) >= 0, "HOME-12: ipconfig shows the old gateway"); },
+    wrong: async (p) => { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); },
+    fix: async (p, v) => { await dev(p, "pc"); await tab(p, "Network settings"); if (v.kind === "same") { await p.check('.devform input[name="mode"][value="dhcp"]'); } else { const g = await T(p, () => window.__e4.T.sim.d.router.lan.ip); await p.fill('.devform input[name="gw"]', g); } await p.click('.devform button:text-is("Save")'); await p.waitForTimeout(60); check(/Saved/.test(await p.$eval(".devform .msg", (n) => n.textContent)), "HOME-12: the IP settings say Saved"); },
+    proof: async (p) => { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping 203.0.113.80"); }
+  },
+  "HOME-13": {
+    look: async (p) => { await dev(p, "camera"); await tab(p, "Web page"); check(/can't be reached/.test(await p.$eval(".pane", (n) => n.textContent)), "HOME-13: the camera's page can't be reached"); await dev(p, "injector"); await tab(p, "Physical"); check(/Its label/.test(await p.$eval(".m3d-says", (n) => n.textContent)), "HOME-13: the injector's Physical tab says what its label says"); },
+    wrong: async (p) => { await dev(p, "camera"); await tab(p, "Physical"); await p.click('.phys button:text-is("Restart (power off and on)")'); },
+    fix: async (p, v) => { await dev(p, "injector"); await tab(p, "Physical"); await p.click('.phys button:text-is("' + (v.kind === "unplugged" ? "Plug its power adapter in" : "Swap in a new 802.3af injector") + '")'); check(/it powers up/.test(await p.$eval(".phys", (n) => n.textContent)), "HOME-13: the camera powers up"); },
+    proof: async (p) => { await dev(p, "camera"); await tab(p, "Web page"); }
+  },
+  "HOME-14": {
+    look: async (p) => { await dev(p, "laptop"); await type(p, "netsh wlan show drivers"); check(!/WPA3/.test(await term(p)), "HOME-14: the old adapter lists no WPA3"); await type(p, "netsh wlan show networks"); check(/WPA3-Personal/.test(await term(p)), "HOME-14: the house network uses WPA3-Personal"); },
+    wrong: async (p) => { await dev(p, "router"); await tab(p, "Wi-Fi"); await p.selectOption('.devform select[name="sec"]', "WPA2-Personal"); await p.click('.devform button:text-is("Save")'); },
+    afterWrong: async (p) => { check(/keeps WPA3/.test(await p.$eval("#board", (n) => n.textContent)), "HOME-14: Mason says WPA2 alone isn't the fix"); },
+    fix: async (p) => { await dev(p, "router"); await tab(p, "Wi-Fi"); await p.selectOption('.devform select[name="sec"]', "WPA2/WPA3-Personal"); await p.click('.devform button:text-is("Save")'); },
+    proof: async (p) => { await dev(p, "laptop"); await tab(p, "Command Prompt"); await type(p, "ping 203.0.113.80"); }
+  },
+  "HOME-15": {
+    look: async (p) => { await dev(p, "laptop"); await type(p, "netsh wlan show interfaces"); check(/Authentication\s+: Open/.test(await term(p)), "HOME-15: the laptop is on an open network"); await type(p, "netsh wlan show networks mode=bssid"); },
+    wrong: async (p) => { await dev(p, "laptop"); await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Forget the saved network")'); await p.click('.pane button:text-is("Connect (enter the password)")'); },
+    afterWrong: async (p) => { check(/has it now/.test(await p.$eval("#board", (n) => n.textContent)), "HOME-15: Mason says the password was given away"); },
+    fix: async (p) => { await dev(p, "laptop"); await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Forget the saved network")'); await dev(p, "router"); await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Change the Wi-Fi password")'); await dev(p, "laptop"); await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Connect (enter the password)")'); await dev(p, "phone"); await p.click('.pane button:text-is("Re-enter the Wi-Fi password")'); },
+    proof: async (p) => { await dev(p, "laptop"); await tab(p, "Command Prompt"); await type(p, "ping 203.0.113.80"); }
   }
 };
 
-for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY || k === process.env.ONLY)) for (const seed of [11, 2025, 777777]) {
+for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY || k === process.env.ONLY)) for (const seed of seedsFor(id)) {
   let { p, ctx } = await page(id, seed);
   const v = await T(p, () => window.__e4.T.v), gw = await T(p, () => window.__e4.T.sim.d.router.lan.ip);
   check(await T(p, () => window.__e4.T.def.exhibits(window.__e4.T.sim, window.__e4.T.v)), id + " " + seed + ": fault present at load");
-  await plan.look(p);
+  await plan.look(p, v);
   const ev0 = await p.$$eval("#notebook li", (l) => l.length); check(ev0 >= 1, id + " " + seed + ": the notebook recorded evidence (" + ev0 + ")");
   /* the board: rungs as the rule says */
   const wrongs = await T(p, () => window.__e4.T.opts.filter((o) => !o.right).map((o) => o.id));
@@ -135,7 +174,9 @@ for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY 
   check(await T(p, () => window.__e4.T.def.exhibits(window.__e4.T.sim, window.__e4.T.v)), id + ": putting the network back brings the fault back");
   /* the real fix, through the page, then the proof */
   await plan.fix(p, v); await plan.proof(p, gw);
-  check(await p.$("#board .solved") !== null && /Ticket .* solved/.test(await p.$eval("#board .solved h3", (n) => n.textContent).catch(() => "")), id + " " + seed + ": solved through the page");
+  const solvedNow = await p.$("#board .solved") !== null && /Ticket .* solved/.test(await p.$eval("#board .solved h3", (n) => n.textContent).catch(() => ""));
+  check(solvedNow, id + " " + seed + ": solved through the page");
+  if (!solvedNow) { await ctx.close(); continue; }   /* the rest needs a solved ticket: record the failure by name, don't crash */
   /* the progress is kept */
   await p.reload(); await p.waitForTimeout(350);
   check(await p.$("#board .solved") !== null, id + ": still solved after a reload");
@@ -167,9 +208,30 @@ for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY 
   await p.click("#dys"); await p.goto(base + "lab-bench.html"); await p.waitForTimeout(300);
   check(await p.evaluate(() => document.body.classList.contains("dys")), "easier reading stays on across pages");
   await p.click("#mHelp"); check(await p.evaluate(() => document.getElementById("help").open), "Help opens");
+  await p.keyboard.press("Escape");
+  /* the instructor's tools: behind the PIN, answers only in the instructor's window */
+  await p.click("#mInst"); check(await p.$("#inst[open] #instpin") !== null, "instructor: asks for the PIN");
+  await p.fill("#instpin", "1234"); await p.press("#instpin", "Enter"); check(/isn't right/.test(await p.$eval("#inst .msg", (n) => n.textContent).catch(() => "")), "instructor: a wrong PIN is refused");
+  check(await p.$("#inst #instt") === null, "instructor: nothing unlocked by a wrong PIN");
+  if (await p.$("#inst #instpin")) { await p.fill("#instpin", "3693"); await p.press("#instpin", "Enter"); }
+  const unlockedNow = await p.$("#inst #instt") !== null; check(unlockedNow, "instructor: 3693 unlocks the tools");
+  if (unlockedNow) {
+  await p.selectOption("#instt", "HOME-12"); await p.fill("#insts", "4242"); await p.click('#inst button:text-is("Open it")'); await p.waitForTimeout(80);
+  check((await T(p, () => window.__e4.T.def.id)) === "HOME-12" && (await T(p, () => window.__e4.T.seed)) === 4242, "instructor: the demo opens the chosen ticket on the chosen house");
+  await p.click('#inst button:text-is("Show the fault and the fix")');
+  const right = await T(p, () => window.__e4.T.opts.find((o) => o.right).text);
+  check((await p.$eval("#inst .inst-out", (n) => n.textContent)).indexOf(right) >= 0, "instructor: the fault and the fix are shown");
+  check((await p.$eval("#board", (n) => n.textContent)).indexOf("Right answer") < 0 && !(await T(p, () => window.__e4.T.diagnosed)), "instructor: nothing is revealed or answered on the student's board");
+  await p.click('#inst button:text-is("Show all of Mason\'s help")'); check(/Rung 1[\s\S]*Rung 2[\s\S]*Rung 3/.test(await p.$eval("#inst .inst-out", (n) => n.textContent)), "instructor: every rung of help is shown");
+  await p.click("#inst .x"); await p.reload(); await p.waitForTimeout(300); await p.click("#mInst");
+  check(await p.$("#inst #instt") !== null, "instructor: stays unlocked in this tab after a reload");
+  await p.click('#inst button:text-is("Lock the instructor tools")'); check(await p.$("#inst #instpin") !== null, "instructor: Lock asks for the PIN again");
+  }
+  const src = await p.evaluate(async () => (await (await fetch("js/desk/instructor.js")).text()) + (await (await fetch("js/desk/app.js")).text()));
+  check(src.indexOf("3693") < 0, "instructor: the PIN itself isn't written in the page's code");
   await ctx.close();
 }
 console.log(errs.length ? "PAGE ERRORS\n" + [...new Set(errs)].join("\n") : "no page errors");
-console.log(bad.length ? "FAIL\n" + bad.join("\n") : "PASS: " + steps + " checks, every built ticket worked end to end through the page (3 houses each), the views, the reload");
+console.log(bad.length ? "FAIL\n" + bad.join("\n") : "PASS: " + steps + " checks, every built ticket worked end to end through the page (three houses each, plus one for every variant of a fault those missed), the views, the instructor tools, the reload");
 await B.close(); srv.close();
 process.exit(bad.length || errs.length ? 1 : 0);

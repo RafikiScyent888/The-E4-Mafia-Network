@@ -70,7 +70,10 @@ function pagePane(id, key, ctx, rerender) {
     P.rows.forEach(function (r) { tb.appendChild(el("tr", null, el("th", { scope: "row" }, r[0]), el("td", null, r[1]))); });
     pane.appendChild(el("table", { class: "kv" }, tb));
     if (P.log) { pane.appendChild(el("p", { class: "note" }, "Event log")); pane.appendChild(el("div", { class: "log" }, P.log.join("\n"))); pane.lastChild.style.whiteSpace = "pre-wrap"; }
+    if (P.ipForm) pane.appendChild(ipForm(id, P.ipForm, ctx, rerender));
     if (P.speedTest) pane.appendChild(button(id, "speed", "Run a speed test", ctx, rerender, function () { const r = ctx.act({ t: "speed", dev: id }); const x = r && r.result; return x && x.ok ? "Speed test: " + x.down + " Mb/s down, " + x.up + " Mb/s up (the plan is " + x.plan + " Mb/s)." : "Speed test: can't reach the test server."; }));
+    if (P.networks) pane.appendChild(networksList(id, P, ctx, rerender));
+    if (P.reenter) pane.appendChild(button(id, "reenter", "Re-enter the Wi-Fi password", ctx, rerender, function () { const r = ctx.act({ t: "join", dev: id }); const f = r && r.facts; return f && f.ap ? "Joined with the new password: address " + f.ip + ". Internet: " + (f.internet ? "OK" : "none") + "." : "Still can't join."; }));
     if (P.rejoin) pane.appendChild(button(id, "rejoin", "Turn Wi-Fi off and on", ctx, rerender, function () { const r = ctx.act({ t: "rejoin", dev: id }); const f = r && r.facts; return f && f.ip ? "Rejoined the Wi-Fi: address " + f.ip + (f.apipa ? " (no address came; it gave itself this one)" : "") + ". Internet: " + (f.internet ? "OK" : "none") + "." : "Can't see the Wi-Fi network."; }));
     if (P.cameraApp) pane.appendChild(button(id, "camera", "Open the camera app on mobile data", ctx, rerender, function () { const r = ctx.act({ t: "outside", port: 8443 }); const x = r && r.result; return x && x.ok ? "Camera app: connected. The porch camera's picture comes up." : "Camera app: can't connect to the camera" + (x && x.why === "refused" ? " (the connection was refused)" : x && x.why === "nobody" ? " (nothing answered)" : "") + "."; }));
   } else if (P.kind === "printers") {
@@ -135,24 +138,27 @@ function wifiForm(v, ctx, rerender) {
   const msg = el("p", { class: "msg", role: "status" });
   const f = el("form", { class: "devform", novalidate: true });
   const s24 = el("select", { name: "ch24" }); [["auto", "Auto (now " + v.ch24now + ")"]].concat([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(function (c) { return [String(c), String(c)]; })).forEach(function (o) { const op = el("option", { value: o[0] }, o[1]); if (o[0] === v.ch24) op.selected = true; s24.appendChild(op); });
+  const sec = el("select", { name: "sec" }); [["WPA2-Personal", "WPA2-Personal"], ["WPA2/WPA3-Personal", "WPA2/WPA3-Personal (transition)"], ["WPA3-Personal", "WPA3-Personal"]].forEach(function (o) { const op = el("option", { value: o[0] }, o[1]); if (o[0] === v.sec) op.selected = true; sec.appendChild(op); });
   const s5 = el("select", { name: "ch5" }); [36, 40, 44, 48, 149, 153, 157, 161].forEach(function (c) { const op = el("option", { value: String(c) }, String(c)); if (String(c) === v.ch5) op.selected = true; s5.appendChild(op); });
-  f.appendChild(el("fieldset", null, el("legend", null, "Network"), field("Network name (SSID)", "ssid", v.ssid, { readonly: true, inputmode: "text" }), field("Security", "sec", v.sec, { readonly: true, inputmode: "text" }), field("Password", "pw", "••••••••••", { readonly: true, inputmode: "text", "aria-label": "Password, covered" })));
+  f.appendChild(el("fieldset", null, el("legend", null, "Network"), field("Network name (SSID)", "ssid", v.ssid, { readonly: true, inputmode: "text" }), el("label", { class: "f" }, "Security", sec), field("Password", "pw", "••••••••••", { readonly: true, inputmode: "text", "aria-label": "Password, covered" })));
+  if (v.bssids) f.appendChild(el("p", { class: "note" }, "This router's radios (BSSIDs): " + v.bssids.map(function (b) { return b[0] + " " + b[1]; }).join(", ")));
   f.appendChild(el("fieldset", null, el("legend", null, "Channels"), el("div", { class: "row2" }, el("label", { class: "f" }, "2.4 GHz channel", s24), el("label", { class: "f" }, "5 GHz channel", s5))));
   f.appendChild(el("div", { class: "acts" }, el("button", { class: "btn", type: "submit" }, "Save")));
   f.appendChild(msg);
   f.addEventListener("submit", function (e) {
     e.preventDefault();
     const d = new FormData(f);
-    const r = ctx.act({ t: "router", page: "wifi", values: { ch24: d.get("ch24"), ch5: d.get("ch5") } });
-    if (r && r.result && r.result.ok) { ctx.flash = "Saved. Wi-Fi devices move to the new channel within a few seconds."; rerender(); }
+    const r = ctx.act({ t: "router", page: "wifi", values: { ch24: d.get("ch24"), ch5: d.get("ch5"), sec: d.get("sec") } });
+    if (r && r.result && r.result.ok) { ctx.flash = "Saved. Wi-Fi devices reconnect with the new settings within a few seconds."; rerender(); }
     else { msg.className = "msg err"; msg.textContent = "Not saved: " + ((r && r.result && r.result.errs) || []).join(". ") + "."; }
   });
   if (ctx.flash) { msg.className = "msg ok"; msg.textContent = ctx.flash; ctx.flash = null; }
-  return f;
+  const pw = el("div", { class: "acts", style: "margin-top:10px" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "router", page: "wifi", values: { newPassword: true } }); if (r && r.result && r.result.ok) { ctx.flash = "Saved: a new Wi-Fi password. Every Wi-Fi device has to be given it again."; rerender(); } } }, "Change the Wi-Fi password"));
+  return el("div", null, f, pw, v.changed ? el("p", { class: "note" }, "The Wi-Fi password was changed today.") : null);
 }
 
 /* "Office PC" reads "office PC" mid-sentence; "IP camera" stays as it is */
-function lowerFirst(s) { return /^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.slice(1) : s; }
+function lowerFirst(s) { return /^[A-Z][a-z]+(\s|$)/.test(s) ? s[0].toLowerCase() + s.slice(1) : s; }
 const ACT_TEXT = { look: "Look at the plug", reseat: "Reseat the plug", unplug: "Unplug it", test: "Test with the cable tester", replace: "Swap in a new cable", tighten: "Tighten the connector" };
 function physicalPane(id, P, ctx, rerender) {
   const wrap = el("div", { class: "phys" });
@@ -175,7 +181,13 @@ function physicalPane(id, P, ctx, rerender) {
   });
   if (P.cables.length) wrap.appendChild(ul); else wrap.appendChild(el("p", { class: "note" }, "No cables: this device is on Wi-Fi."));
   const rr = el("p", { class: "res", role: "status" }); if (physLog[id]["power"]) rr.textContent = physLog[id]["power"]; else rr.hidden = true;
-  wrap.appendChild(el("div", { class: "acts", style: "margin-top:10px" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "power", dev: id }); physLog[id]["power"] = r ? r.text : ""; rerender(); } }, "Restart (power off and on)")));
+  if (P.restart) wrap.appendChild(el("div", { class: "acts", style: "margin-top:10px" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "power", dev: id }); physLog[id]["power"] = r ? r.text : ""; rerender(); } }, "Restart (power off and on)")));
+  if (P.injector) {   /* the injector's own power adapter, and swapping the injector itself */
+    const j = P.injector, say = function (r) { const f = r && r.facts; return f ? "The injector's power is " + (f.power ? "plugged in" : "unplugged") + ". The camera: " + (f.camera ? "it powers up (its lights come on)" : "still dark") + "." : ""; };
+    wrap.appendChild(el("div", { class: "acts", style: "margin-top:10px" },
+      el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "injector", values: { power: !j.power } }); physLog[id]["power"] = (j.power ? "Unplugged its power adapter. " : "Plugged its power adapter in. ") + say(r); rerender(); } }, j.power ? "Unplug its power adapter" : "Plug its power adapter in"),
+      el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "injector", values: { swap: true } }); physLog[id]["power"] = "Swapped in a new 802.3af PoE injector, same cables and adapter. " + say(r); rerender(); } }, "Swap in a new 802.3af injector")));
+  }
   wrap.appendChild(rr);
   return wrap;
 }
@@ -257,6 +269,43 @@ function reservations(P, ctx, rerender) {
   wrap.appendChild(f);
   if (ctx.flash) { msg.className = "msg ok"; msg.textContent = ctx.flash; ctx.flash = null; }
   return wrap;
+}
+
+/* the networks in range, as Windows lists them to pick from, and forgetting the one it has saved */
+function networksList(id, P, ctx, rerender) {
+  said[id] = said[id] || {};
+  const wrap = el("div", { style: "margin-top:12px" }, el("h3", null, "Networks in range"));
+  const ul = el("ul", { class: "cabs" });
+  P.networks.forEach(function (n) {
+    const label = n.open ? "Open: no password" : "Secured (" + n.sec + ")";
+    ul.appendChild(el("li", null, el("p", { class: "nm" }, n.ssid), el("p", { style: "margin:0 0 6px" }, label + " · signal " + n.signal + "%" + (n.now ? " · connected" : "")),
+      n.now ? null : el("div", { class: "acts" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "join", dev: id, open: n.open }); const f = r && r.facts; said[id].net = "Connect to " + n.ssid + (n.open ? " (open)" : "") + ": " + (f && f.ap ? "connected, address " + f.ip + ". Internet: " + (f.internet ? "OK" : "none") + "." : "couldn't connect."); rerender(); } }, "Connect" + (n.open ? " (open)" : " (enter the password)")))));
+  });
+  wrap.appendChild(ul);
+  if (P.forget) wrap.appendChild(el("div", { class: "acts", style: "margin-top:8px" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { ctx.act({ t: "forget", dev: id }); said[id].net = "Forgot the saved network: the laptop won't join it again by itself."; rerender(); } }, "Forget the saved network")));
+  const res = el("p", { class: "res", role: "status" }); if (said[id].net) res.textContent = said[id].net; else res.hidden = true;
+  wrap.appendChild(res);
+  return wrap;
+}
+
+/* Windows' "Edit IP settings": automatic, or every number typed by hand */
+function ipForm(id, v, ctx, rerender) {
+  const msg = el("p", { class: "msg", role: "status" });
+  const f = el("form", { class: "devform", novalidate: true, style: "margin-top:12px" });
+  f.appendChild(el("fieldset", null, el("legend", null, "Edit IP settings (IPv4)"), el("div", { class: "radio" }, radio("mode", "dhcp", v.mode !== "static", "Automatic (DHCP)"), radio("mode", "static", v.mode === "static", "Manual")),
+    el("div", { class: "row2" }, field("IP address", "ip", v.ip), field("Subnet mask", "mask", v.mask)), field("Gateway", "gw", v.gw),
+    el("div", { class: "row2" }, field("Preferred DNS", "dns1", v.dns1), field("Alternate DNS", "dns2", v.dns2))));
+  f.appendChild(el("div", { class: "acts" }, el("button", { class: "btn", type: "submit" }, "Save")));
+  f.appendChild(msg);
+  f.addEventListener("submit", function (e) {
+    e.preventDefault(); const d = new FormData(f), t = function (k) { return String(d.get(k) || "").trim(); };
+    const values = d.get("mode") === "static" ? { mode: "static", ip: t("ip"), mask: t("mask"), gw: t("gw"), dns: [t("dns1"), t("dns2")] } : { mode: "dhcp" };
+    const x = ctx.act({ t: "client", dev: id, values: values });
+    if (x && x.result && x.result.ok) { ctx.flash = "Saved. Windows applied the new IP settings."; rerender(); }
+    else { msg.className = "msg err"; msg.textContent = "Not saved: " + ((x && x.result && x.result.errs) || []).join(". ") + "."; }
+  });
+  if (ctx.flash) { msg.className = "msg ok"; msg.textContent = ctx.flash; ctx.flash = null; }
+  return f;
 }
 
 function printerForm(P, ctx, rerender) {

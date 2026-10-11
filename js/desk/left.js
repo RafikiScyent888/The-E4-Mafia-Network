@@ -26,6 +26,8 @@ export function renderQueue(host, ctx) {
   ctx.list.filter(function (t) { return t.tier === "common"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
   ol.appendChild(el("li", { class: "tier" }, "Tier 1 · Home · harder"));
   ctx.list.filter(function (t) { return t.tier === "harder"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
+  ol.appendChild(el("li", { class: "tier" }, "Tier 1 · Home · five more"));
+  ctx.list.filter(function (t) { return t.tier === "more"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
   host.appendChild(ol);
 }
 
@@ -48,6 +50,8 @@ export function renderShelves(host, ctx) {
       ctx.list.filter(function (t) { return t.tier === "common"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
       ol.appendChild(el("li", { class: "tier" }, "Home · harder"));
       ctx.list.filter(function (t) { return t.tier === "harder"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
+      ol.appendChild(el("li", { class: "tier" }, "Home · five more"));
+      ctx.list.filter(function (t) { return t.tier === "more"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
       ol.appendChild(el("li", { class: "tier" }, "From the Network-Sims"));
       ["Network Troubleshooting", "Routing Table Troubleshooting", "STP Troubleshooting", "Switch CLI Output Analysis"].forEach(function (n) { ol.appendChild(el("li", null, el("button", { type: "button", "aria-disabled": "true" }, el("span", { class: "num" }, "·"), el("span", { class: "what" }, n), el("span", { class: "st" }, "Network-Sims · at a later level")))); });
     } else {

@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (11 October 2026): the real site, builds 1 to 3, is live: all ten home tickets, and the live 3D models in every Physical tab** (not yet linked
+**Status (11 October 2026): the real site, builds 1 to 4, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN)** (not yet linked
 from the Under the Hood tile). See "The real site" below. The owner, 11
 October 2026: **"Build it like the preview you gave me just keep the layout
 exactly the same just remove the C with A bars."** Confirmed with the owner
@@ -458,15 +458,79 @@ turnable, set to what the simulation says right now:
   (so a plug can be pulled and its run re-laid) and takes `crush` and
   `split` damage.
 
+**Build 4 (11 October 2026): five more home tickets and the instructor
+tools.** The owner: "Yes go straight on, those five look right." Objectives
+doc re-read that day (Network+ V9 unchanged). In the queue as "Tier 1 ·
+Home · five more":
+- **HOME-11** the printer's subnet mask typed wrong (/29 or /28, chosen so
+  the office PC and the router are both off its network). It answers ARP
+  but its replies never come back: `route()` now checks the reply path too
+  (`canReply`); ping says Request timed out and arp -a shows its hardware
+  address. Fix: the mask on its control panel. (Incorrect IP/subnet mask.)
+- **HOME-12** the office PC's static default gateway left at the old
+  router's address (.254 on this network, or the old network's .1). It
+  prints but nothing leaves the house. Fix: the PC's new **Edit IP
+  settings** form (Network settings tab): the gateway, or Automatic.
+  (Incorrect gateway, default routes.)
+- **HOME-13** PoE: every house now has a **PoE injector** (802.3af) in the
+  office between the switch and the camera, as a real non-PoE switch needs;
+  the camera runs on power down its cable (`poePowered`), and the injector
+  passes the link straight through, so the switch light goes dark with the
+  camera. The fault: its adapter unplugged, or a cheap passive 24 V
+  injector bought as a replacement. Fix on the injector's Physical tab
+  (plug it in / swap in an 802.3af one). Its 3D model (`poeInjector`) is
+  built from the standard design: **no photograph yet; send one and it
+  will be matched**. (PoE, power considerations.)
+- **HOME-14** the router set to WPA3-Personal only; the old laptop's
+  adapter stops at WPA2 (`netsh wlan show drivers`, new). Wi-Fi security is
+  now real (`canSec`/`usesSec`, a Security choice on the router's Wi-Fi
+  page). Fix: WPA2/WPA3 (transition); WPA2 alone works but Mason says it
+  took WPA3 from everything else. (Wireless encryption, authentication.)
+- **HOME-15** an evil twin: an open hotspot outside with the house's name
+  and a fake "router update" page; the laptop joined it and the password
+  went into the page. A saved profile is for open or secured networks, not
+  both; netsh lists the name twice; the laptop's Wi-Fi tab now lists the
+  networks in range with Connect, and Forget; the router's Wi-Fi page shows
+  its radios' BSSIDs and can change the Wi-Fi password (`wifi.gen`), after
+  which every device needs it again (phone: Re-enter the Wi-Fi password).
+  Fixed only when the laptop is back on the real network AND the password
+  has been changed AND the phone has the new one. (Evil twin, rogue devices.)
+- Device IP settings (printer panel, PC form) now take any well-formed
+  setting, right or wrong for the network, as real devices do; before,
+  their error messages would have given HOME-11 and 12 away.
+- On the diagram the injector sits right of the switch, its label to the
+  right (a new label side) and its own port names left to its Physical tab;
+  on the floor plan it is on the office's lower left. The red diamond for a
+  dead run now sits halfway along the run itself, and the "red dashed run"
+  key is on the garage floor, clear of every label.
+- Fixed with it: the switch's Physical tab said "Patch cable to the iP
+  camera" (names are lower-cased only when the first word is a plain
+  capitalised word: "office PC", "IP camera", "PoE injector").
+
+**The instructor tools** (menu: Instructor; PIN 3693, the owner's
+standing PIN). Only a hash of the PIN is in the code; it unlocks for that
+browser tab (sessionStorage), so the next student on the computer doesn't
+inherit it. Inside: open any ticket on a chosen house number for a
+demonstration (the same number always builds the same house); show the
+open ticket's right answer, cause, fix, fix hints and the proof that
+counts; show all of Mason's help at once (rung 1, rung 2, and the reasons
+rung 3 strikes); clear this computer's progress; lock again. Everything
+shows in the instructor's window, never on the student's board. (A static
+site can't truly hide anything: this keeps answers out of casual reach.)
+
 **Checks:** `npm test` (Node: every ticket on 150 houses: the fault shows
 in the commands themselves, the board, the real fix and the tempting
 wrong fixes, proof only after the fix and never from a self-ping, the
 ladder, exact replay, no hint names the answer); `node tools/drive.mjs`
-(the page: every ticket worked end to end on three houses each, through
+(the page: every ticket worked end to end on three houses each, plus a
+house for every variant of a fault those three missed (it found HOME-01's
+PC-end unplug and HOME-13's passive injector were never driven), through
 the terminal, the forms and the Physical tab; the rungs; red marked three
 ways; a wrong fix not solving; putting the network back; reload keeps
-progress; the three views; easier reading persisting); AAA on painted
-pixels across 44 states plus scrolled positions, measured with WebGL on so
+progress; the three views; easier reading persisting; the instructor
+tools: a wrong PIN refused, 3693 unlocking, the demo opening the chosen
+house, nothing revealed on the board, the PIN not in the code); AAA on painted
+pixels across 54 states plus scrolled positions, measured with WebGL on so
 the 3D model's buttons and the Enlarge window are measured too (and one
 state with it off, for the fallback); `node tools/models.mjs` (the 3D
 models in a real browser: the colour actually drawn at each light the

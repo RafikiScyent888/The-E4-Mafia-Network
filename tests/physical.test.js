@@ -140,3 +140,23 @@ test("a student's own unplugging shows, and so does putting it back", () => {
     assert.equal(port(physicalState(T.sim, "router"), "LAN 2").plug, "in");
   }
 });
+
+test("HOME-13: the injector's unplugged adapter or its passive label shows, the camera is dark, and the fix lights it", () => {
+  const seen = new Set();
+  for (const s of seeds("HOME-13")) {
+    const T = E.open(byId["HOME-13"], s), I = physicalState(T.sim, "injector"), C = physicalState(T.sim, "camera"), W = physicalState(T.sim, "switch");
+    seen.add(T.v.kind);
+    assert.equal(port(I, "DC IN").plug, T.v.kind === "unplugged" ? "out" : "in");
+    assert.equal(led(I, "POWER").state, T.v.kind === "unplugged" ? "off" : "on");
+    assert.equal(led(I, "PoE").state, "off");
+    assert.equal(I.opts.std, T.v.kind === "passive" ? "passive" : "af");
+    assert.match(I.says.join(" "), T.v.kind === "passive" ? /PASSIVE PoE INJECTOR, OUTPUT 24V/ : /IEEE 802\.3af/);
+    assert.equal(port(C, "PoE").lights, "off"); assert.match(C.says.join(" "), /No power: the camera is dark/);
+    assert.equal(port(W, String(T.v.port)).lights, "off");
+    E.act(T, T.v.kind === "unplugged" ? { t: "injector", values: { power: true } } : { t: "injector", values: { swap: true } });
+    assert.equal(led(physicalState(T.sim, "injector"), "PoE").state, "on");
+    assert.equal(port(physicalState(T.sim, "camera"), "PoE").lights, "green");
+    assert.equal(port(physicalState(T.sim, "switch"), String(T.v.port)).lights, "green");
+  }
+  assert.equal(seen.size, 2);
+});

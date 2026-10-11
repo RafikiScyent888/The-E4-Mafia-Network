@@ -6,7 +6,7 @@
    is wrong, which Mason only shows at the third rung of help. */
 import { makeHome } from "../net/home.js";
 import { Sim } from "../net/sim.js";
-import { rng, hash, mac } from "../net/util.js";
+import { rng, hash, mac, network, broadcast } from "../net/util.js";
 
 const PUBLIC_TEST = "203.0.113.80";
 const winDevs = ["pc", "laptop"];
@@ -476,5 +476,234 @@ const HOME10 = {
   summary() { return { cause: "The old router, plugged into the switch, was running its own DHCP server. Devices that asked for an address while it was there took whichever answer came first; the laptop and TV got 10.0.0.x with a gateway that has no internet.", fix: "Took the old router off the network (or switched off its DHCP), then had the laptop and TV ask again: ipconfig /renew, and a restart." }; }
 };
 
-export const HOME_TICKETS = [HOME01, HOME02, HOME03, HOME04, HOME05, HOME06, HOME07, HOME08, HOME09, HOME10];
+/* ---------------------------------------------------------------- HOME-11 */
+/* the printer's mask typed wrong: chosen so the office PC and the router are both off its network */
+const NARROW = [["255.255.255.248", 8], ["255.255.255.240", 16]];
+const HOME11 = {
+  id: "HOME-11", n: "11", tier: "more", title: "The printer stopped after its settings were put back", priority: 3, due: "1 day",
+  build(seed) {
+    const net = makeHome(seed), r = rng(hash("HOME-11:" + seed)), range = net.range, m = r.pick(NARROW), size = m[1], ok = [];
+    for (let h = 2; h <= 253; h++) {
+      const b = h - h % size, e = b + size - 1;
+      if (h === b || h === e || b === 0) continue;                 /* not the block's own number or broadcast; not the router's block */
+      if (!(e < range[0] || b > range[1])) continue;              /* the whole block outside the DHCP range: nothing that asks for an address lands in it */
+      ok.push(h);
+    }
+    const ip = net.prefix + "." + r.pick(ok), P = net.devices.printer, f = P.ifaces[0];
+    f.cfg.ip = ip; f.cfg.mask = m[0]; P.sub = ip; net.devices.pc.printer.port = ip;
+    const sim = new Sim(net); sim.boot();
+    return { sim: sim, v: { ip: ip, mask: m[0], prMac: f.mac, lo: network(ip, m[0]), hi: broadcast(ip, m[0]) } };
+  },
+  brief() { return { quote: "Nothing will print since the printer company's technician reset the office printer on Monday and typed its settings back in. Its screen says it's online at its usual address, and the computer still lists it. The internet's fine on everything." }; },
+  mason: "Find where the conversation breaks: on the way to the printer, or on the way back.",
+  affected: "pc",
+  options(v, sim) {
+    return [
+      { id: "right", right: true, text: "The printer's subnet mask is wrong: it thinks the office PC is on another network, so its replies never come back" },
+      { id: "cable", text: "The printer's cable or its switch port is bad", why: "arp -a on the office PC shows the printer's own hardware address: it heard the PC and answered. Frames get through the cable and the port." },
+      { id: "port", text: "The PC's printer port points at the wrong address", why: "The port is the address on the printer's control panel, and arp -a shows that address belongs to the printer's own hardware address." },
+      { id: "conflict", text: "Another device has taken the printer's address", why: "arp -a shows the printer's own hardware address for it, every time, and no DHCP client has it." },
+      { id: "gateway", text: "The printer's default gateway is wrong", why: "Its gateway is the router, " + sim.d.router.lan.ip + ", as it should be. And the office PC is on the same network as the printer: a reply to it shouldn't need a gateway at all." },
+      { id: "firewall", text: "The office PC's firewall is blocking the printer", why: "A firewall lets in the replies to what the PC itself sent. And the laptop can't reach the printer either." }
+    ];
+  },
+  rung1() { return "Ping the printer from the office PC, then run arp -a. Then compare every setting on the printer's control panel with the PC's own (ipconfig)."; },
+  rung2() { return "A device that answers ARP but never answers a ping can hear you: frames reach it. What's wrong is in its IP settings. Every device on one network has to agree on the subnet mask, or it decides the others are somewhere else."; },
+  fixHints() { return ["The printer's own settings are on its control panel (Network > TCP/IP).", "Compare the printer's subnet mask with the office PC's (ipconfig) and the router's. Every device on this network uses the same one.", "On the printer's control panel set the subnet mask to 255.255.255.0, the same as everything else here; keep its address and gateway, save, then print a test page."]; },
+  exhibits(sim, v) { return sim.route("pc", v.ip).fail === "no-reply"; },   /* routes only: a test print here would leave its trace in the PC's ARP cache */
+  fixed(sim) { const rt = sim.route("pc", sim.d.pc.printer.port); return !!rt.local && rt.owner.length === 1 && rt.owner[0] === "printer"; },
+  proves(f) { return f.print === "ok"; },
+  proofText: "a test page that prints (the office PC's Printers tab)",
+  evidence: [
+    { id: "ping", test: function (f, v) { return f.cmd === "ping" && f.dev === "pc" && f.ip === v.ip && f.kind === "no-reply"; }, text: function (f) { return "ping " + f.ip + " from the office PC: every request timed out"; } },
+    { id: "arp", test: function (f, v) { return f.cmd === "arp" && f.dev === "pc" && f.entries.some(function (e) { return e[0] === v.ip; }); }, text: function (f, v) { return "arp -a on the office PC: " + v.ip + " is at " + f.entries.find(function (e) { return e[0] === v.ip; })[1]; } },
+    { id: "panel", test: function (f) { return f.page === "printer-panel"; }, text: function (f) { return "Printer control panel: address " + f.ip + ", mask " + f.mask + ", gateway " + f.gw + ", hardware address " + f.mac; } },
+    { id: "pc", test: function (f) { return f.cmd === "ipconfig" && f.dev === "pc" && !!f.ip; }, text: function (f) { return "ipconfig on the office PC: " + f.ip + ", mask " + f.mask + ", gateway " + f.gw; } },
+    { id: "fail", test: function (f) { return f.print === "fail"; }, text: function (f) { return "Test page from the office PC (to " + f.port + "): nothing printed"; } }
+  ],
+  summary(v) { return { cause: "When the printer's settings were typed back in, its subnet mask went in as " + v.mask + " instead of 255.255.255.0. With that mask the printer believes only " + v.lo + " to " + v.hi + " are on its network, so the office PC, and the router it uses as its gateway, are \"somewhere else\" to it. It heard the PC (it answered ARP), but sent every reply towards a gateway it couldn't reach, so nothing came back.", fix: "Set the printer's mask to 255.255.255.0 on its control panel, the same as every other device here, kept its address and gateway, and printed a test page." }; }
+};
+
+/* ---------------------------------------------------------------- HOME-12 */
+const HOME12 = {
+  id: "HOME-12", n: "12", tier: "more", title: "The office PC prints but can't get online", priority: 2, due: "4 h",
+  build(seed) {
+    const net = makeHome(seed), r = rng(hash("HOME-12:" + seed)), range = net.range, other = net.prefix === "192.168.0" ? "192.168.1" : "192.168.0";
+    const kind = r.pick(["same", "other"]);                       /* the old router at .254 on this network, or on the old network altogether */
+    const gw = kind === "same" ? net.prefix + ".254" : other + ".1";
+    const used = [1, 254, +net.devices.printer.ifaces[0].cfg.ip.split(".")[3]], free = [];
+    for (let h = 2; h <= 253; h++) if ((h < range[0] || h > range[1]) && used.indexOf(h) < 0) free.push(h);
+    const ip = net.prefix + "." + r.pick(free), f = net.devices.pc.ifaces[0];
+    f.cfg = { mode: "static", ip: ip, mask: net.mask, gw: gw, dns: net.isp.dns.slice(), dnsMode: "static" };
+    net.devices.pc.sub = ip;
+    const sim = new Sim(net); sim.boot();
+    return { sim: sim, v: { kind: kind, gw: gw, ip: ip } };
+  },
+  brief() { return { quote: "The office PC can't get on the internet, but it still prints fine and everyone else in the house is online. We changed our router last month; the old one's in a cupboard. A friend set the PC up with fixed settings years ago." }; },
+  mason: "It prints, so its cable and its address work. Follow a packet that's leaving the house.",
+  affected: "pc",
+  options(v, sim) {
+    return [
+      { id: "right", right: true, text: "The office PC's default gateway is typed in as the old router's address, so it has no way off its own network" },
+      { id: "dns", text: "The office PC's DNS servers are wrong", why: "A ping to an internet address by number fails too, and DNS only turns names into numbers. Its DNS servers are the provider's, which work for everyone else." },
+      { id: "cable", text: "The office PC's cable or switch port is bad", why: "It prints every time, and its link light is green: it reaches the printer through that cable and port." },
+      { id: "isp", text: "The router has lost its internet connection", why: "The laptop, phone and TV are online through the same router right now." },
+      { id: "conflict", text: "The office PC's address conflicts with another device", why: "No DHCP client has it, and the printer answers it every time." },
+      { id: "mask", text: "The office PC's subnet mask is wrong", why: "Its mask is " + sim.net.mask + ", the same as the router's and every other device's, and the printer on the same network answers it." }
+    ];
+  },
+  rung1() { return "On the office PC, ipconfig, then ping its default gateway. Compare that gateway with the router's own address (at the top of every router page)."; },
+  rung2() { return "A computer sends everything that isn't on its own network to its default gateway. If nothing answers at that address, or it isn't even on the computer's network, nothing leaves the house: local things still work."; },
+  fixHints() { return ["The office PC's IP settings are on its Network settings tab (Edit IP settings).", "Its default gateway has to be the router that's there now. Or let the router hand it its settings.", "In the office PC's Edit IP settings, set the gateway to " + "the router's address (shown at the top of the router's pages), or choose Automatic (DHCP), save, then ping an internet address."]; },
+  exhibits(sim) { const o = sim.route("pc", PUBLIC_TEST), p = sim.route("pc", sim.d.pc.printer.port); return (o.fail === "gateway-unreachable" || o.fail === "no-route") && !!p.local && p.owner[0] === "printer"; },
+  fixed(sim) { return !!sim.route("pc", PUBLIC_TEST).internet; },
+  proves(f) { return f.dev === "pc" && f.cmd === "ping" && f.beyond && f.internet; },
+  proofText: "a ping to an internet address from the office PC that gets replies",
+  evidence: [
+    { id: "ip", test: function (f) { return f.cmd === "ipconfig" && f.dev === "pc" && !!f.ip; }, text: function (f) { return "ipconfig on the office PC: " + f.ip + ", default gateway " + (f.gw || "(none)") + (f.kind === "static" ? " (typed in by hand)" : ""); } },
+    { id: "gw", test: function (f, v) { return f.cmd === "ping" && f.dev === "pc" && f.ip === v.gw; }, text: function (f) { return "ping " + f.ip + " (the PC's gateway): " + (f.kind === "no-route" ? "transmit failed, general failure" : f.kind === "gateway-unreachable" || f.kind === "host-unreachable" ? "Destination host unreachable" : "replies"); } },
+    { id: "out", test: function (f, v) { return f.cmd === "ping" && f.dev === "pc" && f.ip !== v.gw && (f.kind === "gateway-unreachable" || f.kind === "no-route"); }, text: function (f) { return "ping " + f.ip + " from the office PC: " + (f.kind === "no-route" ? "transmit failed, general failure" : "Destination host unreachable"); } },
+    { id: "print", test: function (f) { return f.print === "ok"; }, text: function () { return "Test page from the office PC: printed (its own network works)"; } },
+    { id: "settings", test: function (f) { return f.page === "pc-settings"; }, text: function (f) { return "Office PC network settings: " + (f.mode === "static" ? "Manual, gateway " + f.gw : "Automatic (DHCP)"); } }
+  ],
+  summary(v, sim) { const g = sim ? sim.d.router.lan.ip : "the router"; return { cause: "Years ago the office PC was given fixed settings with the old router's address, " + v.gw + ", as its default gateway. The new router is " + g + ", and nothing answers at " + v.gw + (v.kind === "other" ? " (it isn't even on the PC's network)" : "") + ". The PC still reached everything on its own network, the printer included, but every packet for the internet went to a gateway that isn't there.", fix: "Set the office PC's gateway to the router, " + g + " (or set it back to Automatic (DHCP)) in its IP settings. The internet came back." }; }
+};
+
+/* ---------------------------------------------------------------- HOME-13 */
+const HOME13 = {
+  id: "HOME-13", n: "13", tier: "more", title: "The porch camera is offline, at home and away", priority: 2, due: "1 day",
+  build(seed) {
+    const net = makeHome(seed), r = rng(hash("HOME-13:" + seed)), kind = r.pick(["unplugged", "passive"]), inj = net.devices.injector;
+    if (kind === "unplugged") inj.power = false;                  /* its adapter knocked out when the office was cleaned */
+    else inj.std = "passive";                                     /* the replacement bought online: passive 24 V */
+    const sim = new Sim(net); sim.boot();
+    return { sim: sim, v: { kind: kind, port: net.ports.camera, mac: net.devices.camera.ifaces[0].mac, ip: net.devices.router.dhcp.reservations.find(function (x) { return x.name === "IP camera"; }).ip } };
+  },
+  brief(v) { return { quote: v.kind === "unplugged" ? "The porch camera's been offline since the weekend: the app says \"device offline\" at home on the Wi-Fi and when I'm out. The cleaners did the office on Friday. Nothing else has changed." : "The little box for the porch camera in the office stopped working last week, so I bought a replacement online and plugged it in exactly where the old one was. Its light comes on, but the camera's still offline, at home and away." }; },
+  mason: "The camera has no plug of its own. So where does it get its power?",
+  affected: "phone",
+  options(v, sim) {
+    return [
+      { id: "right", right: true, text: "The camera has no power: its PoE injector isn't supplying the power it needs down the cable" },
+      { id: "reservation", text: "The camera's DHCP reservation was lost", why: "A camera without its reservation still gets some address and shows on the DHCP clients page. This one isn't there at all, and its port light is off." },
+      { id: "cable", text: "The cable from the injector to the camera is damaged", why: "The cable tester passes it, pins 1 to 8 in order, and both plugs are latched in." },
+      { id: "forward", text: "The router's port forward for the camera is wrong", why: "A port forward only matters from outside the house. The camera's offline at home on the Wi-Fi too." },
+      { id: "crashed", text: "The camera has crashed and needs restarting", why: "Restarting changes nothing: it never comes on. A crashed camera still has power, and a link light." },
+      { id: "switch", text: "The switch port for the camera has failed", why: "That port's light is off because nothing at the far end has power: the injector passes the link straight through from the camera. The switch's other ports all work." }
+    ];
+  },
+  rung1() { return "Follow the camera's cable back from the camera: the camera's own port lights, the injector's lights and label (its Physical tab), and the switch port it ends in."; },
+  rung2() { return "A PoE camera has no power supply of its own: it runs on power sent down its network cable. No power on the cable, no camera: no link light, no address, nothing to ping. And it has to be the kind of PoE the camera expects."; },
+  fixHints() { return ["The camera gets its power from the PoE injector in the office: open the injector (its Physical tab).", "Is the injector plugged in? Is it the kind of PoE the camera asks for (printed beside the camera's port)?", "Plug the injector's power adapter back in; or, if it's a passive 24 V injector, swap in an 802.3af one. Then check the camera answers."]; },
+  exhibits(sim) { return !sim.on("camera") && !sim.addr("camera") && !!sim.route("phone", PUBLIC_TEST).internet; },
+  fixed(sim) { return sim.on("camera") && !!sim.addr("camera"); },
+  proves(f, sim) { return (f.page === "camera-web" && f.online) || (f.cmd === "ping" && f.beyond && f.local && f.ip === (sim.addr("camera") || {}).ip); },
+  proofText: "the camera's own page coming up (its Web page tab), or a ping to the camera that gets replies",
+  evidence: [
+    { id: "web", test: function (f) { return f.page === "camera-web" && !f.online; }, text: function () { return "The camera's page: can't be reached, nothing answers"; } },
+    { id: "lights", test: function (f, v) { return f.page === "switch-lights" && f.ports.some(function (p) { return p.port === v.port && !p.up; }); }, text: function (f, v) { return "Switch lights: port " + v.port + " (cable to the PoE injector) is off"; } },
+    { id: "clients", test: function (f, v) { return f.page === "router-clients" && !f.rows.some(function (r) { return r[1] === v.mac; }); }, text: function () { return "Router DHCP clients: the camera isn't on the list"; } },
+    { id: "ping", test: function (f, v) { return f.cmd === "ping" && f.ip === v.ip && !f.ok; }, text: function (f, v) { return "ping " + v.ip + " (the camera's reserved address): no reply"; } },
+    { id: "inj", test: function (f) { return f.page === "injector-physical" && !!f.injector; }, text: function (f) { return "The PoE injector: power adapter " + (f.injector.power ? "plugged in" : "unplugged") + "; its label says " + (f.injector.std === "passive" ? "PASSIVE PoE, 24V" : "IEEE 802.3af, 48V"); } },
+    { id: "cam", test: function (f) { return f.page === "camera-physical" && f.camera === false; }, text: function () { return "The camera: dark, its port lights off; printed beside its port, PoE 802.3af"; } }
+  ],
+  summary(v) { return { cause: v.kind === "unplugged" ? "The camera takes its power down its network cable from the PoE injector in the office (802.3af). The injector's power adapter had been knocked out when the office was cleaned, so the camera got no power at all: no link, no address, nothing to see." : "The camera takes its power down its network cable (802.3af: 48 V, after a handshake). The replacement injector was a passive 24 V one, which an 802.3af camera won't take power from, so it stayed dark: no link, no address, nothing to see.", fix: v.kind === "unplugged" ? "Plugged the injector's power adapter back in; the camera powered up, took its reserved address and came back online." : "Swapped in an 802.3af PoE injector; the camera powered up, took its reserved address and came back online." }; }
+};
+
+/* ---------------------------------------------------------------- HOME-14 */
+const HOME14 = {
+  id: "HOME-14", n: "14", tier: "more", title: "The old laptop won't join the Wi-Fi any more", priority: 3, due: "1 day",
+  build(seed) {
+    const net = makeHome(seed), r = rng(hash("HOME-14:" + seed)), who = r.pick(["son", "daughter", "nephew"]);
+    const L = net.devices.laptop, f = L.ifaces[0];
+    L.label = "Old laptop"; L.host = "OLD-LAPTOP"; f.desc = "Wireless-N Network Adapter"; f.secs = ["WPA2-Personal"];   /* an older adapter: WPA2 is as far as it goes */
+    net.rooms.laptop = r.pick(["living", "upstairs"]);
+    net.devices.router.wifi.sec = "WPA3-Personal";                 /* "the most secure setting" */
+    const sim = new Sim(net); sim.boot();
+    return { sim: sim, v: { who: who } };
+  },
+  brief(v) { return { quote: "My " + v.who + " read that WPA3 is safer and changed the Wi-Fi to \"the most secure setting\" on Sunday. Since then my old laptop can't connect at all: it just says it can't connect to this network. The phones are fine and I haven't changed the password." }; },
+  mason: "The phones get on, the laptop doesn't. What can the phones do that the laptop can't?",
+  affected: "laptop",
+  options(v, sim) {
+    return [
+      { id: "right", right: true, text: "The router is set to WPA3 only, and the old laptop's Wi-Fi adapter can't do WPA3" },
+      { id: "password", text: "The Wi-Fi password was changed and the laptop has the old one", why: "The phones are still connected with the same saved password. And the laptop is turned away before any password is tried: the network's security type isn't one its adapter supports." },
+      { id: "range", text: "The laptop is too far from the router", why: "netsh wlan show networks lists the house network, at a good signal, from where the laptop is." },
+      { id: "channel", text: "The 2.4 GHz channel is crowded by the neighbours", why: "Interference makes a connection drop packets; it doesn't stop a laptop joining. And the phones join on the same channels." },
+      { id: "dhcp", text: "The router's DHCP range is full", why: "The laptop never gets onto the Wi-Fi, so it never asks for an address. A full range leaves a device joined, with a 169.254 address." },
+      { id: "adapter", text: "The laptop's Wi-Fi adapter has failed", why: "netsh wlan show networks lists every network nearby: the adapter works. It's this one network it can't join." }
+    ];
+  },
+  rung1() { return "On the laptop: netsh wlan show networks (what security does the house network use?) and netsh wlan show drivers (what can this adapter do?). Then look at the router's Wi-Fi page."; },
+  rung2() { return "A device can only join a network whose security it supports. Older adapters stop at WPA2, so a network set to WPA3 alone turns them away, whatever the password. Some settings let both kinds join."; },
+  fixHints() { return ["The router's Wi-Fi page sets the network's security.", "Choose a setting the old laptop supports without taking WPA3 away from the devices that have it.", "On the router's Wi-Fi page set Security to WPA2/WPA3-Personal (transition), save, then check the laptop joins and gets online."]; },
+  exhibits(sim) { const l = sim.wifiLink("laptop"), ph = sim.wifiLink("phone"); return !!l && l.reason === "security" && !!ph && ph.connected; },
+  fixed(sim) { const l = sim.wifiLink("laptop"); return sim.d.router.wifi.sec === "WPA2/WPA3-Personal" && !!l && l.connected; },
+  partial(v, sim) { const l = sim.wifiLink("laptop"); return sim.d.router.wifi.sec === "WPA2-Personal" && !!l && l.connected ? "The laptop's online, but now every device in the house is back on WPA2, the phones included. Is there a setting that lets the laptop on and keeps WPA3 for everything that can use it?" : null; },
+  proves(f) { return f.dev === "laptop" && f.cmd === "ping" && f.beyond && f.internet; },
+  proofText: "a ping to an internet address from the old laptop that gets replies",
+  evidence: [
+    { id: "page", test: function (f) { return f.page === "laptop-wifi" && f.reason === "security"; }, text: function () { return "Laptop Wi-Fi: \"Can't connect to this network\""; } },
+    { id: "nets", test: function (f, v, sim) { return f.cmd === "netsh-nets" && f.dev === "laptop" && f.auth && !!f.auth[sim.d.router.wifi.ssid]; }, text: function (f, v, sim) { return "netsh wlan show networks on the laptop: " + sim.d.router.wifi.ssid + " uses " + f.auth[sim.d.router.wifi.ssid]; } },
+    { id: "drivers", test: function (f) { return f.cmd === "netsh-drivers" && f.dev === "laptop"; }, text: function (f) { return "netsh wlan show drivers on the laptop: supports " + f.secs.join(", ") + (f.wpa3 ? "" : " (no WPA3, no 802.11w)"); } },
+    { id: "router", test: function (f) { return f.page === "router-wifi"; }, text: function (f) { return "Router Wi-Fi page: Security " + f.sec; } },
+    { id: "phone", test: function (f) { return f.page === "phone-wifi" && f.connected; }, text: function () { return "Phone Wi-Fi: connected, online"; } }
+  ],
+  summary() { return { cause: "The router's Wi-Fi security was changed to WPA3-Personal only. The old laptop's adapter supports WPA2 at most (netsh wlan show drivers), so the network turned it away before any password was tried. The phones support WPA3, so they carried on.", fix: "Set the router's Wi-Fi security to WPA2/WPA3-Personal (transition mode): the old laptop joins with WPA2, and everything newer keeps WPA3." }; }
+};
+
+/* ---------------------------------------------------------------- HOME-15 */
+const onReal = function (sim, id) { const l = sim.wifiLink(id); return !!l && l.connected && (l.ap.id === "router" || l.ap.id === "mesh"); };
+const HOME15 = {
+  id: "HOME-15", n: "15", tier: "more", title: "The laptop says connected, but nothing loads", priority: 1, due: "2 h",
+  build(seed) {
+    const net = makeHome(seed), r = rng(hash("HOME-15:" + seed)), w = net.devices.router.wifi;
+    net.rooms.laptop = r.pick(["living", "kitchen"]);
+    /* a hotspot in a car outside, broadcasting the house's own network name, open, with a fake "router update" page */
+    net.devices.twin = { id: "twin", kind: "rogue", label: "Unknown hotspot", sub: "outside the house", on: true, undocumented: true, mac: mac(r), ssid: w.ssid, ch: r.pick([1, 11]),
+      heard: { living: 74, kitchen: 70, office: 58, upstairs: 48, porch: 82, garage: 40 },
+      lan: { ip: "172.20.10.1", mask: "255.255.255.240" }, dhcp: { on: true, start: "172.20.10.2", end: "172.20.10.14", leaseH: 24, dnsMode: "router", dns: ["", ""], reservations: [] }, leases: [], wanOk: false };
+    net.devices.laptop.ifaces[0].saved = { ssid: w.ssid, passOk: true, sec: "Open" };   /* clicked the name again, and got the open copy */
+    const sim = new Sim(net); sim.boot();
+    return { sim: sim, v: { twinMac: net.devices.twin.mac.toUpperCase().replace(/-/g, ":") } };
+  },
+  brief() { return { quote: "Last night the laptop dropped off the Wi-Fi. When I clicked our network's name again, a page popped up saying the router needed a firmware update and asked for the Wi-Fi password, so I typed it in. Since then the laptop says it's connected, but nothing loads. The phones are fine." }; },
+  mason: "Same name. Is it the same network?",
+  affected: "laptop",
+  options(v, sim) {
+    return [
+      { id: "right", right: true, text: "A fake open hotspot is using the house's network name (an evil twin): the laptop joined it, and the password went into its fake page" },
+      { id: "firmware", text: "The router's firmware update failed", why: "The router's pages show it running normally, the phones are online through it, and a router never asks for the Wi-Fi password on a page that pops up." },
+      { id: "apipa", text: "No DHCP server answered, so the laptop gave itself an address", why: "Its address, 172.20.10.x, came with a gateway and a DHCP server, 172.20.10.1. A self-given one starts 169.254 and has neither." },
+      { id: "channel", text: "A neighbour's network on the same channel is interfering", why: "Interference loses packets on the right network. The laptop is joined to a different access point altogether: its BSSID isn't one of the router's." },
+      { id: "rogue", text: "A second DHCP server on the house network is handing out the wrong addresses", why: "The phones, on the same router, have the house's addresses, and the router's DHCP clients page doesn't list the laptop: it isn't on the house network at all." },
+      { id: "dns", text: "The laptop's DNS server is wrong", why: "It can't reach an internet address by number either: its gateway, 172.20.10.1, answers Destination net unreachable." }
+    ];
+  },
+  rung1() { return "On the laptop: netsh wlan show interfaces (which BSSID, what security?) and netsh wlan show networks mode=bssid. Compare them with the router's own radios and security on its Wi-Fi page."; },
+  rung2() { return "Anyone can broadcast any network name. A real network is known by its security and its access points' hardware addresses (BSSIDs). An open copy of your network's name that asks for your password is an attack, not your router."; },
+  fixHints() { return ["The laptop's Wi-Fi tab shows the networks in range and the one it has saved.", "Get the laptop back on the real, secured network. And the Wi-Fi password was typed into a stranger's page: it isn't secret any more.", "On the laptop, forget the saved network and connect to the secured one. Then change the Wi-Fi password (router's Wi-Fi page) and give the new one to the laptop and the phone."]; },
+  exhibits(sim) { const l = sim.wifiLink("laptop"); return !!l && l.connected && l.ap.id === "twin" && onReal(sim, "phone"); },
+  fixed(sim) { return onReal(sim, "laptop") && onReal(sim, "phone") && (sim.d.router.wifi.gen || 1) > 1 && !!sim.route("laptop", PUBLIC_TEST).internet; },
+  partial(v, sim) {
+    if (!onReal(sim, "laptop")) return null;
+    if ((sim.d.router.wifi.gen || 1) === 1) return "The laptop's back on the real network. But the Wi-Fi password was typed into that fake page: whoever runs the hotspot has it now, and can join the real network whenever they like.";
+    if (!onReal(sim, "phone")) return "The laptop's fine with the new password. Has every other device in the house been given it?";
+    return null;
+  },
+  proves(f) { return f.dev === "laptop" && f.cmd === "ping" && f.beyond && f.internet; },
+  proofText: "a ping to an internet address from the laptop that gets replies",
+  evidence: [
+    { id: "if", test: function (f) { return f.cmd === "netsh-if" && f.dev === "laptop" && f.ap === "twin"; }, text: function (f) { return "netsh wlan show interfaces on the laptop: BSSID " + f.bssid + ", Authentication " + f.auth; } },
+    { id: "nets", test: function (f, v, sim) { return f.cmd === "netsh-nets" && f.dev === "laptop" && f.twice.indexOf(sim.d.router.wifi.ssid) >= 0; }, text: function (f, v, sim) { return "netsh wlan show networks on the laptop: " + sim.d.router.wifi.ssid + " listed twice, once secured and once open"; } },
+    { id: "ip", test: function (f) { return f.cmd === "ipconfig" && f.dev === "laptop" && f.ip && f.ip.indexOf("172.20.10.") === 0; }, text: function (f) { return "ipconfig on the laptop: " + f.ip + ", gateway " + f.gw; } },
+    { id: "out", test: function (f) { return f.cmd === "ping" && f.dev === "laptop" && f.kind === "net-unreachable"; }, text: function (f) { return "ping " + f.ip + " from the laptop: Destination net unreachable (from 172.20.10.1)"; } },
+    { id: "router", test: function (f) { return f.page === "router-wifi"; }, text: function (f, v, sim) { return "Router Wi-Fi page: Security " + f.sec + "; its radios are " + sim.aps().filter(function (a) { return a.id === "router"; }).map(function (a) { return a.mac.toUpperCase().replace(/-/g, ":"); }).join(" and "); } },
+    { id: "clients", test: function (f, v, sim) { return f.page === "router-clients" && !f.rows.some(function (r) { return r[1] === sim.d.laptop.ifaces[0].mac; }); }, text: function () { return "Router DHCP clients: the laptop isn't on the list"; } }
+  ],
+  summary(v) { return { cause: "A hotspot outside the house was broadcasting the house's own network name, open, with a fake \"firmware update\" page. When the laptop dropped off, clicking the name again joined the open copy (BSSID " + v.twinMac + ", not the router's), and the Wi-Fi password went into its page. The hotspot has no internet: the laptop was cut off, and the password was given away.", fix: "Forgot the open network on the laptop and joined the real, secured one; changed the Wi-Fi password on the router, since it had been given away; and gave the new password to the laptop and the phone." }; }
+};
+
+export const HOME_TICKETS = [HOME01, HOME02, HOME03, HOME04, HOME05, HOME06, HOME07, HOME08, HOME09, HOME10, HOME11, HOME12, HOME13, HOME14, HOME15];
 export const HOME_COMING = [];

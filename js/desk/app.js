@@ -10,12 +10,13 @@ import { drawLogical, drawPlan, plates } from "./draw.js";
 import { renderWindow, forgetTerminals, focusCmd } from "./window.js";
 import { renderBoard } from "./board.js";
 import { renderQueue, renderShelves, renderMap } from "./left.js";
+import { setupInstructor } from "./instructor.js";
 
 const PAGE = document.body.dataset.page;
 const S = load();
 const DEFS = {}; HOME_TICKETS.forEach(function (d) { DEFS[d.id] = d; });
 const LIST = HOME_TICKETS.map(function (d) { return { id: d.id, n: d.n, tier: d.tier, title: d.title, built: true }; }).concat(HOME_COMING.map(function (c) { return Object.assign({ built: false }, c); }));
-const DEVICES = ["pc", "switch", "router", "modem", "printer", "camera", "tv", "mesh", "laptop", "phone", "guest"];   /* an undocumented box gets no button: find it on the floor plan */
+const DEVICES = ["pc", "switch", "router", "modem", "printer", "injector", "camera", "tv", "mesh", "laptop", "phone", "guest"];   /* an undocumented box gets no button: find it on the floor plan */
 const $ = function (id) { return document.getElementById(id); };
 let replateMap = null;
 
@@ -54,11 +55,11 @@ const ctx = {
 
 function persist() { S.t[ctx.T.def.id] = E.save(ctx.T); S.current = ctx.T.def.id; store(S); }
 
-function openTicket(id, fresh) {
+function openTicket(id, fresh, seed) {
   const def = DEFS[id] || HOME_TICKETS[0];
   let T = null;
   if (!fresh && S.t[def.id]) { try { T = E.restore(def, S.t[def.id]); } catch (e) { T = null; } }
-  if (!T) T = E.open(def, newSeed());
+  if (!T) T = E.open(def, seed == null ? newSeed() : seed);
   ctx.T = T; ctx.open = def.affected; ctx.tab = null; ctx.fixHint = T.fixHint ? def.fixHints(T.v, T.sim)[Math.min(T.fixHint, 3) - 1] : null;
   forgetTerminals(); persist(); renderAll();
 }
@@ -165,6 +166,10 @@ $("mView").addEventListener("click", function () { setView($("plan").hasAttribut
 $("mNotes").addEventListener("click", function () { $("notebook").scrollIntoView({ block: "nearest" }); const t = $("notes"); if (t) t.focus({ preventScroll: true }); });
 deviceClicks($("net")); deviceClicks($("plan"));
 helpDialog();
+setupInstructor(ctx, {
+  demo: function (id, seed) { openTicket(id, true, seed); window.scrollTo({ top: 0 }); },
+  clear: function () { Object.keys(S.t).forEach(function (k) { delete S.t[k]; }); Object.keys(S.solved).forEach(function (k) { delete S.solved[k]; }); openTicket(HOME_TICKETS[0].id, true); }
+});
 chromeH(); window.addEventListener("resize", chromeH);
 openTicket(S.current && DEFS[S.current] ? S.current : HOME_TICKETS[0].id, false);
 if (location.hash === "#physical") setView(true);

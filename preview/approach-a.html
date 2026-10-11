@@ -122,7 +122,7 @@
 <body>
 <div class="preview-banner">
   <p><strong>PREVIEW · Approach A of 3 — Lab Bench.</strong> The closest to Packet Tracer: a library of separate labs, each its own small network built for the objectives it teaches. You open a lab, the network loads, you fix it or build it.</p>
-  <nav class="others" aria-label="The three approaches"><a href="approach-a.html" aria-current="page">A · Lab Bench</a><a href="approach-b.html">B · Service Map</a><a href="approach-c.html">C · Ticket Desk</a></nav>
+  <nav class="others" aria-label="The three approaches"><a href="approach-a.html" aria-current="page">A · Lab Bench</a><a href="approach-b.html">B · Service Map</a><a href="approach-c.html">C · Ticket Desk</a><a href="approach-c2.html">C with A bars</a></nav>
 </div>
 
 <section class="app" aria-label="Workspace preview">
@@ -329,12 +329,12 @@
     svg.querySelectorAll(".lpbg").forEach(function (r) { if (!sel || r.nextSibling && r.nextSibling.matches && r.nextSibling.matches(sel)) r.remove(); });
     svg.querySelectorAll(sel || ".nl, .ns, .pl, .pl1, .pl2, .rl").forEach(function (t) {
       let b; try { b = t.getBBox(); } catch (e) { return; } if (!b.width) return;
-      const r = document.createElementNS(NS, "rect"); r.setAttribute("x", b.x - 4); r.setAttribute("y", b.y - 1); r.setAttribute("width", b.width + 8); r.setAttribute("height", b.height + 2); r.setAttribute("rx", 3);
+      const r = document.createElementNS(NS, "rect"); r.setAttribute("x", b.x - 4); r.setAttribute("y", b.y - 2); r.setAttribute("width", b.width + 8); r.setAttribute("height", b.height + 4);   /* 2 units: a plan drawn small still covers the last pixel row */ r.setAttribute("rx", 3);
       r.setAttribute("class", "lpbg"); if (fill) r.style.fill = fill; t.parentNode.insertBefore(r, t);
     });
   };
   /* refit every plate (easier reading widens the text) */
-  window.E4replate = function () { requestAnimationFrame(function () { plated.forEach(function (p) { window.E4plates(p[0], p[1], p[2], true); }); }); };
+  window.E4replate = function () { plated.forEach(function (p) { window.E4plates(p[0], p[1], p[2], true); }); };   /* at once: getBBox lays the page out with the new spacing */
 
   /* ---- a device window: tabs and their contents ---- */
   window.E4window = function (host, id, photo) {

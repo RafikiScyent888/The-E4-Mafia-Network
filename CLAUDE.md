@@ -225,7 +225,7 @@ photo's pixels; RJ11 is a 6-position connector (2 conductors for one line,
 labels) is replaced with correct wording; sides a photo doesn't show follow
 the standard design for that device and are previewed before use.
 
-## Workspace and structure: under discussion (11 October 2026)
+## Workspace and structure: C with A's bars chosen (11 October 2026)
 
 The owner, 11 October 2026: **"I want it to look like packet tracer,
 however, I want to make it my own design. I want three different
@@ -254,6 +254,39 @@ icons, the photo-accurate 3D models in each device's Physical tab, AAA
 (checked on painted pixels, desk and phone, easier reading on and off,
 with plants), the persistent easier-reading toggle, the full footer.
 Diagrams keep a readable size on a phone and scroll inside their box.
+Label plates (`E4plates` in the previews' shared script) pad 2 SVG units
+above and below the text: at 1 unit a floor plan drawn small left the
+last pixel row of a label over a cable line.
+
+**The owner's pick, 11 October 2026: C, the Ticket Desk, with A's two
+top bars** ("I like C the best, however, add this from A right above
+Queue, Home 01, Terminal"). Preview: `preview/approach-c2.html`. Then, the
+same day: **"that top piece right there ... from A, I want it across
+everything, and I want the command prompt to stay right there on the
+right-hand side ... and I want the terminal options always on top as
+well ... so that way they can either click on the actual network map
+itself, or they can click right above there for quicker access."** So:
+- A's two bars (the app bar with Labs/Ticket/View/Notebook/Help and
+  easier reading; the toolbar with Logical/Physical, the ticket title,
+  Live/Step through) span the whole page and stay at the top while it
+  scrolls (`.chrome`, sticky). On a phone (under 760px) they scroll away,
+  or they would fill half the screen.
+- Three columns: queue, ticket (diagram, then the diagnosis under it),
+  terminal. The terminal column stays on screen on the right while the
+  page scrolls (sticky under the bars; `--chromeH` is set from the bars'
+  real height). Under 1100px the columns stack.
+- Above the terminal, always on top of it, a button for every device in
+  the ticket's network (all ten in HOME-01); the pressed one is the open
+  device, and the terminal heading names it ("Terminal · Printer").
+  Devices also open from the logical map and from the floor plan (click,
+  Enter or Space). The terminal is a fixed pane here, so it has no Close.
+- The owner, after clicking through: "I didn't fully comprehend and slow
+  down to think when I was clicking between the tabs." The previews stay
+  up for the owner to take their time with.
+- Checks for this layout: AAA on painted pixels in scrolled positions too
+  (the bars and terminal over scrolled content; only the part of a line
+  really on top is measured), and a click test of every way to open a
+  device; both shown to fail on planted defects.
 
 **Home fault tickets** (owner, 11 October 2026: "lets cover the most
 common top 5 with 5 harder ones as well"), proposed, awaiting the owner:

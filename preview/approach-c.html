@@ -10,7 +10,7 @@
 <style>
   :root {
     --page: #e9edf5; --card: #ffffff; --ink: #10172e; --muted: #34405e; --line: #a9b4cf; --royal: #1e3a8a; --royal-2: #2b4aa3; --purple: #4b2a85;
-    --good: #12672f; --bad: #8a1510; --bad-bg: #fde8e7; --gold: #ffd84d; --term: #0c0c0c;
+    --good: #0d5524; --bad: #8a1510; --bad-bg: #fde8e7; --gold: #ffd84d; --term: #0c0c0c;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
@@ -115,7 +115,7 @@
 <body>
 <div class="preview-banner">
   <p><strong>PREVIEW · Approach C of 3 — Ticket Desk.</strong> You start at the help-desk queue, as a Rafiki tech would. Each ticket builds the network it needs (a home, an office, a campus), with the fault generated and proven before you see it. Build jobs are work orders in the same queue.</p>
-  <nav class="others" aria-label="The three approaches"><a href="approach-a.html">A · Lab Bench</a><a href="approach-b.html">B · Service Map</a><a href="approach-c.html" aria-current="page">C · Ticket Desk</a></nav>
+  <nav class="others" aria-label="The three approaches"><a href="approach-a.html">A · Lab Bench</a><a href="approach-b.html">B · Service Map</a><a href="approach-c.html" aria-current="page">C · Ticket Desk</a><a href="approach-c2.html">C with A bars</a></nav>
 </div>
 <header class="app-h">
   <span class="brand">THE E4 MAFIA <span>NETWORK</span> · RAFIKI'S IT SERVICES</span>
@@ -143,7 +143,7 @@
     </div>
     <div class="diagram">
       <svg id="net" viewBox="-6 -26 836 546" role="img" aria-label="Logical diagram of the Hendricks home network. The office PC's link is down."></svg>
-      <svg id="plan" viewBox="0 0 1000 540" role="img" aria-label="Floor plan of the Hendricks house: the router in the living room, the switch and office PC in the office, the camera at the front door, the mesh node upstairs. The office PC's cable is marked broken." hidden></svg>
+      <svg id="plan" viewBox="20 20 970 510" role="img" aria-label="Floor plan of the Hendricks house: the router in the living room, the switch and office PC in the office, the camera at the front door, the mesh node upstairs. The office PC's cable is marked broken." hidden></svg>
     </div>
   </section>
 
@@ -331,12 +331,12 @@
     svg.querySelectorAll(".lpbg").forEach(function (r) { if (!sel || r.nextSibling && r.nextSibling.matches && r.nextSibling.matches(sel)) r.remove(); });
     svg.querySelectorAll(sel || ".nl, .ns, .pl, .pl1, .pl2, .rl").forEach(function (t) {
       let b; try { b = t.getBBox(); } catch (e) { return; } if (!b.width) return;
-      const r = document.createElementNS(NS, "rect"); r.setAttribute("x", b.x - 4); r.setAttribute("y", b.y - 1); r.setAttribute("width", b.width + 8); r.setAttribute("height", b.height + 2); r.setAttribute("rx", 3);
+      const r = document.createElementNS(NS, "rect"); r.setAttribute("x", b.x - 4); r.setAttribute("y", b.y - 2); r.setAttribute("width", b.width + 8); r.setAttribute("height", b.height + 4);   /* 2 units: a plan drawn small still covers the last pixel row */ r.setAttribute("rx", 3);
       r.setAttribute("class", "lpbg"); if (fill) r.style.fill = fill; t.parentNode.insertBefore(r, t);
     });
   };
   /* refit every plate (easier reading widens the text) */
-  window.E4replate = function () { requestAnimationFrame(function () { plated.forEach(function (p) { window.E4plates(p[0], p[1], p[2], true); }); }); };
+  window.E4replate = function () { plated.forEach(function (p) { window.E4plates(p[0], p[1], p[2], true); }); };   /* at once: getBBox lays the page out with the new spacing */
 
   /* ---- a device window: tabs and their contents ---- */
   window.E4window = function (host, id, photo) {
@@ -390,17 +390,17 @@
   open("pc");
   /* the floor plan */
   const plan = document.getElementById("plan");
-  const dev = function (type, x, y, label) { return '<g class="pdev" transform="translate(' + x + ' ' + y + ')"><rect class="tile" x="-24" y="-24" width="48" height="48" rx="9"/><use href="#i-' + type + '" x="-20" y="-20" width="40" height="40"/><text class="ns" y="42" text-anchor="middle">' + label + "</text></g>"; };
+  const dev = function (type, x, y, label) { return '<g class="pdev" transform="translate(' + x + ' ' + y + ')"><rect class="tile" x="-24" y="-24" width="48" height="48" rx="9"/><use href="#i-' + type + '" x="-20" y="-20" width="40" height="40"/><text class="ns" y="47" text-anchor="middle">' + label + "</text></g>"; };
   plan.innerHTML =
-    '<rect class="room" x="40" y="40" width="300" height="250"/><rect class="room" x="340" y="40" width="380" height="250"/><rect class="room" x="40" y="290" width="300" height="210"/><rect class="room" x="340" y="290" width="380" height="210"/>' +
-    '<rect class="room" x="760" y="40" width="200" height="200"/><path class="door" d="M300 290h30M450 290h40M340 380v40"/>' +
-    '<text class="rl" x="56" y="70">OFFICE</text><text class="rl" x="356" y="70">LIVING ROOM</text><text class="rl" x="56" y="320">GARAGE</text><text class="rl" x="356" y="320">KITCHEN</text><text class="rl" x="776" y="70">UPSTAIRS BEDROOM</text>' +
-    '<text class="rl" x="760" y="520">FRONT DOOR</text>' +
-    '<path class="run" d="M520 150 C 420 150 360 120 300 120"/><rect class="plate" x="320" y="108" width="14" height="24"/>' +
-    '<path class="run" d="M300 120 L 200 210"/><path class="run" d="M200 210 L 270 230"/><path class="run" d="M200 210 C 240 380 560 420 690 470"/>' +
-    '<path class="run-bad" d="M200 210 L 120 150"/>' +
-    dev("modem", 590, 120, "Modem") + dev("router", 520, 150, "Router") + dev("tv", 640, 230, "Smart TV") + dev("switch", 200, 210, "Switch") + dev("pc", 110, 140, "Office PC") + dev("printer", 270, 240, "Printer") + dev("camera", 690, 470, "Camera") + dev("mesh", 820, 110, "Mesh node") + dev("laptop", 900, 165, "Laptop") +
-    '<g transform="translate(186 198)"><rect x="-8" y="-8" width="16" height="16" transform="rotate(45)" class="pd-down"/></g><text class="ns" x="56" y="100">patch cable: no link</text>';
+    '<rect class="room" x="30" y="30" width="390" height="270"/><rect class="room" x="420" y="30" width="340" height="270"/><rect class="room" x="30" y="300" width="390" height="220"/><rect class="room" x="420" y="300" width="340" height="220"/>' +
+    '<rect class="room" x="790" y="30" width="190" height="230"/><path class="door" d="M380 300h30M520 300h40M420 400v40"/>' +
+    '<text class="rl" x="46" y="60">OFFICE</text><text class="rl" x="436" y="60">LIVING ROOM</text><text class="rl" x="46" y="330">GARAGE</text><text class="rl" x="436" y="330">KITCHEN</text><text class="rl" x="806" y="60">UPSTAIRS</text>' +
+    '<text class="rl" x="800" y="512">FRONT DOOR</text>' +
+    '<path class="run" d="M560 150 C 500 150 460 110 420 110"/><rect class="plate" x="413" y="98" width="14" height="24"/>' +
+    '<path class="run" d="M420 110 L 250 200"/><path class="run" d="M250 200 L 360 140"/><path class="run" d="M250 200 C 300 400 600 440 720 470"/>' +
+    '<path class="run-bad" d="M250 200 L 110 140"/>' +
+    dev("modem", 650, 110, "Modem") + dev("router", 560, 150, "Router") + dev("tv", 680, 240, "Smart TV") + dev("switch", 250, 200, "Switch") + dev("pc", 110, 140, "Office PC") + dev("printer", 360, 140, "Printer") + dev("camera", 720, 470, "Camera") + dev("mesh", 850, 110, "Mesh node") + dev("laptop", 905, 195, "Laptop") +
+    '<g transform="translate(222 188)"><rect x="-8" y="-8" width="16" height="16" transform="rotate(45)" class="pd-down"/></g><text class="ns" x="46" y="282">patch cable: no link</text>';
   let planPlated = false;
   const setView = function (phy) { document.getElementById("net").toggleAttribute("hidden", phy); plan.toggleAttribute("hidden", !phy);   /* SVG elements have no .hidden property: set the attribute */ document.getElementById("vLog").setAttribute("aria-pressed", String(!phy)); document.getElementById("vPhy").setAttribute("aria-pressed", String(phy));
     if (phy && !planPlated) { planPlated = true; E4plates(plan, ".rl, .ns", "#f4f6fb"); } };

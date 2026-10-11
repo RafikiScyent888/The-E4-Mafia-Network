@@ -126,8 +126,9 @@ export function fiberOnt(o = {}) {
    in yellow, LAN 1-4 in their printed frame, RESET, WPS, DC IN, cables
    in INTERNET, LAN 1, LAN 2 and LAN 4 and the power cord; the four
    hinged antennas; the label and barcode sticker underneath. */
-export function homeRouter() {
-  const g = new THREE.Group(), W = 240, D = 165, Y0 = 5;
+/* o.wan, o.lans ([LAN 1..4]): which ports have a cable in them, as photographed by default */
+export function homeRouter(o = {}) {
+  const g = new THREE.Group(), W = 240, D = 165, Y0 = 5, wanIn = o.wan !== false, lanIn = o.lans || [true, true, false, true];
   const blk = plastic(0x161719, { rough: 0.5 });
   g.add(at(rbox(W, 40, D, 7, blk), 0, Y0 + 20, 0));
   g.add(at(rbox(W - 10, 10, D - 12, 5, plastic(0x1b1c1f, { rough: 0.38 })), 0, Y0 + 40, 2));
@@ -147,11 +148,11 @@ export function homeRouter() {
   const bl = label(["WIRELESS ROUTER · Wi-Fi 6 · MODEL: HR-AX3000", "DEFAULT SSID: " + COVERED + "   Wi-Fi PASSWORD: " + COVERED, "ADMIN: http://192.168.1.1  ·  12V ⎓ 2A"], { w: 82, h: 12, marks: true });
   at(bl, -46, Y0 + 9, 0.3); back.add(bl);
   const bb = label(["MAC: " + COVERED], { w: 54, h: 12, barcode: "router-mac", boldFirst: false }); at(bb, 46, Y0 + 9, 0.3); back.add(bb);
-  const wan = rj45Jack({ name: "INTERNET", insert: COL.wanYellow, on: [true, true] }); at(wan, -90, py, 0.5); back.add(wan);
+  const wan = rj45Jack({ name: "INTERNET", insert: COL.wanYellow, on: [wanIn, wanIn] }); at(wan, -90, py, 0.5); back.add(wan);
   back.add(at(text("INTERNET", 18, 3, { color: "#f2c200", weight: "700" }), -90, ly + 0.8, 0.6)); back.add(at(text("(WAN)", 14, 2.8, { color: "#f2c200", weight: "700" }), -90, ly - 2.6, 0.6));
   back.add(at(printLines(78, 24, [[0, 0, 76, 22, 1.5]], { color: "#8a8e94", width: 0.4 }), -36, py - 2, 0.6));
   const lans = [];
-  for (let i = 0; i < 4; i++) { const j = rj45Jack({ name: "LAN " + (i + 1), insert: 0x2a2c30, on: [i !== 2, i === 0 || i === 3] }); at(j, -63 + i * 18, py, 0.5); back.add(j); lans.push(j); back.add(at(ink("LAN " + (i + 1), 14, 3), -63 + i * 18, ly, 0.6)); }
+  for (let i = 0; i < 4; i++) { const j = rj45Jack({ name: "LAN " + (i + 1), insert: 0x2a2c30, on: [lanIn[i], lanIn[i] && i !== 1] }); at(j, -63 + i * 18, py, 0.5); back.add(j); lans.push(j); back.add(at(ink("LAN " + (i + 1), 14, 3), -63 + i * 18, ly, 0.6)); }
   back.add(at(pinhole("RESET"), 16, py, 0.6)); back.add(at(ink("RESET", 14, 3), 16, ly, 0.6));
   const wps = new THREE.Group(); at(wps, 32, py, 0.6); back.add(wps); wps.add(at(cyl(3.6, 2, plastic(0x2a2c30, { rough: 0.4 }), 24), 0, 0, 1, Math.PI / 2)); named(wps, "button:WPS", { type: "button" });
   back.add(at(ink("WPS", 12, 3), 32, ly, 0.6));
@@ -173,8 +174,10 @@ export function homeRouter() {
   at(ul, 0, Y0 - 0.05, 0, Math.PI / 2, 0, 0); g.add(ul);
   for (let k = 0; k < 16; k++) g.add(at(box(4, 0.4, 40, mat(0x050506)), -70 + k * 9, Y0 - 0.02, 30));
   /* the cables, out of the back and down onto the bench behind */
-  const cw = patch(wan, COL.wanYellow), c1 = patch(lans[0], 0x1b1c1e), c2 = patch(lans[1], 0x1b1c1e), c4 = patch(lans[3], 0xd9dbdc), cp = dcIn(dc);
-  [[cw, 90, 30], [c1, 63, 12], [c2, 45, -2], [c4, 9, -20]].forEach(function (c) { cableFrom(g, c[0], [[c[1] + c[2] * 0.2, 16, -D / 2 - 56], [c[1] + c[2] * 0.5, 3.05, -D / 2 - 96], [c[1] + c[2] * 2.4, 3.05, -D / 2 - 280]], { straight: 22 }); });
+  const runs = [], cp = dcIn(dc), LAN_COL = [0x1b1c1e, 0x1b1c1e, 0x5e6267, 0xd9dbdc], LAN_RUN = [[63, 12], [45, -2], [27, -11], [9, -20]];
+  if (wanIn) runs.push([patch(wan, COL.wanYellow), 90, 30]);
+  lanIn.forEach(function (on, i) { if (on) runs.push([patch(lans[i], LAN_COL[i]), LAN_RUN[i][0], LAN_RUN[i][1]]); });
+  runs.forEach(function (c) { cableFrom(g, c[0], [[c[1] + c[2] * 0.2, 16, -D / 2 - 56], [c[1] + c[2] * 0.5, 3.05, -D / 2 - 96], [c[1] + c[2] * 2.4, 3.05, -D / 2 - 280]], { straight: 22 }); });
   cableFrom(g, cp, [[-52, 14, -D / 2 - 44], [-58, 1.9, -D / 2 - 74], [-90, 1.9, -D / 2 - 280]], { straight: 14 });
   return named(g, "device:Home router", { type: "router", w: W, h: Y0 + 45, d: D });
 }
@@ -202,7 +205,7 @@ export function unmanagedSwitch(o = {}) {
   const bez = rrShape(88, 18.5, 1.6, 6, 0); bez.holes.push(rrPath(85, 15.5, 1, 6, 0));
   front.add(at(new THREE.Mesh(new THREE.ExtrudeGeometry(bez, { depth: 1.2, bevelEnabled: false }), brushed(0xc5c8cc, "x")), 0, Y0 + 15, 0));
   front.add(at(ink("UNMANAGED 5-PORT GIGABIT SWITCH", 70, 3, { weight: "700", spacing: 0.06 }), 12, Y0 + 26.6, 0.05));
-  const jacks = [], on = o.cables === false ? [false, false, false, false, false] : [true, true, true, true, false];
+  const jacks = [], on = o.cables === false ? [false, false, false, false, false] : o.plugged || [true, true, true, true, false];   /* o.plugged: which of ports 1-5 have a cable */
   for (let i = 0; i < 5; i++) {
     const x = -26 + i * 16.4, j = rj45Jack({ name: String(i + 1), metal: true, on: [on[i], on[i]], actColor: COL.ledGreen });   /* both lights green, as photographed */
     front.add(at(j, x, Y0 + 15, 0.3)); jacks.push(j); front.add(at(ink(String(i + 1), 5, 3.4), x, Y0 + 3.6, 0.05));
@@ -214,8 +217,9 @@ export function unmanagedSwitch(o = {}) {
   const under = label(["UNMANAGED 5-PORT GIGABIT SWITCH · MODEL: US-1005", "10/100/1000 Mbps · Auto-MDI/MDIX · 5V ⎓ 1A", "S/N: " + COVERED], { w: 70, h: 18, marks: true });
   at(under, 0, Y0 - 0.05, 0, Math.PI / 2, 0, 0); g.add(under);
   if (o.cables !== false) {
-    const cols = [[0xf2c200], [0x9fa3a8], [0xb9bcc0], [0x4a4d52]];
+    const cols = [[0xf2c200], [0x9fa3a8], [0xb9bcc0], [0x4a4d52], [0x2f5fc4]];
     cols.forEach(function (c, i) {
+      if (!on[i]) return;
       const p = patch(jacks[i], c[0]), x = -26 + i * 16.4;
       cableFrom(g, p, [[x - 14 - i * 3, Y0 + 10, D / 2 + 60], [x - 34 - i * 6, 3.05, D / 2 + 96], [x - 120 - i * 14, 3.05, D / 2 + 230]], { straight: 22 });
     });

@@ -4,11 +4,16 @@
 import { el } from "./store.js";
 import { tabsFor, page } from "../net/pages.js";
 import { prompt } from "../net/cmd.js";
+import { physicalState } from "../net/physical.js";
+
+/* the 3D viewer is loaded the first time a Physical tab opens, never before */
+let m3dLoad = null, m3d = null;
+function load3d() { return m3dLoad || (m3dLoad = import("./model3d.js").then(function (m) { m3d = m; return m; })); }
 
 const terms = {};            /* device id -> { node, out, input, hist, hi } for the open ticket */
 const physLog = {};          /* device id -> last physical result per cable end */
 const said = {};             /* device id -> last result of a page button (test page, speed test, rejoin) */
-export function forgetTerminals() { for (const k in terms) delete terms[k]; for (const k in physLog) delete physLog[k]; for (const k in said) delete said[k]; }
+export function forgetTerminals() { for (const k in terms) delete terms[k]; for (const k in physLog) delete physLog[k]; for (const k in said) delete said[k]; if (m3d) m3d.forget(); }
 
 export function renderWindow(host, ctx) {
   const T = ctx.T, id = ctx.open, tabs = tabsFor(T.sim, id);
@@ -151,7 +156,8 @@ function lowerFirst(s) { return /^[A-Z][a-z]/.test(s) ? s[0].toLowerCase() + s.s
 const ACT_TEXT = { look: "Look at the plug", reseat: "Reseat the plug", unplug: "Unplug it", test: "Test with the cable tester", replace: "Swap in a new cable", tighten: "Tighten the connector" };
 function physicalPane(id, P, ctx, rerender) {
   const wrap = el("div", { class: "phys" });
-  if (P.still) wrap.appendChild(el("figure", null, el("img", { src: P.still, alt: "The " + P.label + ", as its 3D model: ports, lights and labels", width: "520", height: "406" }), el("figcaption", null, "A still of the " + lowerFirst(P.label) + "'s 3D model. Turning the model yourself comes in a later update.")));
+  const S = physicalState(ctx.T.sim, id);
+  if (S) wrap.appendChild(modelFigure(S, P));
   const ul = el("ul", { class: "cabs" });
   physLog[id] = physLog[id] || {};
   P.cables.forEach(function (c) {
@@ -172,6 +178,48 @@ function physicalPane(id, P, ctx, rerender) {
   wrap.appendChild(el("div", { class: "acts", style: "margin-top:10px" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "power", dev: id }); physLog[id]["power"] = r ? r.text : ""; rerender(); } }, "Restart (power off and on)")));
   wrap.appendChild(rr);
   return wrap;
+}
+
+/* the device's 3D model as it is right now, the buttons to turn it, and what it shows in words */
+function modelFigure(S, P) {
+  const holder = el("div", { class: "m3d-stage" });
+  const bar = el("div", { class: "m3d-bar", role: "group", "aria-label": "Turn the " + lowerFirst(S.label) + "'s model" });
+  const note = el("p", { class: "m3d-note", role: "status" }, "Loading the 3D model...");
+  const says = el("ul", { class: "m3d-says" }); S.says.forEach(function (t) { says.appendChild(el("li", null, t)); });
+  const fig = el("figure", { class: "m3d" }, holder, note, bar, el("figcaption", null, el("b", null, "What you can see on it"), says));
+  function still() {
+    holder.className = "m3d-still"; holder.innerHTML = "";
+    if (P.still) holder.appendChild(el("img", { src: P.still, alt: "The " + S.label + " as photographed for its model, every cable in and every light on", width: "520", height: "406" }));
+    note.textContent = "3D isn't available in this browser, so " + (P.still ? "this is a still of the model with every cable in: it doesn't show today's lights or plugs. " : "") + "The list below says what the model shows right now.";
+  }
+  load3d().then(function (m) {
+    if (!holder.isConnected) return;               /* the tab was redrawn before the model loaded */
+    let h; try { h = m.mount(holder, S); } catch (e) { still(); return; }
+    note.textContent = "Drag to turn it, scroll or pinch to zoom, or use these buttons.";
+    turnButtons(bar, h);
+    bar.appendChild(el("button", { type: "button", class: "btn small", onclick: function () { enlarge(m, S, holder); } }, "Enlarge"));
+  }).catch(still);
+  return fig;
+}
+function turnButtons(bar, h) {
+  h.views.forEach(function (v) { bar.appendChild(el("button", { type: "button", class: "btn ghost small", onclick: function () { h.look(v); } }, v)); });
+  [["Turn left", function () { h.turn(-30); }], ["Turn right", function () { h.turn(30); }], ["Closer", function () { h.zoom(0.8); }], ["Further", function () { h.zoom(1.25); }], ["Reset view", function () { h.reset(); }]].forEach(function (b) {
+    bar.appendChild(el("button", { type: "button", class: "btn ghost small", onclick: b[1] }, b[0]));
+  });
+}
+/* the same model, big: for a closer look, and for anyone who needs it larger */
+function enlarge(m, S, back) {
+  const big = el("div", { class: "m3d-stage big" }), bar = el("div", { class: "m3d-bar", role: "group", "aria-label": "Turn the model" });
+  const says = el("ul", { class: "m3d-says" }); S.says.forEach(function (t) { says.appendChild(el("li", null, t)); });
+  const close = el("button", { type: "button", class: "btn ghost small x" }, "Close");
+  const d = el("dialog", { class: "m3d-dialog", "aria-labelledby": "m3dh" }, el("div", { class: "dh" }, el("h2", { id: "m3dh" }, S.label + ": 3D model"), close),
+    el("div", { class: "db" }, big, bar, el("p", { class: "m3d-note" }, "Drag to turn it, scroll or pinch to zoom, or use the buttons."), el("p", { style: "margin:10px 0 0" }, el("b", null, "What you can see on it")), says));
+  document.body.appendChild(d);
+  close.addEventListener("click", function () { d.close(); });
+  d.addEventListener("close", function () { d.remove(); if (back.isConnected) m.mount(back, S); });
+  d.showModal();
+  turnButtons(bar, m.mount(big, S));
+  close.focus();
 }
 
 /* a page button whose result stays on the page */

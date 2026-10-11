@@ -309,7 +309,14 @@ function boot(zR, H, W, color) {
 
 /* ---- a cable running on from a plug, in the device's own coordinates:
    out of the plug's back, then through the points given (down to the
-   bench and along it), as a real patch cable lies ---- */
+   bench and along it), as a real patch cable lies.
+   The run remembers how it was made (mesh.userData.run) and the plug
+   knows its run (plug.userData.runMesh), so the site can pull a plug out
+   and lay the cable again from where the plug now is. Two kinds of
+   damage, in millimetres along the run from the plug:
+     o.crush: [s0, s1]       flattened, as under a chair wheel
+     o.split: { at, len }    kinked and split open on top, the blue and
+                             brown pairs showing, one wire of each broken ---- */
 export function cableFrom(root, plug, pts, o = {}) {
   root.updateMatrixWorld(true);
   const c = plug.userData.cable || {}, r = o.r || c.r || 3.05, z = plug.userData.exitZ;
@@ -317,12 +324,38 @@ export function cableFrom(root, plug, pts, o = {}) {
   const P = [toRoot(V(0, 0, z + 3)), toRoot(V(0, 0, z - 6)), toRoot(V(0, 0, z - (o.straight || 20)))].concat(pts.map(function (q) { return q.isVector3 ? q : V(q[0], q[1], q[2]); }));
   const up = toRoot(V(0, 1, z)).sub(toRoot(V(0, 0, z))).normalize();
   const curve = new THREE.CatmullRomCurve3(P, false, "centripetal");
-  const flat = o.flat != null ? o.flat : c.flat;
-  const geo = tubeVar(curve, { n: Math.max(60, Math.ceil(curve.getLength() / 1.5)), m: flat ? 20 : 24, up: up, uvLength: 420,
-    radius: function () { return flat ? [r * 1.95, r] : [r, r]; } });
+  const flat = o.flat != null ? o.flat : c.flat, L = curve.getLength();
+  const smooth = function (e) { e = Math.max(0, Math.min(1, e)); return e * e * (3 - 2 * e); };
+  const c0 = o.crush ? (o.crush[0] < 0 ? L + o.crush[0] : o.crush[0]) : 0, c1 = o.crush ? (o.crush[1] < 0 ? L + o.crush[1] : o.crush[1]) : 0;   /* negative: from the far end */
+  const crush = o.crush ? function (t) { const s = t * L; return smooth((s - c0) / 6) * smooth((c1 - s) / 6); } : null;
+  const inSplit = o.split ? function (t) { const s = t * L; return s > o.split.at && s < o.split.at + o.split.len; } : null;
+  const n = Math.max(60, Math.ceil(L / 1.5)), m = flat ? 20 : 24;
+  const geo = tubeVar(curve, { n: n, m: m, up: up, uvLength: 420,
+    radius: function (t) { const b = flat ? [r * 1.95, r] : [r, r]; if (!crush) return b; const k = crush(t); return [b[0] * (1 + 0.8 * k), b[1] * (1 - 0.72 * k)]; },   /* squashed flat and spread wide, as under a chair wheel */
+    hole: inSplit ? function (t, a) { const d = Math.atan2(Math.sin(a), Math.cos(a)), s = t * L - o.split.at; return inSplit(t) && Math.abs(d) < 0.75 + 0.25 * Math.sin(s * 1.7); } : null,
+    tint: o.split ? function (t, a) { const s = t * L, m = o.split.at + o.split.len / 2, w = Math.max(0, 1 - Math.abs(s - m) / (o.split.len * 1.6)); return w * Math.max(0, Math.cos(a)) * 0.45; } : null });
+  if (crush) {   /* a flattened stretch still lies on the bench: lower it by what it lost in height */
+    const pa = geo.attributes.position;
+    for (let i = 0; i <= n; i++) { const k = crush(i / n); if (!k) continue; for (let j = 0; j <= m; j++) { const q = i * (m + 1) + j; pa.setY(q, pa.getY(q) - r * 0.72 * k); } }
+    pa.needsUpdate = true; geo.computeBoundingSphere();
+  }
   /* the legend at its real size (about 2.5 mm letters), repeating every so often, in a softer ink */
   const col = o.color != null ? o.color : c.color, lum = new THREE.Color(col).getHSL({}).l;
-  const mesh = new THREE.Mesh(geo, jacketMaterial(col, o.text || c.text || CAT6, o.ink || c.ink || (lum < 0.3 ? "rgba(235,235,235,0.5)" : "rgba(25,25,25,0.55)"), { font: 16 }));
+  const mesh = new THREE.Mesh(geo, jacketMaterial(col, o.text || c.text || CAT6, o.ink || c.ink || (lum < 0.3 ? "rgba(235,235,235,0.5)" : "rgba(25,25,25,0.55)"), { font: 16, side: o.split ? THREE.DoubleSide : null }));
+  if (o.split) {
+    /* inside the split: the blue and brown pairs, pushed up into the tear; the solid wire of each broken, copper showing */
+    const N = 400, F = frames(curve, N, up), frameAt = function (s) { const k = Math.round(Math.min(1, Math.max(0, s / L)) * N); return { N: F.N[k], B: F.B[k] }; };
+    const s0 = o.split.at - 4, s1 = o.split.at + o.split.len + 4, mid = o.split.at + o.split.len / 2;
+    [["blue", [0.55, 0.85], 16.5], ["brown", [-0.55, 0.85], 18.4]].forEach(function (pc, k) {
+      const centre = function (s) { const Fr = frameAt(s), lift = smooth((s - o.split.at) / 4) * smooth((o.split.at + o.split.len - s) / 4) * 1.6; return curve.getPointAt(Math.min(1, s / L)).addScaledVector(Fr.B, pc[1][0] * r / 1.6).addScaledVector(Fr.N, pc[1][1] * r / 1.6 + lift); };
+      mesh.add(wireTube(helix(centre, frameAt, s0, s1, pc[2], 0, 0.5), "white/" + pc[0], 0.47, 120));
+      const gap = 1.4 + k * 0.6, A = helix(centre, frameAt, s0, mid - gap + k, pc[2], Math.PI, 0.5), B = helix(centre, frameAt, mid + gap + k, s1, pc[2], Math.PI, 0.5);
+      mesh.add(wireTube(A, pc[0], 0.47, 80)); mesh.add(wireTube(B, pc[0], 0.47, 80));
+      mesh.add(copperEnd(A[A.length - 1], A[A.length - 1].clone().sub(A[A.length - 2]).normalize(), 0.27));
+      mesh.add(copperEnd(B[0], B[0].clone().sub(B[1]).normalize(), 0.27));
+    });
+  }
+  mesh.userData.run = { pts: pts, o: o }; plug.userData.runMesh = mesh;
   root.add(mesh); return mesh;
 }
 /* plug a plug into a jack group (both face +Z; the plug goes in pointing -Z) */

@@ -200,6 +200,18 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, summary:focus-v
 .btn.ghost { background: #ffffff; color: var(--royal); }
 .btn.small { min-height: 34px; padding: 4px 10px; font-weight: 600; }
 .phys figure { margin: 0 0 10px; } .phys img { display: block; width: 100%; border-radius: 6px; } .phys figcaption { margin-top: 6px; color: var(--muted); font-size: 0.9rem; }
+/* the live 3D model: the canvas on its bench colour, the turn buttons, what it shows in words */
+.m3d-stage { position: relative; width: 100%; aspect-ratio: 4 / 3; max-height: 420px; background: #d8d5cf; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.m3d-canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.m3d-canvas:focus-visible { outline: 3px solid var(--royal); outline-offset: -3px; }
+.m3d-note { margin: 6px 0 0; color: var(--muted); font-size: 0.95rem; }
+.m3d-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.phys .m3d figcaption { color: var(--ink); font-size: 0.95rem; margin-top: 10px; }
+.m3d figcaption b { display: block; }
+.m3d-says { margin: 4px 0 0; padding-left: 1.2em; } .m3d-says li + li { margin-top: 3px; }
+dialog.m3d-dialog { max-width: 1120px; }
+dialog.m3d-dialog .db { max-height: calc(100vh - 90px); }
+.m3d-stage.big { max-height: calc(100vh - 260px); min-height: 280px; }
 .cabs { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .cabs li { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
 .cabs .nm { margin: 0 0 6px; font-weight: 700; }

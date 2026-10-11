@@ -90,13 +90,15 @@
  {
   "name": "window: PC physical, look and test",
   "page": "index.html",
-  "setup": "[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click(); [...document.querySelectorAll('.cabs button')].find(b=>b.textContent.startsWith('Look')).click(); [...document.querySelectorAll('.cabs button')].find(b=>b.textContent.startsWith('Test')).click(); [...document.querySelectorAll('.phys button')].find(b=>b.textContent.startsWith('Restart')).click()"
+  "setup": "[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click(); [...document.querySelectorAll('.cabs button')].find(b=>b.textContent.startsWith('Look')).click(); [...document.querySelectorAll('.cabs button')].find(b=>b.textContent.startsWith('Test')).click(); [...document.querySelectorAll('.phys button')].find(b=>b.textContent.startsWith('Restart')).click()",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
  },
  {
   "name": "window: modem physical, coax",
   "page": "index.html",
   "ticket": "HOME-05",
-  "setup": "document.querySelector('#devtabs [data-d=modem]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click(); [...document.querySelectorAll('.cabs button')].filter(b=>b.textContent.startsWith('Look')).forEach(b=>b.click())"
+  "setup": "document.querySelector('#devtabs [data-d=modem]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click(); [...document.querySelectorAll('.cabs button')].filter(b=>b.textContent.startsWith('Look')).forEach(b=>b.click())",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
  },
  {
   "name": "window: PC network settings",
@@ -216,6 +218,35 @@
   "name": "HOME-10: switch physical, unknown cable unplugged",
   "page": "index.html",
   "ticket": "HOME-10",
-  "setup": "document.querySelector('#devtabs [data-d=switch]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click(); [...document.querySelectorAll('.cabs li')].find(l=>/not on the diagram/.test(l.textContent)).querySelector('button:nth-child(3)').click()"
+  "setup": "document.querySelector('#devtabs [data-d=switch]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click(); [...document.querySelectorAll('.cabs li')].find(l=>/not on the diagram/.test(l.textContent)).querySelector('button:nth-child(3)').click()",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "window: modem 3D model, front lights view (HOME-05)",
+  "page": "index.html",
+  "ticket": "HOME-05",
+  "seed": 1,
+  "setup": "document.querySelector('#devtabs [data-d=modem]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click();",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))",
+  "after": "[...document.querySelectorAll('.m3d-bar button')].find(b=>b.textContent==='Front lights').click()"
+ },
+ {
+  "name": "window: switch 3D model enlarged (HOME-08)",
+  "page": "index.html",
+  "ticket": "HOME-08",
+  "seed": 2,
+  "mode": "view",
+  "setup": "document.querySelector('#devtabs [data-d=switch]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click();",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))",
+  "after": "[...document.querySelectorAll('.m3d-bar button')].find(b=>b.textContent==='Enlarge').click()"
+ },
+ {
+  "name": "window: PC Physical with WebGL off (still and words)",
+  "page": "index.html",
+  "ticket": "HOME-01",
+  "seed": 1,
+  "nogl": true,
+  "setup": "document.querySelector('#devtabs [data-d=pc]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click();",
+  "wait": "!!document.querySelector('.m3d-still img')"
  }
 ]

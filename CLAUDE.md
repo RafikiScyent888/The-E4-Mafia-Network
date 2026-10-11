@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (11 October 2026): the real site, builds 1 and 2, is live: all ten home tickets** (not yet linked
+**Status (11 October 2026): the real site, builds 1 to 3, is live: all ten home tickets, and the live 3D models in every Physical tab** (not yet linked
 from the Under the Hood tile). See "The real site" below. The owner, 11
 October 2026: **"Build it like the preview you gave me just keep the layout
 exactly the same just remove the C with A bars."** Confirmed with the owner
@@ -421,9 +421,42 @@ router's pages, the printer's own TCP/IP panel. A ticket solved by just
 opening a page (HOME-07, HOME-08) is counted like any other: the drive
 test found the first version didn't count it.
 
-**The Physical tab** shows stills of the 3D models (`assets/stills/`,
-rendered from the real models). The live, turnable models showing each
-fault come in build 3.
+**The Physical tab: the live 3D models (build 3, 11 October 2026).** The
+owner: "Yes go straight on, those five look right" (stage 3, then stage 4).
+Every device with a Physical tab shows its approved model, live and
+turnable, set to what the simulation says right now:
+- `js/net/physical.js` (pure, node-tested) works out what the model shows:
+  each port's plug in, out (hanging loose) or none, a coax screwed on or
+  loose, the lights (lit, dark, blinking; green, amber for a 10/100 link
+  on the switch, blue for ONLINE), a split cable at the end the kink is
+  near (HOME-08), the crushed run behind the PC's desk (HOME-01), and
+  what is on the printer's and TV's screens (their real addresses). The
+  laptop's screen shows Command Prompt waiting: what it says is for the
+  student to find out. The same facts are written out under the model
+  ("What you can see on it"), so nothing depends on seeing colour. The
+  old router in HOME-10 is drawn with the home router model, LAN 1 only.
+- `js/desk/model3d.js` (loaded the first time a Physical tab opens; the
+  pages carry the three.js import map) builds the model from
+  `assets/models`, then sets it to that state: pulls plugs out and lays
+  their cable again from where the plug now is, removes the photo's cables
+  where the house has none, backs the coax off its thread, paints the
+  lights, blinks DS/US about once a second (steady for anyone who asks
+  for less motion). ONE canvas and ONE WebGL context for the whole page:
+  the canvas moves into whichever Physical tab is open. It draws only
+  while something changes, then once more with ambient occlusion. Named
+  views per device (Back ports, Front lights, Top lights, Ports close-up,
+  Cable run, Control panel, Screen), Turn left/right, Closer, Further,
+  Reset view, and **Enlarge** (the same model in a big window, for anyone
+  who needs it larger). Without WebGL it falls back to the still
+  (`assets/stills/`, which shows every cable in) and says so; the words
+  still say what the model shows.
+- The model files gained options, with the approved look as the default
+  (the preview page is unchanged): `homeRouter({ wan, lans })`,
+  `unmanagedSwitch({ plugged })`, `laptop({ screen })`,
+  `networkPrinter({ screen })`, `smartTV({ screen })`,
+  `ipCamera({ ipLine })`; `cableFrom` records how each run was laid
+  (so a plug can be pulled and its run re-laid) and takes `crush` and
+  `split` damage.
 
 **Checks:** `npm test` (Node: every ticket on 150 houses: the fault shows
 in the commands themselves, the board, the real fix and the tempting
@@ -433,8 +466,17 @@ ladder, exact replay, no hint names the answer); `node tools/drive.mjs`
 the terminal, the forms and the Physical tab; the rungs; red marked three
 ways; a wrong fix not solving; putting the network back; reload keeps
 progress; the three views; easier reading persisting); AAA on painted
-pixels across 31 states plus scrolled positions. Each check was shown to
-fail on planted defects.
+pixels across 44 states plus scrolled positions, measured with WebGL on so
+the 3D model's buttons and the Enlarge window are measured too (and one
+state with it off, for the fallback); `node tools/models.mjs` (the 3D
+models in a real browser: the colour actually drawn at each light the
+student must read, sampled from the rendered pixels; pulled plugs out of
+their ports by distance; the loose coax off its thread; empty ports empty;
+DS really blinking; one WebGL context however many tabs are opened;
+Enlarge; the no-WebGL fallback). Each check was shown to fail on planted
+defects (the 3D checker: lights ignoring the sim, amber drawn green, plugs
+never pulled, the coax never loosened, the photo's cables left in, damage
+never drawn, a new renderer on every open, lights never blinking).
 
 ## Objectives
 

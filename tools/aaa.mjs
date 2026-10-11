@@ -1,11 +1,15 @@
 // AAA on painted pixels for the real site, state by state.
-// node tools/aaa.mjs tools/aaa-states.json [plantCSS]   states: [{name, page, ticket, seed, setup, mode: "full"|"view"}]
+// node tools/aaa.mjs tools/aaa-states.json [plantCSS]   states: [{name, page, ticket, seed, setup, wait, after, nogl, mode: "full"|"view"}]
+// wait: a page expression to wait for (the 3D model drawn); after: run once it's true; nogl: in a browser with WebGL off
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
 import url from 'node:url';
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..'), T = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.jpg': 'image/jpeg' };
 const srv = http.createServer((q, r) => { const rel = decodeURIComponent(q.url.split('?')[0].split('#')[0]).slice(1) || 'index.html'; fs.readFile(path.join(ROOT, rel), (e, b) => { r.writeHead(e ? 404 : 200, { 'content-type': T[path.extname(rel)] || 'application/octet-stream' }); r.end(e ? '' : b); }); }).listen(0);
 const pw = await import(process.env.PLAYWRIGHT || '/opt/node22/lib/node_modules/playwright/index.mjs'); const { chromium } = pw.default || pw;
-const B = await chromium.launch({ executablePath: process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--headless=new', '--no-sandbox'] });
+const CHROME = process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+/* WebGL on (software), so the Physical tab's 3D model and its buttons are what gets measured; a second browser with it off for the fallback */
+const B = await chromium.launch({ executablePath: CHROME, args: ['--headless=new', '--no-sandbox', '--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const NOGL = await chromium.launch({ executablePath: CHROME, args: ['--headless=new', '--no-sandbox', '--disable-3d-apis'] });
 const lum = ([r, g, b]) => { const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
 const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 const states = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')), plant = process.argv[3] || '';
@@ -13,11 +17,13 @@ let total = 0, allBad = [], errs = [];
 for (const st of states) {
   const bad = []; let n = 0;
   for (const vp of [{ w: 1400, h: 900 }, { w: 380, h: 800 }]) for (const dys of [false, true]) for (const hov of (st.mode === 'view' ? [false] : [false, true])) {
-    const ctx = await B.newContext({ viewport: { width: vp.w, height: vp.h }, reducedMotion: 'reduce' });   /* no smooth scrolling mid-measurement */
+    const ctx = await (st.nogl ? NOGL : B).newContext({ viewport: { width: vp.w, height: vp.h }, reducedMotion: 'reduce' });   /* no smooth scrolling mid-measurement */
     await ctx.addInitScript(([t, s, d]) => { try { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('e4-network-v1', JSON.stringify({ current: t, t: { [t]: { seed: s } }, solved: {} })); localStorage.setItem('e4-dyslexia', d ? '1' : '0'); sessionStorage.setItem('seeded', '1'); } } catch (e) {} }, [st.ticket || 'HOME-01', st.seed || 1234, dys]);
     const p = await ctx.newPage(); p.on('pageerror', e => errs.push(st.name + ': ' + e.message));
     await p.goto('http://127.0.0.1:' + srv.address().port + '/' + (st.page || 'index.html')); await p.waitForTimeout(400);
     if (st.setup) { await p.evaluate(st.setup); await p.waitForTimeout(250); }
+    if (st.wait) await p.waitForFunction(st.wait, null, { timeout: 120000, polling: 250 });
+    if (st.after) { await p.evaluate(st.after); await p.waitForTimeout(300); }
     if (plant) await p.addStyleTag({ content: plant });
     if (hov) { await p.hover('nav.views a'); await p.waitForTimeout(120); }
     await p.evaluate(() => document.querySelectorAll('details').forEach(d => { d.open = true; })); await p.waitForTimeout(60);
@@ -55,4 +61,4 @@ for (const st of states) {
 }
 console.log(errs.length ? 'PAGE ERRORS\n' + [...new Set(errs)].join('\n') : 'no page errors');
 console.log(allBad.length ? 'FAIL overall' : `PASS overall: ${total} text runs across ${states.length} states, AAA on painted pixels (desk + phone, easier reading on/off, hover)`);
-await B.close(); srv.close();
+await B.close(); await NOGL.close(); srv.close();

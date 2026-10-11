@@ -82,7 +82,7 @@ export function legend(text, bg, ink, o = {}) {
   legendCache.set(key, t); return t;
 }
 export function jacketMaterial(color, text, ink, o = {}) {
-  return new THREE.MeshPhysicalMaterial({ color: 0xffffff, map: legend(text, color, ink || "rgba(255,255,255,0.82)", o.font ? { font: o.font } : {}), roughness: o.rough == null ? 0.42 : o.rough, clearcoat: 0.25, clearcoatRoughness: 0.5, vertexColors: true, side: o.side || THREE.FrontSide, envMapIntensity: 0.7 });
+  return new THREE.MeshPhysicalMaterial({ color: 0xffffff, map: legend(text, color, ink || "rgba(255,255,255,0.82)", o.font ? { font: o.font } : {}), roughness: o.rough == null ? 0.42 : o.rough, clearcoat: 0.25, clearcoatRoughness: 0.5, vertexColors: true, side: o.side != null ? o.side : THREE.FrontSide, envMapIntensity: 0.7 });
 }
 
 /* ---- wire insulation: solid colour, or white with a coloured stripe ---- */

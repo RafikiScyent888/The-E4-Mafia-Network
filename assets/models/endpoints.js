@@ -169,7 +169,8 @@ function fanUnit(d) {
    (open round the plug, its link and activity lights on), two blue
    SuperSpeed USB-A in black frames, USB-C, the headset jack, each with
    its label above, and the vents. On screen: Command Prompt. */
-export function laptop() {
+/* o.screen: the lines in the Command Prompt window (ipconfig, as photographed, by default) */
+export function laptop(o = {}) {
   const g = new THREE.Group(), W = 324, D = 226, HL = 8.5, HU = 12.5, H = HL + HU;
   /* bead-blasted aluminium: a fine, even matte metal (not brushed) */
   const alu = mat(0xb3b7bd, { metal: 0.8, rough: 0.4, grain: 0.03, scale: 0.12 }), aluDark = mat(0x9a9ea4, { metal: 0.75, rough: 0.45, grain: 0.03, scale: 0.12 });
@@ -189,7 +190,7 @@ export function laptop() {
   const lid = new THREE.Group(); lid.position.set(0, H + 1.5, -D / 2 + 6); lid.rotation.x = -0.33; g.add(lid);
   lid.add(at(rbox(W, 214, 5.5, 3.5, alu), 0, 108, -2.4));
   lid.add(at(box(W - 4, 210, 0.4, gloss(0x0b0b0c, { rough: 0.1 })), 0, 108, 0.4));             // the black glass over the bezel
-  const scr = new THREE.Mesh(new THREE.PlaneGeometry(300, 187.5), new THREE.MeshBasicMaterial({ map: cmdScreen(), toneMapped: false }));
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(300, 187.5), new THREE.MeshBasicMaterial({ map: cmdScreen(o.screen), toneMapped: false }));
   scr.position.set(0, 114, 0.65); lid.add(scr);
   lid.add(at(new THREE.Mesh(new THREE.CircleGeometry(1.2, 20), mat(0x15233a, { metal: 0.6, rough: 0.1, grain: false })), 0, 210.5, 0.66));   // the webcam
   /* the left side: ports from the hinge end forward, labels above */
@@ -241,7 +242,7 @@ function keyboard(deck, cx, cy) {
 }
 /* what's on the screen: the desktop, and Command Prompt showing ipconfig
    exactly as Windows prints it (the dot leaders end in one column) */
-function cmdScreen() {
+function cmdScreen(lines) {
   const c = document.createElement("canvas"); c.width = 1600; c.height = 1000; const g = c.getContext("2d");
   const bg = g.createLinearGradient(0, 0, 1600, 1000); bg.addColorStop(0, "#1e3a8a"); bg.addColorStop(1, "#4c1d95"); g.fillStyle = bg; g.fillRect(0, 0, 1600, 1000);
   g.fillStyle = "#1b1d22"; g.fillRect(0, 944, 1600, 56);                                   // the taskbar
@@ -254,7 +255,7 @@ function cmdScreen() {
   g.strokeStyle = "#1b1b1b"; g.lineWidth = 2; g.beginPath(); g.moveTo(x0 + w - 150, y0 + 24); g.lineTo(x0 + w - 132, y0 + 24); g.stroke(); g.strokeRect(x0 + w - 92, y0 + 15, 18, 18);
   g.beginPath(); g.moveTo(x0 + w - 40, y0 + 14); g.lineTo(x0 + w - 20, y0 + 34); g.moveTo(x0 + w - 20, y0 + 14); g.lineTo(x0 + w - 40, y0 + 34); g.stroke();
   g.fillStyle = "#0c0c0c"; g.fillRect(x0, y0 + 46, w, h - 46);
-  const L = ["C:\\Users\\tech>ipconfig", "", "Windows IP Configuration", "", "",
+  const L = lines || ["C:\\Users\\tech>ipconfig", "", "Windows IP Configuration", "", "",
     "Ethernet adapter Ethernet:", "", "   Connection-specific DNS Suffix  . : home",
     "   IPv4 Address. . . . . . . . . . . : 192.168.1.23", "   Subnet Mask . . . . . . . . . . . : 255.255.255.0", "   Default Gateway . . . . . . . . . : 192.168.1.1",
     "", "C:\\Users\\tech>_"];
@@ -270,7 +271,8 @@ function cmdScreen() {
    CANCEL, the round arrow pad with OK, STATUS. The back: the port plate
    with NETWORK (link and activity lights, the patch cable plugged in),
    USB (B), SERIAL, each in its printed box; the mains inlet and switch. */
-export function networkPrinter() {
+/* o.screen: { status, ip } on the control panel (ONLINE, 192.168.1.100 by default) */
+export function networkPrinter(o = {}) {
   const g = new THREE.Group(), W = 400, D = 390, HB = 200, HT = 96, Y0 = 4, top = Y0 + HB + HT;
   const body = plastic(0xe8e8e4, { rough: 0.5 }), cover = plastic(0x2d3034, { rough: 0.45 });
   g.add(at(rbox(W, HB, D, 8, body), 0, Y0 + HB / 2, 0));
@@ -299,7 +301,7 @@ export function networkPrinter() {
   const fz = 2.25;
   cp.add(at(ink("CONTROL PANEL", 44, 4.2, { weight: "500" }), -52, 36, fz)); cp.add(at(ink("NP-1000 SERIES", 44, 4.2, { weight: "500" }), 52, 36, fz));
   cp.add(at(rbox(96, 54, 1.2, 3, gloss(0x08090a, { rough: 0.08 })), -18, 6, fz + 0.2));
-  const lcd = new THREE.Mesh(new THREE.PlaneGeometry(88, 49), new THREE.MeshBasicMaterial({ map: printerScreen(), toneMapped: false })); lcd.position.set(-18, 6, fz + 0.85); cp.add(lcd);
+  const lcd = new THREE.Mesh(new THREE.PlaneGeometry(88, 49), new THREE.MeshBasicMaterial({ map: printerScreen(o.screen), toneMapped: false })); lcd.position.set(-18, 6, fz + 0.85); cp.add(lcd);
   cp.add(at(ledPipeAmber(), -80.5, 10, fz - 0.4));
   /* POWER: round, its ring lit green */
   const pw = new THREE.Group(); at(pw, -54, -30, fz); cp.add(pw);
@@ -357,7 +359,8 @@ function ledPipeAmber() {
   m.userData = { kind: "led", color: 0xffa21a, on: true, role: "attention" }; return m;
 }
 /* the printer's colour screen, as in the photo (wording corrected) */
-function printerScreen() {
+function printerScreen(sc) {
+  sc = sc || { status: "ONLINE (192.168.1.100)", ip: "192.168.1.100" };
   const c = document.createElement("canvas"); c.width = 880; c.height = 490; const g = c.getContext("2d");
   g.fillStyle = "#f4f7fb"; g.fillRect(0, 0, 880, 490);
   g.fillStyle = "#dde7f3"; g.fillRect(0, 0, 880, 104);
@@ -365,10 +368,10 @@ function printerScreen() {
   g.fillStyle = "#2a5ea8"; g.font = "700 30px Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("i", 46, 53);
   g.textAlign = "left"; g.fillStyle = "#1a2433"; g.font = "700 46px Arial, sans-serif"; g.fillText("STATUS:", 90, 54);
   g.fillStyle = "#bcd3ee"; g.fillRect(0, 112, 880, 96);
-  g.fillStyle = "#13233a"; g.font = "600 46px Arial, sans-serif"; g.fillText("ONLINE (192.168.1.100)", 60, 162);
+  g.fillStyle = "#13233a"; g.font = "600 46px Arial, sans-serif"; g.fillText(sc.status, 60, 162);
   g.fillStyle = "#2f6fc0"; g.fillRect(0, 232, 880, 92);
   g.fillStyle = "#ffffff"; g.font = "700 44px Arial, sans-serif"; g.fillText("<···>  IP ADDRESS", 34, 280);
-  g.fillStyle = "#13233a"; g.font = "600 46px Arial, sans-serif"; g.fillText("192.168.1.100", 60, 396);
+  g.fillStyle = "#13233a"; g.font = "600 46px Arial, sans-serif"; g.fillText(sc.ip, 60, 396);
   g.fillStyle = "#9fb3cc"; g.fillRect(60, 438, 300, 5);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
 }
@@ -380,13 +383,14 @@ function printerScreen() {
    USB 5V 0.5A, USB HDD, optical, AV in, antenna/cable in, DC in), the
    LAN port with the Ethernet cable plugged in. On screen: its network
    status page. */
-export function smartTV() {
+/* o.screen: { connected, rows } for the network status page on screen */
+export function smartTV(o = {}) {
   const g = new THREE.Group(), W = 970, H = 565, T = 8, Y0 = 82, cy = Y0 + H / 2;
   const silver = mat(0xb8bbc0, { metal: 0.3, rough: 0.42, grain: 0.05, scale: 0.5 });
   const panel = new THREE.Group(); at(panel, 0, cy, 0); g.add(panel);
   panel.add(rbox(W, H, T, 2.5, plastic(0x1b1c1f, { rough: 0.4 })));
   panel.add(at(box(W - 10, H - 18, 0.4, gloss(0x050607, { rough: 0.06 })), 0, 4, T / 2 + 0.05));
-  const ui = new THREE.Mesh(new THREE.PlaneGeometry(W - 14, H - 24), new THREE.MeshBasicMaterial({ map: tvScreen(), toneMapped: false })); ui.position.set(0, 4, T / 2 + 0.3); panel.add(ui);
+  const ui = new THREE.Mesh(new THREE.PlaneGeometry(W - 14, H - 24), new THREE.MeshBasicMaterial({ map: tvScreen(o.screen), toneMapped: false })); ui.position.set(0, 4, T / 2 + 0.3); panel.add(ui);
   panel.add(at(led(0xff3030, true, 1.1), 0, -H / 2 + 5, T / 2 + 0.3));                                       // the standby/IR window
   panel.add(at(box(W - 16, H - 16, 3, silver), 0, 0, -T / 2 - 1.4));                                          // the thin back
   /* the rear housing, with the port bay cut into it */
@@ -461,13 +465,14 @@ function lanIcon(color) {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(14, 10.5), new THREE.MeshStandardMaterial({ map: t, transparent: true, depthWrite: false, roughness: 0.6 })); m.userData.print = true; return m;
 }
 /* the TV's network status page */
-function tvScreen() {
+function tvScreen(sc) {
   const c = document.createElement("canvas"); c.width = 1920; c.height = 1080; const g = c.getContext("2d");
   const bg = g.createLinearGradient(0, 0, 1920, 1080); bg.addColorStop(0, "#0d1b3d"); bg.addColorStop(1, "#1d1147"); g.fillStyle = bg; g.fillRect(0, 0, 1920, 1080);
   g.fillStyle = "#b9c6e6"; g.font = "500 40px Arial, sans-serif"; g.textBaseline = "middle"; g.fillText("Settings  ›  Network", 110, 110);
   g.fillStyle = "#ffffff"; g.font = "700 76px Arial, sans-serif"; g.fillText("Network Status", 110, 200);
-  g.fillStyle = "#7ee08a"; g.font = "700 50px Arial, sans-serif"; g.fillText("✓  Wired (LAN): Connected", 110, 320);
-  const rows = [["IP address", "192.168.1.42"], ["Subnet mask", "255.255.255.0"], ["Gateway", "192.168.1.1"], ["DNS server", "192.168.1.1"], ["MAC address", "██:██:██:██:██:██"]];
+  const ok = !sc || sc.connected;
+  g.fillStyle = ok ? "#7ee08a" : "#ff8a80"; g.font = "700 50px Arial, sans-serif"; g.fillText(ok ? "✓  Wired (LAN): Connected" : "✕  Wired (LAN): Not connected", 110, 320);
+  const rows = sc ? sc.rows : [["IP address", "192.168.1.42"], ["Subnet mask", "255.255.255.0"], ["Gateway", "192.168.1.1"], ["DNS server", "192.168.1.1"], ["MAC address", "██:██:██:██:██:██"]];
   rows.forEach(function (r, i) { g.fillStyle = "#b9c6e6"; g.font = "500 46px Arial, sans-serif"; g.fillText(r[0], 110, 440 + i * 84); g.fillStyle = "#ffffff"; g.font = "700 46px Arial, sans-serif"; g.fillText(r[1], 560, 440 + i * 84); });
   g.fillStyle = "#2557d6"; g.fillRect(110, 900, 440, 86); g.fillStyle = "#ffffff"; g.font = "700 44px Arial, sans-serif"; g.fillText("Test Connection", 150, 944);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
@@ -487,7 +492,8 @@ function opticalToslink() {
    the recessed port pocket: the cable gland with the cable out of it,
    the gigabit PoE port with its lights on and the patch cable plugged
    in, and the rubber weather cap lying beside it. */
-export function ipCamera() {
+/* o.ipLine: the address line printed on the label ("IP: 192.168.1.50" by default) */
+export function ipCamera(o = {}) {
   const g = new THREE.Group(), R = 62, white = plastic(0xf3f3f0, { rough: 0.38 }), grey = plastic(0xb5b8bc, { rough: 0.5 });
   /* the wall, straight to 33 mm, then the shoulder up to the top at 44 */
   const PROF = [[7, R], [33, R], [37, R - 1.5], [41, R - 4.5], [44, R - 10]];
@@ -528,7 +534,7 @@ export function ipCamera() {
   const cpl = patch(pj, { boot: 0x5e6267, jacket: 0x5e6267 });
   /* the printing on the base wall above the pocket, and the label */
   g.add(curvedPrint(["<···>  (Data + Power)  <···>", "Gigabit IP Camera Port · 10/100/1000"], 64, 5.6, pth, 30.2, rAt));
-  g.add(curvedPrint(["MODEL: IPC-6000D", "MAC: " + COVERED, "IP: 192.168.1.50"], 46, 12, 0.08, 24, rAt, { align: "left" }));
+  g.add(curvedPrint(["MODEL: IPC-6000D", "MAC: " + COVERED, o.ipLine || "IP: 192.168.1.50"], 46, 12, 0.08, 24, rAt, { align: "left" }));
   g.add(curvedPrint(null, 40, 8, 0.05, 12.5, rAt, { barcode: "cam-mac", caption: "MAC: " + COVERED }));
   const sc = new THREE.Group(); const sa = 0.57; sc.position.set(Math.sin(sa) * (rAt(16) + 0.1), 16, Math.cos(sa) * (rAt(16) + 0.1)); sc.rotation.y = sa; g.add(sc);
   sc.add(at(new THREE.Mesh(new THREE.CircleGeometry(3.2, 24), mat(0xd9dadb, { rough: 0.5 })), 0, 0, 0.05)); sc.add(at(screw(2.4, 0xc0c2c5), 0, 0, 0.1));

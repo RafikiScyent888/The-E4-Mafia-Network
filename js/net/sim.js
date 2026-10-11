@@ -30,7 +30,15 @@ const SIGNAL = {
 export const PORTS = { router: ["WAN", "LAN 1", "LAN 2", "LAN 3", "LAN 4"], switch: ["1", "2", "3", "4", "5"], modem: ["ETH"], pc: ["NIC"], printer: ["NET"], camera: ["LAN"], tv: ["LAN"], injector: ["DATA IN", "PoE OUT"], mesh: ["WAN", "LAN"] };
 /* what a PoE injector can send down the cable: at the injector, and what reaches the device after the cable's loss (IEEE 802.3af and 802.3at) */
 export const POE = { af: { pse: 15.4, pd: 12.95 }, at: { pse: 30, pd: 25.5 } };
-export const PORT_NAME = { WAN: "INTERNET (WAN)", ETH: "ETHERNET", NIC: "Ethernet", NET: "NETWORK", LAN: "LAN" };
+export const PORT_NAME = { WAN: "INTERNET (WAN)", ETH: "ETHERNET", NIC: "Ethernet", NET: "NETWORK", LAN: "LAN", "PoE OUT": "DATA + POWER OUT" };
+/* an injector's ports in pairs: each DATA + POWER OUT carries on the link from its own DATA IN, and nothing else.
+   The dual-port PoE+ injector (build mode's injector2) has two pairs, kept apart as on the real thing */
+export const POE_PAIR = { "PoE OUT": "DATA IN", "DATA IN": "PoE OUT", "PoE OUT 2": "DATA IN 2", "DATA IN 2": "PoE OUT 2" };
+export const DUAL_PORTS = ["DATA IN", "DATA IN 2", "PoE OUT", "PoE OUT 2"];
+const DUAL_NAME = { "DATA IN": "DATA IN 1", "DATA IN 2": "DATA IN 2", "PoE OUT": "DATA + POWER OUT 1", "PoE OUT 2": "DATA + POWER OUT 2" };
+/* the name printed by a port on the device itself: what the student reads on the model and in every list */
+export function portName(x, port) { return (x && x.dual && DUAL_NAME[port]) || PORT_NAME[port] || port; }
+export function portsOf(x) { return x ? (x.dual ? DUAL_PORTS : PORTS[x.kind] || []) : []; }
 export const FIXED_ROOM = { modem: ["living", "by the cable outlet: there's one, in the living room"], camera: ["porch", "on its mount by the front door"] };
 const RUN = { office: { living: 14, kitchen: 18, garage: 12, porch: 38, upstairs: 20, landing: 18 }, living: { kitchen: 10, garage: 22, porch: 20, upstairs: 15, landing: 8 }, kitchen: { garage: 16, porch: 14, upstairs: 22, landing: 14 }, garage: { porch: 30, upstairs: 28, landing: 24 }, porch: { upstairs: 32, landing: 22 }, upstairs: { landing: 6 } };
 export function runLength(a, b) { if (a === b) return 3; return (RUN[a] && RUN[a][b]) || (RUN[b] && RUN[b][a]) || 40; }
@@ -52,7 +60,7 @@ export class Sim {
     const c = this.cablesOf(id)[0]; if (!c || c.kind === "coax") return null;
     const me = c.a.dev === id ? c.a : c.b, far = c.a.dev === id ? c.b : c.a, inj = this.d[far.dev];
     if (!me.seated || !far.seated || c.cond === "crushed") return null;
-    return inj && inj.kind === "injector" && far.port === "PoE OUT" ? inj : null;
+    return inj && inj.kind === "injector" && /^PoE OUT/.test(far.port) ? inj : null;
   }
   /* a PoE device is on only while power comes down its cable: the injector plugged in, and a kind of PoE the device
      can use (802.3af or 802.3at: 48 V after a handshake; passive 24 V won't do) */
@@ -67,9 +75,9 @@ export class Sim {
     if (c.cond === "crushed") return false;                 /* pairs 1-2 or 3-6 open: no link at all */
     const ij = [c.a, c.b].find(function (e) { return this.d[e.dev] && this.d[e.dev].kind === "injector"; }, this);
     if (ij) {  /* an injector passes the data pairs straight through: the link is end to end */
-      const o = this.cablesOf(ij.dev).filter(function (k) { return k !== c; });
-      if (o.length !== 1 || !o[0].a.seated || !o[0].b.seated || o[0].cond === "crushed") return false;
-      return [c.a, c.b, o[0].a, o[0].b].filter(function (e) { return e.dev !== ij.dev; }).every(function (e) { return this.on(e.dev); }, this);
+      const o = this.cableAt(ij.dev, POE_PAIR[ij.port]);   /* the cable in the same pair's other port */
+      if (!o || o === c || !o.a.seated || !o.b.seated || o.cond === "crushed") return false;
+      return [c.a, c.b, o.a, o.b].filter(function (e) { return e.dev !== ij.dev; }).every(function (e) { return this.on(e.dev); }, this);
     }
     return this.on(c.a.dev) && this.on(c.b.dev);
   }
@@ -190,6 +198,7 @@ export class Sim {
   nodeOf(dev, port) {
     const k = this.d[dev] && this.d[dev].kind;
     if (k === "router" || k === "rogue") return port === "WAN" ? dev + ":wan" : dev + ":lan";
+    if (k === "injector" && / 2$/.test(port)) return dev + ":2";   /* a dual injector's second pair: a path of its own, never bridged to the first */
     return dev;
   }
   /* bridging devices pass frames between everything joined to them */
@@ -522,8 +531,8 @@ export class Sim {
     if (a.dev === b.dev) return { ok: false, errs: ["Both ends are on the " + A.label + ": a cable joins two devices"] };
     [[A, a], [B, b]].forEach(function (e) {
       if (e[0].boxed) errs.push("The " + e[0].label + " is still in its box: place it first");
-      else if ((PORTS[e[0].kind] || []).indexOf(e[1].port) < 0) errs.push("The " + e[0].label + " has no port " + e[1].port);
-      else if (this.cableAt(e[1].dev, e[1].port)) errs.push("The " + e[0].label + "'s " + (PORT_NAME[e[1].port] || "port " + e[1].port) + " already has a cable in it");
+      else if (portsOf(e[0]).indexOf(e[1].port) < 0) errs.push("The " + e[0].label + " has no port " + e[1].port);
+      else if (this.cableAt(e[1].dev, e[1].port)) errs.push("The " + e[0].label + "'s " + (portName(e[0], e[1].port) === e[1].port ? "port " + e[1].port : portName(e[0], e[1].port)) + " already has a cable in it");
     }, this);
     if (errs.length) return { ok: false, errs: errs };
     const n = (this.net.extra.runs = (this.net.extra.runs || 0) + 1), len = runLength(this.net.rooms[a.dev], this.net.rooms[b.dev]);

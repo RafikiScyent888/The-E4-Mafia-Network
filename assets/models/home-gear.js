@@ -7,9 +7,10 @@
    as ruled; serials, MACs and Wi-Fi details are covered.
    ===================================================================== */
 import * as THREE from "three";
-import { COL, mat, rbox, box, cyl, at, named, text, COVERED, led, slots, rj45Jack, dcJack, fFemale, scApcAdapter, pinhole, button, cutCylinder, screw } from "./parts.js";
+import { COL, mat, rbox, box, cyl, at, named, text, COVERED, led, ledPipe, slots, rj45Jack, dcJack, fFemale, scApcAdapter, pinhole, button, cutCylinder, screw } from "./parts.js";
 import { rj45Plug, coaxF, dcPlug, scApcPlug, cableFrom, plugInto } from "./cables.js";
-import { perforated, printLines, label, plastic, gloss, paintedSteel, brushed, rubber } from "./surface.js";
+import { perforated, printLines, label, plastic, gloss, paintedSteel, brushed, rubber, regMarksTex } from "./surface.js";
+import { tubeVar } from "./cable-kit.js";
 
 const BACK = Math.PI, V = function (x, y, z) { return new THREE.Vector3(x, y, z); };
 const ink = function (s, w, h, o) { return text(s, w, h, Object.assign({ color: "#eceee9", weight: "600" }, o || {})); };
@@ -300,38 +301,175 @@ function polarity() {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(9, 2.9), new THREE.MeshStandardMaterial({ map: t, transparent: true, depthWrite: false, roughness: 0.7 })); m.userData.print = true; return m;
 }
 
-/* ------------------------------------------------------- PoE injector */
-/* A desktop PoE injector, built from the standard design (no photograph
-   yet: send one and it will be matched part by part): a black box, DATA IN
-   and PoE OUT side by side on the front with their cables in, POWER and
-   PoE lights on top, the label (802.3af; 802.3at PoE+: o.std "at"; or a
-   passive 24 V one: o.std "passive"), and the power adapter's DC plug in
-   the back. */
-export function poeInjector(o = {}) {
-  const g = new THREE.Group(), W = 66, H = 30, D = 112, Y0 = 2, passive = o.std === "passive";
-  g.add(at(rbox(W, H, D, 5, plastic(0x18191b, { rough: 0.5 })), 0, Y0 + H / 2, 0));
-  [[-24, 42], [24, 42], [-24, -42], [24, -42]].forEach(function (p) { g.add(at(cyl(5, Y0, rubber(0x202124), 20), p[0], Y0 / 2, p[1])); });
-  /* the top: the label, the two lights near the front */
-  const top = new THREE.Group(); at(top, 0, Y0 + H + 0.05, 0, -Math.PI / 2, 0, 0); g.add(top);
-  const lb = label(passive ? ["PASSIVE PoE INJECTOR", "OUTPUT 24V ⎓ 1A", "DATA IN → PoE OUT", "S/N: " + COVERED] : o.std === "at" ? ["PoE+ INJECTOR · IEEE 802.3at", "OUTPUT 54V ⎓ 0.56A (30W)", "DATA IN → PoE OUT", "S/N: " + COVERED] : ["PoE INJECTOR · IEEE 802.3af", "OUTPUT 48V ⎓ 0.32A (15.4W)", "DATA IN → PoE OUT", "S/N: " + COVERED], { w: 54, h: 36, marks: true });
-  at(lb, 0, 6, 0.2); top.add(lb);
-  [["POWER", -14], ["PoE", 14]].forEach(function (it) {
-    const l = led(COL.ledGreen, true, 1.5); l.userData.role = it[0]; top.add(at(l, it[1], -44, 0.4));
-    top.add(at(ink(it[0], 16, 3.6), it[1], -49.5, 0.3));
+/* ------------------------------------------------------- PoE injectors */
+/* Both matched to the owner's photograph (11 October 2026): a single-port
+   PoE injector and a dual-port PoE+ one, side by side on the bench. The
+   photo's wording and layout are kept; the figures printed are the
+   standards' own (IEEE 802.3af: 48 V, 15.4 W; 802.3at: 54 V, 30 W a port),
+   where the photo's were not. The logo badge on the PoE+ one's lid is left
+   off, as ruled. Each power cord comes in at the side, as photographed:
+   the single's on the left, the dual's on the right. */
+
+/* a print on the plastic itself (white ink, no sticker): a canvas drawing */
+function inkPlane(w, h, draw, px) {
+  px = px || 24; const c = document.createElement("canvas"); c.width = Math.ceil(w * px); c.height = Math.ceil(h * px);
+  const x = c.getContext("2d"); x.strokeStyle = x.fillStyle = "#e9ebe8"; draw(x, c.width, c.height, px);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: t, transparent: true, depthWrite: false, roughness: 0.7, envMapIntensity: 0.45, polygonOffset: true, polygonOffsetFactor: -2 }));
+  m.renderOrder = 2; m.userData.print = true; return m;
+}
+/* the single's flow line under its jacks: DATA IN, through the power (a bolt in a circle), out to the right */
+function flowLine(w) {
+  return inkPlane(w, 4.4, function (x, cw, ch, px) {
+    const y = ch / 2, cx = cw * 0.47, r = 1.75 * px; x.lineWidth = 0.32 * px;
+    x.beginPath(); x.moveTo(0.02 * cw, y); x.lineTo(cx - r, y); x.moveTo(cx + r, y); x.lineTo(cw - 1.4 * px, y); x.stroke();
+    x.beginPath(); x.moveTo(cw - 0.15 * px, y); x.lineTo(cw - 1.6 * px, y - 0.75 * px); x.lineTo(cw - 1.6 * px, y + 0.75 * px); x.closePath(); x.fill();
+    x.beginPath(); x.arc(cx, y, r, 0, Math.PI * 2); x.stroke();
+    x.beginPath(); [[0.25, -1.15], [-0.55, 0.12], [0.02, 0.12], [-0.3, 1.15], [0.6, -0.2], [0.02, -0.2]].forEach(function (q, i) { const X = cx + q[0] * px, Y = y + q[1] * px; if (i) x.lineTo(X, Y); else x.moveTo(X, Y); }); x.closePath(); x.fill();
   });
-  /* the front: DATA IN and PoE OUT */
-  const front = new THREE.Group(); front.name = "panel:Ports"; at(front, 0, 0, D / 2); g.add(front);
-  const din = rj45Jack({ name: "DATA IN", metal: true, leds: false }), pout = rj45Jack({ name: "PoE OUT", metal: true, leds: false });
-  at(din, -14, Y0 + 13, 0.2); at(pout, 14, Y0 + 13, 0.2); front.add(din, pout);
-  front.add(at(ink("DATA IN", 18, 3.4), -14, Y0 + 24, 0.05)); front.add(at(ink("PoE OUT", 18, 3.4), 14, Y0 + 24, 0.05));
-  /* the back: the adapter's DC plug */
-  const back = new THREE.Group(); at(back, 0, 0, -D / 2, 0, BACK); g.add(back);
-  back.add(at(rbox(16, 15, 1.2, 2, plastic(0x0b0b0c)), 0, Y0 + 14, 0.3));
-  const dc = dcJack("DC IN"); at(dc, 0, Y0 + 14, 0.9); back.add(dc); back.add(at(ink("DC IN " + (passive ? "24V" : "48V"), 22, 3.2), 0, Y0 + 25, 0.05));
-  /* the cables: grey from the switch, the outdoor run to the camera, the adapter's cord */
-  const ci = patch(din, 0x9fa3a8), co = patch(pout, 0x4a4e53), cp = dcIn(dc);
-  cableFrom(g, ci, [[-30, Y0 + 8, D / 2 + 60], [-52, 3.05, D / 2 + 96], [-140, 3.05, D / 2 + 220]], { straight: 22 });
-  cableFrom(g, co, [[30, Y0 + 8, D / 2 + 60], [52, 3.3, D / 2 + 96], [150, 3.3, D / 2 + 230]], { straight: 22, r: 3.3 });
-  cableFrom(g, cp, [[10, 14, -D / 2 - 40], [24, 1.9, -D / 2 - 70], [80, 1.9, -D / 2 - 240]], { straight: 10 });
+}
+/* under each of the PoE+ one's jacks: its pair number, and an arrow (both ways for a DATA IN, outwards for an output) */
+function pairMark(n, both, word) {
+  return inkPlane(20, 3.4, function (x, cw, ch, px) {
+    const y = ch / 2; x.font = "700 " + (2.6 * px) + "px Arial, Helvetica, sans-serif"; x.textBaseline = "middle"; x.textAlign = "left";
+    const x0 = word ? 0.6 * px : 5.2 * px; x.fillText(String(n), x0, y + 0.1 * px);
+    if (word) { x.font = "600 " + (2.5 * px) + "px Arial, Helvetica, sans-serif"; x.fillText(word, x0 + 2.6 * px, y + 0.1 * px); return; }
+    const a = x0 + 2.6 * px, b = a + 7.5 * px, hd = 1.3 * px; x.lineWidth = 0.34 * px;
+    x.beginPath(); x.moveTo(a + (both ? hd * 0.6 : 0), y); x.lineTo(b - hd * 0.6, y); x.stroke();
+    x.beginPath(); x.moveTo(b, y); x.lineTo(b - hd, y - 0.65 * px); x.lineTo(b - hd, y + 0.65 * px); x.closePath(); x.fill();
+    if (both) { x.beginPath(); x.moveTo(a, y); x.lineTo(a + hd, y - 0.65 * px); x.lineTo(a + hd, y + 0.65 * px); x.closePath(); x.fill(); }
+  });
+}
+/* a square light pipe, as both photographed injectors have */
+function sqLed(role, color, on) { const l = ledPipe(color, on); l.scale.set(0.85, 1.35, 1); l.userData.role = role; return l; }
+/* the power cord's moulded plug, going into a socket in the side: a block (flared at the device on the
+   PoE+ one), the ribbed strain relief, the cord. Front at z = 0, like every plug here */
+function sidePowerPlug(o) {
+  const g = new THREE.Group(), m = mat(0x151617, { rough: 0.5, grain: 0.06 }), w = o.w, h = o.h, L = o.len;
+  g.add(at(cyl(2.75, 8, mat(0xc9ccd0, { metal: 1, rough: 0.25 }), 24), 0, 0, 4, Math.PI / 2));             // the barrel, inside the socket
+  if (o.flare) { g.add(at(rbox(w + 7, h + 5, 5, 2.2, m), 0, 0, -2.6)); g.add(at(rbox(w + 3.5, h + 2.5, 5, 2.2, m), 0, 0, -6.4)); }
+  g.add(at(rbox(w, h, L, 2.6, m), 0, 0, -L / 2 - (o.flare ? 3 : 0)));
+  const z0 = -L - (o.flare ? 3 : 0), RL = o.ribs * 3.4 + 4;
+  const geo = tubeVar(new THREE.LineCurve3(V(0, 0, z0 + 1), V(0, 0, z0 - RL)), { n: 120, m: 28, up: V(0, 1, 0),
+    radius: function (t) { const zz = t * RL, base = THREE.MathUtils.lerp(o.r0, o.r0 * 0.62, zz / RL), rib = zz > 2 && zz < RL - 2 && Math.sin(zz * Math.PI / 1.7) > 0.15 ? 0.9 : 0; return [base + rib, base + rib]; } });
+  g.add(new THREE.Mesh(geo, m));
+  named(g, "plug:DC", { type: "dc" });
+  g.userData.exitZ = z0 - RL + 1; g.userData.cable = { r: 2.1, color: 0x151617, text: "UL 2468  ·  18AWG x 2C  ·  80°C 300V  ·  VW-1", ink: "rgba(225,225,225,0.4)" };
+  return g;
+}
+/* the side socket the cord goes into: a dark surround, the DC pin */
+function sideSocket(face, x, y) {
+  face.add(at(rbox(17, 14, 1.2, 2.2, plastic(0x0b0b0c, { rough: 0.6 })), x, y, 0.3));
+  const dc = dcJack("DC IN"); at(dc, x, y, 0.9); face.add(dc); return dc;
+}
+
+/* The single-port PoE injector (802.3af; o.std "at" for a PoE+ one, or "passive" for the cheap 24 V kind
+   HOME-13 can plant). As photographed: a black box with rounded edges and an inset front panel, the
+   name and model top left, POWER (blue) and STATUS (green) on the model's line, DATA IN and
+   DATA + POWER OUT in silver jacks with no lights, the flow line with the power bolt under them, the
+   output printed along the bottom; on the lid the print and ribbed grooves down both edges; the power
+   cord into the left side, low at the front, with its ribbed strain relief. */
+export function poeInjector(o = {}) {
+  const g = new THREE.Group(), W = 92, H = 46, D = 130, Y0 = 1.2, passive = o.std === "passive", plus = o.std === "at";
+  const body = plastic(0x161719, { rough: 0.5 });
+  g.add(at(rbox(W, H, D, 6, body), 0, Y0 + H / 2, 0));
+  [[-36, 52], [36, 52], [-36, -52], [36, -52]].forEach(function (p) { g.add(at(cyl(5, Y0, rubber(0x202124), 20), p[0], Y0 / 2, p[1])); });
+  /* the lid: ribbed grooves down both edges, the print between them */
+  for (let i = 0; i < 5; i++) [-1, 1].forEach(function (sd) { g.add(at(rbox(1.3, 0.8, D - 34, 0.4, body), sd * (W / 2 - 7.5 - i * 2.5), Y0 + H + 0.25, -5)); });
+  const top = new THREE.Group(); at(top, 0, Y0 + H + 0.05, 0, -Math.PI / 2, 0, 0); g.add(top);
+  const name = passive ? "SINGLE-PORT PASSIVE PoE INJECTOR" : plus ? "SINGLE-PORT GIGABIT PoE+ INJECTOR" : "SINGLE-PORT GIGABIT PoE INJECTOR";
+  const std = passive ? "PASSIVE PoE · 24V ⎓ 1A" : plus ? "IEEE 802.3at (PoE+) · 30W" : "IEEE 802.3af (PoE) · 15.4W";
+  top.add(at(ink(name + "\n" + std + "\nDC IN: " + (passive ? "24V ⎓ 1A" : plus ? "54V ⎓ 1.25A" : "48V ⎓ 0.5A") + " (power adapter)\nDATA IN: 10/100/1000 Mbps\nS/N: " + COVERED, 54, 22, { align: "left", weight: "600" }), -3, 14, 0.1));
+  const big = ink(passive ? "24V" : plus ? "54V" : "48V", 20, 9, { weight: "800" }); top.add(at(big, 22, -22, 0.1));
+  const rm = inkPlane(28, 5.2, function (x, cw, ch) { x.drawImage(regMarksTex({ ink: "#e9ebe8" }).image, 0, 0, cw, ch); }); top.add(at(rm, -12, -22, 0.1));
+  /* the front: the inset panel and everything printed on it */
+  const front = new THREE.Group(); front.name = "panel:Ports"; at(front, 0, Y0, D / 2); g.add(front);
+  front.add(at(rbox(W - 7, H - 7, 1, 3.5, plastic(0x101113, { rough: 0.4 })), 0, H / 2, -0.25));
+  const F = 0.3, inkL = function (s, w, h, x, y, o2) { front.add(at(ink(s, w, h, Object.assign({ align: "left" }, o2 || {})), x + w / 2, y, F)); };
+  inkL(name, 56, 4.2, -29, 41.2, { weight: "700" });
+  inkL("MODEL: " + (passive ? "POE-P-24V" : plus ? "POE-GIP-54V" : "POE-GI-48V"), 26, 3.2, -29, 37, { weight: "500" });
+  front.add(at(ink("POWER", 12, 3.2, { align: "right", weight: "500" }), 4.4, 37, F)); front.add(at(sqLed("POWER", COL.ledBlue, true), 11.8, 37, F + 0.1));
+  front.add(at(sqLed("PoE", COL.ledGreen, true), 17.4, 37, F + 0.1)); front.add(at(ink("STATUS", 12, 3.2, { align: "left", weight: "500" }), 25.4, 37, F));
+  const JY = 21.8, JX = [-17, 16.5];
+  const din = rj45Jack({ name: "DATA IN", metal: true, leds: false }), pout = rj45Jack({ name: "DATA + POWER OUT", metal: true, leds: false });
+  [din, pout].forEach(function (j, i) { front.add(at(rbox(19, 16.4, 0.8, 1, mat(0x9a9ea4, { metal: 0.55, rough: 0.42 })), JX[i], JY - 0.4, F)); at(j, JX[i], JY, F + 0.4); front.add(j); });
+  front.add(at(ink("DATA IN", 16, 3.2, { weight: "500" }), JX[0], 32.4, F)); front.add(at(ink("DATA + POWER OUT", 28, 3.2, { weight: "500" }), JX[1], 32.4, F));
+  front.add(at(flowLine(28), 0.5, 10.6, F));
+  front.add(at(ink("PoE Power Output: DC " + (passive ? "24V ⎓ 1A" : plus ? "54V ⎓ 0.56A" : "48V ⎓ 0.32A"), 46, 3.4, { weight: "500" }), 0, 5, F));
+  /* the left side: the power socket, low at the front, and DC IN printed above it */
+  const left = new THREE.Group(); at(left, -W / 2, Y0, 0, 0, -Math.PI / 2, 0); g.add(left);
+  const dc = sideSocket(left, D / 2 - 20, 12); left.add(at(ink("DC IN " + (passive ? "24V" : plus ? "54V" : "48V"), 20, 3, { weight: "500" }), D / 2 - 20, 23, 0.4));   /* this face's +x is the front */
+  /* the cables: grey from the switch, black to the device, the power cord off to the left and back */
+  const ci = patch(din, 0x9ea2a7), co = patch(pout, 0x2a2c2f), cp = plugInto(dc, sidePowerPlug({ w: 15, h: 12.5, len: 20, ribs: 4, r0: 4.8 }), { y: 0, z: 1.45 });
+  cableFrom(g, ci, [[-30, Y0 + 8, D / 2 + 58], [-56, 3.05, D / 2 + 96], [-150, 3.05, D / 2 + 210]], { straight: 22 });
+  cableFrom(g, co, [[20, Y0 + 7, D / 2 + 62], [30, 3.05, D / 2 + 110], [70, 3.05, D / 2 + 240]], { straight: 22 });
+  cableFrom(g, cp, [[-W / 2 - 60, 2.1, D / 2 - 26], [-W / 2 - 110, 2.1, -10], [-W / 2 - 160, 2.1, -D / 2 - 120]], { straight: 8 });
   return named(g, "device:PoE injector", { type: "injector", w: W, h: H + Y0, d: D });
+}
+
+/* the PoE+ one's shell: chamfered all round, a raised bumper rim framing the front panel and the lid */
+function chamfer(w, h, c) {
+  const s = new THREE.Shape(); [[-w / 2 + c, -h / 2], [w / 2 - c, -h / 2], [w / 2, -h / 2 + c], [w / 2, h / 2 - c], [w / 2 - c, h / 2], [-w / 2 + c, h / 2], [-w / 2, h / 2 - c], [-w / 2, -h / 2 + c]].forEach(function (q, i) { if (i) s.lineTo(q[0], q[1]); else s.moveTo(q[0], q[1]); });
+  s.closePath(); return s;
+}
+function rim(w, h, c, iw, ih, ir, depth, m) {
+  const s = chamfer(w, h, c); s.holes.push(rrPath(iw, ih, ir, 0, 0));
+  return new THREE.Mesh(new THREE.ExtrudeGeometry(s, { depth: depth, bevelEnabled: true, bevelSize: 0.8, bevelThickness: 0.8, bevelSegments: 2, curveSegments: 8 }), m);
+}
+
+/* The dual-port PoE+ injector (802.3at), build mode's second injector. As photographed: a rugged black
+   shell, chamfered at every corner, a bumper rim round the front panel and the lid with grey accents at
+   its top corners; DUAL-PORT GIGABIT PoE+ INJECTOR and the model top left; two DATA IN jacks with no
+   lights, then DATA + POWER OUT over two jacks with green lights in their corners; the Active PoE+ light
+   at the top right; the power budget along the bottom; the power cord into the right side, low at the
+   front, with its flared moulding. The photo's arrows under the jacks become the pair numbers: each
+   DATA IN carries on only to the output with its number. */
+export function poeInjectorDual(o = {}) {
+  const g = new THREE.Group(), W = 128, H = 60, D = 140, Y0 = 1.4, C = 9;
+  const body = plastic(0x151618, { rough: 0.52 }), bump = plastic(0x1b1c1f, { rough: 0.62 }), grey = plastic(0x8e9298, { rough: 0.5 });
+  const core = new THREE.Mesh(new THREE.ExtrudeGeometry(chamfer(W - 4, H - 4, C - 1), { depth: D - 10, bevelEnabled: true, bevelSize: 2, bevelThickness: 2, bevelSegments: 3, curveSegments: 8 }), body);
+  core.position.set(0, Y0 + H / 2, -D / 2 + 3); g.add(core);
+  [[-50, 56], [50, 56], [-50, -56], [50, -56]].forEach(function (p) { g.add(at(cyl(6, Y0, rubber(0x202124), 20), p[0], Y0 / 2, p[1])); });
+  /* the bumper rim round the front panel (the panel sits 3 mm back in it), and one round the back */
+  const fr = rim(W, H, C, W - 14, H - 12, 4, 3.4, bump); fr.position.set(0, Y0 + H / 2, D / 2 - 4.2); g.add(fr);
+  const br = rim(W, H, C, W - 30, H - 22, 5, 3, bump); br.position.set(0, Y0 + H / 2, -D / 2 + 0.2); g.add(br);
+  /* the lid: a raised rim with chamfered corners round a recessed panel (the logo badge left off) */
+  const lid = rim(W - 2, D - 6, C + 2, W - 26, D - 34, 5, 2.6, bump); lid.rotation.x = -Math.PI / 2; lid.position.set(0, Y0 + H - 1.2, 0); g.add(lid);
+  /* grey accents on the lid rim's four chamfered corners: a triangle in each */
+  const tri = new THREE.Shape(); tri.moveTo(0, 0); tri.lineTo(15, 0); tri.lineTo(0, 15); tri.closePath();
+  const triG = new THREE.ExtrudeGeometry(tri, { depth: 0.9, bevelEnabled: true, bevelSize: 0.5, bevelThickness: 0.4, bevelSegments: 1 });
+  [[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(function (q) { const t = new THREE.Mesh(triG, grey); t.rotation.x = -Math.PI / 2; t.scale.set(-q[0], q[1], 1); t.position.set(q[0] * (W / 2 - 4.5), Y0 + H + 1.3, q[1] * (D / 2 - 6.5)); g.add(t); });
+  /* bumpers down the side corners */
+  [-1, 1].forEach(function (sd) { [-1, 1].forEach(function (fz) { g.add(at(rbox(3.2, H - 16, 14, 1.2, bump), sd * (W / 2 - 1.2), Y0 + H / 2, fz * (D / 2 - 14))); }); });
+  /* the front panel, 3 mm back inside its rim, and what is printed on it */
+  const front = new THREE.Group(); front.name = "panel:Ports"; at(front, 0, Y0, D / 2 - 4.4); g.add(front);
+  front.add(at(rbox(W - 13, H - 11, 0.8, 4, plastic(0x0f1012, { rough: 0.42 })), 0, H / 2, 0));
+  const F = 0.45, inkL = function (s, w, h, x, y, o2) { front.add(at(ink(s, w, h, Object.assign({ align: "left" }, o2 || {})), x + w / 2, y, F)); };
+  inkL("DUAL-PORT GIGABIT PoE+ INJECTOR", 78, 4.4, -50, 45.6, { weight: "800" });
+  inkL("MODEL: POE-GIP-DUAL", 34, 3.3, -50, 41.4, { weight: "500" });
+  front.add(at(sqLed("POWER", COL.ledGreen, true), 25.5, 43.4, F + 0.1)); inkL("Active PoE+", 18, 3.2, 27.6, 43.4, { weight: "500" });
+  const JX = [-39, -17.5, 8.5, 30.5], JY = 26, names = ["DATA IN 1", "DATA IN 2", "DATA + POWER OUT 1", "DATA + POWER OUT 2"], jacks = [];
+  JX.forEach(function (x, i) {
+    front.add(at(rbox(19, 16.6, 0.8, 1, mat(0x9a9ea4, { metal: 0.55, rough: 0.42 })), x, JY - 0.4, F));
+    const j = rj45Jack(i < 2 ? { name: names[i], metal: true, leds: false } : { name: names[i], metal: true, on: [true, true], actColor: COL.ledGreen });
+    at(j, x, JY, F + 0.4); front.add(j); jacks.push(j);
+  });
+  front.add(at(ink("DATA IN", 16, 3.2, { weight: "500" }), JX[0], 37.4, F)); front.add(at(ink("DATA IN", 16, 3.2, { weight: "500" }), JX[1], 37.4, F));
+  front.add(at(ink("DATA + POWER OUT", 30, 3.2, { weight: "500" }), (JX[2] + JX[3]) / 2, 37.4, F));
+  [[1, true, "", 0], [2, true, "", 1], [1, false, "", 2], [2, false, "Power/Data", 3]].forEach(function (u) { front.add(at(pairMark(u[0], u[1], u[2]), JX[u[3]], 14.2, F)); });
+  inkL("Total PoE Power Budget: DC 54V ⎓ 1.1A (60W)", 54, 3.1, -50, 9.2, { weight: "500" });
+  inkL("Port max: DC 54V ⎓ 0.56A (30W)", 38, 3.1, 7, 9.2, { weight: "500" });
+  /* the right side: the power socket, low at the front, DC IN printed above it */
+  const right = new THREE.Group(); at(right, W / 2 - 0.4, Y0, 0, 0, Math.PI / 2, 0); g.add(right);
+  const dc = sideSocket(right, -D / 2 + 30, 15); right.add(at(ink("DC IN 54V", 20, 3, { weight: "500" }), -D / 2 + 30, 27.5, 0.4));   /* this face's -x is the front */
+  /* the lid's print, small, in the recessed panel */
+  const top = new THREE.Group(); at(top, 0, Y0 + H + 0.1, 0, -Math.PI / 2, 0, 0); g.add(top);
+  top.add(at(ink("DUAL-PORT GIGABIT PoE+ INJECTOR\nIEEE 802.3at · 2 × 30W\nDC IN: 54V ⎓ 1.25A (power adapter)\nS/N: " + COVERED, 60, 18, { align: "left", weight: "600" }), -4, -18, 0.1));
+  const rm = inkPlane(30, 5.6, function (x, cw, ch) { x.drawImage(regMarksTex({ ink: "#e9ebe8" }).image, 0, 0, cw, ch); }); top.add(at(rm, -18, 26, 0.1));
+  /* the cables as photographed: black in DATA IN 1 and DATA + POWER OUT 1; the power cord off to the right */
+  const ci = patch(jacks[0], 0x232528), co = patch(jacks[2], 0x232528), cp = plugInto(dc, sidePowerPlug({ w: 16, h: 13, len: 22, ribs: 4, r0: 5.2, flare: true }), { y: 0, z: 1.45 });
+  cableFrom(g, ci, [[-46, Y0 + 7, D / 2 + 60], [-62, 3.05, D / 2 + 104], [-140, 3.05, D / 2 + 230]], { straight: 22 });
+  cableFrom(g, co, [[6, Y0 + 7, D / 2 + 64], [10, 3.05, D / 2 + 112], [40, 3.05, D / 2 + 250]], { straight: 22 });
+  cableFrom(g, cp, [[W / 2 + 70, 2.1, D / 2 - 34], [W / 2 + 130, 2.1, -6], [W / 2 + 190, 2.1, -D / 2 - 110]], { straight: 8 });
+  return named(g, "device:PoE+ injector", { type: "injector", w: W, h: H + Y0, d: D });
 }

@@ -334,9 +334,43 @@ test("the 3D models show B2's states: the mesh node's ring, the PoE+ labels, the
     else { assert.equal(C2.opts.poe, undefined); assert.doesNotMatch(says, /limited/); }
     run(J, [{ t: "place", dev: "injector2", room: "office" }]);
     const I2 = physicalState(J.sim, "injector2");
-    assert.equal(I2.model, "injector"); assert.equal(I2.opts.std, "at"); assert.match(I2.says.join(" "), /IEEE 802\.3at/);
-    assert.equal(I2.leds.find((l) => l.role === "PoE").state, "off", "the spare injector powers nothing");
-    assert.equal(physicalState(J.sim, "injector").leds.find((l) => l.role === "PoE").state, "on");
+    assert.equal(I2.model, "injectorDual", "the PoE+ injector is the dual-port one, as photographed"); assert.equal(I2.opts.std, "at"); assert.match(I2.says.join(" "), /IEEE 802\.3at/);
+    assert.deepEqual(I2.ports.map((p) => p.name), ["DATA IN 1", "DATA IN 2", "DATA + POWER OUT 1", "DATA + POWER OUT 2", "DC IN"]);
+    assert.ok(I2.ports.filter((p) => /OUT/.test(p.name)).every((p) => p.lights === "off"), "the spare injector powers nothing");
+    assert.equal(I2.leds.find((l) => l.role === "POWER").state, "on", "Active PoE+: its adapter is in");
+    const I1 = physicalState(J.sim, "injector");
+    assert.deepEqual(I1.ports.map((p) => p.name), ["DATA IN", "DATA + POWER OUT", "DC IN"]);
+    assert.deepEqual(I1.leds.map((l) => [l.name, l.state, l.color]), [["POWER", "on", "blue"], ["STATUS", "on", "green"]], "POWER blue, STATUS green while it powers the camera");
+  }
+});
+
+test("the PoE+ injector's two pairs: each output carries on only its own input, and the pairs are never bridged", () => {
+  for (const s of seeds("J3").slice(0, 40)) {
+    const def = byId.J3, J0 = B.open(def, s), sol = def.solve({ heat: true }, J0.sim);
+    const tryIt = function (acts) { const J = B.open(def, s); run(J, acts); return J; };
+    const pair2 = (a) => JSON.parse(JSON.stringify(a).split('"injector"').join('"injector2"').split('"DATA IN"').join('"DATA IN 2"').split('"PoE OUT"').join('"PoE OUT 2"'));
+    /* pair 2 alone does the whole job, and its own lights say so */
+    let J = tryIt(sol.map(pair2));
+    assert.ok(solved(J), "pair 2 works: " + JSON.stringify(B.check(J).res.filter((x) => !x.ok)));
+    let I2 = physicalState(J.sim, "injector2");
+    assert.deepEqual(I2.ports.filter((p) => /OUT/.test(p.name)).map((p) => p.lights), ["off", "green"]);
+    /* crossed: the switch into DATA IN 1, the camera on DATA + POWER OUT 2. Power, but no link: the data never crosses pairs */
+    J = tryIt([{ t: "place", dev: "injector2", room: "office" }, { t: "place", dev: "camera", room: "porch" }, { t: "lay", a: E("switch", "4"), b: E("injector2", "DATA IN") }, { t: "lay", a: E("injector2", "PoE OUT 2"), b: E("camera", "LAN") }]);
+    assert.equal(J.sim.on("camera"), true, "the camera has power from output 2");
+    assert.equal(J.sim.cableUp(J.sim.cableAt("camera", "LAN")), false, "but no link: nothing in DATA IN 2");
+    assert.equal(line(J, "cam").real.id, "data"); assert.match(line(J, "cam").real.text, /DATA IN 2/);
+    /* never bridged: the office PC and the printer moved onto pair 2 (a working link through it, PC to printer)
+       stay cut off from pair 1's switch; the camera on pair 1 still reaches the router */
+    J = tryIt(sol.map((a) => JSON.parse(JSON.stringify(a).split('"injector"').join('"injector2"'))).slice(0, 4));
+    run(J, [{ t: "pull", cable: J.sim.cableAt("pc", "NIC").id }, { t: "pull", cable: J.sim.cableAt("printer", "NET").id }]);
+    run(J, [{ t: "place", dev: "printer", room: "office" }, { t: "lay", a: E("pc", "NIC"), b: E("injector2", "PoE OUT 2") }, { t: "lay", a: E("injector2", "DATA IN 2"), b: E("printer", "NET") }]);
+    assert.equal(J.sim.cableUp(J.sim.cableAt("pc", "NIC")), true, "pair 2 carries a link, PC to printer");
+    assert.equal(J.sim.domain(J.sim.homeNode("pc")).has("printer"), true);
+    assert.equal(J.sim.domain(J.sim.homeNode("pc")).has("router:lan"), false, "the PC on pair 2 is cut off from pair 1's switch");
+    assert.equal(J.sim.domain(J.sim.homeNode("camera")).has("router:lan"), true, "the camera on pair 1 still reaches the router");
+    /* the single-port injector has no second pair */
+    J = tryIt([{ t: "place", dev: "injector", room: "office" }]);
+    assert.equal(B.act(J, { t: "lay", a: E("switch", "4"), b: E("injector", "DATA IN 2") }).result.ok, false);
   }
 });
 

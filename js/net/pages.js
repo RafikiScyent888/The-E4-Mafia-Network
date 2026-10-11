@@ -3,6 +3,7 @@
    it and the tests read exactly what a student would see. Each page also
    returns "facts" the notebook can record. */
 import { isIp } from "./util.js";
+import { portName as printedPort } from "./sim.js";
 
 const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh" };
 
@@ -34,14 +35,14 @@ export function tester(c) {
   return { text: text, open: open };
 }
 
-function endName(sim, c, end) { const e = c[end]; const d = sim.d[e.dev]; return d.label + (e.port && e.dev !== "wall" ? " (" + portName(e) + ")" : ""); }
+function endName(sim, c, end) { const e = c[end]; const d = sim.d[e.dev]; return d.label + (e.port && e.dev !== "wall" ? " (" + (d.kind === "injector" ? printedPort(d, e.port) : portName(e)) + ")" : ""); }   /* an injector's ports by the names printed on it */
 function portName(e) { return /^\d$/.test(e.port) ? "port " + e.port : e.port; }
 export function cableName(sim, c, fromDev) {
   const other = c.a.dev === fromDev ? c.b : c.a;
   if (c.kind === "coax") return "Coax cable, wall outlet to the modem's CABLE IN";
   if (other.dev === "rogue") return "Patch cable to a box not on the diagram (" + other.port + ")";
   if (fromDev === "rogue") return "Patch cable to the 5-port switch (port " + other.port + ")";
-  return "Patch cable to the " + sim.d[other.dev].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }).replace(/^isp$/, "ISP") + (/^\d$/.test(other.port) ? " (port " + other.port + ")" : other.port ? " (" + other.port + ")" : "");
+  return "Patch cable to the " + sim.d[other.dev].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }).replace(/^isp$/, "ISP") + (/^\d$/.test(other.port) ? " (port " + other.port + ")" : other.port ? " (" + (sim.d[other.dev].kind === "injector" ? printedPort(sim.d[other.dev], other.port) : other.port) + ")" : "");   /* an injector's ports by the names printed on it */
 }
 
 /* what you see when you look at one end of a cable */

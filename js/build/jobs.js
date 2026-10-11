@@ -6,7 +6,7 @@
    has been ruled out, so Mason's third rung can strike those with a reason
    each and leave two. None of it ever says what to type or where to plug. */
 import { makeHome } from "../net/home.js";
-import { Sim } from "../net/sim.js";
+import { Sim, POE_PAIR, portName } from "../net/sim.js";
 import { rng, hash, ip2n, sameSubnet } from "../net/util.js";
 
 const PUBLIC = "203.0.113.80";
@@ -316,14 +316,14 @@ const L_KEEP = function (skip, what) {
 /* ---------------------------------------------------------------- J3 */
 function cameraCauses(sim) {
   const x = sim.d.camera, c = sim.cableAt("camera", "LAN"), far = c && (c.a.dev === "camera" ? c.b : c.a), inj = far && sim.d[far.dev];
-  const isInj = !!inj && inj.kind === "injector" && far.port === "PoE OUT", a = sim.addr("camera");
+  const isInj = !!inj && inj.kind === "injector" && /^PoE OUT/.test(far.port), a = sim.addr("camera"), din = isInj ? POE_PAIR[far.port] : "DATA IN";   /* the DATA IN of the same pair */
   const lan = sim.on("router") && sim.domain(sim.homeNode("camera")).has("router:lan");
   return [
     C("box", x.boxed, "The camera is still in its box", "It's out of its box, on its mount.", "The camera is still in its box."),
     C("cable", !c, "Nothing is plugged into the camera", "Its port has a cable in it.", "The camera is dark: nothing is plugged into it."),
-    C("poe", c && !isInj, "Its cable doesn't come from a PoE injector's PoE OUT, so no power comes down it", "Its cable comes from an injector's PoE OUT.", "The camera is dark: no power comes down its cable."),
+    C("poe", c && !isInj, "Its cable doesn't come from a PoE injector's DATA + POWER OUT, so no power comes down it", "Its cable comes from an injector's DATA + POWER OUT.", "The camera is dark: no power comes down its cable."),
     C("plug", isInj && !inj.power, "The injector's own power adapter isn't plugged in", "The injector is plugged in.", "The camera is dark, and so is the injector's Power light."),
-    C("data", isInj && !sim.cableAt(far.dev, "DATA IN"), "Nothing joins the injector's DATA IN to the network", "The injector's DATA IN is cabled.", "The camera has power (its light is on), but no link to the network."),
+    C("data", isInj && !sim.cableAt(far.dev, din), "Nothing joins the injector's " + portName(inj, din) + " to the network", "The injector's " + (isInj ? portName(inj, din) : "DATA IN") + " is cabled.", "The camera has power (its light is on), but no link to the network."),
     C("lan", !lan, "The injector's DATA IN doesn't lead to the router's house side", "It leads to the router's house side.", "The camera has power and a link, but no address came: " + (a && a.kind === "apipa" ? "it gave itself " + a.ip + "." : "nothing answers at the router's address.")),
     C("addr", !a || a.kind === "apipa", "No address came from the router", "It has an address from the router.", "The camera has power, but no address.")
   ];
@@ -344,7 +344,7 @@ const J3 = {
   start(seed) {
     const b = afterJ2(seed, ["camera", "injector"]), d = b.net.devices, heat = rng(hash("J3:" + seed))() < 0.5;
     d.injector.label = "PoE injector (802.3af)"; d.injector.std = "af"; d.injector.power = true;
-    d.injector2 = Object.assign(JSON.parse(JSON.stringify(d.injector)), { id: "injector2", label: "PoE+ injector (802.3at)", sub: "802.3at", std: "at", boxed: true });
+    d.injector2 = Object.assign(JSON.parse(JSON.stringify(d.injector)), { id: "injector2", label: "PoE+ injector (802.3at)", sub: "802.3at", std: "at", boxed: true, dual: true });   /* the dual-port one, as photographed */
     b.net.rooms.injector2 = "office";
     d.camera.draw = heat ? 25.5 : 6.5; d.camera.sub = "DHCP";
     b.v.heat = heat;
@@ -352,13 +352,13 @@ const J3 = {
   },
   brief(v) { return { quote: "I want a camera by the front door, and I want to see it on my phone when I'm away, at work or on holiday. " + (v.heat ? "I bought the one with a heater in it, for the winters here; the box is on the hall table. " : "The box is on the hall table. ") + "There's no power socket out on the porch, and I'm not having one put in.", from: "a camera for the porch" }; },
   mason: "Read every label before you lay a cable. The power has to come down the same cable as the network.",
-  limits: function (v) { return ["The camera's box says: " + (v.heat ? "PoE+ (IEEE 802.3at), up to 25.5 W with its heater on." : "PoE (IEEE 802.3af), up to 6.5 W."), "In the van: an 802.3af PoE injector (15.4 W out) and an 802.3at PoE+ injector (30 W out).", "No power socket on the porch. A copper run is 100 m at most: each run's length shows as you lay it.", "No budget limit: use what the job needs."]; },
+  limits: function (v) { return ["The camera's box says: " + (v.heat ? "PoE+ (IEEE 802.3at), up to 25.5 W with its heater on." : "PoE (IEEE 802.3af), up to 6.5 W."), "In the van: a single-port 802.3af PoE injector (15.4 W out) and a dual-port 802.3at PoE+ injector (30 W out per port).", "No power socket on the porch. A copper run is 100 m at most: each run's length shows as you lay it.", "No budget limit: use what the job needs."]; },
   reqs: [{
     id: "cam", text: "The camera on the porch, powered over its cable, on the network",
     causes: function (sim) { return cameraCauses(sim).concat([C("wan", !sim.wanUp(), "The router itself isn't online", "The router is online.", "The camera has an address, but the router has no internet.")]); },
     ok: function (sim) { return "The camera is on the porch, powered over its cable, at " + sim.addr("camera").ip + "."; },
     rung1: function () { return "Open the camera's Web page and its Physical tab, then follow its cable back: what is at the other end, and which of its ports is it in?"; },
-    rung2: function () { return "Power over Ethernet comes from the PSE end: a PoE switch, or an injector between an ordinary switch and the device. The injector's DATA IN takes the network; its PoE OUT sends the network and the power on to the device."; }
+    rung2: function () { return "Power over Ethernet comes from the PSE end: a PoE switch, or an injector between an ordinary switch and the device. The injector's DATA IN takes the network; its DATA + POWER OUT sends the network and the power on to the device. On an injector with more than one pair, each output carries on only its own input."; }
   }, {
     id: "power", text: "Enough power for everything the camera does, night vision and all",
     causes: function (sim, v) { return [C("off", !sim.on("camera"), "The camera isn't powered yet", "It's powered.", "The camera isn't powered yet."), C("short", sim.poeShort("camera"), "The injector gives less power than the camera can draw", "The injector gives it all it can draw.", "The camera's page says its power is limited: the heater and night vision are off.")]; },
@@ -387,7 +387,7 @@ const J3 = {
   },
   answer(v, sim) {
     return ["Read the camera's box: " + (v.heat ? "it needs 802.3at (PoE+): up to 25.5 W. The 802.3af injector would start it with no heater and no night vision; use the PoE+ injector." : "802.3af is enough (up to 6.5 W): either injector works."),
-      "Place the injector in the office by the switch, and the camera on the porch (its mount is fixed). A free switch port to the injector's DATA IN; the injector's PoE OUT to the camera (38 m, under 100 m).",
+      "Place the injector in the office by the switch, and the camera on the porch (its mount is fixed). A free switch port to the injector's DATA IN; the injector's DATA + POWER OUT to the camera (38 m, under 100 m)." + (v.heat ? " On the PoE+ injector, DATA IN 1 goes with DATA + POWER OUT 1, and 2 with 2." : ""),
       "Fix the camera's address: on the router's DHCP clients page, reserve one for its hardware address, then restart the camera (its Physical tab) so it asks again. Or set it by hand outside the range.",
       "On the router's Port forwarding page: outside port 8443 to the camera's address, port 443 (the camera's Web page says so). Test it with the phone's camera app on mobile data."];
   },
@@ -574,7 +574,7 @@ const FB = {
   start(seed) {
     const f = factory(seed, ["switch", "pc", "printer", "tv", "camera", "injector", "mesh"], { laptop: "kitchen", phone: "living" }), d = f.net.devices;
     d.injector.label = "PoE injector (802.3af)"; d.injector.power = true;
-    d.injector2 = Object.assign(JSON.parse(JSON.stringify(d.injector)), { id: "injector2", label: "PoE+ injector (802.3at)", sub: "802.3at", std: "at", boxed: true }); f.net.rooms.injector2 = "office";
+    d.injector2 = Object.assign(JSON.parse(JSON.stringify(d.injector)), { id: "injector2", label: "PoE+ injector (802.3at)", sub: "802.3at", std: "at", boxed: true, dual: true }); f.net.rooms.injector2 = "office";
     d.camera.draw = 6.5;
     const sim = new Sim(f.net); sim.boot();
     return { sim: sim, v: { home: f.home, surname: surname(f.net) } };

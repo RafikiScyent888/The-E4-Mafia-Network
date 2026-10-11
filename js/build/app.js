@@ -6,7 +6,7 @@
 import { JOBS, JOBS_COMING, NAME, IN } from "./jobs.js";
 import * as B from "./engine.js";
 import { HELP } from "../net/cmd.js";
-import { PORTS, PORT_NAME, FIXED_ROOM, runLength, COPPER_MAX } from "../net/sim.js";
+import { portsOf, portName, FIXED_ROOM, runLength, COPPER_MAX } from "../net/sim.js";
 import { ROOMS } from "../net/home.js";
 import { newSeed, dyslexia, el } from "../desk/store.js";
 import { drawLogical, drawPlan, plates } from "../desk/draw.js";
@@ -32,8 +32,8 @@ const ctx = {
 };
 
 /* ---------------------------------------------------------------- names for ports and devices */
-function portLabel(dev, port) { return /^\d$/.test(port) ? "port " + port : PORT_NAME[port] || port; }
-function endLabel(sim, e) { return e.dev === "wall" ? "Wall outlet (coax)" : sim.d[e.dev].label + ", " + (e.port === "CABLE IN" ? "CABLE IN" : portLabel(e.dev, e.port)); }
+function portLabel(x, port) { return /^\d$/.test(port) ? "port " + port : portName(x, port); }   /* the name printed by the port on the device */
+function endLabel(sim, e) { return e.dev === "wall" ? "Wall outlet (coax)" : sim.d[e.dev].label + ", " + (e.port === "CABLE IN" ? "CABLE IN" : portLabel(sim.d[e.dev], e.port)); }
 const shown = function (sim, id) { return !!sim.d[id] && !sim.d[id].boxed; };
 const devices = function (sim) { return ORDER.filter(function (id) { return !!sim.d[id]; }); };
 
@@ -115,19 +115,19 @@ function renderBuild() {
   host.appendChild(pf);
 
   /* lay a cable */
-  const can = devices(sim).filter(function (id) { return shown(sim, id) && PORTS[sim.d[id].kind]; });
+  const can = devices(sim).filter(function (id) { return shown(sim, id) && portsOf(sim.d[id]).length; });
   let len = function () { };   /* set once both ends exist: changing either device says the new run's length */
   const mk = function (end, pick) {
     const ds = el("select", { id: "bm" + end + "d", name: end + "d" }), ps = el("select", { id: "bm" + end + "p", name: end + "p" });
     can.forEach(function (id) { ds.appendChild(el("option", { value: id }, sim.d[id].label)); });
     if (pick) ds.value = pick;
-    const fill = function () { ps.innerHTML = ""; PORTS[sim.d[ds.value].kind].forEach(function (p) { const used = !!sim.cableAt(ds.value, p); const o = el("option", { value: p }, portLabel(ds.value, p) + (used ? " (in use)" : "")); if (used) o.disabled = true; ps.appendChild(o); }); const free = Array.from(ps.options).find(function (o) { return !o.disabled; }); if (free) ps.value = free.value; };
+    const fill = function () { ps.innerHTML = ""; portsOf(sim.d[ds.value]).forEach(function (p) { const used = !!sim.cableAt(ds.value, p); const o = el("option", { value: p }, portLabel(sim.d[ds.value], p) + (used ? " (in use)" : "")); if (used) o.disabled = true; ps.appendChild(o); }); const free = Array.from(ps.options).find(function (o) { return !o.disabled; }); if (free) ps.value = free.value; };
     fill(); ds.addEventListener("change", function () { fill(); len(); });
     return { ds: ds, ps: ps };
   };
   if (can.length < 2) { host.appendChild(el("p", { class: "note" }, "Lay a cable: place at least two devices first.")); }
   else {
-    const free = function (id) { return PORTS[sim.d[id].kind].some(function (p) { return !sim.cableAt(id, p); }); };   /* start each end on a device with a port free */
+    const free = function (id) { return portsOf(sim.d[id]).some(function (p) { return !sim.cableAt(id, p); }); };   /* start each end on a device with a port free */
     const a0 = free("router") && shown(sim, "router") ? "router" : can.filter(free)[0] || can[0], b0 = can.filter(function (x) { return x !== a0 && free(x); })[0] || can.filter(function (x) { return x !== a0; })[0];
     const A = mk("A", a0), Bq = mk("B", b0);
     const lenp = el("p", { class: "note", id: "bmLen", "aria-live": "polite" });

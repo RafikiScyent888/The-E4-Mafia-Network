@@ -17,13 +17,19 @@ const PORTS = {
   router: [["INTERNET", "WAN"], ["LAN 1", "LAN 1"], ["LAN 2", "LAN 2"], ["LAN 3", "LAN 3"], ["LAN 4", "LAN 4"]],
   switch: [["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"], ["5", "5"]],
   pc: [["LAN", "NIC"]], printer: [["NETWORK", "NET"]], camera: [["PoE", "LAN"]], tv: [["LAN", "LAN"]],
-  laptop: [["ETHERNET", "ETH"]], mesh: [["WAN", "WAN"], ["LAN", "LAN"]], injector: [["DATA IN", "DATA IN"], ["PoE OUT", "PoE OUT"]]
+  laptop: [["ETHERNET", "ETH"]], mesh: [["WAN", "WAN"], ["LAN", "LAN"]], injector: [["DATA IN", "DATA IN"], ["DATA + POWER OUT", "PoE OUT"]],
+  /* build mode's PoE+ injector, as photographed: two pairs, "DATA IN" over each input and the pair's number under it */
+  injectorDual: [["DATA IN 1", "DATA IN"], ["DATA IN 2", "DATA IN 2"], ["DATA + POWER OUT 1", "PoE OUT"], ["DATA + POWER OUT 2", "PoE OUT 2"]]
 };
+const INJ = { injector: true, injectorDual: true };
 const SAY_PORT = { switch: function (p) { return "Port " + p; } };
 
 export function physicalState(sim, id) {
-  const model = MODEL_OF[id] || (sim.d[id] && sim.d[id].kind === "injector" ? "injector" : null); if (!model) return null;   /* build mode's second injector is an injector too */
-  const x = sim.d[id], ports = [], leds = [], says = [], opts = {};
+  const x = sim.d[id]; if (!x) return null;
+  const model = x.kind === "injector" ? (x.dual ? "injectorDual" : "injector") : MODEL_OF[id]; if (!model) return null;   /* build mode's PoE+ injector is the dual-port one */
+  const ports = [], leds = [], says = [], opts = {};
+  /* the device an injector output powers right now (its PoE light lit), or null */
+  const feeds = function (port) { const c = sim.cableAt(id, port); if (!c) return null; const o = c.a.dev === id ? c.b.dev : c.a.dev; return sim.d[o] && sim.d[o].poe && sim.on(o) && sim.poeSource(o) === x ? o : null; };
   const on = sim.on(id);
   PORTS[model].forEach(function (pp) {
     const c = sim.cableAt(id, pp[1]);
@@ -37,10 +43,11 @@ export function physicalState(sim, id) {
       if (c.cond === "crushed" && end === (c.a.dev === "pc" ? "a" : "b")) p.damage = "crushed";
       if (c.cond === "damaged" && (!c.kink || c.kink === end)) p.damage = "split";
     }
-    p.lights = p.coax || model === "injector" ? null : p.link ? (model === "switch" && p.speed !== 1000 ? "amber" : "green") : "off";
+    p.lights = model === "injectorDual" ? (/^PoE OUT/.test(pp[1]) ? (feeds(pp[1]) ? "green" : "off") : null)   /* its outputs' corner lights: lit while that output powers a device */
+      : p.coax || INJ[model] ? null : p.link ? (model === "switch" && p.speed !== 1000 ? "amber" : "green") : "off";
     ports.push(p);
   });
-  if (model === "injector") ports.push({ name: "DC IN", label: "Power adapter (DC IN)", plug: x.power ? "in" : "out", dc: true, link: false, speed: 0, damage: null, coax: false, lights: null });
+  if (INJ[model]) ports.push({ name: "DC IN", label: "Power adapter cord (DC IN, " + (model === "injectorDual" ? "right" : "left") + " side)", plug: x.power ? "in" : "out", dc: true, link: false, speed: 0, damage: null, coax: false, lights: null });
   const L = function (role, name, state, color) { leds.push({ role: role, name: name, state: state, color: color || "green" }); };
   if (model === "modem") {
     const M = sim.modemLights();
@@ -69,8 +76,10 @@ export function physicalState(sim, id) {
   } else if (model === "camera") {
     opts.ipLine = "IP: set by DHCP"; if (x.draw > POE.af.pd) opts.poe = "PoE+ 802.3at";
   } else if (model === "injector") {
-    const fed = sim.cablesOf(id).map(function (c) { return c.a.dev === id && c.a.port === "PoE OUT" ? c.b.dev : c.b.dev === id && c.b.port === "PoE OUT" ? c.a.dev : null; }).filter(Boolean)[0];
-    L("POWER", "Power", x.power ? "on" : "off"); L("PoE", "PoE", fed && sim.d[fed].poe && sim.on(fed) ? "on" : "off");   /* lit while it powers the device on its PoE OUT */
+    L("POWER", "POWER", x.power ? "on" : "off", "blue"); L("PoE", "STATUS", feeds("PoE OUT") ? "on" : "off");   /* blue while its adapter is in; STATUS green while it powers the device on its output */
+    opts.std = x.std;
+  } else if (model === "injectorDual") {
+    L("POWER", "Active PoE+", x.power ? "on" : "off");   /* ready to power: its adapter is in. Each output's own lights say which one is powering a device */
     opts.std = x.std;
   }
 
@@ -82,7 +91,7 @@ export function physicalState(sim, id) {
     let s = p.label + ": ";
     if (p.coax) s += p.plug === "in" ? "the coax connector is screwed on snugly." : "the coax connector is loose, backed off its thread.";
     else if (p.dc) s += p.plug === "in" ? "plugged in." : "unplugged: its plug is out, hanging loose.";
-    else if (model === "injector") s += p.plug === "none" ? "empty." : p.plug === "out" ? "unplugged: the plug is out of the port, hanging loose." : "cable plugged in.";
+    else if (INJ[model]) s += (p.plug === "none" ? "empty." : p.plug === "out" ? "unplugged: the plug is out of the port, hanging loose." : "cable plugged in.") + (p.lights ? " Its lights " + (p.lights === "off" ? "off." : "on, green: it's powering the device on it.") : "");
     else if (p.plug === "none") s += "empty.";
     else if (p.plug === "out") s += "unplugged: the plug is out of the port, hanging loose. Lights off.";
     else s += "cable plugged in. Lights " + (p.lights === "off" ? "off" : p.lights === "amber" ? "on, amber (10/100 Mb/s)" : model === "switch" ? "on, green (1 Gb/s)" : "on") + ".";
@@ -95,7 +104,8 @@ export function physicalState(sim, id) {
   if (model === "printer") says.push("Control panel screen: " + opts.screen.status + ", IP address " + opts.screen.ip + ".");
   if (model === "tv") says.push("Screen: Network Status, wired (LAN) " + (opts.screen.connected ? "connected" : "not connected") + "; " + opts.screen.rows.slice(0, 3).map(function (r) { return r[0] + " " + r[1]; }).join("; ") + ".");
   if (model === "camera") { says.push("Printed beside its port: " + (x.draw > POE.af.pd ? "PoE+ 802.3at, up to " + x.draw + " W (heater on)" : "PoE 802.3af") + " (it takes its power down the cable). Its label gives the model and says the address is set by DHCP; the hardware address is covered."); if (!on) says.push("No power: the camera is dark."); else if (sim.poeShort(id)) says.push("Its status light blinks amber: running on limited power."); }
-  if (model === "injector") says.push("Its label: " + (x.std === "passive" ? "PASSIVE PoE INJECTOR, OUTPUT 24V ⎓ 1A" : x.std === "at" ? "PoE+ INJECTOR, IEEE 802.3at, OUTPUT 54V ⎓ 0.56A (30W)" : "PoE INJECTOR, IEEE 802.3af, OUTPUT 48V ⎓ 0.32A (15.4W)") + ".");
+  if (model === "injector") says.push("Its label: " + (x.std === "passive" ? "SINGLE-PORT PASSIVE PoE INJECTOR, OUTPUT 24V ⎓ 1A" : x.std === "at" ? "SINGLE-PORT GIGABIT PoE+ INJECTOR, IEEE 802.3at, OUTPUT 54V ⎓ 0.56A (30W)" : "SINGLE-PORT GIGABIT PoE INJECTOR, IEEE 802.3af, OUTPUT 48V ⎓ 0.32A (15.4W)") + ".");
+  if (model === "injectorDual") says.push("Its label: DUAL-PORT GIGABIT PoE+ INJECTOR, IEEE 802.3at. Total PoE power budget DC 54V ⎓ 1.1A (60W); port max DC 54V ⎓ 0.56A (30W). Each DATA IN carries on only to the DATA + POWER OUT with the same number.");
   return { id: id, model: model, label: x.label, ports: ports, leds: leds, opts: opts, says: says };
 }
 

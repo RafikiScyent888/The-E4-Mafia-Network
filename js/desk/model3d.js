@@ -39,8 +39,10 @@ const SETUP = {
     views: [["Back ports", { focus: "panel:Ports", view: [-0.35, 0.2, -1] }], ["Control panel", { focus: "panel:Control panel", view: [0.15, 0.75, 0.66], light: [0.3, 1.3, 1.0] }]] },
   tv: { build: function (o) { return END.smartTV({ screen: o.screen }); }, view: [-0.75, 0.32, -1], light: [-0.5, 1.2, -1.0],
     views: [["Ports close-up", { focus: "panel:Connection panel", view: [-0.25, 0.1, -1] }], ["Screen", { view: [0, 0.08, 1], light: [0.3, 1.0, 1.0] }]] },
-  injector: { build: function (o) { return GEAR.poeInjector({ std: o.std }); }, view: [0.75, 0.6, 1], light: [0.6, 1.3, 0.9], frame: [-60, 0, -70, 60, 40, 90],
-    views: [["Ports close-up", { focus: "panel:Ports", view: [0.15, 0.3, 1] }], ["Label and lights", { view: [0.05, 1, 0.25], frame: [-34, 30, -56, 34, 34, 58], light: [0.3, 1.3, 0.5] }], ["Power adapter", { view: [0.5, 0.35, -1], frame: [-30, 0, -100, 40, 34, -40], light: [0.4, 1.2, -1.0] }]] },
+  injector: { build: function (o) { return GEAR.poeInjector({ std: o.std }); }, view: [0.55, 0.42, 1], light: [0.5, 1.3, 1.0], frame: [-110, 0, -80, 60, 50, 120],
+    views: [["Ports close-up", { focus: "panel:Ports", view: [0.1, 0.22, 1] }], ["Lights", { view: [0.1, 0.2, 1], frame: [0, 32, 62, 30, 42, 68], light: [0.3, 1.2, 1.0] }], ["Label on top", { view: [0.05, 1, 0.3], frame: [-42, 47, -62, 42, 48, 62], light: [0.3, 1.3, 0.5] }], ["Power cord", { view: [-1, 0.35, 0.5], frame: [-110, 0, 20, -40, 30, 75], light: [-0.6, 1.2, 0.8] }]] },
+  injectorDual: { build: function () { return GEAR.poeInjectorDual(); }, view: [0.5, 0.42, 1], light: [0.5, 1.3, 1.0], frame: [-80, 0, -80, 160, 64, 130],
+    views: [["Ports close-up", { focus: "panel:Ports", view: [0.08, 0.2, 1] }], ["Lights", { view: [0.1, 0.2, 1], frame: [-4, 18, 62, 46, 48, 70], light: [0.3, 1.2, 1.0] }], ["Label on top", { view: [0.05, 1, 0.3], frame: [-56, 61, -62, 56, 63, 62], light: [0.3, 1.3, 0.5] }], ["Power cord", { view: [1, 0.35, 0.5], frame: [60, 0, 10, 170, 34, 80], light: [0.6, 1.2, 0.8] }]] },
   camera: { build: function (o) { return END.ipCamera({ ipLine: o.ipLine, poe: o.poe }); }, stage: "concrete", view: [1, 0.5, 0.75], light: [0.7, 1.3, 0.9], frame: [-70, 0, -70, 125, 112, 125],
     views: [["Port close-up", { focus: "panel:PoE port", view: [0.91, 0.3, 0.41] }]] }
 };

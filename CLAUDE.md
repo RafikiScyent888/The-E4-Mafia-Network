@@ -5,8 +5,8 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (11 October 2026): the real site, builds 1 to 4, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN)** (not yet linked
-from the Under the Hood tile). See "The real site" below. The owner, 11
+**Status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
+from the Under the Hood tile (decision 6). See "The real site" below. The owner, 11
 October 2026: **"Build it like the preview you gave me just keep the layout
 exactly the same just remove the C with A bars."** Confirmed with the owner
 the same day: the three view buttons stay above the bars as the real way to
@@ -485,9 +485,9 @@ Home · five more":
   passes the link straight through, so the switch light goes dark with the
   camera. The fault: its adapter unplugged, or a cheap passive 24 V
   injector bought as a replacement. Fix on the injector's Physical tab
-  (plug it in / swap in an 802.3af one). Its 3D model (`poeInjector`) is
-  built from the standard design: **no photograph yet; send one and it
-  will be matched**. (PoE, power considerations.)
+  (plug it in / swap in an 802.3af one). Its 3D model (`poeInjector`) was
+  matched to the owner's photograph on 11 October 2026 (see "PoE
+  injectors matched to the photo" below). (PoE, power considerations.)
 - **HOME-14** the router set to WPA3-Personal only; the old laptop's
   adapter stops at WPA2 (`netsh wlan show drivers`, new). Wi-Fi security is
   now real (`canSec`/`usesSec`, a Security choice on the router's Wi-Fi
@@ -642,9 +642,8 @@ tile link, 11 October 2026). The Tickets | Build switch is in every page's bar.
   injector are unchanged (a test holds them to it).
 - **3D models:** the camera prints its PoE class by its port (the heater
   camera says "PoE+ 802.3at": the photographed housing, only the printed
-  text changes); the injector model has an 802.3at label too. Neither is
-  a new shape. **The PoE injector is still built from the standard design:
-  send a photograph and it will be matched.**
+  text changes). The PoE+ injector became the dual-port one in the owner's
+  photograph, 11 October 2026 (below).
 - Found by the new checks while building: a mesh node wired back to the
   router broadcast no Wi-Fi (its access points had been limited to the
   wireless case); the Place form left out a device with a fixed place
@@ -716,6 +715,62 @@ what the simulation already models; each starts from J2's working house.
   failing line always has two causes or more, so Mason's third rung can
   narrow (J9's line was given its second, and free build's empty house its
   router-in-its-box neighbour, when the tests caught them).
+
+**PoE injectors matched to the photo (11 October 2026).** The owner sent a
+photograph of two injectors side by side ("Remember to match the details";
+a sharper copy followed). Both rebuilt part by part (`home-gear.js`), and
+both are on the preview page (`preview/models.html`: the pair as
+photographed, then each one):
+- **Single-port PoE injector** (`poeInjector`, the tickets' injector and
+  build mode's 802.3af one): black, rounded edges, an inset front panel;
+  SINGLE-PORT GIGABIT PoE INJECTOR and MODEL top left; POWER (blue) and
+  STATUS (green) square light pipes on the model's line; DATA IN and
+  DATA + POWER OUT in silver jacks with no lights; the flow line with the
+  power bolt between them; "PoE Power Output" along the bottom; ribbed
+  grooves down both edges of the lid with the print between them; the
+  power cord into the **left side**, low at the front, its moulded plug and
+  ribbed strain relief. Lights: POWER blue while its adapter is in, STATUS
+  green while it powers the device on its output.
+- **Dual-port PoE+ injector** (`poeInjectorDual`, build mode's `injector2`,
+  `dual: true`): the rugged shell, chamfered at every corner, a bumper rim
+  round the front panel and the lid with grey triangles on the lid's
+  corners; two DATA IN jacks with no lights, DATA + POWER OUT over two
+  jacks with green corner lights, Active PoE+ top right; the power budget
+  along the bottom; the cord into the **right side** with its flared
+  moulding. Active PoE+ is lit while its adapter is in; each output's
+  corner lights while that output powers a device.
+- What differs from the photo, as told to the owner: the standards' own
+  figures are printed (802.3af: DC 48V ⎓ 0.32A, 15.4 W; 802.3at: DC 54V ⎓
+  0.56A, 30 W a port, a 60 W budget for two), not the photo's 50V 1A and
+  54V 2.2A/1.1A; the single's model number follows (POE-GI-48V); the logo
+  badge on the PoE+ lid is left off (brand marks stay off); the photo's
+  arrows under the PoE+ jacks became each jack's pair number with an
+  arrow, so a student can read which input goes with which output.
+- **The second pair is real in the simulation** ("what students see on the
+  model is what they can actually use"): `injector2` has four ports
+  (`DUAL_PORTS`: DATA IN, DATA IN 2, PoE OUT, PoE OUT 2; the sim's names are
+  unchanged so saved progress replays). `POE_PAIR` pairs them; an output
+  carries on only its own input's link (`cableUp`), power comes from either
+  output (`poeSource`), and the second pair is its own node (`nodeOf`
+  `injector2:2`) so the two pairs are never bridged. Every list a student
+  reads uses the names printed on the injector (`portName`): DATA +
+  POWER OUT for the single's output; DATA IN 1, DATA IN 2, DATA + POWER
+  OUT 1 and 2 on the dual. J3's cause for a missing input names the input
+  of the same pair; its limits say "single-port" and "dual-port (30 W out
+  per port)".
+- The 3D views are now Ports close-up, Lights (on the front, as
+  photographed), Label on top and Power cord.
+- Checks added, each shown to fail on a plant: the dual drawn as the single,
+  its output lights ignoring the sim, Active PoE+ dark, a jack named
+  differently on the model and in the sim, the pairs bridged, any cable
+  passing through, power only from the first output, the single's POWER
+  drawn green (the viewer repaints it from the sim, so only both wrong
+  draws green: planted both, and caught); the drive lays the camera across
+  the pairs on the page: the check says it has power but no link, and the
+  runs table shows the run with No link. (The drive's first version read
+  only the job's diagnosis, which comes from the work order's causes, and
+  missed the "any cable passes through" plant; the runs table reads the
+  network itself and catches it.)
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

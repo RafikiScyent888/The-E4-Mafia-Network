@@ -193,30 +193,50 @@ C.push(async () => {
   await ctx.close();
 });
 
-/* HOME-13: the PoE injector. Unplugged: its adapter's plug out, POWER and PoE dark. Passive: POWER lit, PoE dark; the camera dark either way; the fix lights PoE */
+/* HOME-13: the PoE injector (matched to the owner's photo: POWER blue, STATUS green, the cord into the left side).
+   Unplugged: its cord's plug out, POWER and STATUS dark. Passive: POWER lit, STATUS dark; the camera dark either way; the fix lights STATUS */
 C.push(async () => {
   const { p, ctx } = await open(GL, "HOME-13", 1);
-  await physical(p, "injector", "Power adapter");
+  await physical(p, "injector", "Power cord");
   const k = await plugAt(p, "DC IN"); check(k.plug && k.off > 25, "HOME-13 unplugged: the adapter's plug is out of DC IN " + JSON.stringify(k));
   await led(p, "HOME-13 unplugged: injector POWER", null, "POWER", "off");
   await physical(p, "camera", "Port close-up");
   await led(p, "HOME-13 unplugged: camera port link", "PoE", "link", "off");
-  await physical(p, "injector", "Label and lights");
+  await physical(p, "injector", "Lights");
   const n = await fine(p);
   await p.click('.phys button:text-is("Plug its power adapter in")'); await settled(p, n);
-  await led(p, "HOME-13 plugged back in: injector POWER", null, "POWER", "green");
+  await led(p, "HOME-13 plugged back in: injector POWER", null, "POWER", "blue");
   await led(p, "HOME-13 plugged back in: injector PoE", null, "PoE", "green");
   await ctx.close();
 });
 C.push(async () => {
   const { p, ctx } = await open(GL, "HOME-13", 2);
-  await physical(p, "injector", "Label and lights");
-  await led(p, "HOME-13 passive: injector POWER", null, "POWER", "green");
+  await physical(p, "injector", "Lights");
+  await led(p, "HOME-13 passive: injector POWER", null, "POWER", "blue");
   await led(p, "HOME-13 passive: injector PoE", null, "PoE", "off");
   check(/PASSIVE PoE INJECTOR, OUTPUT 24V/.test(await p.$eval(".m3d-says", (x) => x.textContent)), "HOME-13 passive: the words give the passive label");
   const n = await fine(p);
   await p.click('.phys button:text-is("Swap in a new 802.3af injector")'); await settled(p, n);
   await led(p, "HOME-13 after the swap: injector PoE", null, "PoE", "green");
+  await ctx.close();
+});
+
+/* build mode J3: the dual-port PoE+ injector, as photographed, cabled on its first pair to the camera. Output 1's corner
+   lights green, output 2's dark, Active PoE+ green; all four jacks there by their printed names, the plugs where the cables are */
+C.push(async () => {
+  const ctx = await GL.newContext({ viewport: { width: 900, height: 1000 }, reducedMotion: "reduce" });
+  await ctx.addInitScript(() => { const g = HTMLCanvasElement.prototype.getContext; window.__gl = 0; HTMLCanvasElement.prototype.getContext = function (k) { const c = g.apply(this, arguments); if (/webgl/.test(k) && c && !this.__counted) { this.__counted = true; window.__gl++; } return c; }; });
+  const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push("build J3: " + e.message));
+  await p.goto(base + "build.html"); await p.waitForFunction(() => window.__e4b);
+  if (plant) await p.evaluate(plant);
+  await p.evaluate(() => { const c = window.__e4b, E = (dev, port) => ({ dev, port }); c.openJob("J3", true, 3007);
+    [{ t: "place", dev: "injector2", room: "office" }, { t: "place", dev: "camera", room: "porch" }, { t: "lay", a: E("switch", "4"), b: E("injector2", "DATA IN") }, { t: "lay", a: E("injector2", "PoE OUT"), b: E("camera", "LAN") }].forEach((a) => c.act(a)); });
+  await physical(p, "injector2", "Lights");
+  await led(p, "J3 PoE+ injector: Active PoE+", null, "POWER", "green");
+  await led(p, "J3 PoE+ injector: output 1's lights", "DATA + POWER OUT 1", "link", "green");
+  await led(p, "J3 PoE+ injector: output 2's lights", "DATA + POWER OUT 2", "link", "off");
+  for (const [j, want] of [["DATA IN 1", true], ["DATA IN 2", false], ["DATA + POWER OUT 1", true], ["DATA + POWER OUT 2", false], ["DC IN", true]]) { const k = await plugAt(p, j); check(!k.missing && k.plug === want, "J3 PoE+ injector: " + j + (want ? " has its plug in" : " is empty") + " " + JSON.stringify(k)); if (want && !k.missing) check(k.off < 0.5, "J3 PoE+ injector: " + j + "'s plug seated " + JSON.stringify(k)); }
+  check(/DUAL-PORT GIGABIT PoE\+ INJECTOR/.test(await p.$eval(".m3d-says", (x) => x.textContent)), "J3 PoE+ injector: the words give its label");
   await ctx.close();
 });
 

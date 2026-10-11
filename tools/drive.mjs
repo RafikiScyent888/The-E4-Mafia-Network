@@ -244,6 +244,7 @@ const place = async (p, d, room) => { await p.selectOption("#bmDev", d); await p
 const lay = async (p, a, ap, b, bp) => { await p.selectOption("#bmAd", a); await p.selectOption("#bmAp", ap); await p.selectOption("#bmBd", b); await p.selectOption("#bmBp", bp); await p.click("#bmLay"); await p.waitForTimeout(40); };
 const checkJob = async (p) => { await p.click("#doCheck"); await p.waitForTimeout(40); return p.$eval("#check", (n) => n.textContent); };
 const BJ = (p, f) => p.evaluate(f);
+const J3crossed = (t) => /has power \(its light is on\), but no link/.test(t);
 for (const job of ["J1", "J2", "J3", "J4", "J5", "J6", "J7", "J8", "J9", "J10", "FB"].filter((k) => !process.env.ONLY || k === process.env.ONLY)) for (const seed of [11, 2025, 777777, 3]) {
   if (seed === 3 && job !== "J3") continue;   /* house 3 has the camera with the heater: J3 is driven on both cameras */
   const { p, ctx } = await bpage(job, seed);
@@ -291,16 +292,24 @@ for (const job of ["J1", "J2", "J3", "J4", "J5", "J6", "J7", "J8", "J9", "J10", 
     await dev(p, "laptop"); await tab(p, "Wi-Fi"); await p.click('.pane li:has-text("' + home + '") button:text-is("Connect (enter the password)")'); await p.waitForTimeout(40);
   } else if (job === "J3") {
     const heat = await BJ(p, () => window.__e4b.T.v.heat), inj = heat ? "injector2" : "injector";
-    check(/In the van: an 802\.3af PoE injector \(15\.4 W out\) and an 802\.3at PoE\+ injector \(30 W out\)/.test(await p.$eval("#bm", (n) => n.textContent)), tag + "the limits name both injectors' budgets");
+    check(/In the van: a single-port 802\.3af PoE injector \(15\.4 W out\) and a dual-port 802\.3at PoE\+ injector \(30 W out per port\)/.test(await p.$eval("#bm", (n) => n.textContent)), tag + "the limits name both injectors' budgets");
     if (heat) {   /* the 802.3af one first: it starts, on limited power, and the camera's own page says so */
       await place(p, "injector", "office"); await place(p, "camera", "porch");
       await lay(p, "switch", "4", "injector", "DATA IN"); await lay(p, "injector", "PoE OUT", "camera", "LAN");
       await dev(p, "camera"); check(/limited\. The heater and night vision are off/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the camera's page says its power is limited");
       t = await checkJob(p); check(/its power is limited/.test(t), tag + "the check says the power is limited");
-      await p.click('#runs tr:has-text("PoE OUT") button:text-is("Pull")'); await p.waitForTimeout(40);
+      await p.click('#runs tr:has-text("DATA + POWER OUT") button:text-is("Pull")'); await p.waitForTimeout(40);
       await p.click('#runs tr:has-text("DATA IN") button:text-is("Pull")'); await p.waitForTimeout(40);
       await place(p, "injector2", "office");
-      await lay(p, "switch", "4", "injector2", "DATA IN"); await lay(p, "injector2", "PoE OUT", "camera", "LAN");
+      /* the dual-port PoE+ injector, as photographed: its four ports by their printed names; this time its second pair */
+      await p.selectOption("#bmAd", "injector2"); const ports = await p.$$eval("#bmAp option", (l) => l.map((o) => o.textContent.replace(/ \(in use\)$/, "")));
+      check(JSON.stringify(ports) === JSON.stringify(["DATA IN 1", "DATA IN 2", "DATA + POWER OUT 1", "DATA + POWER OUT 2"]), tag + "the lay form lists the PoE+ injector's ports by their printed names " + JSON.stringify(ports));
+      await lay(p, "switch", "4", "injector2", "DATA IN 2"); await lay(p, "injector2", "PoE OUT", "camera", "LAN");
+      t = await checkJob(p); check(J3crossed(t), tag + "crossed pairs: the camera has power from output 1 but no link, as the check says");
+      check(/No link/.test(await p.$eval('#runs tr:has-text("Camera")', (n) => n.textContent)), tag + "crossed pairs: the runs table shows the camera's run with no link (the data never crosses pairs)");
+      await p.click('#runs tr:has-text("DATA + POWER OUT 1") button:text-is("Pull")'); await p.waitForTimeout(40);
+      await lay(p, "injector2", "PoE OUT 2", "camera", "LAN");
+      check(/DATA \+ POWER OUT 2/.test(await p.$eval("#runs", (n) => n.textContent)), tag + "the runs table names the output by its printed name");
     } else {
       await place(p, inj, "office"); await place(p, "camera", "porch");
       await lay(p, "switch", "4", inj, "DATA IN"); await lay(p, inj, "PoE OUT", "camera", "LAN");

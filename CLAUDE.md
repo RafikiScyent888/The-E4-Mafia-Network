@@ -517,6 +517,21 @@ counts; show all of Mason's help at once (rung 1, rung 2, and the reasons
 rung 3 strikes); clear this computer's progress; lock again. Everything
 shows in the instructor's window, never on the student's board. (A static
 site can't truly hide anything: this keeps answers out of casual reach.)
+"Unlock any level" (on the owner's 10 October list) comes with the second
+level: only the home level exists, so nothing is locked yet.
+
+**Next: build mode (preview, 11 October 2026).** The first slice (decision
+5, 9 October) is the home level's build mode with its goal checker as well
+as the tickets, and the tile link waits for it (decision 6). Its details
+were never talked out, so `preview/build-mode.html` (not linked) shows one
+client job in the real layout: the work order and its limits (100 m runs,
+the PoE budget), devices in the box, the floor plan, the cable runs with
+their lengths, the router at factory defaults, and "Check the job", where
+the network checks each line of the order with real traffic and Mason's
+ladder helps from the third failing check. Five jobs proposed (move-in;
+home office and printer; porch camera; Wi-Fi to every room; a guest Wi-Fi
+kept apart) plus free build. Waiting on the owner's decisions before
+building.
 
 **Checks:** `npm test` (Node: every ticket on 150 houses: the fault shows
 in the commands themselves, the board, the real fix and the tempting

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Build mode preview · The E4 Mafia Network</title>
+<meta name="description" content="Preview for the owner: the home level's build mode, a client job worked from its work order, checked by the network itself.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e3a8a'/%3E%3Ccircle cx='16' cy='9' r='3.2' fill='%23f3f6ff'/%3E%3Ccircle cx='8' cy='23' r='3.2' fill='%23f3f6ff'/%3E%3Ccircle cx='24' cy='23' r='3.2' fill='%23f3f6ff'/%3E%3Cpath d='M16 9L8 23M16 9l8 14M8 23h16' stroke='%23ffd84d' stroke-width='1.8'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../css/e4.css">
+<style>
+.pv { margin: 0; padding: 10px 18px; background: #fff7d6; color: #3a2a00; border-bottom: 2px solid #8a6a00; }
+.pv b { color: #2a1e00; }
+.spot rect { fill: #ffffff; stroke: var(--royal); stroke-width: 3; stroke-dasharray: 7 5; }
+.req { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.rq { display: grid; grid-template-columns: 30px 1fr; gap: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
+.rq p { margin: 2px 0 0; }
+.rq .mk { font-weight: 900; font-size: 1.2rem; line-height: 1.4; text-align: center; }
+.rq .st { font-weight: 800; margin-left: 6px; }
+.rq.ok { box-shadow: inset 5px 0 0 var(--good); } .rq.ok .mk, .rq.ok .st { color: var(--good); }
+.rq.bad { box-shadow: inset 5px 0 0 var(--bad); } .rq.bad .mk, .rq.bad .st { color: var(--bad); }
+.limits { margin: 8px 0 0; padding-left: 1.2em; }
+.tray { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+.tray li { border: 1px dashed var(--royal); border-radius: 8px; padding: 6px 10px; background: #fff; }
+.bm-acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+.section-pad { padding: 12px 14px; }
+.section-pad h3 { margin: 4px 0 6px; font-size: 1.05rem; }
+</style>
+</head>
+<body data-page="desk">
+<p class="pv"><b>Preview for the owner, not live:</b> the home level's build mode. A client job, worked from its work order, checked by the network itself. Nothing here works yet; it shows what would be built.</p>
+<nav class="views" aria-label="Views"><a href="../lab-bench.html">Lab Bench</a><a href="../service-map.html">Service Map</a><a href="../index.html" aria-current="page">Ticket Desk</a></nav>
+<section class="chrome" aria-label="Workspace bars">
+  <div class="appbar">
+    <span class="brand2">THE E4 MAFIA <span>NETWORK</span></span>
+    <nav class="menu" aria-label="Menu"><a href="../lab-bench.html">Labs</a><button type="button">Job</button><button type="button">View</button><button type="button">Notebook</button><button type="button">Help</button><button type="button">Instructor</button></nav>
+    <span class="spacer"></span>
+    <button id="dys" type="button" aria-pressed="false">Easier reading: off</button>
+  </div>
+  <div class="toolbar">
+    <div class="seg2" role="group" aria-label="View"><button type="button" aria-pressed="false">Logical</button><button type="button" aria-pressed="true">Physical</button></div>
+    <div class="labtitle">Client job J3 · The porch camera<small>Client jobs · Home · Rafiki's IT Services</small></div>
+    <span class="spacer"></span>
+    <div class="seg2" role="group" aria-label="Mode"><button type="button" aria-pressed="false">Tickets</button><button type="button" aria-pressed="true">Build</button></div>
+  </div>
+</section>
+<main class="desk">
+  <section class="box left queue" aria-label="Client jobs">
+    <h2>Client jobs · Home</h2>
+    <ol id="queue"><li class="tier">Work orders</li><li><button type="button"><span class="num">J1</span><span class="what">Move-in: get the Okafors online</span><span class="st">Done</span></button></li><li><button type="button"><span class="num">J2</span><span class="what">The home office: a wired PC and a printer</span><span class="st">Done</span></button></li><li><button type="button" aria-current="true"><span class="num">J3</span><span class="what">The porch camera</span><span class="st">Open · you</span></button></li><li><button type="button"><span class="num">J4</span><span class="what">The big house: Wi-Fi to every room</span><span class="st">New</span></button></li><li><button type="button"><span class="num">J5</span><span class="what">Guests and gadgets: a guest Wi-Fi kept apart</span><span class="st">New</span></button></li><li class="tier">Your own</li><li><button type="button"><span class="num">FB</span><span class="what">Free build: an empty house, every device in the van</span><span class="st">Open any time</span></button></li></ol>
+  </section>
+  <div class="mainc">
+    <section class="box" aria-label="The work order">
+      <div class="tk">
+        <h3>J3 · The porch camera</h3>
+        <div class="meta"><b>Work order</b><br>22 Maple Street</div>
+        <p class="from">Mr. Okafor · 22 Maple Street · new house, the internet just put in</p>
+        <p class="q">“The boxes are all here. I want the camera on the porch working, and I want to see it on my phone when I'm away. The printer has to work from the office computer every time, and my son's room upstairs never gets any Wi-Fi.”</p>
+        <p class="mason2"><b>Mason:</b> Read the whole order before you unbox anything. Plan the runs, then set things up.</p>
+      </div>
+      <div class="section-pad">
+        <h3>Limits on this job</h3>
+        <ul class="limits"><li>A copper run is 100 m at most: each run's length shows as you lay it.</li><li>The camera draws up to 6.5 W over its cable; an 802.3af PoE injector gives up to 15.4 W.</li><li>No budget limit: use what the job needs.</li></ul>
+        <h3>In the box, not placed yet</h3>
+        <ul class="tray"><li>IP camera</li><li>PoE injector (802.3af)</li><li>Mesh node</li></ul>
+        <div class="bm-acts"><button type="button" class="btn ghost small">Place a device</button><button type="button" class="btn ghost small">Lay a cable</button><button type="button" class="btn ghost small">Move a device</button></div>
+      </div>
+      <div class="diagram"><svg id="plan" viewBox="20 20 970 510" role="img" aria-label="Floor plan of 22 Maple Street: the devices placed so far, the cable runs, and the camera's spot by the front door."><defs><symbol id="p-cloud" viewBox="0 0 64 64"><path d="M16 46h34a10 10 0 0 0 0-20 14 14 0 0 0-27-3A10 10 0 0 0 16 46z" class="ib"/><path d="M24 38h18M28 32h12" class="il"/></symbol><symbol id="p-modem" viewBox="0 0 64 64"><rect x="22" y="8" width="20" height="48" rx="5" class="ib"/><circle cx="32" cy="18" r="2.2" class="ok"/><circle cx="32" cy="25" r="2.2" class="ok"/><circle cx="32" cy="32" r="2.2" class="ok"/><circle cx="32" cy="39" r="2.2" class="on"/><circle cx="32" cy="46" r="2.2" class="ok"/></symbol><symbol id="p-router" viewBox="0 0 64 64"><path d="M18 30v-16M46 30v-16" class="il"/><rect x="10" y="28" width="44" height="20" rx="6" class="ib"/><path d="M21 38h8l-3-3M43 38h-8l3 3" class="il"/><circle cx="16" cy="44" r="1.6" class="ok"/></symbol><symbol id="p-switch" viewBox="0 0 64 64"><rect x="6" y="22" width="52" height="22" rx="4" class="ib"/><path d="M14 30h12l-3-3M50 36H38l3 3" class="il"/><rect x="12" y="38" width="5" height="3" class="ip"/><rect x="20" y="38" width="5" height="3" class="ip"/><rect x="28" y="38" width="5" height="3" class="ip"/><rect x="36" y="38" width="5" height="3" class="ip"/><rect x="44" y="38" width="5" height="3" class="ip"/></symbol><symbol id="p-pc" viewBox="0 0 64 64"><rect x="8" y="12" width="34" height="24" rx="3" class="ib"/><rect x="12" y="16" width="26" height="16" class="is"/><path d="M20 42h10M25 36v6" class="il"/><rect x="46" y="12" width="12" height="36" rx="2" class="ib"/><circle cx="52" cy="18" r="1.8" class="ok"/></symbol><symbol id="p-laptop" viewBox="0 0 64 64"><rect x="14" y="14" width="36" height="24" rx="3" class="ib"/><rect x="18" y="18" width="28" height="16" class="is"/><path d="M8 42h48l-4 6H12z" class="ib"/></symbol><symbol id="p-printer" viewBox="0 0 64 64"><rect x="16" y="10" width="32" height="12" class="ib"/><rect x="8" y="22" width="48" height="20" rx="4" class="ib"/><rect x="16" y="36" width="32" height="16" class="is2"/><circle cx="48" cy="28" r="2" class="ok"/></symbol><symbol id="p-tv" viewBox="0 0 64 64"><rect x="6" y="12" width="52" height="32" rx="2" class="ib"/><rect x="10" y="16" width="44" height="24" class="is"/><path d="M22 52h20M32 44v8" class="il"/></symbol><symbol id="p-camera" viewBox="0 0 64 64"><path d="M14 40a18 18 0 0 1 36 0z" class="ib"/><rect x="10" y="40" width="44" height="8" rx="3" class="ib"/><circle cx="32" cy="32" r="6" class="is"/></symbol><symbol id="p-mesh" viewBox="0 0 64 64"><rect x="20" y="10" width="24" height="44" rx="11" class="ib"/><circle cx="32" cy="44" r="3" class="ok"/><path d="M26 20q6-5 12 0M28 25q4-3 8 0" class="il"/></symbol><symbol id="p-phone" viewBox="0 0 64 64"><rect x="22" y="8" width="20" height="48" rx="4" class="ib"/><rect x="25" y="13" width="14" height="34" class="is"/></symbol><symbol id="p-server" viewBox="0 0 64 64"><rect x="14" y="8" width="36" height="14" rx="2" class="ib"/><rect x="14" y="25" width="36" height="14" rx="2" class="ib"/><rect x="14" y="42" width="36" height="14" rx="2" class="ib"/><circle cx="20" cy="15" r="1.8" class="ok"/><circle cx="20" cy="32" r="1.8" class="ok"/><circle cx="20" cy="49" r="1.8" class="ok"/></symbol><symbol id="p-firewall" viewBox="0 0 64 64"><rect x="8" y="14" width="48" height="36" rx="3" class="ib"/><path d="M8 26h48M8 38h48M24 14v12M40 14v12M16 26v12M32 26v12M48 26v12M24 38v12M40 38v12" class="il"/></symbol><symbol id="p-injector" viewBox="0 0 64 64"><rect x="10" y="22" width="44" height="22" rx="4" class="ib"/><path d="M35 25l-7 9h7l-5 8" class="il"/><circle cx="18" cy="29" r="1.8" class="ok"/></symbol><symbol id="p-ap" viewBox="0 0 64 64"><ellipse cx="32" cy="38" rx="20" ry="8" class="ib"/><path d="M22 26q10-8 20 0M26 20q6-5 12 0" class="il"/></symbol></defs><rect class="room" x="30" y="30" width="390" height="270"/><rect class="room" x="420" y="30" width="340" height="270"/><rect class="room" x="30" y="300" width="390" height="220"/><rect class="room" x="420" y="300" width="340" height="220"/><rect class="room" x="790" y="30" width="190" height="230"/><path class="door" d="M380 300h30M520 300h40M420 400v40"/><text class="rl" x="46" y="60">OFFICE</text><text class="rl" x="436" y="60">LIVING ROOM</text><text class="rl" x="46" y="330">GARAGE</text><text class="rl" x="436" y="330">KITCHEN</text><text class="rl" x="806" y="60">UPSTAIRS</text><text class="rl" x="800" y="512">FRONT DOOR</text><rect class="plate" x="413" y="98" width="14" height="24"/><rect class="plate" x="714" y="32" width="16" height="10"/><path class="run-coax" d="M722 38 C 706 66 676 92 652 108"/><path class="run" d="M650 110 L560 150"/><path class="run" d="M560 150 C 600 196 640 228 680 240"/><path class="run" d="M560 150 C 500 150 460 110 420 110"/><path class="run" d="M420 110 L 250 200"/><path class="run" d="M250 200 L 110 140"/><path class="run" d="M250 200 L 360 140"/><g class="pdev" transform="translate(650 110)"><rect class="tile" x="-24" y="-24" width="48" height="48" rx="9"/><use href="#p-modem" x="-20" y="-20" width="40" height="40"/><text class="ns" y="47" text-anchor="middle">Modem</text></g><g class="pdev open" transform="translate(560 150)"><rect class="tile" x="-24" y="-24" width="48" height="48" rx="9"/><use href="#p-router" x="-20" y="-20" width="40" height="40"/><text class="ns" y="47" text-anchor="middle">Router</text></g><g class="pdev" transform="translate(680 240)"><rect class="tile" x="-24" y="-24" width="48" height="48" rx="9"/><use href="#p-tv" x="-20" y="-20" width="40" height="40"/><text class="ns" y="47" text-anchor="middle">Smart TV</text></g><g class="pdev" transform="translate(250 200)"><rect class="tile" x="-24" y="-24" width="48" height="48" rx="9"/><use href="#p-switch" x="-20" y="-20" width="40" height="40"/><text class="ns" y="47" text-anchor="middle">Switch</text></g><g class="pdev" transform="translate(110 140)"><rect class="tile" x="-24" y="-24" width="48" height="48" rx="9"/><use href="#p-pc" x="-20" y="-20" width="40" height="40"/><text class="ns" y="47" text-anchor="middle">Office PC</text></g><g class="pdev" transform="translate(360 140)"><rect class="tile" x="-24" y="-24" width="48" height="48" rx="9"/><use href="#p-printer" x="-20" y="-20" width="40" height="40"/><text class="ns" y="47" text-anchor="middle">Printer</text></g><g class="spot" transform="translate(720 448)"><rect x="-24" y="-24" width="48" height="48" rx="9"/><text class="ns" x="-34" y="6" text-anchor="end">Camera goes here</text></g></svg></div>
+      <div class="section-pad">
+        <h3>Cable runs</h3>
+        <table class="grid"><thead><tr><th scope="col">From</th><th scope="col">To</th><th scope="col">Length</th><th scope="col">Link</th></tr></thead><tbody><tr><td>Wall outlet (coax)</td><td>Modem, CABLE IN</td><td>2 m</td><td>Link: signal locked</td></tr><tr><td>Modem, ETH</td><td>Router, INTERNET</td><td>1 m</td><td>Link</td></tr><tr><td>Router, LAN 1</td><td>Switch, port 1</td><td>14 m, through the wall to the office</td><td>Link, 1 Gb/s</td></tr><tr><td>Switch, port 2</td><td>Office PC</td><td>3 m</td><td>Link, 1 Gb/s</td></tr><tr><td>Switch, port 3</td><td>Printer</td><td>2 m</td><td>Link, 1 Gb/s</td></tr><tr><td>Router, LAN 2</td><td>Smart TV</td><td>2 m</td><td>Link, 1 Gb/s</td></tr></tbody></table>
+      </div>
+    </section>
+    <section class="box diag section-pad" aria-labelledby="ch">
+      <h2 id="ch" style="margin:0">Check the job</h2>
+      <p style="margin:6px 0 0">The network checks each line of the order by sending real traffic, the way the client would find out. Check as often as you like.</p>
+      <div class="bm-acts"><button type="button" class="btn">Check the job</button></div>
+      <p style="margin:12px 0 0"><b>Check 3:</b> 2 of 6 met.</p>
+      <ol class="req"><li class="rq ok"><span class="mk" aria-hidden="true">&#10003;</span><div><b>Every device online</b> <span class="st">Met</span><p>Office PC: ping 203.0.113.80, replies. Smart TV: Internet connected. Phone and laptop: on the Wi-Fi, online.</p></div></li><li class="rq bad"><span class="mk" aria-hidden="true">&#10005;</span><div><b>The Wi-Fi renamed and secured</b> <span class="st">Not met yet</span><p>It is still called ROUTER-4F2A, the name printed on the router&#x27;s label with its password.</p></div></li><li class="rq ok"><span class="mk" aria-hidden="true">&#10003;</span><div><b>The printer on a fixed address the router will never hand out; the office PC prints</b> <span class="st">Met</span><p>Printer at 192.168.1.10; the router hands out 192.168.1.100 to .199. A test page printed.</p></div></li><li class="rq bad"><span class="mk" aria-hidden="true">&#10005;</span><div><b>The camera on the porch, powered over its cable</b> <span class="st">Not met yet</span><p>The camera is still in the box.</p></div></li><li class="rq bad"><span class="mk" aria-hidden="true">&#10005;</span><div><b>The camera&#x27;s address can&#x27;t move, and it&#x27;s viewable from away on port 8443</b> <span class="st">Not met yet</span><p>Can&#x27;t be checked yet: it needs the camera online.</p></div></li><li class="rq bad"><span class="mk" aria-hidden="true">&#10005;</span><div><b>A usable Wi-Fi signal in the back bedroom upstairs</b> <span class="st">Not met yet</span><p>Laptop upstairs: 24% on 2.4 GHz, from the router downstairs. Video calls need about 45%.</p></div></li></ol>
+      <p class="mason-says"><b>Mason:</b> From the third check that still has a line not met, Mason helps with that line, the same ladder as the tickets: where to look, then the principle, then the field narrowed. He never says what to type.</p>
+    </section>
+  </div>
+  <aside class="side" aria-label="Terminal and notebook">
+    <section class="box" aria-label="Terminal">
+      <div class="termhead"><h2>Terminal · Home router</h2></div>
+      <div class="pane">
+        <p class="addr">Router admin page · http://192.168.1.1 · first sign-in with the label's password</p>
+        <table class="kv"><tbody>
+          <tr><th scope="row">Wi-Fi name (SSID)</th><td>ROUTER-4F2A (factory default)</td></tr>
+          <tr><th scope="row">Security</th><td>WPA2-Personal, password on the label</td></tr>
+          <tr><th scope="row">LAN address</th><td>192.168.1.1, mask 255.255.255.0</td></tr>
+          <tr><th scope="row">DHCP</th><td>On, hands out 192.168.1.100 to 192.168.1.199</td></tr>
+          <tr><th scope="row">Reservations</th><td>None</td></tr>
+          <tr><th scope="row">Port forwarding</th><td>None</td></tr>
+        </tbody></table>
+        <p class="note">Every page you know from the tickets (LAN &amp; DHCP, DHCP clients, Wi-Fi, Port forwarding), starting from the factory settings.</p>
+      </div>
+    </section>
+    <section class="box notebook" aria-label="Job notes">
+      <h2>Job notes</h2>
+      <p>Your IP plan and notes for this house, saved in this browser. The plan is yours to work out: no calculator does it for you.</p>
+    </section>
+  </aside>
+</main>
+<footer>Cyber Warrior Program — built by an instructor, for students, to make certification study more interactive. For educational purposes only. Not affiliated with, endorsed by, or sponsored by CompTIA®. All trademarks belong to their respective owners.</footer>
+<script>
+/* easier reading: on stays on, across pages and visits */
+(function () { var b = document.getElementById("dys"); function set(on) { document.body.classList.toggle("dys", on); b.setAttribute("aria-pressed", String(on)); b.textContent = "Easier reading: " + (on ? "on" : "off"); try { localStorage.setItem("e4-dyslexia", on ? "1" : "0"); } catch (e) {} }
+  var s = null; try { s = localStorage.getItem("e4-dyslexia"); } catch (e) {} set(s === "1"); b.addEventListener("click", function () { set(!document.body.classList.contains("dys")); }); })();
+</script>
+</body>
+</html>

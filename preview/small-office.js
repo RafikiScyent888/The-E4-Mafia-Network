@@ -6,6 +6,7 @@
 import * as C from "../js/net/swcli.js";
 import { checkSheet } from "../js/net/ipam.js";
 import { dyslexia, el } from "../js/desk/store.js";
+import { hash } from "../js/net/util.js";
 
 dyslexia(document.getElementById("dys"));
 const $ = function (id) { return document.getElementById(id); };
@@ -34,9 +35,26 @@ function renderLevels() {
   });
   renderOrder();
 }
+/* the instructor's view needs the PIN, checked as the live site's Instructor menu checks it: only its hash is here,
+   and an unlock lasts for this browser tab (the same sessionStorage key, so unlocking in either place counts in both) */
+const PIN_HASH = 4061435687, KEY = "e4-instructor";
+const instOpen = function () { try { return sessionStorage.getItem(KEY) === "1"; } catch (e) { return false; } };
+function pick(which) {
+  as = which; document.querySelectorAll(".pv [data-as]").forEach(function (x) { x.setAttribute("aria-pressed", String(x.dataset.as === which)); });
+  $("pinlock").hidden = which !== "inst"; renderLevels();
+}
 document.querySelectorAll(".pv [data-as]").forEach(function (b) {
-  b.addEventListener("click", function () { as = b.dataset.as; document.querySelectorAll(".pv [data-as]").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); }); renderLevels(); });
+  b.addEventListener("click", function () {
+    if (b.dataset.as === "inst" && !instOpen()) { $("pinform").hidden = false; $("pinmsg").textContent = ""; $("pin").value = ""; $("pin").focus(); return; }
+    $("pinform").hidden = true; pick(b.dataset.as);
+  });
 });
+$("pinform").addEventListener("submit", function (e) {
+  e.preventDefault();
+  if (hash("e4-instructor:" + String($("pin").value).trim()) === PIN_HASH) { try { sessionStorage.setItem(KEY, "1"); } catch (err) {} $("pinform").hidden = true; pick("inst"); }
+  else { $("pinmsg").textContent = "That PIN isn't right."; $("pin").select(); }
+});
+$("pinlock").addEventListener("click", function () { try { sessionStorage.removeItem(KEY); } catch (e) {} pick("done"); });
 
 /* ---------------------------------------------------------------- what the level teaches, and its work */
 const OBJ = [

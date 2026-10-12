@@ -859,6 +859,14 @@ scope."** On subnetting by hand on the IPAM sheet: **"I really like this."**
   a fill attribute it couldn't hide (now `fill: currentColor`, as on the
   site's own diagrams). `tools/aaa.mjs` skips its hover step on a page
   without the view buttons (the model previews).
+- **The PIN stays 3693** (owner, 12 October 2026: "The pin is to be 3693").
+  The preview's instructor view now asks for it, checked as the live
+  Instructor menu checks it (only the hash 4061435687 is in the code; the
+  unlock lasts for the browser tab under the same sessionStorage key, so
+  unlocking in either place counts in both; a Lock button closes it). A
+  drive of it (wrong PIN refused, the PIN opening every level, Lock, asked
+  again after locking, the PIN nowhere in the page's code) was shown to fail
+  on a planted wrong hash.
 - **Next:** the owner's go-ahead on the preview, then the build.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work

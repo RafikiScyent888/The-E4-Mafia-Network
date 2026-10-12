@@ -14,7 +14,10 @@
   .pv .seg { display: inline-flex; flex-wrap: wrap; gap: 6px; }
   .pv button { background: #2c1757; color: #ffffff; border: 1px solid #c9b6f0; border-radius: 8px; padding: 6px 12px; min-height: 38px; }
   .pv button[aria-pressed="true"] { background: #ffffff; color: #2c1757; font-weight: 700; }
-  .pv button:focus-visible { outline: 3px solid #ffd84d; outline-offset: 2px; }
+  .pv button:focus-visible, .pv input:focus-visible { outline: 3px solid #ffd84d; outline-offset: 2px; }
+  .pinform { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+  .pinform input { width: 7em; padding: 6px 8px; border: 1px solid #c9b6f0; border-radius: 8px; background: #ffffff; color: #10172e; }
+  .pinform #pinmsg { font-weight: 700; }
   .levels ol { list-style: none; margin: 0; padding: 6px; display: grid; gap: 6px; }
   .levels button { width: 100%; text-align: left; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; min-height: 44px; display: grid; gap: 2px; }
   .levels button[aria-current="true"] { border: 2px solid var(--royal); box-shadow: inset 4px 0 0 var(--royal); }
@@ -90,8 +93,15 @@
   <span class="seg" role="group" aria-label="Whose screen this is">
     <button type="button" data-as="done" aria-pressed="true">A student who finished Home</button>
     <button type="button" data-as="home" aria-pressed="false">A student still on Home</button>
-    <button type="button" data-as="inst" aria-pressed="false">The instructor (PIN entered)</button>
+    <button type="button" data-as="inst" aria-pressed="false">The instructor (asks for the PIN)</button>
   </span>
+  <form id="pinform" class="pinform" hidden autocomplete="off">
+    <label for="pin">Instructor PIN</label>
+    <input id="pin" type="password" inputmode="numeric" maxlength="12" autocomplete="off">
+    <button type="submit">Unlock every level</button>
+    <span id="pinmsg" role="status"></span>
+  </form>
+  <button type="button" id="pinlock" hidden>Lock the instructor tools</button>
 </div>
 <nav class="views" aria-label="Views"><a href="../lab-bench.html">Lab Bench</a><a href="../service-map.html">Service Map</a><a href="../index.html">Ticket Desk</a></nav>
 <section class="chrome" aria-label="Workspace bars">

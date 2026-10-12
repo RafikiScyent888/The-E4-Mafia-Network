@@ -5,6 +5,7 @@
    Every change goes through apply(), so a ticket can be replayed exactly
    (progress is saved as the list of actions). */
 import { rng, hash, ip2n, n2ip, sameSubnet, isIp, isApipa, isPublic, isPrivate, isLoopback, broadcast, network, maskBits } from "./util.js";
+import { reload as reloadSwitch } from "./swcli.js";
 
 /* each radio has its own hardware address: the 5 GHz one is the next number up */
 function bump(m) { const p = m.split("-"); p[5] = ((parseInt(p[5], 16) + 1) & 255).toString(16).padStart(2, "0"); return p.join("-"); }
@@ -37,11 +38,22 @@ export const POE_PAIR = { "PoE OUT": "DATA IN", "DATA IN": "PoE OUT", "PoE OUT 2
 export const DUAL_PORTS = ["DATA IN", "DATA IN 2", "PoE OUT", "PoE OUT 2"];
 const DUAL_NAME = { "DATA IN": "DATA IN 1", "DATA IN 2": "DATA IN 2", "PoE OUT": "DATA + POWER OUT 1", "PoE OUT 2": "DATA + POWER OUT 2" };
 /* the name printed by a port on the device itself: what the student reads on the model and in every list */
-export function portName(x, port) { return (x && x.dual && DUAL_NAME[port]) || PORT_NAME[port] || port; }
-export function portsOf(x) { return x ? (x.dual ? DUAL_PORTS : PORTS[x.kind] || []) : []; }
+export function portName(x, port) { return (x && x.dual && DUAL_NAME[port]) || (x && x.kind === "techlaptop" && port === "USB-C" ? "USB-C (its USB serial adapter)" : null) || PORT_NAME[port] || port; }
+/* the managed switch's copper ports and its console port (its SFP slots take a fibre module: level 2's later jobs) */
+export const MSW_PORTS = Array.from({ length: 24 }, function (_, i) { return String(i + 1); }).concat(["CONSOLE"]);
+export function portsOf(x) {
+  if (!x) return [];
+  if (x.dual) return DUAL_PORTS;
+  if (x.kind === "switch" && x.ports) return Array.from({ length: x.ports }, function (_, i) { return String(i + 1); });   /* the office's old switch has 8 */
+  if (x.kind === "mswitch") return MSW_PORTS;
+  if (x.kind === "techlaptop") return ["USB-C"];
+  return PORTS[x.kind] || [];
+}
+/* a console cable: your laptop's USB serial adapter to a switch's CONSOLE port */
+const consoleEnd = function (x, port) { return !!x && ((x.kind === "mswitch" && port === "CONSOLE") || x.kind === "techlaptop"); };
 export const FIXED_ROOM = { modem: ["living", "by the cable outlet: there's one, in the living room"], camera: ["porch", "on its mount by the front door"] };
 const RUN = { office: { living: 14, kitchen: 18, garage: 12, porch: 38, upstairs: 20, landing: 18 }, living: { kitchen: 10, garage: 22, porch: 20, upstairs: 15, landing: 8 }, kitchen: { garage: 16, porch: 14, upstairs: 22, landing: 14 }, garage: { porch: 30, upstairs: 28, landing: 24 }, porch: { upstairs: 32, landing: 22 }, upstairs: { landing: 6 } };
-export function runLength(a, b) { if (a === b) return 3; return (RUN[a] && RUN[a][b]) || (RUN[b] && RUN[b][a]) || 40; }
+export function runLength(a, b, net) { if (a === b) return 3; const T = (net && net.runs) || RUN; return (T[a] && T[a][b]) || (T[b] && T[b][a]) || 40; }   /* net: the office has its own rooms and runs */
 export const COPPER_MAX = 100;
 
 export class Sim {
@@ -70,9 +82,15 @@ export class Sim {
   cableUp(c) {
     if (!c) return false;
     if (c.kind === "coax") return c.a.tight && c.b.tight && c.cond === "good";
+    if (c.kind === "console") return c.a.seated && c.b.seated && this.on(c.a.dev) && this.on(c.b.dev);   /* serial, not Ethernet: "up" means the console answers */
     if (c.length > COPPER_MAX) return false;                /* past 100 m the signal has faded too far for Ethernet to hold a link */
     if (!c.a.seated || !c.b.seated) return false;
     if (c.cond === "crushed") return false;                 /* pairs 1-2 or 3-6 open: no link at all */
+    for (const e of [c.a, c.b]) {   /* a managed switch's port: shut down, or a fixed speed the far end can't match, and there's no link */
+      const x = this.d[e.dev]; if (!x || x.kind !== "mswitch") continue;
+      const p = x.sw.ports["GigabitEthernet0/" + e.port]; if (!p || p.shutdown) return false;
+      const fs = this.speedSetting(e === c.a ? c.b : c.a); if (p.speed !== "auto" && fs !== "auto" && p.speed !== fs) return false;
+    }
     const ij = [c.a, c.b].find(function (e) { return this.d[e.dev] && this.d[e.dev].kind === "injector"; }, this);
     if (ij) {  /* an injector passes the data pairs straight through: the link is end to end */
       const o = this.cableAt(ij.dev, POE_PAIR[ij.port]);   /* the cable in the same pair's other port */
@@ -81,7 +99,32 @@ export class Sim {
     }
     return this.on(c.a.dev) && this.on(c.b.dev);
   }
-  speed(c) { if (!this.cableUp(c)) return 0; return c.cond === "damaged" ? 100 : 1000; }   /* gigabit needs all four pairs; 100 Mb/s needs only 1-2 and 3-6 */
+  speed(c) {   /* gigabit needs all four pairs; 100 Mb/s needs only 1-2 and 3-6; a speed fixed at either end is what the link runs at */
+    if (!this.cableUp(c)) return 0;
+    let sp = c.cond === "damaged" ? 100 : 1000;
+    if (c.kind === "cat6") [c.a, c.b].forEach(function (e) { const f = this.speedSetting(e); if (f !== "auto") sp = Math.min(sp, +f); }, this);
+    return sp;
+  }
+  /* what speed an end of a cable is set to: a managed switch port's setting, a computer's adapter's, or auto */
+  speedSetting(e) {
+    const x = this.d[e.dev]; if (!x) return "auto";
+    if (x.kind === "mswitch") { const p = x.sw.ports["GigabitEthernet0/" + e.port]; return p ? p.speed : "auto"; }
+    return (x.ifaces && x.ifaces[0].cfg.speed) || "auto";
+  }
+  /* the managed switch's view of its own links, for its show commands: refreshed from the cables before it's asked */
+  syncSwitch(id) {
+    const x = this.d[id]; if (!x || x.kind !== "mswitch") return null;
+    const L = {};
+    for (const c of this.cablesOf(id)) {
+      if (c.kind !== "cat6") continue;
+      const me = c.a.dev === id ? c.a : c.b, far = c.a.dev === id ? c.b : c.a, fd = this.d[far.dev];
+      if (!/^\d+$/.test(me.port) || !me.seated || !far.seated || c.cond === "crushed" || (c.length || 0) > COPPER_MAX || !this.on(far.dev)) continue;
+      const m = (fd.kind === "router" || fd.kind === "rogue" ? fd.mac : fd.ifaces ? fd.ifaces[0].mac : "02-00-5e-" + (hash(far.dev) >>> 0).toString(16).padStart(8, "0").slice(0, 6).replace(/(..)(..)(..)/, "$1-$2-$3")).replace(/-/g, "");
+      L["GigabitEthernet0/" + me.port] = { mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null };
+    }
+    x.sw.links = L; x.sw.uptime = (2 + this.n) + " minutes";
+    return x.sw;
+  }
 
   /* ------------------------------------------------------------ the provider and the modem */
   modemSynced() {
@@ -205,7 +248,7 @@ export class Sim {
   edges() {
     const e = [];
     for (const c of this.net.cables) {
-      if (c.kind === "coax" || !this.cableUp(c)) continue;
+      if (c.kind === "coax" || c.kind === "console" || !this.cableUp(c)) continue;
       e.push([this.nodeOf(c.a.dev, c.a.port), this.nodeOf(c.b.dev, c.b.port)]);
     }
     const m = this.d.mesh;
@@ -234,6 +277,7 @@ export class Sim {
     const x = this.d[id];
     if (id === "router") return this.on("router") ? { ip: x.lan.ip, mask: x.lan.mask, gw: null, dns: [], kind: "static" } : null;
     if (x.kind === "rogue") return this.on(id) ? { ip: x.lan.ip, mask: x.lan.mask, gw: null, dns: [], kind: "static" } : null;
+    if (x.kind === "mswitch") { const v = x.sw.vlan1; return this.on(id) && v.ip && !v.shutdown ? { ip: v.ip, mask: v.mask, gw: x.sw.gateway || null, dns: [], kind: "static" } : null; }   /* its own address, on VLAN 1 */
     if (!x.ifaces || !this.hasLink(id)) return null;
     const f = x.ifaces[0];
     let a = null;
@@ -249,14 +293,15 @@ export class Sim {
     for (const id in this.d) {
       const x = this.d[id];
       if (x.kind === "router" || x.kind === "rogue") { if ((dom.has(id + ":lan") && this.on(id) && x.lan.ip === ip) || (id === "router" && this.guestOn() && dom.has("router:guest") && x.guest.lan.ip === ip)) out.push(id); continue; }
+      if (x.kind === "mswitch") { if (dom.has(id)) { const a = this.addr(id); if (a && a.ip === ip) out.push(id); } continue; }
       if (!x.ifaces) continue;
       if (!dom.has(id)) continue;
       const a = this.addr(id); if (a && a.ip === ip) out.push(id);
     }
     return out;
   }
-  macOf(id) { const x = this.d[id]; if (x.kind === "router" || x.kind === "rogue") return x.mac; return x.ifaces[0].mac; }
-  ttlOf(id) { const k = this.d[id].kind; return k === "pc" || k === "laptop" ? 128 : 64; }
+  macOf(id) { const x = this.d[id]; if (x.kind === "router" || x.kind === "rogue" || x.kind === "mswitch") return x.mac; return x.ifaces[0].mac; }
+  ttlOf(id) { const k = this.d[id].kind; return k === "pc" || k === "laptop" ? 128 : k === "mswitch" ? 255 : 64; }
 
   /* DHCP servers a client's request reaches */
   dhcpServers(id) {
@@ -377,7 +422,7 @@ export class Sim {
   /* can this device send a reply to an address on its own LAN? */
   canReply(id, to, dom) {
     const x = this.d[id];
-    if (x.kind === "router" || x.kind === "rogue" || !x.ifaces) return true;
+    if (x.kind === "router" || x.kind === "rogue" || (!x.ifaces && x.kind !== "mswitch")) return true;
     const b = this.addr(id); if (!b) return false;
     if (sameSubnet(b.ip, to, b.mask)) return true;
     return !!(b.gw && sameSubnet(b.ip, b.gw, b.mask) && this.owners(b.gw, dom).some((g) => this.d[g].kind === "router" || this.d[g].kind === "rogue"));   /* the router hands it back across the LAN */
@@ -421,6 +466,7 @@ export class Sim {
       case "power": {
         const x = this.d[act.dev];
         if (x.ifaces && x.ifaces[0].cfg.mode !== "static") { /* a restart asks for its address again */ }
+        if (x.kind === "mswitch") { reloadSwitch(x.sw); for (const k in (this.cli || {})) if (this.cli[k].sw === act.dev) delete this.cli[k]; }   /* power off and on: only what was saved comes back; every login to it is dropped */
         res = { ok: true, restarted: act.dev };
         break;
       }
@@ -518,8 +564,8 @@ export class Sim {
   place(id, room) {
     const x = this.d[id];
     if (!x) return { ok: false, errs: ["No such device"] };
-    if (!SIGNAL[room]) return { ok: false, errs: ["There's no room called " + room] };
-    const fx = FIXED_ROOM[x.kind]; if (fx && fx[0] !== room) return { ok: false, errs: ["The " + x.label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }) + " goes " + fx[1]] };
+    if (!(this.net.roomNames ? this.net.roomNames[room] : SIGNAL[room])) return { ok: false, errs: ["There's no room called " + room] };
+    const fx = (this.net.fixed || FIXED_ROOM)[x.kind]; if (fx && fx[0] !== room) return { ok: false, errs: ["The " + x.label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }) + " goes " + fx[1]] };
     if (!x.boxed && this.cablesOf(id).some(function (c) { return c.kind !== "coax"; }) && this.net.rooms[id] !== room) return { ok: false, errs: ["Pull its cables out first: it's still cabled where it is"] };
     x.boxed = false; this.net.rooms[id] = room;
     return { ok: true, room: room };
@@ -535,8 +581,12 @@ export class Sim {
       else if (this.cableAt(e[1].dev, e[1].port)) errs.push("The " + e[0].label + "'s " + (portName(e[0], e[1].port) === e[1].port ? "port " + e[1].port : portName(e[0], e[1].port)) + " already has a cable in it");
     }, this);
     if (errs.length) return { ok: false, errs: errs };
-    const n = (this.net.extra.runs = (this.net.extra.runs || 0) + 1), len = runLength(this.net.rooms[a.dev], this.net.rooms[b.dev]);
-    const c = { id: "c-run-" + n, kind: "cat6", a: { dev: a.dev, port: a.port, seated: true }, b: { dev: b.dev, port: b.port, seated: true }, cond: "good", length: len };
+    const ca = consoleEnd(A, a.port), cb = consoleEnd(B, b.port);
+    if (ca !== cb) return { ok: false, errs: [ca ? (A.kind === "mswitch" ? "The switch's CONSOLE port takes the console cable from your laptop, not a network cable" : "Your laptop's USB serial adapter takes the console cable: its other end goes to a switch's CONSOLE port") : (B.kind === "mswitch" ? "The switch's CONSOLE port takes the console cable from your laptop, not a network cable" : "Your laptop's USB serial adapter takes the console cable: its other end goes to a switch's CONSOLE port")] };
+    if (ca && A.kind === B.kind) return { ok: false, errs: ["A console cable joins your laptop to a switch's CONSOLE port"] };
+    if (ca && this.net.rooms[a.dev] !== this.net.rooms[b.dev]) return { ok: false, errs: ["The console cable is 1.8 m long: your laptop has to be in the same room as the switch"] };
+    const n = (this.net.extra.runs = (this.net.extra.runs || 0) + 1), len = ca ? 1.8 : runLength(this.net.rooms[a.dev], this.net.rooms[b.dev], this.net);
+    const c = { id: (ca ? "c-console-" : "c-run-") + n, kind: ca ? "console" : "cat6", a: { dev: a.dev, port: a.port, seated: true }, b: { dev: b.dev, port: b.port, seated: true }, cond: "good", length: len };
     this.net.cables.push(c);
     return { ok: true, cable: c.id, length: len };
   }

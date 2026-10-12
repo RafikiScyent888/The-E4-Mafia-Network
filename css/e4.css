@@ -132,13 +132,13 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, summary:focus-v
 .is, .ip { fill: var(--royal); } .is2 { fill: #ffffff; stroke: var(--royal); stroke-width: 2; } .ok { fill: #1fa04a; } .on { fill: #2f6fe0; }
 .nl, .ns, .pl { paint-order: stroke; stroke: #fbfcfe; stroke-width: 6px; stroke-linejoin: round; }
 .nl { fill: currentColor; color: var(--ink); font-weight: 700; font-size: 19px; } .ns { fill: currentColor; color: var(--muted); font-size: 17px; } .pl { fill: currentColor; color: var(--muted); font-size: 16px; font-weight: 700; }
-.lk { stroke: #3a4150; stroke-width: 3.5; } .lk-coax { stroke: var(--purple); stroke-width: 5; } .lk-wifi { stroke: #2f6fe0; stroke-width: 2.5; stroke-dasharray: 3 7; stroke-linecap: round; } .lk-down { stroke: var(--bad); stroke-dasharray: 10 6; }
+.lk { stroke: #3a4150; stroke-width: 3.5; } .lk-coax { stroke: var(--purple); stroke-width: 5; } .lk-wifi { stroke: #2f6fe0; stroke-width: 2.5; stroke-dasharray: 3 7; stroke-linecap: round; } .lk-down { stroke: var(--bad); stroke-dasharray: 10 6; } .lk-console { stroke: #2b5fd9; stroke-width: 3; }
 .pd-up { fill: #1fa04a; stroke: #ffffff; stroke-width: 2; } .pd-down { fill: var(--bad); stroke: #ffffff; stroke-width: 2; }
 /* the floor plan */
 .room { fill: #f4f6fb; stroke: #4a5675; stroke-width: 5; }
 .rl, .pdev .ns { paint-order: stroke; stroke: #f4f6fb; stroke-width: 6px; stroke-linejoin: round; } .door { stroke: #fbfcfe; stroke-width: 7; }
 .rl { fill: currentColor; color: var(--muted); font-weight: 800; font-size: 16px; letter-spacing: 0.06em; }
-.run { fill: none; stroke: #3a4150; stroke-width: 3; } .run-bad { fill: none; stroke: var(--bad); stroke-width: 3; stroke-dasharray: 8 5; } .run-coax { fill: none; stroke: var(--purple); stroke-width: 4; }
+.run { fill: none; stroke: #3a4150; stroke-width: 3; } .run-bad { fill: none; stroke: var(--bad); stroke-width: 3; stroke-dasharray: 8 5; } .run-coax { fill: none; stroke: var(--purple); stroke-width: 4; } .run-con { fill: none; stroke: #2b5fd9; stroke-width: 3; }
 .pdev .tile { fill: #ffffff; stroke: #9aa6c4; }
 .plate { fill: #ffffff; stroke: #4a5675; stroke-width: 2; }
 /* step through */
@@ -314,3 +314,24 @@ noscript p { margin: 16px; padding: 12px; background: #ffffff; border: 2px solid
   .runs td[data-label]::before { content: attr(data-label) ": "; font-weight: 700; color: var(--muted); }
   .runs td.pullc { padding-top: 6px; }
 }
+
+/* the levels, and the lock between them: a locked level is marked three ways (the lock and its words, the dashed edge, the grey ground) */
+.levels { list-style: none; margin: 0; padding: 6px; display: grid; gap: 6px; }
+.levels button { width: 100%; text-align: left; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; min-height: 44px; display: grid; gap: 2px; }
+.levels button[aria-pressed="true"] { border: 2px solid var(--royal); box-shadow: inset 4px 0 0 var(--royal); }
+.levels button[aria-disabled="true"] { cursor: default; }
+.levels .lv { font-weight: 800; color: var(--ink); }
+.levels .lvst { font-size: 0.88rem; color: var(--muted); }
+.levels .done .lvst { color: var(--good); font-weight: 700; }
+.levels .locked button { background: #eef0f5; border-style: dashed; }
+.levels .locked .lvst { color: #4a3a00; font-weight: 700; }
+.lockpanel { margin: 6px; padding: 10px 12px; border: 2px dashed #4a3a00; border-radius: 9px; background: #fffbe6; color: var(--ink); }
+.lockpanel .tag { display: inline-block; border: 2px solid #4a3a00; color: #4a3a00; background: #fff4c2; border-radius: 999px; padding: 2px 10px; font-weight: 800; margin-bottom: 6px; }
+.lockpanel h3 { margin: 2px 0 6px; font-size: 1.05rem; }
+.lockpanel p { margin: 4px 0; }
+.lockpanel ul { margin: 4px 0; padding-left: 20px; font-size: 0.92rem; }
+.queue li button.locked { background: #eef0f5; border: 1px dashed var(--line); }
+.queue li button.locked .st { color: #4a3a00; font-weight: 700; }
+.queue a.joblink { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); text-decoration: none; margin: 4px 0; }
+.queue a.joblink:hover { border-color: var(--royal); }
+.queue a.joblink .st { color: var(--royal); text-decoration: underline; }

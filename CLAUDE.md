@@ -867,7 +867,87 @@ scope."** On subnetting by hand on the IPAM sheet: **"I really like this."**
   drive of it (wrong PIN refused, the PIN opening every level, Lock, asked
   again after locking, the PIN nowhere in the page's code) was shown to fail
   on a planted wrong hash.
-- **Next:** the owner's go-ahead on the preview, then the build.
+- **Next:** the owner's go-ahead on the preview, then the build. Given 12 October
+  2026: **"Keep building"**.
+
+### SAVE POINT, 12 October 2026: Level 2 stage 1, NOT live
+
+The owner asked for a save point mid-build ("create a save point that you can
+start back up from"). This work is on the branch **`save/level2-stage1`**, not
+on `main`: nothing here is live to students yet. To resume: check out that
+branch, read this section, finish the steps under "Still to do", then merge to
+`main` and push (rule 1), verify the remote and the Pages deploy.
+
+**Stage 1 of 5** (the owner's agreed scope): the level lock on the live site and
+the instructor's "open every level"; Level 2 visible, locked until Home is
+finished; work orders SO-J1 and SO-J2; the managed switch and the old 8-port
+switch live in the Physical tab.
+
+**Done and verified on this branch:**
+- `js/net/office.js`: the office template (six businesses, the closet, front
+  desk, open-plan office, manager's office, meeting room; the old 8-port switch
+  running the office; the managed switch in its box; your laptop with its
+  console cable; the plan: hostname, management address, gateway, domain,
+  secret, console password, SSH user).
+- The simulation: the managed switch (`mswitch`, its command line from
+  `swcli.js`), the console cable (USB-C to CONSOLE, same room, 1.8 m, serial,
+  not part of the network), the serial terminal on your laptop, `ssh` and
+  `telnet` from Windows' Command Prompt (refused without keys; **512-bit keys:
+  "Protocol major versions differ: 2 vs. 1"**, the switch offers only SSH 1),
+  a power cut keeping only what was saved.
+- `js/build/office.js`: SO-J1 (rack it, console, name, secret, console
+  password, save, the office untouched) and SO-J2 (move the office onto the
+  new switch, VLAN 1 address, default gateway, SSH only with a local user,
+  saved). Undo takes back a line typed to a switch (`cli: true` actions).
+- `js/desk/levels.js` (the five levels, progress read from both pages' saves,
+  `isOpen`: level 1 always, others when the one before is finished, or the
+  instructor's tab unlock `e4-instructor`, or "every level on this computer"
+  `e4-levels-open`), `js/desk/levelsui.js` (the levels list and the lock panel:
+  locked marked three ways, the lock and its words, the dashed edge, the grey
+  ground). Both pages show the levels in the left column; build mode lists the
+  chosen level's work orders (locked ones can't open; `build.html#job=ID`
+  opens one, if its level is open); the Ticket Desk links Level 2's work
+  orders into Build. The instructor dialog has a Levels section (open every
+  level on this computer / lock them again); locking the tools relocks.
+- The terminal (`js/desk/window.js`): the prompt follows the mode, a password
+  asked for is hidden and never echoed, `?` answers at once, Tab completes,
+  every line (an empty one too) goes to a switch; the serial terminal's intro
+  (COM3, 9600 8N1). The managed switch's Lights tab shows SYSTEM and POWER and
+  its ports green at any speed.
+- Drawings (`js/desk/draw.js`): the office floor plan and logical layout, a
+  managed-switch icon, the console cable as its own kind of link (blue, solid).
+- 3D (`js/desk/model3d.js`): `msw` (the managed switch with its plugged ports
+  and console cable; views Front close-up, Console port, Rear) and `switch8`
+  (the old 8-port, now with `cords: true` patch cables so a pulled plug hangs).
+- Checks: `npm test` 163 of 163 (10 office-job tests); `ONLY=office node
+  tools/drive.mjs` 152 checks pass (levels as a fresh student, Home finished,
+  the instructor; SO-J1 and SO-J2 done entirely through the page on three
+  offices each). Plants: `tools/plants-office-page.py` (11 page defects, all
+  caught) and `tools/plants-office-node.py` (Node defects, all caught except
+  one that no interface path can reach: the console working with the switch
+  off, since a placed switch is never left off; the guard is defensive).
+
+**Still to do before this goes live:**
+1. AAA on painted pixels for the new screens (was about to run it; the twelve
+   states are written in `tools/aaa-states-office.json`, NOT yet measured:
+   `node tools/aaa.mjs tools/aaa-states-office.json`): the lock
+   panel on both pages, the Home-finished desk with the job links, the J10
+   done box with the level message, the instructor's Levels section, the
+   serial terminal with `?` help, the console password prompt with Mason's
+   third rung, the managed switch's and the old switch's 3D models, the office
+   floor plan with the switch's lights, the logical diagram with SSH from the
+   PC, a dead run in the runs table. Then add them to `tools/aaa-states.json`
+   and check the scrolled states. Show a plant fails (e.g. lighten the lock
+   panel's text).
+2. `node tools/models.mjs` for the managed switch: its lights and the console
+   plug drawn as the sim says, pulled plugs out; add the plants.
+3. The full `node tools/drive.mjs` (all tickets and jobs, not only office).
+4. This CLAUDE.md: move this section into the build log, update the status
+   line, the levels and instructor notes.
+5. Merge to `main`, PIN scan, push, verify the remote tree and the Pages
+   deploy, report to the owner which files went live.
+Then stages 2 to 5: SO-J3 to J5; tickets SO-01 to 05; SO-06 to 10; five extra
+jobs and five extra tickets; the rack in the Physical tab.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

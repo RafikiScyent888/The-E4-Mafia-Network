@@ -236,7 +236,7 @@ export function patchPanel24(o = {}) {
 /* ------------------------------------------------- the 8-port shelf switch */
 /* The unmanaged 8-port gigabit switch on the rack's shelf, as photographed: a slate-grey steel case, the
    grid of green lights at the left of the front, eight ports, "8-Port Gigabit Switch" top right, vent slots
-   down the side. Ports "1" to "8"; o.plugged (photo: 1 to 7) */
+   down the side. Ports "1" to "8"; o.plugged (photo: 1 to 7); o.cords: patch cables in the plugged ports */
 export function desktopSwitch8(o = {}) {
   const g = new THREE.Group(), W = 236, H = 30, D = 150, Y0 = 1;
   const steel = paintedSteel(0x50545a, { rough: 0.45 }), front = paintedSteel(0x5b5f65, { rough: 0.48 });
@@ -254,6 +254,12 @@ export function desktopSwitch8(o = {}) {
   f.add(at(ink("8-Port Gigabit Switch", 46, 3.6, { weight: "600" }), 86, 23.4, 0.05));
   const side = new THREE.Group(); at(side, W / 2 + 0.05, Y0 + H / 2, 20, 0, Math.PI / 2, 0); g.add(side);
   for (let k = 0; k < 12; k++) side.add(at(box(1.8, 14, 0.4, mat(0x060607, { rough: 1 })), -26 + k * 4.4, 0, 0.05));
+  /* o.cords: a grey patch cable in each plugged port, run off the front and down to the bench (the live Physical tab; the rack lays its own) */
+  if (o.cords) on.forEach(function (p, i) {
+    if (!p) return;
+    const x = -28 + i * 16.6, c = patch(jacks[i], 0xa4a8ad);
+    cableFrom(g, c, [[x - 6 + i * 2, Y0 + 14, D / 2 + 60], [x - 20 + i * 6, 3.05, D / 2 + 120], [x - 60 + i * 14, 3.05, D / 2 + 240]], { straight: 22 });
+  });
   named(g, "device:8-port switch", { type: "switch", w: W, h: H + Y0, d: D }); g.userData.jacks = jacks; g.userData.on = on;
   return g;
 }

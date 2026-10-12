@@ -18,15 +18,18 @@ const PORTS = {
   switch: [["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"], ["5", "5"]],
   pc: [["LAN", "NIC"]], printer: [["NETWORK", "NET"]], camera: [["PoE", "LAN"]], tv: [["LAN", "LAN"]],
   laptop: [["ETHERNET", "ETH"]], mesh: [["WAN", "WAN"], ["LAN", "LAN"]], injector: [["DATA IN", "DATA IN"], ["DATA + POWER OUT", "PoE OUT"]],
+  switch8: [1, 2, 3, 4, 5, 6, 7, 8].map(function (n) { return [String(n), String(n)]; }),
+  /* the managed switch: its 24 ports by the numbers printed over and under them, and CONSOLE */
+  msw: Array.from({ length: 24 }, function (_, i) { return [String(i + 1), String(i + 1)]; }).concat([["CONSOLE", "CONSOLE"]]),
   /* build mode's PoE+ injector, as photographed: two pairs, "DATA IN" over each input and the pair's number under it */
   injectorDual: [["DATA IN 1", "DATA IN"], ["DATA IN 2", "DATA IN 2"], ["DATA + POWER OUT 1", "PoE OUT"], ["DATA + POWER OUT 2", "PoE OUT 2"]]
 };
 const INJ = { injector: true, injectorDual: true };
-const SAY_PORT = { switch: function (p) { return "Port " + p; } };
+const SAY_PORT = { switch: function (p) { return "Port " + p; }, switch8: function (p) { return "Port " + p; }, msw: function (p) { return /^\d+$/.test(p) ? "Port " + p : p; } };
 
 export function physicalState(sim, id) {
   const x = sim.d[id]; if (!x) return null;
-  const model = x.kind === "injector" ? (x.dual ? "injectorDual" : "injector") : MODEL_OF[id]; if (!model) return null;   /* build mode's PoE+ injector is the dual-port one */
+  const model = x.kind === "injector" ? (x.dual ? "injectorDual" : "injector") : x.kind === "mswitch" ? "msw" : x.kind === "switch" && x.ports === 8 ? "switch8" : MODEL_OF[id]; if (!model) return null;   /* build mode's PoE+ injector is the dual-port one; the office has the managed switch and an old 8-port */
   const ports = [], leds = [], says = [], opts = {};
   /* the device an injector output powers right now (its PoE light lit), or null */
   const feeds = function (port) { const c = sim.cableAt(id, port); if (!c) return null; const o = c.a.dev === id ? c.b.dev : c.a.dev; return sim.d[o] && sim.d[o].poe && sim.on(o) && sim.poeSource(o) === x ? o : null; };
@@ -43,8 +46,9 @@ export function physicalState(sim, id) {
       if (c.cond === "crushed" && end === (c.a.dev === "pc" ? "a" : "b")) p.damage = "crushed";
       if (c.cond === "damaged" && (!c.kink || c.kink === end)) p.damage = "split";
     }
+    if (c && c.kind === "console") { p.console = true; p.link = false; }
     p.lights = model === "injectorDual" ? (/^PoE OUT/.test(pp[1]) ? (feeds(pp[1]) ? "green" : "off") : null)   /* its outputs' corner lights: lit while that output powers a device */
-      : p.coax || INJ[model] ? null : p.link ? (model === "switch" && p.speed !== 1000 ? "amber" : "green") : "off";
+      : p.coax || INJ[model] || p.console || pp[1] === "CONSOLE" ? null : p.link ? ((model === "switch" || model === "switch8") && p.speed !== 1000 ? "amber" : "green") : "off";
     ports.push(p);
   });
   if (INJ[model]) ports.push({ name: "DC IN", label: "Power adapter cord (DC IN, " + (model === "injectorDual" ? "right" : "left") + " side)", plug: x.power ? "in" : "out", dc: true, link: false, speed: 0, damage: null, coax: false, lights: null });
@@ -57,9 +61,12 @@ export function physicalState(sim, id) {
     L("⏻", "Power", on ? "on" : "off"); L("◎", "Internet", on && (id === "router" ? sim.wanUp() : false) ? "on" : "off");
     L("2.4G", "2.4G", wifi ? "on" : "off"); L("5G", "5G", wifi ? "on" : "off"); L("LAN", "LAN", on && lanUp ? "on" : "off"); L("WPS", "WPS", "off");
     opts.wan = ports[0].plug !== "none"; opts.lans = ports.slice(1).map(function (p) { return p.plug !== "none"; });
-  } else if (model === "switch") {
+  } else if (model === "switch" || model === "switch8") {
     L("POWER", "Power", on ? "on" : "off");
     opts.plugged = ports.map(function (p) { return p.plug !== "none"; });
+  } else if (model === "msw") {
+    L("SYSTEM", "SYSTEM", on ? "on" : "off"); L("POWER", "POWER", on ? "on" : "off"); L("PSU", "Power supply", on ? "on" : "off"); L("FAN", "Fan", on ? "on" : "off");
+    opts.plugged = ports.slice(0, 24).map(function (p) { return p.plug !== "none"; }); opts.console = ports[24].plug !== "none";
   } else if (model === "mesh") {
     const ok = on && sim.meshLink().ok;
     L("STATUS", "Status ring", on ? "on" : "off", ok ? "green" : "amber"); L("LINK", "Side light", on && !ok ? "on" : "off", "amber");
@@ -87,10 +94,11 @@ export function physicalState(sim, id) {
   const lit = function (l) { return l.name + " " + (l.state === "on" ? (l.color === "amber" ? "on, amber" : l.color === "blue" ? "on, blue" : "on") : l.state === "blinking" ? "blinking" : "off"); };
   if (leds.length) says.push((model === "modem" ? "Front lights: " : model === "router" ? "Top lights: " : "Lights: ") + leds.filter(function (l) { return !(model === "mesh" && l.role === "LINK" && l.state === "off"); }).map(lit).join(", ") + ".");
   ports.forEach(function (p) {
-    if (model === "laptop" || model === "mesh") { if (p.plug === "none") return; }
+    if (model === "laptop" || model === "mesh" || model === "msw") { if (p.plug === "none") return; }
     let s = p.label + ": ";
     if (p.coax) s += p.plug === "in" ? "the coax connector is screwed on snugly." : "the coax connector is loose, backed off its thread.";
     else if (p.dc) s += p.plug === "in" ? "plugged in." : "unplugged: its plug is out, hanging loose.";
+    else if (p.console) s += p.plug === "in" ? "the console cable is plugged in (to your laptop's USB serial adapter)." : "the console cable is out of the port, hanging loose.";
     else if (INJ[model]) s += (p.plug === "none" ? "empty." : p.plug === "out" ? "unplugged: the plug is out of the port, hanging loose." : "cable plugged in.") + (p.lights ? " Its lights " + (p.lights === "off" ? "off." : "on, green: it's powering the device on it.") : "");
     else if (p.plug === "none") s += "empty.";
     else if (p.plug === "out") s += "unplugged: the plug is out of the port, hanging loose. Lights off.";
@@ -101,6 +109,7 @@ export function physicalState(sim, id) {
   });
   if (model === "laptop" && ports[0].plug === "none") says.push("ETHERNET: empty (this laptop is on Wi-Fi). On screen: Command Prompt, waiting for a command.");
   if (model === "mesh") says.push("No network cables: it reaches the router over Wi-Fi.");
+  if (model === "msw") { if (!ports.some(function (p) { return p.plug !== "none"; })) says.push("Nothing plugged into it yet."); says.push("Printed on the front: MANAGED SWITCH 24-PORT + 4 SFP, MODEL: MSW-2800G. Its settings are on its command line, not on lights or buttons."); }
   if (model === "printer") says.push("Control panel screen: " + opts.screen.status + ", IP address " + opts.screen.ip + ".");
   if (model === "tv") says.push("Screen: Network Status, wired (LAN) " + (opts.screen.connected ? "connected" : "not connected") + "; " + opts.screen.rows.slice(0, 3).map(function (r) { return r[0] + " " + r[1]; }).join("; ") + ".");
   if (model === "camera") { says.push("Printed beside its port: " + (x.draw > POE.af.pd ? "PoE+ 802.3at, up to " + x.draw + " W (heater on)" : "PoE 802.3af") + " (it takes its power down the cable). Its label gives the model and says the address is set by DHCP; the hardware address is covered."); if (!on) says.push("No power: the camera is dark."); else if (sim.poeShort(id)) says.push("Its status light blinks amber: running on limited power."); }

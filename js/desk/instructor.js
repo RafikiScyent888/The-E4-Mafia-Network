@@ -1,6 +1,7 @@
 /* The instructor's tools, behind the instructor PIN: open any ticket on a
    chosen house for a demonstration, see the current ticket's fault and fix,
-   see all of Mason's help at once, and clear this computer's progress.
+   see all of Mason's help at once, open every level, and clear this
+   computer's progress.
    Everything shows here, in the instructor's window, never on the student's
    board. The PIN isn't written in the page (only a hash of it is); a static
    site can't truly hide it, so this keeps answers out of casual reach rather
@@ -8,6 +9,7 @@
 import { el } from "./store.js";
 import { hash } from "../net/util.js";
 import * as E from "../tickets/engine.js";
+import { openHere, setOpenHere } from "./levels.js";
 
 const PIN_HASH = 4061435687;                       /* hash("e4-instructor:" + PIN) */
 const KEY = "e4-instructor";
@@ -30,14 +32,14 @@ export function setupInstructor(ctx, api) {
     const f = el("form", { class: "devform", novalidate: true }, el("label", { class: "f", for: "instpin" }, "Instructor PIN", pin), el("div", { class: "acts" }, el("button", { class: "btn", type: "submit" }, "Unlock")), msg);
     f.addEventListener("submit", function (e) {
       e.preventDefault();
-      if (hash("e4-instructor:" + String(pin.value).trim()) === PIN_HASH) { try { sessionStorage.setItem(KEY, "1"); } catch (err) {} draw(); const s = body.querySelector("select"); if (s) s.focus(); }
+      if (hash("e4-instructor:" + String(pin.value).trim()) === PIN_HASH) { try { sessionStorage.setItem(KEY, "1"); } catch (err) {} draw(); if (api.levels) api.levels(); const s = body.querySelector("select"); if (s) s.focus(); }
       else { msg.className = "msg err"; msg.textContent = "That PIN isn't right."; pin.value = ""; pin.focus(); }
     });
     body.appendChild(el("p", null, "For the instructor: demonstrations, answers and progress. Students don't need this."));
     body.appendChild(f);
   }
   function tools() {
-    if (api.render) { api.render(body, function () { draw(); }, function () { d.close(); }); lockButton(); return; }   /* a page with tools of its own (build mode) */
+    if (api.render) { api.render(body, function () { draw(); }, function () { d.close(); }); levels(); lockButton(); return; }   /* a page with tools of its own (build mode) */
     const T = ctx.T, def = T.def;
     /* a demonstration: any ticket, on a house of your choosing (the same number gives the same house every time) */
     const sel = el("select", { name: "ticket", id: "instt" });
@@ -79,7 +81,16 @@ export function setupInstructor(ctx, api) {
     const sure = el("button", { type: "button", class: "btn small", hidden: true, onclick: function () { api.clear(); d.close(); } }, "Yes, clear it");
     body.appendChild(el("h3", null, "Progress on this computer"));
     body.appendChild(el("div", { class: "acts" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { sure.hidden = false; sure.focus(); } }, "Clear all progress"), sure));
-    lockButton();
+    levels(); lockButton();
   }
-  function lockButton() { body.appendChild(el("div", { class: "acts", style: "margin-top:12px" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { try { sessionStorage.removeItem(KEY); } catch (e) {} draw(); } }, "Lock the instructor tools"))); }
+  /* the owner: "instructor pin unlocks everything". Unlocked, every level is open in this tab; a student can also be let
+     ahead on one computer, which stays open after the tools are locked, until it's locked again here */
+  function levels() {
+    const on = openHere();
+    body.appendChild(el("h3", null, "Levels"));
+    body.appendChild(el("p", null, "While these tools are unlocked, every level is open in this browser tab. Lock the tools, or close the tab, and the levels lock again as the student's own progress says."));
+    body.appendChild(el("p", null, on ? "Every level is open on this computer, for whoever uses it, until you lock them again here." : "To let a student work ahead on this computer, open every level here: they stay open after you lock the tools."));
+    body.appendChild(el("div", { class: "acts" }, el("button", { type: "button", class: "btn ghost small", id: "instLevels", onclick: function () { setOpenHere(!on); if (api.levels) api.levels(); draw(); const b = document.getElementById("instLevels"); if (b) b.focus(); } }, on ? "Lock the levels again on this computer" : "Open every level on this computer")));
+  }
+  function lockButton() { body.appendChild(el("div", { class: "acts", style: "margin-top:12px" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { try { sessionStorage.removeItem(KEY); } catch (e) {} draw(); if (api.levels) api.levels(); } }, "Lock the instructor tools"))); }
 }

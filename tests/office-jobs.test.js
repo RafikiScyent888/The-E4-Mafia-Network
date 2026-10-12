@@ -1,0 +1,218 @@
+/* Level 2 build mode: the small office's work orders (js/build/office.js),
+   the managed switch in the simulation, the console cable, SSH and Telnet
+   from the office PC. */
+import test from "node:test";
+import assert from "node:assert/strict";
+import { OFFICE_JOBS } from "../js/build/office.js";
+import * as B from "../js/build/engine.js";
+import { prompt, cliSession, secretNext } from "../js/net/cmd.js";
+import { rng } from "../js/net/util.js";
+import { physicalState } from "../js/net/physical.js";
+
+const N = Number(process.env.SEEDS || 150);
+const byId = Object.fromEntries(OFFICE_JOBS.map((d) => [d.id, d]));
+const seeds = (id) => Array.from({ length: N }, (_, i) => 5000 + i * 7919 + id.length);
+const E = (dev, port) => ({ dev, port });
+const cli = (line) => ({ t: "cmd", dev: "tech", line, cli: true });
+const pc = (line) => ({ t: "cmd", dev: "pc", line });
+const line = (J, id) => B.evaluate(J.def.reqs.find((q) => q.id === id), J.sim, J.v);
+const run = (J, acts) => { for (const a of acts) { const r = B.act(J, a); assert.notEqual(r && r.result && r.result.ok, false, "refused: " + JSON.stringify(a) + " " + JSON.stringify(r && r.result)); } };
+const solved = (J) => B.check(J).res.every((x) => x.ok);
+const swap = (acts, from, to) => acts.map((a) => (a.t === "cmd" && a.line === from ? Object.assign({}, a, { line: to }) : a));
+const drop = (acts, pred) => acts.filter((a) => !pred(a));
+
+test("every office job starts with its work still to do, for the real reason; the solution passes every line", () => {
+  for (const def of OFFICE_JOBS) for (const s of seeds(def.id)) {
+    let J = B.open(def, s), c = B.check(J);
+    for (const r of c.res) {
+      if ((def.already || []).indexOf(r.id) >= 0) { assert.ok(r.ok, def.id + " " + r.id + " should be met before any work, seed " + s); continue; }
+      assert.equal(r.ok, false, def.id + " " + r.id + " met before any work, seed " + s); assert.ok(r.ev && r.ev.length > 10);
+    }
+    J = B.open(def, s); run(J, def.solve(J.v, J.sim)); c = B.check(J);
+    for (const r of c.res) assert.ok(r.ok, def.id + " " + r.id + " not met after the solution, seed " + s + ": " + r.ev);
+    assert.equal(J.done, true);
+  }
+});
+
+test("SO-J1: the tempting wrong ways fail the right line, for the right reason", () => {
+  for (const s of seeds("SO-J1").slice(0, 60)) {
+    const def = byId["SO-J1"], J0 = B.open(def, s), p = J0.v.plan, sol = def.solve(J0.v, J0.sim);
+    const tryIt = (acts) => { const J = B.open(def, s); run(J, acts); return J; };
+    assert.equal(line(tryIt([]), "rack").real.id, "box");
+    assert.equal(line(tryIt(sol.slice(0, 1)), "rack").real.id, "cable", "in the rack, no console cable");
+    let J = tryIt(swap(sol, "enable secret " + p.secret, "enable password " + p.secret));
+    assert.equal(line(J, "secret").real.id, "plain", "an enable password, not a secret");
+    J = tryIt(swap(sol, "enable secret " + p.secret, "enable secret wrongone1"));
+    assert.equal(line(J, "secret").real.id, "wrong");
+    J = tryIt(drop(sol, (a) => a.line === "login"));
+    assert.equal(line(J, "console").real.id, "nologin", "a console password that's never asked for");
+    J = tryIt(swap(sol, "login", "login local"));
+    assert.equal(line(J, "console").real.id, "local");
+    J = tryIt(swap(sol, "hostname " + p.hostname, "hostname CLOSET"));
+    assert.equal(line(J, "name").real.id, "plan");
+    J = tryIt(drop(sol, (a) => a.line === "copy running-config startup-config" || (a.line === "" && sol.indexOf(a) > 3)));
+    assert.equal(line(J, "saved").real.id, "never");
+    J = tryIt(sol.concat([cli("configure terminal"), cli("hostname OOPS"), cli("hostname " + p.hostname), cli("interface gi0/7"), cli("description spare"), cli("end")]));
+    assert.equal(line(J, "saved").real.id, "since", "changed after saving");
+    /* breaking what worked: the old switch's cable to the front desk pulled */
+    J = tryIt(sol.concat([{ t: "pull", cable: "c-old-pc" }]));
+    assert.equal(line(J, "keep").real.id, "pc");
+  }
+});
+
+test("SO-J2: the tempting wrong ways fail the right line, for the right reason; SSH and Telnet from the PC behave", () => {
+  for (const s of seeds("SO-J2").slice(0, 60)) {
+    const def = byId["SO-J2"], J0 = B.open(def, s), p = J0.v.plan, sol = def.solve(J0.v, J0.sim);
+    const tryIt = (acts) => { const J = B.open(def, s); run(J, acts); return J; };
+    let J = tryIt(drop(sol, (a) => a.t === "pull" && a.cable === "c-router-old").filter((a) => !(a.t === "lay" && a.a.dev === "router")));
+    assert.equal(line(J, "move").real.id, "router", "the router left on the old switch");
+    J = tryIt(sol.concat([cli("configure terminal"), cli("interface gi0/2"), cli("shutdown"), cli("end")]));
+    assert.equal(line(J, "online").real.id, "link", "the front desk's port shut down");
+    J = tryIt(sol.concat([cli("configure terminal"), cli("interface gi0/2"), cli("speed 100"), cli("end")]));
+    assert.ok(line(J, "online").ok, "a forced speed facing an adapter that negotiates still links");
+    J = tryIt(drop(sol, (a) => a.line === "no shutdown"));
+    assert.equal(line(J, "mgmt").real.id, "shut", "VLAN 1 left shut down");
+    J = tryIt(swap(sol, "interface vlan 1", "interface gi0/5"));
+    assert.equal(line(J, "mgmt").real.id, "none", "the address tried on a port: refused, so none");
+    J = tryIt(swap(sol, "ip address " + p.ip + " " + p.mask, "ip address " + p.ip + " 255.255.0.0"));
+    assert.equal(line(J, "mgmt").real.id, "mask");
+    J = tryIt(drop(sol, (a) => a.line === "ip default-gateway " + p.gw));
+    assert.equal(line(J, "gw").real.id, "none"); assert.ok(line(J, "mgmt").ok, "it still answers its own network");
+    J = tryIt(drop(sol, (a) => a.line === "ip domain-name " + p.domain));
+    assert.equal(line(J, "ssh").real.id, "domain", "no domain: no keys");
+    J = tryIt(swap(sol, "crypto key generate rsa modulus 2048", "crypto key generate rsa modulus 512"));
+    assert.equal(line(J, "ssh").real.id, "short");
+    J = tryIt(drop(sol, (a) => a.line === "transport input ssh"));
+    assert.equal(line(J, "ssh").real.id, "telnet", "the vty lines left on Telnet");
+    J = tryIt(swap(sol, "login local", "login"));
+    assert.equal(line(J, "ssh").real.id, "login");
+    J = tryIt(swap(sol, "username " + p.user + " secret " + p.userPw, "username " + p.user + " secret nottheone9"));
+    assert.equal(line(J, "ssh").real.id, "user");
+    /* the office PC: ssh in with the office's user, the switch's prompt, a wrong password three times, Telnet refused */
+    J = tryIt(sol);
+    let r = B.act(J, pc("ssh " + p.user + "@" + p.ip)); assert.equal(prompt(J.sim, "pc"), p.user + "@" + p.ip + "'s password: "); assert.equal(secretNext(J.sim, "pc"), true);
+    r = B.act(J, pc(p.userPw)); assert.equal(prompt(J.sim, "pc"), p.hostname + ">"); assert.ok(cliSession(J.sim, "pc"));
+    assert.doesNotMatch(B.act(J, pc("show running-config | include hostname")).out, /hostname/, "user mode: no running configuration");
+    B.act(J, pc("enable")); assert.equal(secretNext(J.sim, "pc"), true); B.act(J, pc(p.secret)); assert.equal(prompt(J.sim, "pc"), p.hostname + "#");
+    r = B.act(J, pc("show running-config | include hostname")); assert.match(r.out, new RegExp("hostname " + p.hostname));
+    r = B.act(J, pc("exit")); assert.match(r.out, /Connection to .* closed\./); assert.match(prompt(J.sim, "pc"), /^C:\\Users\\/);
+    B.act(J, pc("ssh " + p.user + "@" + p.ip)); B.act(J, pc("a")); B.act(J, pc("b")); r = B.act(J, pc("c"));
+    assert.match(r.out, /Permission denied \(password\)/); assert.match(prompt(J.sim, "pc"), /^C:\\Users\\/);
+    assert.match(B.act(J, pc("telnet " + p.ip)).out, /Could not open connection to the host, on port 23/);
+    /* before the keys: SSH is refused; Telnet answers while the vty lines still take it */
+    J = tryIt(sol.slice(0, sol.findIndex((a) => /crypto/.test(a.line || ""))));
+    assert.match(B.act(J, pc("ssh " + p.user + "@" + p.ip)).out, /Connection refused/);
+    assert.match(B.act(J, pc("telnet " + p.ip)).out, /Password required, but none set/, "Telnet on, no vty password: refused by the switch");
+    /* SSH only, but no keys: refused; keys too short for version 2: Windows' client and the switch share no version */
+    J = tryIt(drop(sol, (a) => /crypto/.test(a.line || "")));
+    assert.match(B.act(J, pc("ssh " + p.user + "@" + p.ip)).out, /Connection refused/, "no keys: SSH refused"); assert.equal(cliSession(J.sim, "pc"), null);
+    J = tryIt(swap(sol, "crypto key generate rsa modulus 2048", "crypto key generate rsa modulus 512"));
+    assert.match(B.act(J, pc("ssh " + p.user + "@" + p.ip)).out, /Protocol major versions differ: 2 vs\. 1/, "512-bit keys: SSH version 1 only"); assert.match(prompt(J.sim, "pc"), /^C:\\Users\\/);
+  }
+});
+
+test("the console cable: only your laptop's adapter to a switch's CONSOLE port, in the same room; the serial terminal follows it", () => {
+  const def = byId["SO-J1"], J = B.open(def, 5005);
+  assert.equal(B.act(J, { t: "place", dev: "msw", room: "closet" }).result.ok, true);
+  assert.equal(B.act(J, { t: "lay", a: E("router", "LAN 2"), b: E("msw", "CONSOLE") }).result.ok, false, "a network cable into CONSOLE");
+  assert.equal(B.act(J, { t: "lay", a: E("tech", "USB-C"), b: E("msw", "5") }).result.ok, false, "the console cable into a network port");
+  assert.equal(B.act(J, { t: "place", dev: "tech", room: "front" }).result.ok, true);
+  assert.match(B.act(J, { t: "lay", a: E("tech", "USB-C"), b: E("msw", "CONSOLE") }).result.errs[0], /same room/);
+  assert.equal(B.act(J, { t: "place", dev: "msw", room: "front" }).result.ok, false, "the switch belongs in the closet rack");
+  run(J, [{ t: "place", dev: "tech", room: "closet" }, { t: "lay", a: E("tech", "USB-C"), b: E("msw", "CONSOLE") }]);
+  assert.equal(prompt(J.sim, "tech"), "");
+  B.act(J, cli("")); assert.equal(prompt(J.sim, "tech"), "Switch>");
+  const c = J.sim.net.cables.find((k) => k.kind === "console");
+  assert.equal(J.sim.edges().some((e) => e.includes("tech")), false, "a console cable is serial, not part of the network");
+  run(J, [{ t: "unplug", cable: c.id, end: c.a.dev === "msw" ? "a" : "b" }]);   /* the switch's end */
+  assert.match(B.act(J, cli("enable")).out, /Nothing answers on COM3/);
+  const S = physicalState(J.sim, "msw"); assert.equal(S.model, "msw"); assert.equal(S.ports.find((p) => p.name === "CONSOLE").plug, "out");
+});
+
+test("a power cut (restart on the Physical tab) brings back only what was saved, and drops the console login", () => {
+  for (const s of seeds("SO-J1").slice(0, 20)) {
+    const def = byId["SO-J1"], J = B.open(def, s), p = J.v.plan, sol = def.solve(J.v, J.sim);
+    run(J, sol.slice(0, sol.findIndex((a) => a.line === "copy running-config startup-config")));
+    assert.equal(J.sim.d.msw.sw.hostname, p.hostname);
+    run(J, [{ t: "power", dev: "msw" }]);
+    assert.equal(J.sim.d.msw.sw.hostname, "Switch", "never saved: the factory name came back");
+    assert.equal(line(J, "name").real.id, "factory");
+    run(J, sol.slice(2));
+    run(J, [{ t: "power", dev: "msw" }]);
+    assert.equal(J.sim.d.msw.sw.hostname, p.hostname, "saved: it survives");
+    B.act(J, cli("")); assert.equal(prompt(J.sim, "tech"), "Password: ", "the console asks for its password after the restart");
+  }
+});
+
+test("undo takes back the last line typed to the switch, and the job replays exactly", () => {
+  for (const def of OFFICE_JOBS) for (const s of seeds(def.id).slice(0, 30)) {
+    const J = B.open(def, s), sol = def.solve(J.v, J.sim), p = J.v.plan;
+    run(J, sol.slice(0, 6)); B.act(J, pc("ipconfig /all")); B.check(J); run(J, sol.slice(6)); B.act(J, pc("ping " + p.gw)); B.check(J);
+    J.notes = "plan " + s;
+    const K = B.restore(def, JSON.parse(JSON.stringify(B.save(J))));
+    assert.equal(JSON.stringify(K.sim.net), JSON.stringify(J.sim.net)); assert.equal(K.sim.n, J.sim.n); assert.equal(prompt(K.sim, "tech"), prompt(J.sim, "tech"));
+    assert.deepEqual([K.checks, K.done, K.notes], [J.checks, J.done, J.notes]);
+    B.act(J, cli("configure terminal")); B.act(J, cli("hostname TEMP"));
+    assert.equal(J.sim.d.msw.sw.hostname, "TEMP");
+    const gone = B.undo(J); assert.equal(gone.line, "hostname TEMP"); assert.equal(J.sim.d.msw.sw.hostname, p.hostname);
+  }
+});
+
+test("Mason on the office jobs: nothing for two failing checks, then where to look, the principle, and two options forever", () => {
+  for (const def of OFFICE_JOBS) for (const s of seeds(def.id).slice(0, 40)) {
+    const J = B.open(def, s);
+    if (def.id === "SO-J1") run(J, [{ t: "place", dev: "msw", room: "closet" }]);
+    const seen = [];
+    for (let k = 1; k <= 10; k++) { B.check(J); const m = B.mason(J); seen.push(m ? m.rung : 0); if (m && m.rung === 3) {
+      assert.match(m.text, /^It's one of these two: .+, or .+\.$/);
+      const first = J.last.res.find((x) => !x.ok), c = line(J, first.id);
+      assert.ok(m.text.toLowerCase().includes(c.real.text.toLowerCase()), "the real cause is one of the two");
+      for (const st of m.struck) { const cz = c.list.find((z) => z.text === st.text); assert.equal(cz.on, false, "struck only what the network has ruled out"); }
+    } }
+    assert.deepEqual(seen, [0, 0, 1, 2, 3, 3, 3, 3, 3, 3], def.id + " ladder");
+  }
+});
+
+test("no help on the office jobs names the answer: no switch name, password, user, address or domain", () => {
+  for (const def of OFFICE_JOBS) for (const s of seeds(def.id).slice(0, 30)) {
+    const J = B.open(def, s), p = J.v.plan, bad = [p.hostname, p.secret, p.console, p.user, p.userPw, p.ip, p.gw, p.domain];
+    const said = [], sol = def.solve(J.v, J.sim);
+    for (let k = 0; k <= sol.length; k++) {
+      for (let c = 0; c < 6; c++) { B.check(J); const m = B.mason(J); if (m) said.push(m.text, m.principle || "", ...(m.struck || []).map((x) => x.text + " " + x.why)); }
+      if (k < sol.length) B.act(J, sol[k]);
+    }
+    assert.ok(said.length > 3);
+    for (const q of def.reqs) said.push(q.rung1(J.v, J.sim), q.rung2(J.v, J.sim));
+    for (const t of said) { for (const b of bad) assert.ok(!t.includes(b), def.id + " gives away " + b + ": " + t); assert.deepEqual(t.match(/\d+\.\d+\.\d+\.\d+/g) || [], [], def.id + " names an address: " + t); }
+  }
+});
+
+test("random work on the office never breaks the checker; an unmet line always has two causes or more and replays exactly", () => {
+  const LINES = ["", "enable", "configure terminal", "end", "exit", "interface gi0/2", "shutdown", "no shutdown", "speed 100", "speed auto", "hostname X1", "interface vlan 1", "ip address 10.9.9.9 255.255.255.0", "no shutdown", "line vty 0 15", "transport input all", "login local", "copy running-config startup-config", "", "reload", "yes", "", "show ip interface brief", "?"];
+  for (const def of OFFICE_JOBS) for (const s of seeds(def.id).slice(0, 50)) {
+    const J = B.open(def, s), R = rng(s * 17 + 3), rooms = ["closet", "front", "open", "manager", "meeting"], devs = ["msw", "tech", "pc", "printer", "switch", "router"];
+    for (let k = 0; k < 40; k++) {
+      const pick = R();
+      if (pick < 0.15) B.act(J, { t: "place", dev: R.pick(devs), room: R.pick(rooms) });
+      else if (pick < 0.35) { const P = { msw: ["1", "2", "3", "7", "CONSOLE"], tech: ["USB-C"], pc: ["NIC"], printer: ["NET"], switch: ["1", "2", "3", "4"], router: ["LAN 1", "LAN 2"] }; const a = R.pick(devs), b = R.pick(devs); B.act(J, { t: "lay", a: E(a, R.pick(P[a])), b: E(b, R.pick(P[b])) }); }
+      else if (pick < 0.45) { const c = R.pick(J.sim.net.cables.filter((x) => x.kind !== "coax")); if (c) B.act(J, { t: "pull", cable: c.id }); }
+      else if (pick < 0.85) B.act(J, cli(R.pick(LINES)));
+      else if (pick < 0.9) B.act(J, { t: "power", dev: "msw" });
+      else B.act(J, pc(R.pick(["ipconfig", "ping " + J.v.plan.ip, "ssh " + J.v.plan.user + "@" + J.v.plan.ip, J.v.plan.userPw, "exit", "telnet " + J.v.plan.ip])));
+      for (const q of def.reqs) { const c = B.evaluate(q, J.sim, J.v); assert.ok(typeof c.ev === "string" && c.ev.length > 10, def.id + " " + q.id + ": empty evidence"); if (!c.ok) assert.ok(c.list.filter((x) => !x.skip).length >= 2, def.id + " " + q.id + ": a failing line needs two causes or more"); }
+    }
+    const K = B.restore(def, JSON.parse(JSON.stringify(B.save(J))));
+    assert.equal(JSON.stringify(K.sim.net), JSON.stringify(J.sim.net), "random office work replays exactly");
+    assert.equal(prompt(K.sim, "tech"), prompt(J.sim, "tech")); assert.equal(prompt(K.sim, "pc"), prompt(J.sim, "pc"));
+  }
+});
+
+test("the managed switch on the Physical tab: plugs where the cables are, lights from the links, the console plug", () => {
+  const def = byId["SO-J2"], J = B.open(def, 5011); run(J, def.solve(J.v, J.sim));
+  const S = physicalState(J.sim, "msw");
+  assert.deepEqual(S.opts.plugged.slice(0, 4), [true, true, true, false]); assert.equal(S.opts.console, true);
+  assert.deepEqual(S.ports.slice(0, 4).map((p) => p.lights), ["green", "green", "green", "off"]);
+  run(J, [cli("configure terminal"), cli("interface gi0/3"), cli("shutdown"), cli("end")]);
+  assert.equal(physicalState(J.sim, "msw").ports[2].lights, "off", "a shut port goes dark");
+  const O = physicalState(J.sim, "switch"); assert.equal(O.model, "switch8"); assert.ok(O.opts.plugged.every((x) => !x), "the old switch emptied");
+});

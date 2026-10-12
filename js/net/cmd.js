@@ -4,6 +4,7 @@
    exactly (renew and release change state; pings draw from the same random
    source on replay). */
 import { isIp, isApipa, isLoopback, sameSubnet, hash, pad, lpad } from "./util.js";
+import * as SW from "./swcli.js";
 
 const STATIC_ARP = [["224.0.0.22", "01-00-5e-00-00-16"], ["224.0.0.251", "01-00-5e-00-00-fb"], ["239.255.255.250", "01-00-5e-7f-ff-fa"], ["255.255.255.255", "ff-ff-ff-ff-ff-ff"]];
 
@@ -21,6 +22,8 @@ export const HELP = [
   ["netsh wlan show drivers", "Wi-Fi: what this computer's Wi-Fi adapter supports (Wi-Fi only)"],
   ["getmac", "show this computer's hardware address"],
   ["hostname", "show this computer's name"],
+  ["ssh <user>@<address>", "log in to a switch's command line over the network (SSH, encrypted)"],
+  ["telnet <address>", "log in to a switch's command line with Telnet (not encrypted)"],
   ["cls", "clear the screen"]
 ];
 
@@ -56,12 +59,115 @@ function when(hoursFromNow) {
 }
 function v6(m) { const h = hash(m); return "fe80::" + (h & 0xffff).toString(16) + ":" + ((h >>> 16) & 0xffff).toString(16) + ":" + (hash(m + "a") & 0xffff).toString(16) + ":" + (hash(m + "b") & 0xffff).toString(16) + "%" + (10 + h % 9); }
 
-export function prompt(sim, id) { const x = sim.d[id]; return "C:\\Users\\" + (x.user || "user") + ">"; }
+/* the prompt a terminal shows right now: Windows', or the switch's when this terminal is logged in to one (your laptop
+   on its console cable, or a computer's SSH or Telnet session), or the question it's waiting for (a password) */
+export function prompt(sim, id) {
+  const x = sim.d[id], st = sim.cli && sim.cli[id];
+  if (x.kind === "techlaptop") return st && consoleTarget(sim, id) === st.sw ? (st.prompt != null ? st.prompt : SW.promptOf(st.S)) : "";
+  if (st && st.auth) return st.ask;
+  if (st && st.S) return st.prompt != null ? st.prompt : SW.promptOf(st.S);
+  return "C:\\Users\\" + (x.user || "user") + ">";
+}
+/* the switch session a terminal is in, ready for a command (for ? help and Tab, which change nothing), or null */
+export function cliSession(sim, id) {
+  const st = sim.cli && sim.cli[id];
+  if (!st || !st.S || st.auth || st.S.pending || st.S.mode === "gone" || st.S.mode === "login") return null;
+  if (sim.d[id].kind === "techlaptop" && consoleTarget(sim, id) !== st.sw) return null;
+  return st.S;
+}
+/* whether the next thing typed in a terminal is a password (not shown as it's typed) */
+export function secretNext(sim, id) { const st = sim.cli && sim.cli[id]; return !!(st && (st.auth && st.auth.secret || st.S && (st.S.mode === "login" || (st.S.pending && /^(enable|login)$/.test(st.S.pending.kind))))); }
 
 /* run a command line on a device: returns { out, facts, clear } */
 export function exec(sim, id, line) {
   sim.apply({ t: "cmd", dev: id, line: line });
-  return run(sim, id, String(line || "").trim());
+  const x = sim.d[id], raw = String(line == null ? "" : line);
+  if (x.kind === "techlaptop") return serial(sim, id, raw);
+  const st = sim.cli && sim.cli[id];
+  if (st && (st.auth || st.S)) return remote(sim, id, raw);
+  return run(sim, id, raw.trim());
+}
+
+/* ------------------------------------------------------------ switches: the console, SSH and Telnet */
+/* the switch on the other end of this laptop's console cable, if the cable is in at both ends and the switch is on */
+function consoleTarget(sim, id) {
+  const c = sim.cablesOf(id).find(function (k) { return k.kind === "console"; });
+  if (!c || !sim.cableUp(c)) return null;
+  const far = c.a.dev === id ? c.b.dev : c.a.dev; return sim.d[far].kind === "mswitch" ? far : null;
+}
+/* what a switch's own ping reaches: anything that answers (Windows computers don't, by default) */
+function reachFrom(sim, sw) {
+  return function (ip) { const r = sim.route(sw, ip); if (r.fail) return false; if (r.local) { const k = sim.d[r.owner[0]].kind; return !(k === "pc" || k === "laptop"); } return !!(r.internet || r.modem); };
+}
+const lines = function (L) { return L.length ? L.join("\n") + "\n" : ""; };
+function serial(sim, id, raw) {
+  sim.cli = sim.cli || {};
+  const tgt = consoleTarget(sim, id);
+  let st = sim.cli[id];
+  if (!tgt) return { out: "(Nothing answers on COM3: the console cable isn't joined to a powered switch's CONSOLE port.)\n", facts: { cmd: "serial", connected: false }, serial: true };
+  sim.syncSwitch(tgt);
+  if (!st || st.sw !== tgt) st = sim.cli[id] = { S: SW.session(sim.d[tgt].sw, { via: "console", reach: reachFrom(sim, tgt) }), sw: tgt, via: "console" };
+  const r = SW.exec(st.S, raw); st.prompt = r.prompt;
+  return { out: lines(r.out), facts: { cmd: "serial", connected: true, mode: st.S.mode, line: raw.trim() }, secret: !!r.secret, cli: true, keep: r.keep };
+}
+function remote(sim, id, raw) {
+  const st = sim.cli[id], sw = sim.d[st.sw];
+  if (st.auth) {   /* the password (or user name) the remote end asked for */
+    const A = st.auth;
+    if (A.step === "user") { A.user = raw.trim(); A.step = "pass"; A.secret = true; st.ask = "Password: "; return { out: "", facts: { cmd: st.via }, secret: true, cli: true }; }
+    const ok = st.via === "ssh" ? sw.sw.vty.login === "local" && sw.sw.users[A.user] === raw : A.local ? sw.sw.users[A.user] === raw : sw.sw.vty.password === raw;
+    if (ok) {
+      const S = SW.session(sw.sw, { via: "vty", reach: reachFrom(sim, st.sw) }); S.mode = "user"; S.pending = null;
+      st.S = S; st.auth = null; st.ask = null; st.prompt = SW.promptOf(S);
+      return { out: st.via === "ssh" ? "" : "\n", facts: { cmd: st.via, login: true, host: st.host }, cli: true };
+    }
+    A.tries++;
+    if (A.tries >= 3) { delete sim.cli[id]; return { out: st.via === "ssh" ? A.user + "@" + st.host + ": Permission denied (password).\n" : "% Bad passwords\n\nConnection to host lost.\n", facts: { cmd: st.via, login: false, denied: true } }; }
+    return { out: st.via === "ssh" ? "Permission denied, please try again.\n" : "% Login invalid\n", facts: { cmd: st.via }, secret: true, cli: true };
+  }
+  sim.syncSwitch(st.sw);
+  const r = SW.exec(st.S, raw);
+  if (st.S.mode === "gone") { delete sim.cli[id]; return { out: lines(r.out.filter(function (l) { return !/con0 is now available|Press RETURN/.test(l); })).replace(/\n+$/, "\n") + (st.via === "ssh" ? "Connection to " + st.host + " closed.\n" : "\nConnection to host lost.\n"), facts: { cmd: st.via, closed: true } }; }
+  st.prompt = r.prompt;
+  return { out: lines(r.out), facts: { cmd: st.via, line: raw.trim(), mode: st.S.mode }, secret: !!r.secret, cli: true, keep: r.keep };
+}
+/* ssh user@host, or ssh -l user host: Windows' own OpenSSH client */
+function ssh(sim, id, args) {
+  let user = null, host = null;
+  for (let i = 0; i < args.length; i++) { if (args[i] === "-l") user = args[++i]; else if (!host) host = args[i]; }
+  if (host && host.indexOf("@") > 0) { user = host.split("@")[0]; host = host.split("@").slice(1).join("@"); }
+  if (!host) return { out: "usage: ssh [-l login_name] destination [command]\n", facts: { cmd: "ssh", usage: true } };
+  user = user || sim.d[id].user || "user";
+  const facts = { cmd: "ssh", dev: id, host: host, user: user };
+  if (!isIp(host)) return { out: "ssh: Could not resolve hostname " + host.toLowerCase() + ": No such host is known.\n", facts: Object.assign(facts, { ok: false, why: "name" }) };
+  const rt = sim.route(id, host);
+  if (rt.fail === "no-link" || rt.fail === "no-route") return { out: "ssh: connect to host " + host + " port 22: Network is unreachable\n", facts: Object.assign(facts, { ok: false, why: "unreachable" }) };
+  if (rt.fail || !rt.local) return { out: "ssh: connect to host " + host + " port 22: Connection timed out\n", facts: Object.assign(facts, { ok: false, why: "timeout" }) };
+  const who = rt.owner[0], x = sim.d[who];
+  if (x.kind !== "mswitch") return { out: x.kind === "pc" || x.kind === "laptop" ? "ssh: connect to host " + host + " port 22: Connection timed out\n" : "ssh: connect to host " + host + " port 22: Connection refused\n", facts: Object.assign(facts, { ok: false, why: "no-ssh" }) };
+  const v = x.sw.vty;
+  if (!x.sw.rsa || !/^(ssh|all)$/.test(v.transport)) return { out: "ssh: connect to host " + host + " port 22: Connection refused\n", facts: Object.assign(facts, { ok: false, why: "refused" }) };
+  if (x.sw.rsa < 768) return { out: "Protocol major versions differ: 2 vs. 1\n", facts: Object.assign(facts, { ok: false, why: "v1" }) };   /* keys under 768 bits: the switch offers only SSH version 1, and Windows' client speaks only version 2 */
+  if (!v.login) return { out: "Password required, but none set\nConnection to " + host + " closed by remote host.\n", facts: Object.assign(facts, { ok: false, why: "no-login" }) };
+  sim.cli = sim.cli || {};
+  sim.cli[id] = { sw: who, via: "ssh", host: host, auth: { step: "pass", user: user, tries: 0, secret: true }, ask: user + "@" + host + "'s password: " };
+  return { out: "", facts: Object.assign(facts, { ok: true, asked: true }), secret: true, cli: true };
+}
+/* telnet host: port 23, everything (passwords too) sent in the clear */
+function telnet(sim, id, args) {
+  const host = args[0], facts = { cmd: "telnet", dev: id, host: host };
+  if (!host) return { out: "\nUsage: telnet [host [port]]\n", facts: Object.assign(facts, { usage: true }) };
+  const fail = "Connecting To " + host + "...Could not open connection to the host, on port 23: Connect failed\n";
+  if (!isIp(host)) return { out: "Connecting To " + host + "...Could not open connection to the host, on port 23: Connect failed\n", facts: Object.assign(facts, { ok: false }) };
+  const rt = sim.route(id, host);
+  if (rt.fail || !rt.local) return { out: fail, facts: Object.assign(facts, { ok: false, why: "unreachable" }) };
+  const who = rt.owner[0], x = sim.d[who];
+  if (x.kind !== "mswitch" || !/^(telnet|all)$/.test(x.sw.vty.transport)) return { out: fail, facts: Object.assign(facts, { ok: false, why: "refused" }) };
+  const v = x.sw.vty;
+  if (!v.login || (v.login === "password" && !v.password)) return { out: "\nPassword required, but none set\n\nConnection to host lost.\n", facts: Object.assign(facts, { ok: false, why: "no-login" }) };
+  sim.cli = sim.cli || {};
+  sim.cli[id] = v.login === "local" ? { sw: who, via: "telnet", host: host, auth: { step: "user", tries: 0, local: true, secret: false }, ask: "Username: " } : { sw: who, via: "telnet", host: host, auth: { step: "pass", tries: 0, secret: true }, ask: "Password: " };
+  return { out: "\nUser Access Verification\n\n", facts: Object.assign(facts, { ok: true, asked: true }), secret: v.login !== "local", cli: true };
 }
 
 function adapterName(f) { return f.type === "wifi" ? "Wireless LAN adapter " + f.name : "Ethernet adapter " + f.name; }
@@ -329,6 +435,8 @@ export function run(sim, id, line) {
     case "nslookup": return nslookup(sim, id, args);
     case "arp": return arp(sim, id, args);
     case "netsh": return netsh(sim, id, args);
+    case "ssh": return ssh(sim, id, args);
+    case "telnet": return telnet(sim, id, args);
     case "hostname": return { out: (x.host || "PC") + "\n", facts: { cmd: "hostname" } };
     case "getmac": return { out: "\nPhysical Address    Transport Name\n=================== ==========================================================\n" + x.ifaces[0].mac.toUpperCase() + "   " + (sim.addr(id) ? "\\Device\\Tcpip_{" + (hash(id) >>> 0).toString(16).toUpperCase() + "}" : "Media disconnected") + "\n", facts: { cmd: "getmac" } };
     case "cls": return { out: "", clear: true, facts: { cmd: "cls" } };

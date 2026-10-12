@@ -91,7 +91,7 @@ const SHOW = [
   ["mac", "MAC configuration", [["address-table", "MAC forwarding table", function (S) { return macTable(S.sw); }]]],
   ["history", "Display the session command history", function (S) { return S.history.slice(-10).map(function (h) { return "  " + h; }); }],
   ["clock", "Display the system clock", function () { return ["*10:42:07.311 UTC Sun Oct 11 2026"]; }],
-  ["users", "Display information about terminal lines", function (S) { return ["    Line       User       Host(s)              Idle       Location", "*  0 con 0                idle                 00:00:00"]; }],
+  ["users", "Display information about terminal lines", function (S) { return ["    Line       User       Host(s)              Idle       Location", S.via === "console" ? "*  0 con 0                idle                 00:00:00" : "*  1 vty 0                idle                 00:00:00 (remote)"]; }],
   ["ssh", "Status of SSH server connections", function (S) { return S.sw.rsa ? ["%No SSHv2 server connections running."] : ["%SSH has not been enabled: no RSA keys"]; }]
 ];
 
@@ -344,7 +344,7 @@ export function promptOf(S) {
 }
 /* a console login: the password prompt only if the console line asks for one */
 export function session(sw, o = {}) {
-  const S = { sw: sw, mode: "user", history: [], pending: null, via: o.via || "console", reach: o.reach };
+  const S = { sw: sw, mode: "user", history: [], pending: null, via: o.via || "console", reach: o.reach, fresh: true };   /* fresh: the first RETURN wakes the line ("Press RETURN to get started") */
   const ln = S.via === "console" ? sw.con : sw.vty;
   if (ln.login === "password" && ln.password) { S.mode = "login"; S.pending = { kind: "login", tries: 0 }; }
   return S;
@@ -354,6 +354,7 @@ export function banner(S) { return S.mode === "login" ? ["", "User Access Verifi
 export function exec(S, raw) {
   raw = String(raw == null ? "" : raw);
   if (S.mode === "gone") { const fresh = session(S.sw, { via: S.via, reach: S.reach }); Object.assign(S, fresh); return { out: S.mode === "login" ? ["", "User Access Verification", ""] : [], prompt: promptOf(S), secret: S.mode === "login" }; }   /* RETURN at "Press RETURN to get started" */
+  if (S.fresh) { S.fresh = false; if (!raw.trim()) return { out: S.mode === "login" ? ["", "User Access Verification", ""] : [], prompt: promptOf(S), secret: S.mode === "login" }; }
   if (S.pending) return answer(S, raw);
   if (/\?$/.test(raw)) return { out: help(S, raw), prompt: promptOf(S), keep: raw.slice(0, -1) };
   if (raw.trim()) S.history.push(raw.trim());

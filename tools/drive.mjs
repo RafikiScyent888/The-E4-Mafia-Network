@@ -190,7 +190,7 @@ for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY 
 }
 
 /* the three views share the ticket; each left column opens tickets; the map and the plan open devices */
-{
+if (!process.env.ONLY) {
   let { p, ctx } = await page("HOME-03", 99, "lab-bench.html");
   check(/Lab HOME-03/.test(await p.$eval("#labtitle", (n) => n.textContent)), "bench: the bar names the lab");
   await p.click('.shelves [data-t="HOME-05"]'); await p.waitForTimeout(60);
@@ -416,7 +416,7 @@ for (const job of ["J1", "J2", "J3", "J4", "J5", "J6", "J7", "J8", "J9", "J10", 
   } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }   /* a broken page fails by name; it doesn't stop the run */
   await ctx.close();
 }
-{
+if (!process.env.ONLY) {
   const { p, ctx } = await bpage("J1", 4242);
   await p.click('.chrome nav[aria-label="Mode"] a:text-is("Tickets")'); await p.waitForTimeout(300);
   check(/index\.html$/.test(p.url()) && !!(await p.$("#board")), "mode: Tickets goes to the Ticket Desk");
@@ -434,6 +434,158 @@ for (const job of ["J1", "J2", "J3", "J4", "J5", "J6", "J7", "J8", "J9", "J10", 
   const src = await p.evaluate(async () => (await (await fetch("js/build/app.js")).text()) + (await (await fetch("js/build/jobs.js")).text()));
   check(src.indexOf("3693") < 0, "build: the PIN isn't written in the page's code");
   await ctx.close();
+}
+
+/* Level 2, the small office: the lock between the levels (a fresh student, one who has finished Home, the instructor),
+   then SO-J1 and SO-J2 done entirely through the page: the console cable, the serial terminal, ? and Tab, the password
+   prompts hidden, the switch's command line, the old switch's cables pulled, SSH from the front desk PC */
+if (!process.env.ONLY || process.env.ONLY === "office") {
+  const { LEVELS } = await import("../js/desk/levels.js");
+  const homeDone = { t: { solved: Object.fromEntries(LEVELS[0].tickets.map((id) => [id, 1])) }, j: Object.fromEntries(LEVELS[0].jobs.map((id) => [id, 1])) };
+  async function opage(file, o) {
+    const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
+    await ctx.addInitScript((o) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify(Object.assign({ t: {}, solved: {} }, o.net || {}))); localStorage.setItem("e4-build-v1", JSON.stringify(o.build || { j: {}, done: {} })); sessionStorage.setItem("seeded", "1"); } }, o);
+    const p = await ctx.newPage(); p.setDefaultTimeout(5000); p.on("pageerror", (e) => errs.push("office " + file + ": " + e.message));
+    await p.goto(base + file); await p.waitForTimeout(350);
+    if (plant) await p.evaluate(plant);
+    return { p, ctx };
+  }
+  const lv = (p, n) => p.$eval('#left [data-level="' + n + '"]', (b) => ({ text: b.textContent, locked: b.parentNode.classList.contains("locked"), dashed: getComputedStyle(b).borderStyle === "dashed", grey: getComputedStyle(b).backgroundColor === "rgb(238, 240, 245)", lock: !!b.querySelector('.lk[aria-hidden="true"]') }));
+  const threeWays = (L) => L.locked && L.lock && /Locked: opens when Home is finished/.test(L.text) && L.dashed && L.grey;
+  /* a fresh student: the small office is locked, marked three ways, and nothing opens it */
+  for (const file of ["build.html", "build.html#job=SO-J1", "index.html"]) {
+    const { p, ctx } = await opage(file, {}); const tag = "levels, fresh student, " + file + ": ";
+    try {
+      check(threeWays(await lv(p, 2)), tag + "Level 2 is locked, marked three ways (the lock and its words, the dashed edge, the grey ground)");
+      check(!(await lv(p, 1)).locked && /0 of 15 tickets, 0 of 10 work orders done/.test((await lv(p, 1)).text), tag + "Level 1 is open and counts both tickets and work orders");
+      if (file !== "index.html") check((await BJ(p, () => window.__e4b.T.def.id)) === "J1", tag + "a locked level's job never opens (back to J1)");
+      await p.click('#left [data-level="2"]'); await p.waitForTimeout(60);
+      const lp = await p.$eval("#lockpanel", (n) => n.textContent).catch(() => "");
+      check(/Finish the home level to open the small office/.test(lp) && /15 tickets \(on the Ticket Desk\) and 10 work orders \(in Build\) to go/.test(lp) && /HOME-01/.test(lp) && /J10/.test(lp), tag + "the lock panel says what's left, item by item");
+      if (file !== "index.html") {
+        check(await p.$$eval("#queue button.locked", (l) => l.length === 2 && l.every((b) => b.getAttribute("aria-disabled") === "true" && /Locked/.test(b.textContent))), tag + "SO-J1 and SO-J2 are listed, locked");
+        await p.click('#queue [data-j="SO-J1"]').catch(() => {}); await p.waitForTimeout(60);
+        check((await BJ(p, () => window.__e4b.T.def.id)) === "J1", tag + "clicking a locked work order opens nothing");
+      } else check(!(await p.$('#left a[href^="build.html#job="]')), tag + "the Ticket Desk links no locked work orders");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+    await ctx.close();
+  }
+  /* the instructor's PIN opens every level for the tab; "every level on this computer" outlasts the PIN */
+  {
+    const { p, ctx } = await opage("build.html", {}); const tag = "levels, instructor: ";
+    try {
+      await p.click("#mInst"); await p.fill("#instpin", "3693"); await p.press("#instpin", "Enter"); await p.waitForTimeout(60);
+      check(!(await lv(p, 2)).locked && /Opened by your instructor/.test((await lv(p, 2)).text), tag + "3693 opens Level 2, and it says the instructor opened it");
+      await p.click('#inst button:text-is("Lock the instructor tools")'); await p.waitForTimeout(60);
+      check(threeWays(await lv(p, 2)), tag + "locking the tools locks the level again");
+      await p.fill("#instpin", "3693"); await p.press("#instpin", "Enter"); await p.waitForTimeout(60);
+      await p.click("#instLevels"); await p.waitForTimeout(40);
+      check(/Lock the levels again/.test(await p.$eval("#instLevels", (n) => n.textContent)), tag + "the button turns into Lock the levels again");
+      await p.click('#inst button:text-is("Lock the instructor tools")'); await p.waitForTimeout(60);
+      check(!(await lv(p, 2)).locked, tag + "every level stays open on this computer after the tools are locked");
+      await p.reload(); await p.waitForTimeout(350);
+      check(!(await lv(p, 2)).locked, tag + "and after a reload");
+      await p.click("#mInst"); await p.fill("#instpin", "3693"); await p.press("#instpin", "Enter"); await p.waitForTimeout(60);
+      await p.click("#instLevels"); await p.click('#inst button:text-is("Lock the instructor tools")'); await p.waitForTimeout(60);
+      check(threeWays(await lv(p, 2)), tag + "Lock the levels again locks them on this computer");
+      const src = await p.evaluate(async () => { let t = ""; for (const f of ["js/desk/levels.js", "js/desk/levelsui.js", "js/desk/instructor.js", "js/build/app.js", "js/build/office.js"]) t += await (await fetch(f)).text(); return t; });
+      check(src.indexOf("3693") < 0, tag + "the PIN isn't written in the code");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+    await ctx.close();
+  }
+  /* Home finished: the small office opens by itself, on both pages */
+  {
+    const { p, ctx } = await opage("index.html", { net: homeDone.t, build: { j: {}, done: homeDone.j } }); const tag = "levels, Home finished: ";
+    try {
+      check(/✓ Finished: 15 of 15 tickets, 10 of 10 work orders/.test((await lv(p, 1)).text) && !(await lv(p, 2)).locked, tag + "Level 1 finished, Level 2 open, on the Ticket Desk");
+      await p.click('#left [data-level="2"]'); await p.waitForTimeout(60);
+      check((await p.$$('#left a[href="build.html#job=SO-J1"]')).length === 1, tag + "the desk links the small office's work orders into Build");
+      await p.click('#left a[href="build.html#job=SO-J1"]'); await p.waitForTimeout(400);
+      check((await BJ(p, () => window.__e4b.T.def.id)) === "SO-J1" && /Level 2 · Small office/.test(await p.$eval("#labtitle", (n) => n.textContent)), tag + "the link opens SO-J1 in Build, titled Level 2 · Small office");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+    await ctx.close();
+  }
+  const ser = async (p, line) => { await type(p, line); };
+  const promptNow = (p) => p.$eval(".term .prompt", (n) => n.textContent);
+  for (const job of ["SO-J1", "SO-J2"]) for (const seed of [11, 2025, 777777]) {
+    const { p, ctx } = await opage("build.html", { net: homeDone.t, build: { current: job, j: { [job]: { seed } }, done: homeDone.j } });
+    const tag = "office " + job + " " + seed + ": ";
+    try {
+      const plan = await BJ(p, () => window.__e4b.T.sim.net.plan);
+      check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed, tag + "opens the job on the office asked for");
+      check(await p.$$eval("#bmRoom option", (l) => l.map((o) => o.textContent).join("|")) === "Network closet|Front desk|Open-plan office|Manager's office|Meeting room", tag + "the Place form lists the office's rooms");
+      let t = await checkJob(p);
+      check((await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do");
+      await dev(p, "tech");
+      check(/Serial terminal · COM3/.test(await term(p)), tag + "your laptop opens on its serial terminal");
+      if (job === "SO-J1") {
+        await ser(p, ""); check(/Nothing answers on COM3/.test(await term(p)), tag + "with no console cable, nothing answers");
+        await place(p, "msw", "front"); check(/Not placed: The managed switch goes in the closet rack/.test(await p.$eval("#bmPmsg", (n) => n.textContent)), tag + "the managed switch has a fixed place in the rack");
+        await place(p, "msw", "closet");
+        check(!!(await p.$('#plan [data-d="msw"]')) && !!(await p.$('#devtabs [data-d="msw"]')), tag + "unboxed: on the plan and a device button");
+        await lay(p, "tech", "USB-C", "msw", "CONSOLE");
+        check(/Console: connected/.test(await p.$eval("#runs", (n) => n.textContent)) && /1\.8 m/.test(await p.$eval("#runs", (n) => n.textContent)), tag + "the console cable is in the runs table, 1.8 m, connected");
+        check(!!(await p.$("#plan path.run-con")), tag + "the console cable is drawn on the plan as its own kind of run");
+        await dev(p, "tech"); await ser(p, "");
+        check((await promptNow(p)) === "Switch>", tag + "Enter wakes the console: Switch>");
+        await p.fill(".term .cmdin", "en"); await p.press(".term .cmdin", "Tab");
+        check((await p.inputValue(".term .cmdin")) === "enable ", tag + "Tab completes en to enable");
+        await p.fill(".term .cmdin", ""); await p.press(".term .cmdin", "?"); await p.waitForTimeout(40);
+        check(/enable/.test(await term(p)) && /show/.test(await term(p)) && (await p.inputValue(".term .cmdin")) === "", tag + "? lists the commands at once, without Enter");
+        await ser(p, "enable"); check((await promptNow(p)) === "Switch#", tag + "enable: Switch#");
+        await ser(p, "configure terminal"); await ser(p, "hostname " + plan.hostname);
+        check((await promptNow(p)) === plan.hostname + "(config)#", tag + "the prompt takes the new name in global configuration");
+        await p.click("#bmUndo"); await p.waitForTimeout(60);
+        check((await BJ(p, () => window.__e4b.T.sim.d.msw.sw.hostname)) === "Switch" && /typed on the switch's command line/.test(await p.$eval("#bmUmsg", (n) => n.textContent)), tag + "Undo takes back the last line typed on the switch");
+        await dev(p, "tech"); await ser(p, "");
+        await ser(p, "enable"); await ser(p, "configure terminal"); await ser(p, "hostname " + plan.hostname); await ser(p, "enable secret " + plan.secret);
+        await ser(p, "line console 0"); check((await promptNow(p)) === plan.hostname + "(config-line)#", tag + "line configuration mode in the prompt");
+        await ser(p, "password " + plan.console); await ser(p, "login"); await ser(p, "end");
+        t = await checkJob(p); check(/survive|saved|startup/i.test(t) && (await p.$$("#check .rq.bad")).length === 1, tag + "configured but not saved: only the saving line is not met");
+        await dev(p, "tech"); await ser(p, "copy running-config startup-config"); await ser(p, "");
+        check(/\[OK\]/.test(await term(p)), tag + "copy running-config startup-config: [OK]");
+        /* the console now asks for its password: hidden as it's typed, and never in the scrollback */
+        await ser(p, "disable"); await ser(p, "exit"); await ser(p, "");
+        const before = (await term(p)).length;   /* the password was typed in the open as a config line: from here on it must never show */
+        check((await p.getAttribute(".term .cmdin", "type")) === "password" && (await promptNow(p)) === "Password: ", tag + "the console asks for its password, and the box hides what's typed");
+        await ser(p, "wrong-one"); await ser(p, plan.console);
+        check((await promptNow(p)) === plan.hostname + ">" && (await term(p)).slice(before).indexOf(plan.console) < 0 && (await term(p)).indexOf("wrong-one") < 0, tag + "logged in; a password typed at a prompt never shows in the scrollback");
+        await ser(p, "enable"); check((await p.getAttribute(".term .cmdin", "type")) === "password", tag + "enable asks for the secret, hidden");
+        await ser(p, plan.secret); check((await promptNow(p)) === plan.hostname + "#", tag + "the secret opens privileged mode");
+        await dev(p, "msw"); check(/SYSTEM/.test(await p.$eval(".pane", (n) => n.textContent)) && /CONSOLE|console cable/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the switch's Lights tab shows its own lights and the console cable");
+      } else {
+        for (const port of ["2", "3"]) { await p.click('#runs tr:has-text("Old 8-port switch, port ' + port + '") button:text-is("Pull")'); await p.waitForTimeout(40); }
+        await p.click('#runs tr:has-text("Office router, LAN 1") button:text-is("Pull")'); await p.waitForTimeout(40);
+        await lay(p, "router", "LAN 1", "msw", "1"); await lay(p, "msw", "2", "pc", "NIC"); await lay(p, "msw", "3", "printer", "NET");
+        check(/18 m, the network closet to the front desk/.test(await p.$eval("#runs", (n) => n.textContent)), tag + "the run to the front desk is 18 m");
+        await dev(p, "tech"); await ser(p, "");
+        check((await p.getAttribute(".term .cmdin", "type")) === "password", tag + "the saved console password is asked for after the move");
+        for (const l of [plan.console, "enable", plan.secret, "configure terminal", "interface vlan 1"]) await ser(p, l);
+        check((await promptNow(p)) === plan.hostname + "(config-if)#", tag + "interface configuration mode in the prompt");
+        for (const l of ["ip address " + plan.ip + " " + plan.mask, "no shutdown", "exit", "ip default-gateway " + plan.gw, "ip domain-name " + plan.domain, "crypto key generate rsa modulus 2048", "username " + plan.user + " secret " + plan.userPw, "line vty 0 15", "login local", "transport input ssh", "end"]) await ser(p, l);
+        /* SSH from the front desk PC before saving: it works now; the check still wants it saved */
+        await dev(p, "pc"); await tab(p, "Command Prompt");
+        await type(p, "telnet " + plan.ip); check(/Could not open connection to the host, on port 23/.test(await term(p)), tag + "Telnet from the PC is refused");
+        await type(p, "ssh " + plan.user + "@" + plan.ip);
+        check((await promptNow(p)) === plan.user + "@" + plan.ip + "'s password: " && (await p.getAttribute(".term .cmdin", "type")) === "password", tag + "ssh asks for the user's password, hidden");
+        await type(p, plan.userPw); check((await promptNow(p)) === plan.hostname + ">", tag + "SSH from the PC logs in to the switch");
+        await type(p, "show ip interface brief"); check(new RegExp("Vlan1\\s+" + plan.ip.replace(/\./g, "\\.")).test(await term(p)), tag + "show ip interface brief over SSH shows VLAN 1's address");
+        await type(p, "exit"); check(new RegExp("Connection to " + plan.ip.replace(/\./g, "\\.") + " closed").test(await term(p)) && /C:\\Users\\/.test(await promptNow(p)), tag + "exit closes the SSH session, back at Windows' prompt");
+        t = await checkJob(p); check((await p.$$("#check .rq.bad")).length === 1, tag + "not saved yet: only the saving line is not met");
+        await dev(p, "tech"); await ser(p, "copy running-config startup-config"); await ser(p, "");
+        await p.click("#vLog"); await p.waitForTimeout(40);
+        check(new RegExp(plan.ip.replace(/\./g, "\\.")).test(await p.$eval('#net [data-d="msw"]', (n) => n.textContent)), tag + "the logical diagram shows the switch's management address");
+        await p.click("#vPhy");
+      }
+      t = await checkJob(p);
+      const n = await BJ(p, () => window.__e4b.T.def.reqs.length);
+      check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
+      await p.reload(); await p.waitForTimeout(350);
+      check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)) && /done 1×|Done 1×/.test(await p.$eval('#queue [data-j="' + job + '"]', (n) => n.textContent)), tag + "still done after a reload, and the list counts it");
+      if (job === "SO-J2") check(/1 of 2 work orders done · its tickets come next/.test((await lv(p, 2)).text), tag + "the level counts its work orders (" + (await lv(p, 2)).text + ")");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+    await ctx.close();
+  }
 }
 
 console.log(errs.length ? "PAGE ERRORS\n" + [...new Set(errs)].join("\n") : "no page errors");

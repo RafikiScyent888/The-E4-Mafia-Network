@@ -2,6 +2,8 @@
    the Ticket Desk's queue, the Lab Bench's shelves, the Service Map. */
 import { el } from "./store.js";
 import { ICONS } from "./draw.js";
+import { LEVELS, isOpen, titleOf } from "./levels.js";
+import { levelList, lockPanel } from "./levelsui.js";
 
 function status(ctx, t) {
   if (!t.built) return { text: "Coming next", cls: "" };
@@ -20,7 +22,23 @@ function ticketButton(ctx, t, numText, stText) {
 
 export function renderQueue(host, ctx) {
   host.innerHTML = "";
-  host.appendChild(el("h2", null, "Queue · Tier 1 · Home"));
+  /* the levels first: a level opens when the one before it is finished */
+  const sel = ctx.level || 1, L = LEVELS[sel - 1];
+  host.appendChild(el("h2", null, "Levels"));
+  host.appendChild(levelList({ selected: sel, onPick: function (n) { ctx.level = n; renderQueue(host, ctx); const b = host.querySelector('[data-level="' + n + '"]'); if (b) b.focus({ preventScroll: true }); } }));
+  if (sel > 1) {
+    host.appendChild(el("h2", null, "Queue · Level " + L.n + " · " + L.name));
+    if (!isOpen(sel)) { host.appendChild(lockPanel(sel)); return; }
+    const ol = el("ol", { id: "queue" });
+    ol.appendChild(el("li", { class: "tier" }, "Tickets: " + (L.coming || "built later")));
+    if (L.jobs.length) {
+      ol.appendChild(el("li", { class: "tier" }, "Work orders, in Build"));
+      L.jobs.forEach(function (id) { ol.appendChild(el("li", null, el("a", { class: "joblink", href: "build.html#job=" + id }, el("span", { class: "num" }, id), el("span", { class: "what" }, titleOf(id)), el("span", { class: "st" }, "Open it in Build")))); });
+    }
+    host.appendChild(ol);
+    return;
+  }
+  host.appendChild(el("h2", null, "Queue · Level 1 · Home"));
   const ol = el("ol", { id: "queue" });
   ol.appendChild(el("li", { class: "tier" }, "Tier 1 · Home · the most common"));
   ctx.list.filter(function (t) { return t.tier === "common"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });

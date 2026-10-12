@@ -8,7 +8,7 @@ import { portName as printedPort } from "./sim.js";
 const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh" };
 
 export function tabsFor(sim, id) {
-  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
+  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
   const T = {
     pc: [["cmd", "Command Prompt"], ["settings", "Network settings"], ["printers", "Printers"]],
     laptop: [["cmd", "Command Prompt"], ["wifi", "Wi-Fi"]],
@@ -16,6 +16,8 @@ export function tabsFor(sim, id) {
     rogue: [["admin", "Admin page"]],
     modem: [["lights", "Lights"], ["status", "Status page"]],
     switch: [["lights", "Lights"]],
+    mswitch: [["lights", "Lights"]],
+    techlaptop: [["cmd", "Serial terminal"]],
     printer: [["panel", "Control panel"]],
     camera: [["web", "Web page"]],
     tv: [["net", "Network status"]],
@@ -40,6 +42,7 @@ function portName(e) { return /^\d$/.test(e.port) ? "port " + e.port : e.port; }
 export function cableName(sim, c, fromDev) {
   const other = c.a.dev === fromDev ? c.b : c.a;
   if (c.kind === "coax") return "Coax cable, wall outlet to the modem's CABLE IN";
+  if (c.kind === "console") return fromDev === "tech" ? "Console cable to the managed switch (CONSOLE)" : "Console cable to your laptop (its USB serial adapter)";
   if (other.dev === "rogue") return "Patch cable to a box not on the diagram (" + other.port + ")";
   if (fromDev === "rogue") return "Patch cable to the 5-port switch (port " + other.port + ")";
   return "Patch cable to the " + sim.d[other.dev].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }).replace(/^isp$/, "ISP") + (/^\d$/.test(other.port) ? " (port " + other.port + ")" : other.port ? " (" + (sim.d[other.dev].kind === "injector" ? printedPort(sim.d[other.dev], other.port) : other.port) + ")" : "");   /* an injector's ports by the names printed on it */
@@ -64,7 +67,7 @@ export function page(sim, id, key) {
   if (key === "physical") {
     const cables = sim.cablesOf(id).map(function (c) {
       const end = c.a.dev === id ? "a" : "b";
-      const acts = c.kind === "coax" ? ["look", "tighten"] : ["look", "reseat", "unplug", "test", "replace"];
+      const acts = c.kind === "coax" ? ["look", "tighten"] : c.kind === "console" ? ["look", "reseat", "unplug"] : ["look", "reseat", "unplug", "test", "replace"];
       return { cable: c.id, end: end, name: cableName(sim, c, id), acts: acts };
     });
     if (id === "modem") { /* the coax's wall end is reached from the modem too: it's behind the TV stand */
@@ -119,14 +122,20 @@ export function page(sim, id, key) {
       return { kind: "rows", title: "Status page", rows: rows, log: log, facts: { page: "modem-status", synced: syn, signal: sig } };
     }
   }
-  if (id === "switch" && key === "lights") {
-    const rows = [];
-    for (let p = 1; p <= 5; p++) {
-      const c = sim.cableAt("switch", String(p));
-      const who = c ? (function () { const o = c.a.dev === "switch" ? c.b : c.a; return sim.d[o.dev].undocumented ? "a box that isn't on the diagram" : "the " + sim.d[o.dev].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }); })() : null;
+  if ((x.kind === "switch" || x.kind === "mswitch") && key === "lights") {
+    const rows = [], n = x.kind === "mswitch" ? 24 : x.ports || 5;
+    for (let p = 1; p <= n; p++) {
+      const c = sim.cableAt(id, String(p));
+      if (x.kind === "mswitch" && !c) continue;   /* 24 ports: list the ones with a cable */
+      const who = c ? (function () { const o = c.a.dev === id ? c.b : c.a; return sim.d[o.dev].undocumented ? "a box that isn't on the diagram" : "the " + sim.d[o.dev].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }); })() : null;
       const sp = c ? sim.speed(c) : 0;
-      const state = !c ? "off (nothing plugged in)" : sp === 0 ? "off" : sp === 1000 ? "on, green: 1 Gb/s link" : "on, amber: 10/100 Mb/s link";
+      const state = !c ? "off (nothing plugged in)" : sp === 0 ? "off" : x.kind === "mswitch" ? "on, green: link up" : sp === 1000 ? "on, green: 1 Gb/s link" : "on, amber: 10/100 Mb/s link";
       rows.push({ port: p, who: who, state: state, up: sp > 0, speed: sp });
+    }
+    if (x.kind === "mswitch") {
+      const on = sim.on(id), con = sim.cablesOf(id).find(function (c) { return c.kind === "console"; });
+      return { kind: "lights-ports", title: "Lights", ports: rows, lights: [{ name: "SYSTEM", state: on ? "on" : "off", text: on ? "on, green" : "off", mean: "the switch has started" }, { name: "POWER", state: on ? "on" : "off", text: on ? "on, green" : "off", mean: "power is on" }],
+        note: "Managed: every port's settings, and the switch's own address, are on its command line. Reach it from your laptop's serial terminal on the console cable" + (con ? " (plugged into its CONSOLE port now)" : "") + ", or over the network once it has an address. Its port lights are green when a port has a link, whatever the speed: ask the switch (show interfaces status) for the speed and duplex.", facts: { page: "msw-lights", ports: rows } };
     }
     return { kind: "lights-ports", title: "Lights", ports: rows, note: "Unmanaged: no console and no settings. Read the lights: green is 1 Gb/s, amber is 10/100 Mb/s.", facts: { page: "switch-lights", ports: rows } };
   }

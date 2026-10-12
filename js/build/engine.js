@@ -69,10 +69,11 @@ export function mason(J) {
   const low = function (s) { return s.replace(/^./, function (m) { return m.toLowerCase(); }); };
   return { line: miss.text, rung: 3, text: "It's one of these two: " + low(nw.two[0]) + ", or " + low(nw.two[1]) + ".", struck: nw.struck, principle: q.rung2(J.v, J.sim) };
 }
-/* undo the last change (and any commands typed after it): the job replays without it. Checks, Mason's count and the notes stay */
+/* undo the last change (and any Command Prompt commands typed after it): the job replays without it. A line typed to a
+   switch's command line counts as a change. Checks, Mason's count and the notes stay */
 const QUIET = { cmd: 1, print: 1, speed: 1, outside: 1 };
 export function undo(J) {
-  let i = J.net.length - 1; while (i >= 0 && QUIET[J.net[i].t]) i--;
+  let i = J.net.length - 1; while (i >= 0 && QUIET[J.net[i].t] && !J.net[i].cli) i--;   /* a line typed to a switch is a change: undo takes it back */
   if (i < 0) return null;
   const gone = J.net[i], keep = save(J); keep.net = J.net.slice(0, i);
   const K = restore(J.def, keep); J.sim = K.sim; J.net = K.net;

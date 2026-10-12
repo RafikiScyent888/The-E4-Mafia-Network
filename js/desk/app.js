@@ -167,6 +167,7 @@ $("mNotes").addEventListener("click", function () { $("notebook").scrollIntoView
 deviceClicks($("net")); deviceClicks($("plan"));
 helpDialog();
 setupInstructor(ctx, {
+  levels: function () { renderLeft(); },
   demo: function (id, seed) { openTicket(id, true, seed); window.scrollTo({ top: 0 }); },
   clear: function () { Object.keys(S.t).forEach(function (k) { delete S.t[k]; }); Object.keys(S.solved).forEach(function (k) { delete S.solved[k]; }); openTicket(HOME_TICKETS[0].id, true); }
 });

@@ -10,8 +10,9 @@ import { Sim, POE_PAIR, portName } from "../net/sim.js";
 import { rng, hash, ip2n, sameSubnet } from "../net/util.js";
 
 const PUBLIC = "203.0.113.80";
-export const NAME = { router: "router", modem: "modem", pc: "office PC", tv: "smart TV", switch: "switch", printer: "printer", phone: "phone", laptop: "laptop", camera: "camera", injector: "PoE injector", injector2: "PoE+ injector", mesh: "mesh node" };
-export const IN = { office: "the office", living: "the living room", kitchen: "the kitchen", garage: "the garage", upstairs: "the back bedroom upstairs", landing: "the landing at the top of the stairs", porch: "by the front door" };
+export const NAME = { router: "router", modem: "modem", pc: "office PC", tv: "smart TV", switch: "switch", printer: "printer", phone: "phone", laptop: "laptop", camera: "camera", injector: "PoE injector", injector2: "PoE+ injector", mesh: "mesh node", msw: "managed switch", tech: "laptop" };
+export const IN = { office: "the office", living: "the living room", kitchen: "the kitchen", garage: "the garage", upstairs: "the back bedroom upstairs", landing: "the landing at the top of the stairs", porch: "by the front door",
+  closet: "the network closet", front: "the front desk", open: "the open-plan office", manager: "the manager's office", meeting: "the meeting room" };
 const cap = function (s) { return s[0].toUpperCase() + s.slice(1); };
 const C = function (id, on, text, not, ev, skip) { return { id: id, on: !!on, text: text, not: not, ev: ev, skip: !!skip }; };
 const placed = function (sim, id) { return !!sim.d[id] && !sim.d[id].boxed; };

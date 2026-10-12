@@ -3,7 +3,8 @@
    is open. Every change goes through ctx.act, so the ticket sees it. */
 import { el } from "./store.js";
 import { tabsFor, page } from "../net/pages.js";
-import { prompt } from "../net/cmd.js";
+import { prompt, cliSession, secretNext } from "../net/cmd.js";
+import { complete } from "../net/swcli.js";
 import { physicalState } from "../net/physical.js";
 
 /* the 3D viewer is loaded the first time a Physical tab opens, never before */
@@ -31,31 +32,52 @@ export function renderWindow(host, ctx) {
 }
 export function focusCmd(id) { const t = terms[id]; if (t) t.input.focus({ preventScroll: true }); }
 
+/* your laptop's serial terminal: what a terminal program shows when it opens the USB serial adapter's port */
+const SERIAL_INTRO = "Serial terminal · COM3 (the USB serial adapter) · 9600 baud, 8 data bits, no parity, 1 stop bit, no flow control.\nWhat the switch on the other end of the console cable sends shows here. Press Enter to wake its console.\n\n";
 function cmdPane(id, ctx) {
   let t = terms[id];
+  const sim = function () { return ctx.T.sim; }, serialDev = sim().d[id].kind === "techlaptop", name = sim().d[id].label;
   if (!t) {
     const out = el("pre", { "aria-live": "polite" });
-    out.textContent = "Type help to see the commands you can use here.\n\n";
-    const input = el("input", { class: "cmdin", type: "text", autocomplete: "off", autocapitalize: "off", spellcheck: "false", "aria-label": "Command for the " + ctx.T.sim.d[id].label });
-    const label = el("span", { class: "prompt", "aria-hidden": "true" }, prompt(ctx.T.sim, id));
+    out.textContent = serialDev ? SERIAL_INTRO : "Type help to see the commands you can use here.\n\n";
+    const input = el("input", { class: "cmdin", type: "text", autocomplete: "off", autocapitalize: "off", spellcheck: "false", "aria-label": "Command for the " + name });
+    const label = el("span", { class: "prompt", "aria-hidden": "true" }, prompt(sim(), id));
     const line = el("div", { class: "line" }, label, input);
-    const node = el("div", { class: "term", role: "log", "aria-label": ctx.T.sim.d[id].label + " Command Prompt", onclick: function (e) { if (!window.getSelection().toString()) input.focus({ preventScroll: true }); } }, out, line);
-    t = terms[id] = { node: node, out: out, input: input, hist: [], hi: 0 };
+    const node = el("div", { class: "term", role: "log", "aria-label": name + (serialDev ? " serial terminal" : " Command Prompt"), onclick: function (e) { if (!window.getSelection().toString()) input.focus({ preventScroll: true }); } }, out, line);
+    /* the prompt says where you are and which mode you're in; a password asked for isn't shown as it's typed */
+    const sync = function () {
+      const s = secretNext(sim(), id); label.textContent = prompt(sim(), id); input.type = s ? "password" : "text";
+      input.setAttribute("aria-label", s ? "Password, not shown as you type" : "Command for the " + name);
+    };
+    t = terms[id] = { node: node, out: out, input: input, hist: [], hi: 0, sync: sync };
     input.addEventListener("keydown", function (e) {
+      const S = cliSession(sim(), id);   /* on a switch's command line, ready for a command: ? and Tab work as they do there */
       if (e.key === "Enter") {
-        const v = input.value; input.value = "";
-        if (v.trim()) { t.hist.push(v); } t.hi = t.hist.length;
-        out.textContent += prompt(ctx.T.sim, id) + v + "\n";
-        if (v.trim()) {
-          const r = ctx.act({ t: "cmd", dev: id, line: v });
+        const v = input.value, hide = input.type === "password"; input.value = "";
+        const sw = serialDev || !!(sim().cli && sim().cli[id]);   /* talking to a switch: every line goes to it, an empty one too (it wakes the console) */
+        if (v.trim() && !hide) { t.hist.push(v); } t.hi = t.hist.length;
+        out.textContent += prompt(sim(), id) + (hide ? "" : v) + "\n";
+        if (v.trim() || sw) {
+          const r = ctx.act(sw ? { t: "cmd", dev: id, line: v, cli: true } : { t: "cmd", dev: id, line: v });
           if (r && r.clear) out.textContent = "";
-          else if (r) out.textContent += (r.out || "") + "\n";
+          else if (r) out.textContent += (r.out || "") + (r.cli || r.serial ? "" : "\n");   /* a switch puts no blank line before its next prompt; Windows does */
         }
+        sync();
+        node.scrollTop = node.scrollHeight;
+      } else if (e.key === "Tab" && S) {   /* complete the word, if only one command starts with it; on an empty line Tab still moves on */
+        const c = complete(S, input.value);
+        if (c !== input.value) { e.preventDefault(); input.value = c; } else if (input.value.trim()) e.preventDefault();
+      } else if (e.key === "?" && S) {   /* help at once, without Enter, and the line comes back to finish */
+        e.preventDefault();
+        const v = input.value, r = ctx.act({ t: "cmd", dev: id, line: v + "?" });
+        out.textContent += prompt(sim(), id) + v + "?\n" + ((r && r.out) || "");
+        input.value = r && r.keep != null ? r.keep : v;
         node.scrollTop = node.scrollHeight;
       } else if (e.key === "ArrowUp") { if (t.hi > 0) { t.hi--; input.value = t.hist[t.hi]; } e.preventDefault(); }
       else if (e.key === "ArrowDown") { if (t.hi < t.hist.length) { t.hi++; input.value = t.hist[t.hi] || ""; } e.preventDefault(); }
     });
   }
+  t.sync();   /* the network may have changed since (a power cut, a cable pulled): the prompt says where it is now */
   return t.node;
 }
 
@@ -99,7 +121,9 @@ function pagePane(id, key, ctx, rerender) {
     pane.appendChild(ul);
   } else if (P.kind === "lights-ports") {
     const ul = el("ul", { class: "leds" });
-    P.ports.forEach(function (p) { ul.appendChild(el("li", null, el("span", { class: "led " + (p.up ? (p.speed === 1000 ? "on" : "amber") : "off"), "aria-hidden": "true" }), el("b", null, "Port " + p.port), el("span", null, p.state + (p.who ? "" : ""), p.who ? el("span", { class: "mean" }, " · cable to " + p.who) : null))); });
+    if (P.lights) P.lights.forEach(function (L) { ul.appendChild(el("li", null, el("span", { class: "led " + L.state, "aria-hidden": "true" }), el("b", null, L.name), el("span", null, L.text, el("span", { class: "mean" }, " · " + L.mean)))); });   /* a managed switch's own lights first */
+    P.ports.forEach(function (p) { ul.appendChild(el("li", null, el("span", { class: "led " + (p.up ? (p.speed === 1000 || P.lights ? "on" : "amber") : "off"), "aria-hidden": "true" }), el("b", null, "Port " + p.port), el("span", null, p.state, p.who ? el("span", { class: "mean" }, " · cable to " + p.who) : null))); });   /* a managed switch's port lights are green at any speed */
+    if (P.lights && !P.ports.length) ul.appendChild(el("li", null, el("span", { class: "led off", "aria-hidden": "true" }), el("b", null, "Ports 1 to 24"), el("span", null, "off (nothing plugged in)")));
     pane.appendChild(ul);
     pane.appendChild(el("p", { class: "note" }, P.note));
   } else if (P.kind === "form" && P.form === "router-dhcp") pane.appendChild(dhcpForm(P.values, ctx, rerender));

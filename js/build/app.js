@@ -4,6 +4,7 @@
    terminal and device pages as the Ticket Desk, and the job notes. Every
    change goes through the build engine, so a job replays exactly. */
 import { JOBS, JOBS_COMING, NAME, IN } from "./jobs.js";
+import { OFFICE_JOBS } from "./office.js";
 import * as B from "./engine.js";
 import { HELP } from "../net/cmd.js";
 import { portsOf, portName, FIXED_ROOM, runLength, COPPER_MAX } from "../net/sim.js";
@@ -12,11 +13,20 @@ import { newSeed, dyslexia, el } from "../desk/store.js";
 import { drawLogical, drawPlan, plates } from "../desk/draw.js";
 import { renderWindow, forgetTerminals, focusCmd } from "../desk/window.js";
 import { setupInstructor } from "../desk/instructor.js";
+import { LEVELS, isOpen, levelOfJob, finished, progress, openHere, setOpenHere, instructorOn } from "../desk/levels.js";
+import { levelList, lockPanel } from "../desk/levelsui.js";
 
 const KEY = "e4-build-v1";
-const DEFS = {}; JOBS.forEach(function (d) { DEFS[d.id] = d; });
-const ORDER = ["modem", "router", "switch", "pc", "printer", "tv", "injector", "injector2", "camera", "mesh", "phone", "laptop", "guest"];
+const ALL = JOBS.concat(OFFICE_JOBS);   /* every level's work orders */
+const DEFS = {}; ALL.forEach(function (d) { DEFS[d.id] = d; });
+const ORDER = ["modem", "router", "switch", "msw", "pc", "printer", "tv", "injector", "injector2", "camera", "mesh", "phone", "laptop", "guest", "tech"];
 const ROOM_ORDER = ["living", "office", "kitchen", "garage", "upstairs", "landing", "porch"];
+/* the site's own rooms, names and fixed places: a house, or the small office */
+const roomsOf = function (sim) { return sim.net.roomNames ? Object.keys(sim.net.roomNames) : ROOM_ORDER; };
+const roomName = function (sim, r) { return (sim.net.roomNames || ROOMS)[r]; };
+const fixedOf = function (sim) { return sim.net.fixed || FIXED_ROOM; };
+/* "the router", "the managed switch", "your laptop": a device's name mid-sentence */
+const theName = function (sim, id) { if (id === "tech") return "your laptop"; return "the " + (sim.net.site === "office" ? sim.d[id].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }) : NAME[id]); };
 const $ = function (id) { return document.getElementById(id); };
 const cap = function (s) { return s[0].toUpperCase() + s.slice(1); };
 const S = load();
@@ -25,25 +35,26 @@ function load() { let s = null; try { s = JSON.parse(localStorage.getItem(KEY) |
 function persist() { S.j[ctx.T.def.id] = B.save(ctx.T); S.current = ctx.T.def.id; try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* private window: progress lasts for this visit */ } }
 
 const ctx = {
-  T: null, open: "modem", tab: null, flash: null, said: null,
+  T: null, open: "modem", tab: null, flash: null, said: null, level: null,
   act: function (a) { const was = ctx.T.done; ctx.said = null; const r = B.act(ctx.T, a); persist(); renderLive(); if (ctx.T.done !== was) renderLeft(); return r; },
   view: function () { },   /* opening a page changes nothing in a job */
-  get list() { return JOBS.map(function (d) { return { id: d.id, title: d.id + " · " + d.title, built: true }; }); }
+  get list() { return ALL.map(function (d) { return { id: d.id, title: d.id + " · " + d.title, built: true }; }); }
 };
 
 /* ---------------------------------------------------------------- names for ports and devices */
-function portLabel(x, port) { return /^\d$/.test(port) ? "port " + port : portName(x, port); }   /* the name printed by the port on the device */
+function portLabel(x, port) { return /^\d+$/.test(port) ? "port " + port : portName(x, port); }   /* the name printed by the port on the device */
 function endLabel(sim, e) { return e.dev === "wall" ? "Wall outlet (coax)" : sim.d[e.dev].label + ", " + (e.port === "CABLE IN" ? "CABLE IN" : portLabel(sim.d[e.dev], e.port)); }
 const shown = function (sim, id) { return !!sim.d[id] && !sim.d[id].boxed; };
 const devices = function (sim) { return ORDER.filter(function (id) { return !!sim.d[id]; }); };
 
 /* ---------------------------------------------------------------- opening a job */
 function openJob(id, fresh, seed) {
-  const def = DEFS[id] || JOBS[0];
+  let def = DEFS[id] || JOBS[0];
+  if (!isOpen(levelOfJob(def.id).n)) def = JOBS[0];   /* a level still locked (the instructor's unlock ended with their tab) opens nothing: back to the first job */
   let J = null;
   if (!fresh && S.j[def.id]) { try { J = B.restore(def, S.j[def.id]); } catch (e) { J = null; } }
   if (!J) J = B.open(def, seed == null ? newSeed() : seed);
-  ctx.T = J; ctx.open = shown(J.sim, "router") ? "router" : "modem"; ctx.tab = null; ctx.said = null;
+  ctx.T = J; ctx.open = shown(J.sim, "router") ? "router" : "modem"; ctx.tab = null; ctx.said = null; ctx.level = levelOfJob(def.id).n;
   forgetTerminals(); persist(); renderAll();
 }
 
@@ -54,23 +65,35 @@ function renderWin() { if (!shown(ctx.T.sim, ctx.open)) ctx.open = "modem"; rend
 
 function renderLeft() {
   const host = $("left"); host.innerHTML = "";
-  host.appendChild(el("h2", null, "Client jobs · Home"));
+  host.appendChild(el("h2", null, "Levels"));
+  const L = LEVELS[ctx.level - 1], open = isOpen(L.n);
+  host.appendChild(levelList({ selected: L.n, onPick: function (n, isOpenNow) {
+    ctx.level = n;
+    if (isOpenNow) { const Lv = LEVELS[n - 1], pick = Lv.jobs.find(function (id) { return !S.done[id]; }) || Lv.jobs[0]; if (pick && levelOfJob(ctx.T.def.id).n !== n) { openJob(pick, false); return; } }
+    renderLeft(); const b = document.querySelector('#left [data-level="' + n + '"]'); if (b) b.focus({ preventScroll: true });
+  } }));
+  if (!open) host.appendChild(lockPanel(L.n));
+  host.appendChild(el("h2", null, "Client jobs · " + L.name));
   const ol = el("ol", { id: "queue" });
   ol.appendChild(el("li", { class: "tier" }, "Work orders"));
   const item = function (d) {
     const n = S.done[d.id] || 0, cur = ctx.T && d.id === ctx.T.def.id;
+    if (!open) { ol.appendChild(el("li", null, el("button", { type: "button", class: "locked", "data-j": d.id, "aria-disabled": "true" }, el("span", { class: "num" }, d.id), el("span", { class: "what" }, d.title), el("span", { class: "st" }, el("span", { "aria-hidden": "true" }, "\u{1F512} "), "Locked")))); return; }
     const st = cur ? "Open · you" + (n ? " · done " + n + "×" : "") : n ? "Done " + n + "×" : "New";
     ol.appendChild(el("li", null, el("button", { type: "button", "data-j": d.id, "aria-current": cur ? "true" : null, onclick: function () { openJob(d.id, false); } }, el("span", { class: "num" }, d.id), el("span", { class: "what" }, d.title), el("span", { class: "st" + (n ? " solved" : "") }, st))));
   };
-  JOBS.filter(function (d) { return !d.free; }).forEach(item);
-  JOBS_COMING.forEach(function (c) { ol.appendChild(el("li", null, el("button", { type: "button", "aria-disabled": "true" }, el("span", { class: "num" }, c.id), el("span", { class: "what" }, c.title), el("span", { class: "st" }, "Coming next")))); });
-  ol.appendChild(el("li", { class: "tier" }, "Your own"));
-  JOBS.filter(function (d) { return d.free; }).forEach(item);
+  L.jobs.forEach(function (id) { item(DEFS[id]); });
+  if (L.n === 1) {
+    JOBS_COMING.forEach(function (c) { ol.appendChild(el("li", null, el("button", { type: "button", "aria-disabled": "true" }, el("span", { class: "num" }, c.id), el("span", { class: "what" }, c.title), el("span", { class: "st" }, "Coming next")))); });
+    ol.appendChild(el("li", { class: "tier" }, "Your own"));
+    JOBS.filter(function (d) { return d.free; }).forEach(item);
+  }
+  if (L.coming) ol.appendChild(el("li", { class: "tier" }, "Tickets: " + L.coming));
   host.appendChild(ol);
 }
 function renderTitle() {
   const d = ctx.T.def, lt = $("labtitle");
-  lt.textContent = "Client job " + d.id + " · " + d.title; lt.appendChild(el("small", null, "Client jobs · Home · Rafiki's IT Services"));
+  lt.textContent = "Client job " + d.id + " · " + d.title; lt.appendChild(el("small", null, "Client jobs · Level " + levelOfJob(d.id).n + " · " + levelOfJob(d.id).name + " · Rafiki's IT Services"));
   document.title = d.id + " · Build · The E4 Mafia Network";
 }
 function renderOrder() {
@@ -97,11 +120,11 @@ function renderBuild() {
   else host.appendChild(el("p", { class: "note", style: "margin:4px 0 0" }, "Nothing: everything is out of its box."));
 
   /* place or move */
-  const movable = devices(sim).filter(function (id) { return !FIXED_ROOM[sim.d[id].kind] || sim.d[id].boxed; });   /* a device with a fixed place can still come out of its box (onto its mount); once there it stays */
+  const movable = devices(sim).filter(function (id) { return !fixedOf(sim)[sim.d[id].kind] || sim.d[id].boxed; });   /* a device with a fixed place can still come out of its box (onto its mount); once there it stays */
   const dsel = el("select", { id: "bmDev", name: "dev" }), rsel = el("select", { id: "bmRoom", name: "room" });
   movable.forEach(function (id) { dsel.appendChild(el("option", { value: id }, sim.d[id].label + (sim.d[id].boxed ? " (in its box)" : " (in " + IN[sim.net.rooms[id]] + ")"))); });
   if (boxed.length) dsel.value = boxed.filter(function (id) { return movable.indexOf(id) >= 0; })[0] || dsel.value;
-  ROOM_ORDER.forEach(function (r) { rsel.appendChild(el("option", { value: r }, ROOMS[r])); });
+  roomsOf(sim).forEach(function (r) { rsel.appendChild(el("option", { value: r }, roomName(sim, r))); });
   const pmsg = el("p", { class: "msg", role: "status", id: "bmPmsg" });
   const pf = el("form", { class: "devform bmf", novalidate: true }, el("fieldset", null, el("legend", null, "Place or move a device"),
     el("div", { class: "row2" }, el("label", { class: "f", for: "bmDev" }, "Device", dsel), el("label", { class: "f", for: "bmRoom" }, "Room", rsel)),
@@ -109,7 +132,7 @@ function renderBuild() {
   pf.addEventListener("submit", function (e) {
     e.preventDefault();
     const id = dsel.value, room = rsel.value, was = sim.d[id].boxed, r = ctx.act({ t: "place", dev: id, room: room });
-    ctx.said = r.result.ok ? { k: "p", ok: true, text: (was ? "Unboxed the " + NAME[id] + " and set it up in " : "Moved the " + NAME[id] + " to ") + IN[room] + "." } : { k: "p", ok: false, text: "Not placed: " + r.result.errs.join(". ") + "." };
+    ctx.said = r.result.ok ? { k: "p", ok: true, text: (was ? "Unboxed " + theName(sim, id) + " and set it up in " : "Moved " + theName(sim, id) + " to ") + IN[room] + "." } : { k: "p", ok: false, text: "Not placed: " + r.result.errs.join(". ") + "." };
     renderBuild(); renderWin(); const f = $("bmPlace"); if (f) f.focus();
   });
   host.appendChild(pf);
@@ -131,7 +154,7 @@ function renderBuild() {
     const a0 = free("router") && shown(sim, "router") ? "router" : can.filter(free)[0] || can[0], b0 = can.filter(function (x) { return x !== a0 && free(x); })[0] || can.filter(function (x) { return x !== a0; })[0];
     const A = mk("A", a0), Bq = mk("B", b0);
     const lenp = el("p", { class: "note", id: "bmLen", "aria-live": "polite" });
-    len = function () { const a = sim.net.rooms[A.ds.value], b = sim.net.rooms[Bq.ds.value], m = runLength(a, b); lenp.textContent = "This run: " + m + " m" + (a === b ? ", inside " + IN[a] : ", " + IN[a] + " to " + IN[b]) + (m > COPPER_MAX ? ": longer than copper Ethernet can carry." : "."); };
+    len = function () { const a = sim.net.rooms[A.ds.value], b = sim.net.rooms[Bq.ds.value], m = runLength(a, b, sim.net); lenp.textContent = "This run: " + m + " m" + (a === b ? ", inside " + IN[a] : ", " + IN[a] + " to " + IN[b]) + (m > COPPER_MAX ? ": longer than copper Ethernet can carry." : "."); };
     len();
     const lmsg = el("p", { class: "msg", role: "status", id: "bmLmsg" });
     const lf = el("form", { class: "devform bmf", novalidate: true }, el("fieldset", null, el("legend", null, "Lay a cable"),
@@ -159,13 +182,15 @@ function renderBuild() {
 }
 function describe(a) {
   const sim = ctx.T.sim;
-  if (a.t === "place") return "placing the " + NAME[a.dev] + " in " + IN[a.room];
+  if (a.t === "place") return "placing " + theName(sim, a.dev) + " in " + IN[a.room];
   if (a.t === "lay") return "the cable from " + endLabel(sim, a.a) + " to " + endLabel(sim, a.b);
   if (a.t === "pull") return "pulling a cable";
   if (a.t === "router") return "a change on the router's " + (a.page === "admin" ? "Status" : a.page === "wifi" ? "Wi-Fi" : "settings") + " page";
-  if (a.t === "client") return "the " + NAME[a.dev] + "'s IP settings";
+  if (a.t === "client") return theName(sim, a.dev) + "'s IP settings";
+  if (a.t === "cmd" && a.cli) return "the last line typed on the switch's command line";
+  if (a.t === "power") return "restarting " + theName(sim, a.dev);
   if (a.t === "pcprinter") return "the office PC's printer port";
-  if (a.t === "join" || a.t === "rejoin" || a.t === "forget") return "the " + NAME[a.dev] + "'s Wi-Fi";
+  if (a.t === "join" || a.t === "rejoin" || a.t === "forget") return theName(sim, a.dev) + "'s Wi-Fi";
   return "your last change";
 }
 
@@ -179,7 +204,7 @@ function renderRuns() {
   const tb = el("tbody");
   sim.net.cables.forEach(function (c) {
     const up = sim.cableUp(c), sp = sim.speed(c);
-    const link = c.kind === "coax" ? (up ? "Link: signal locked" : "No signal") : up ? "Link, " + (sp === 1000 ? "1 Gb/s" : sp + " Mb/s") : "No link";
+    const link = c.kind === "coax" ? (up ? "Link: signal locked" : "No signal") : c.kind === "console" ? (up ? "Console: connected" : "Console: no connection") : up ? "Link, " + (sp === 1000 ? "1 Gb/s" : sp + " Mb/s") : "No link";
     const len = c.kind === "coax" ? "2 m" : c.length + " m" + (sim.net.rooms[c.a.dev] !== sim.net.rooms[c.b.dev] ? ", " + IN[sim.net.rooms[c.a.dev]] + " to " + IN[sim.net.rooms[c.b.dev]] : "");
     tb.appendChild(el("tr", { class: up ? "" : "down" }, el("td", { "data-label": "From" }, endLabel(sim, c.a)), el("td", { "data-label": "To" }, endLabel(sim, c.b)), el("td", { "data-label": "Length" }, len),
       el("td", { class: up ? "ok-t" : "bad-t", "data-label": "Link" }, (up ? "✓ " : "✕ ") + link),
@@ -211,10 +236,13 @@ function renderCheck() {
       body.appendChild(box);
     }
     if (J.done) {
-      const orders = JOBS.filter(function (d) { return !d.free; }), s = J.def.summary(J.v, J.sim), next = J.def.free ? null : orders[orders.indexOf(J.def) + 1] || null;   /* only a later work order: the last one doesn't loop back, and free build has none */
+      const orders = ALL.filter(function (d) { return !d.free; }), s = J.def.summary(J.v, J.sim), after = J.def.free ? null : orders[orders.indexOf(J.def) + 1] || null;   /* only a later work order: the last one doesn't loop back, and free build has none */
+      const Lv = levelOfJob(J.def.id), Ln = after ? levelOfJob(after.id) : null, next = after && isOpen(Ln.n) ? after : null;   /* the next level's first job only once that level is open */
       const box = el("div", { class: "solved", role: "status" }, el("h3", null, "Job " + J.def.id + " done"), el("p", null, el("b", null, "What you built:")));
       const ul = el("ul"); s.forEach(function (t) { ul.appendChild(el("li", null, t)); }); box.appendChild(ul);
       box.appendChild(el("p", null, "Every line of the order checked by the network itself, in " + last.n + " check" + (last.n === 1 ? "" : "s") + "."));
+      if (!J.def.free && finished(Lv, progress()) && LEVELS[Lv.n]) box.appendChild(el("p", null, el("b", null, "Level " + Lv.n + " finished. "), LEVELS[Lv.n].later ? LEVELS[Lv.n].name + " is still being built." : LEVELS[Lv.n].the.replace(/^./, function (m) { return m.toUpperCase(); }) + " is open: level " + (Lv.n + 1) + "."));
+      else if (after && Ln.n !== Lv.n && !next) box.appendChild(el("p", null, "That's every work order on " + Lv.the + ". " + Ln.the.replace(/^./, function (m) { return m.toUpperCase(); }) + " opens when " + Lv.the + " is finished: its tickets are on the Ticket Desk."));
       box.appendChild(el("div", { class: "boardbar" }, el("button", { type: "button", class: "btn", onclick: function () { openJob(J.def.id, true); window.scrollTo({ top: 0 }); } }, "Start this job again (a new house)"),
         next ? el("button", { type: "button", class: "btn ghost", onclick: function () { openJob(next.id, false); window.scrollTo({ top: 0 }); } }, "Next job: " + next.id) : null));
       body.appendChild(box);
@@ -275,10 +303,12 @@ $("mNotes").addEventListener("click", function () { $("notebook").scrollIntoView
 deviceClicks($("net")); deviceClicks($("plan"));
 helpDialog();
 setupInstructor(ctx, {
+  /* the levels opened or locked: a job on a level that's now locked goes back to the first level */
+  levels: function () { if (!isOpen(levelOfJob(ctx.T.def.id).n)) openJob(JOBS[0].id, false); else renderLeft(); },
   /* the instructor's build tools: a job on a chosen house, one way to do it, all of Mason's help, this computer's progress */
   render: function (body, redraw, close) {
     const J = ctx.T, def = J.def;
-    const sel = el("select", { name: "job", id: "instt" }); JOBS.forEach(function (d) { const o = el("option", { value: d.id }, d.id + " · " + d.title); if (d.id === def.id) o.selected = true; sel.appendChild(o); });
+    const sel = el("select", { name: "job", id: "instt" }); ALL.forEach(function (d) { const o = el("option", { value: d.id }, d.id + " · " + d.title); if (d.id === def.id) o.selected = true; sel.appendChild(o); });
     const seed = el("input", { type: "text", name: "seed", inputmode: "numeric", autocomplete: "off", id: "insts" });
     const demo = el("form", { class: "devform", novalidate: true }, el("fieldset", null, el("legend", null, "Open a job for a demonstration"),
       el("label", { class: "f", for: "instt" }, "Job", sel), el("label", { class: "f", for: "insts" }, "House number (leave empty for a new one)", seed),
@@ -309,7 +339,8 @@ setupInstructor(ctx, {
   }
 });
 chromeH(); window.addEventListener("resize", chromeH);
-openJob(S.current && DEFS[S.current] ? S.current : JOBS[0].id, false);
+const asked = /^#job=([\w-]+)$/.exec(location.hash);   /* the Ticket Desk links a level's work orders here */
+openJob(asked && DEFS[asked[1]] ? asked[1] : S.current && DEFS[S.current] ? S.current : JOBS[0].id, false);
 if (location.hash === "#logical") setView(false);
 ctx.openJob = openJob; ctx.check = function () { B.check(ctx.T); persist(); renderCheck(); };
 window.__e4b = ctx;   /* for the checks that drive this page */

@@ -99,15 +99,21 @@ export function drawLogical(svg, sim, o) {
   const below = function (id) { return !P[id].lab || P[id].lab === "below"; };
   const gl = mk("g", {}), gn = mk("g", {}), gp = mk("g", {});
   svg.appendChild(gl); svg.appendChild(gn); svg.appendChild(gp);   /* port dots and labels sit above every line and device */
-  const R = 34;
-  for (const l of linksOf(sim)) {
-    const A = P[l.a], B = P[l.b]; if (!A || !B) continue;
+  const R = 34, links = linksOf(sim), pair = function (l) { return [l.a, l.b].sort().join("|"); }, many = {};
+  const deg = {}; links.forEach(function (l) { many[pair(l)] = (many[pair(l)] || 0) + 1; deg[l.a] = (deg[l.a] || 0) + 1; deg[l.b] = (deg[l.b] || 0) + 1; });   /* two cables between the same two devices (your laptop's console and Ethernet to the switch) run side by side, fanning out from the busier device, where other ports' labels sit close */
+  const seen = {};
+  for (const l of links) {
+    const A0 = P[l.a], B0 = P[l.b]; if (!A0 || !B0) continue;
+    const n = many[pair(l)], k = seen[pair(l)] = (seen[pair(l)] == null ? 0 : seen[pair(l)] + 1), sh = k * 30;   /* the first stays where it always ran; the next one runs beside it */
+    const L0 = Math.hypot(B0.x - A0.x, B0.y - A0.y), nx = -(B0.y - A0.y) / L0, ny = (B0.x - A0.x) / L0, sg = l.a < l.b ? 1 : -1;
+    const ea = deg[l.a] > deg[l.b] ? 0.4 : 1, eb = deg[l.b] > deg[l.a] ? 0.4 : 1;
+    const A = Object.assign({}, A0, { x: A0.x + nx * sh * sg * ea, y: A0.y + ny * sh * sg * ea }), B = Object.assign({}, B0, { x: B0.x + nx * sh * sg * eb, y: B0.y + ny * sh * sg * eb });
     const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy), ux = dx / L, uy = dy / L;
     gl.appendChild(mk("line", { x1: A.x + ux * R, y1: A.y + uy * R, x2: B.x - ux * R, y2: B.y - uy * R, class: "lk lk-" + l.kind + (l.up ? "" : " lk-down") }));
     if (l.kind === "wifi") continue;
-    [[l.a, 1, l.pa], [l.b, -1, l.pb]].forEach(function (e) {
-      const D = P[e[0]], dx2 = ux * e[1], dy2 = uy * e[1];
-      const off = dy2 > 0.5 ? (below(e[0]) ? R + 56 : R + 24) : R + 12;
+    [[l.a, 1, l.pa, A], [l.b, -1, l.pb, B]].forEach(function (e) {
+      const D = e[3], dx2 = ux * e[1], dy2 = uy * e[1];
+      const off = (dy2 > 0.5 ? (below(e[0]) ? R + 56 : R + 24) : R + 12) + (k && deg[e[0]] > 2 ? 22 : 0);   /* the second cable's port on a busy device: further along, clear of the first's */
       const px = D.x + dx2 * off, py = D.y + dy2 * off;
       if (l.up) gp.appendChild(mk("circle", { cx: px, cy: py, r: 6, class: "pd pd-up" }));
       else gp.appendChild(mk("rect", { x: px - 6, y: py - 6, width: 12, height: 12, transform: "rotate(45 " + px + " " + py + ")", class: "pd pd-down" }));

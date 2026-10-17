@@ -8,7 +8,7 @@ import { portName as printedPort } from "./sim.js";
 const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh" };
 
 export function tabsFor(sim, id) {
-  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
+  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" || k === "techlaptop" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
   const T = {
     pc: [["cmd", "Command Prompt"], ["settings", "Network settings"], ["printers", "Printers"]],
     laptop: [["cmd", "Command Prompt"], ["wifi", "Wi-Fi"]],
@@ -17,7 +17,7 @@ export function tabsFor(sim, id) {
     modem: [["lights", "Lights"], ["status", "Status page"]],
     switch: [["lights", "Lights"]],
     mswitch: [["lights", "Lights"]],
-    techlaptop: [["cmd", "Serial terminal"]],
+    techlaptop: [["cmd", "Serial terminal"], ["wcmd", "Command Prompt"], ["tftp", "TFTP server"]],   /* its serial terminal on the console cable, Windows' own prompt, and the TFTP server (SO-J5) */
     printer: [["panel", "Control panel"]],
     camera: [["web", "Web page"]],
     tv: [["net", "Network status"]],
@@ -43,6 +43,8 @@ export function cableName(sim, c, fromDev) {
   const other = c.a.dev === fromDev ? c.b : c.a;
   if (c.kind === "coax") return "Coax cable, wall outlet to the modem's CABLE IN";
   if (c.kind === "console") return fromDev === "tech" ? "Console cable to the managed switch (CONSOLE)" : "Console cable to your laptop (its USB serial adapter)";
+  if (fromDev === "tech") return "Patch cable from your laptop's ETHERNET to the " + sim.d[other.dev].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }) + (/^\d+$/.test(other.port) ? " (port " + other.port + ")" : other.port ? " (" + other.port + ")" : "");
+  if (other.dev === "tech") return "Patch cable to your laptop (its ETHERNET port)";
   if (other.dev === "rogue") return "Patch cable to a box not on the diagram (" + other.port + ")";
   if (fromDev === "rogue") return "Patch cable to the 5-port switch (port " + other.port + ")";
   return "Patch cable to the " + sim.d[other.dev].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }).replace(/^isp$/, "ISP") + (/^\d$/.test(other.port) ? " (port " + other.port + ")" : other.port ? " (" + (sim.d[other.dev].kind === "injector" ? printedPort(sim.d[other.dev], other.port) : other.port) + ")" : "");   /* an injector's ports by the names printed on it */
@@ -63,6 +65,12 @@ export function look(sim, cableId, end) {
 
 export function page(sim, id, key) {
   const x = sim.d[id], r = sim.d.router;
+  if (x.kind === "techlaptop" && key === "tftp") {   /* your laptop's TFTP server: what it listens on, and what it has been sent */
+    const s = x.tftp, a = sim.addr(id);
+    return { kind: "tftp", title: "TFTP server", on: s.on, root: s.root, addr: a && a.kind !== "apipa" ? a.ip : null, apipa: !!(a && a.kind === "apipa"), linked: sim.hasLink(id),
+      files: s.files.map(function (f) { return { name: f.name, bytes: f.bytes, from: f.from, text: f.text }; }), log: s.log.slice(-8),
+      facts: { page: "tech-tftp", on: s.on, addr: a && a.ip, files: s.files.map(function (f) { return f.name; }) } };
+  }
   const yes = function (b) { return b ? "Yes" : "No"; };
   if (key === "physical") {
     const cables = sim.cablesOf(id).map(function (c) {

@@ -17,7 +17,7 @@ const PORTS = {
   router: [["INTERNET", "WAN"], ["LAN 1", "LAN 1"], ["LAN 2", "LAN 2"], ["LAN 3", "LAN 3"], ["LAN 4", "LAN 4"]],
   switch: [["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"], ["5", "5"]],
   pc: [["LAN", "NIC"]], printer: [["NETWORK", "NET"]], camera: [["PoE", "LAN"]], tv: [["LAN", "LAN"]],
-  laptop: [["ETHERNET", "ETH"]], mesh: [["WAN", "WAN"], ["LAN", "LAN"]], injector: [["DATA IN", "DATA IN"], ["DATA + POWER OUT", "PoE OUT"]],
+  laptop: [["ETHERNET", "ETH"]], techlaptop: [["ETHERNET", "ETH"], ["USB-C", "USB-C"]], mesh: [["WAN", "WAN"], ["LAN", "LAN"]], injector: [["DATA IN", "DATA IN"], ["DATA + POWER OUT", "PoE OUT"]],
   switch8: [1, 2, 3, 4, 5, 6, 7, 8].map(function (n) { return [String(n), String(n)]; }),
   /* the managed switch: its 24 ports by the numbers printed over and under them, and CONSOLE */
   msw: Array.from({ length: 24 }, function (_, i) { return [String(i + 1), String(i + 1)]; }).concat([["CONSOLE", "CONSOLE"]]),
@@ -29,7 +29,7 @@ const SAY_PORT = { switch: function (p) { return "Port " + p; }, switch8: functi
 
 export function physicalState(sim, id) {
   const x = sim.d[id]; if (!x) return null;
-  const model = x.kind === "injector" ? (x.dual ? "injectorDual" : "injector") : x.kind === "mswitch" ? "msw" : x.kind === "switch" && x.ports === 8 ? "switch8" : MODEL_OF[id]; if (!model) return null;   /* build mode's PoE+ injector is the dual-port one; the office has the managed switch and an old 8-port */
+  const model = x.kind === "injector" ? (x.dual ? "injectorDual" : "injector") : x.kind === "mswitch" ? "msw" : x.kind === "techlaptop" ? "techlaptop" : x.kind === "switch" && x.ports === 8 ? "switch8" : MODEL_OF[id]; if (!model) return null;   /* build mode's PoE+ injector is the dual-port one; the office has the managed switch and an old 8-port */
   const ports = [], leds = [], says = [], opts = {};
   /* the device an injector output powers right now (its PoE light lit), or null */
   const feeds = function (port) { const c = sim.cableAt(id, port); if (!c) return null; const o = c.a.dev === id ? c.b.dev : c.a.dev; return sim.d[o] && sim.d[o].poe && sim.on(o) && sim.poeSource(o) === x ? o : null; };
@@ -80,6 +80,15 @@ export function physicalState(sim, id) {
     opts.screen = { connected: !!sim.addr("tv"), rows: P.rows.slice(1, 4).concat([["MAC address", "██:██:██:██:██:██"]]) };
   } else if (model === "laptop") {
     opts.screen = [prompt(sim, id) + "_"];   /* Command Prompt open and waiting: what it says is for the student to find out */
+  } else if (model === "techlaptop") {
+    /* your laptop: the USB serial adapter in its USB-C while the console cable is in; on screen, the TFTP server while it
+       runs (its address and what it has been sent), otherwise the serial terminal at the switch's prompt, or Command Prompt */
+    opts.console = ports[1].plug !== "none";
+    const s = x.tftp, a = sim.addr(id);
+    if (s.on) { opts.title = "TFTP server  \u00b7  " + s.root; opts.screen = [a && a.kind !== "apipa" ? "Listening on " + a.ip + ", UDP port 69" : "Listening: no network on Ethernet", ""].concat(s.files.length ? s.files.map(function (f) { return f.name + "   " + f.bytes + " bytes, from " + f.from; }) : ["No files received yet."]); }
+    else if (ports[1].plug !== "none") { opts.title = "Serial terminal  \u00b7  COM3  \u00b7  9600 baud, 8-N-1"; opts.screen = ["", prompt(sim, id) + "_"]; }
+    else { opts.title = "Command Prompt"; opts.screen = [prompt(sim, id, true) + "_"]; }
+    ports[1].lights = null;
   } else if (model === "camera") {
     opts.ipLine = "IP: set by DHCP"; if (x.draw > POE.af.pd) opts.poe = "PoE+ 802.3at";
   } else if (model === "injector") {
@@ -94,7 +103,8 @@ export function physicalState(sim, id) {
   const lit = function (l) { return l.name + " " + (l.state === "on" ? (l.color === "amber" ? "on, amber" : l.color === "blue" ? "on, blue" : "on") : l.state === "blinking" ? "blinking" : "off"); };
   if (leds.length) says.push((model === "modem" ? "Front lights: " : model === "router" ? "Top lights: " : "Lights: ") + leds.filter(function (l) { return !(model === "mesh" && l.role === "LINK" && l.state === "off"); }).map(lit).join(", ") + ".");
   ports.forEach(function (p) {
-    if (model === "laptop" || model === "mesh" || model === "msw") { if (p.plug === "none") return; }
+    if (model === "laptop" || model === "mesh" || model === "msw" || model === "techlaptop") { if (p.plug === "none") return; }
+    if (model === "techlaptop" && p.name === "USB-C") { says.push("USB-C: the USB serial adapter is plugged in, its console cable running to the switch's CONSOLE port."); return; }
     let s = p.label + ": ";
     if (p.coax) s += p.plug === "in" ? "the coax connector is screwed on snugly." : "the coax connector is loose, backed off its thread.";
     else if (p.dc) s += p.plug === "in" ? "plugged in." : "unplugged: its plug is out, hanging loose.";
@@ -108,6 +118,7 @@ export function physicalState(sim, id) {
     says.push(s);
   });
   if (model === "laptop" && ports[0].plug === "none") says.push("ETHERNET: empty (this laptop is on Wi-Fi). On screen: Command Prompt, waiting for a command.");
+  if (model === "techlaptop") { if (ports[0].plug === "none") says.push("ETHERNET: empty."); if (ports[1].plug === "none") says.push("USB-C: empty (the console cable isn't plugged in)."); says.push("On screen: " + opts.title.replace(/\s+\u00b7\s+/g, ", ") + (x.tftp.on ? ". " + opts.screen.filter(Boolean).join(". ") + "." : ".")); }
   if (model === "mesh") says.push("No network cables: it reaches the router over Wi-Fi.");
   if (model === "msw") { if (!ports.some(function (p) { return p.plug !== "none"; })) says.push("Nothing plugged into it yet."); says.push("Printed on the front: MANAGED SWITCH 24-PORT + 4 SFP, MODEL: MSW-2800G. Its settings are on its command line, not on lights or buttons."); }
   if (model === "printer") says.push("Control panel screen: " + opts.screen.status + ", IP address " + opts.screen.ip + ".");

@@ -46,11 +46,11 @@ export function portsOf(x) {
   if (x.dual) return DUAL_PORTS;
   if (x.kind === "switch" && x.ports) return Array.from({ length: x.ports }, function (_, i) { return String(i + 1); });   /* the office's old switch has 8 */
   if (x.kind === "mswitch") return MSW_PORTS;
-  if (x.kind === "techlaptop") return ["USB-C"];
+  if (x.kind === "techlaptop") return ["USB-C", "ETH"];   /* the USB serial adapter for the console cable, and its own Ethernet port */
   return PORTS[x.kind] || [];
 }
 /* a console cable: your laptop's USB serial adapter to a switch's CONSOLE port */
-const consoleEnd = function (x, port) { return !!x && ((x.kind === "mswitch" && port === "CONSOLE") || x.kind === "techlaptop"); };
+const consoleEnd = function (x, port) { return !!x && ((x.kind === "mswitch" && port === "CONSOLE") || (x.kind === "techlaptop" && port === "USB-C")); };
 export const FIXED_ROOM = { modem: ["living", "by the cable outlet: there's one, in the living room"], camera: ["porch", "on its mount by the front door"] };
 const RUN = { office: { living: 14, kitchen: 18, garage: 12, porch: 38, upstairs: 20, landing: 18 }, living: { kitchen: 10, garage: 22, porch: 20, upstairs: 15, landing: 8 }, kitchen: { garage: 16, porch: 14, upstairs: 22, landing: 14 }, garage: { porch: 30, upstairs: 28, landing: 24 }, porch: { upstairs: 32, landing: 22 }, upstairs: { landing: 6 } };
 export function runLength(a, b, net) { if (a === b) return 3; const T = (net && net.runs) || RUN; return (T[a] && T[a][b]) || (T[b] && T[b][a]) || 40; }   /* net: the office has its own rooms and runs */
@@ -496,6 +496,7 @@ export class Sim {
       case "pcprinter": { const ip = String(act.ip || "").trim(); if (!isIp(ip)) { res = { ok: false, errs: ["The printer port must be an IPv4 address"] }; break; } this.d.pc.printer.port = ip; res = { ok: true }; break; }
       case "client": res = this.setClient(act.dev, act.values); break;
       case "cmd": res = { ok: true }; break;                    /* commands are replayed by the command runner */
+      case "tftp": { const s = this.d[act.dev || "tech"].tftp; if (s) s.on = !!act.on; res = { ok: !!s, on: !!(s && s.on) }; break; }   /* your laptop's TFTP server, started or stopped */
       case "ipam": {                                            /* the IPAM sheet as saved: the strings as typed, trimmed */
         this.net.ipam = (act.rows || []).slice(0, 8).map(function (r) { const o = {}; ["net", "mask", "first", "last", "bc", "gw"].forEach(function (k) { o[k] = String(r && r[k] != null ? r[k] : "").trim().slice(0, 40); }); return o; });
         res = { ok: true }; break;

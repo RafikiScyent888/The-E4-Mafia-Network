@@ -57,7 +57,10 @@ export function makeOffice(seed) {
     secret: r.pick(SECRETS), console: r.pick(CONSOLES), user: r.pick(USERS), userPw: r.pick(USERPW),
     /* the office's port descriptions, by what's plugged in (SO-J3) */
     desc: { router: "UPLINK-ROUTER", pc: "FRONT-DESK-PC", printer: "OFFICE-PRINTER" },
-    ipam: ipamPlan(seed, prefix)
+    ipam: ipamPlan(seed, prefix),
+    /* SO-J5: the warning the office's insurer wants on every login, and the name the baseline copy is kept under */
+    banner: "Authorized access only. This device belongs to " + biz.name + ". Disconnect now if you are not authorized.",
+    baseline: biz.tag.toLowerCase() + "-closet-sw1-baseline.cfg"
   };
   const dev = {
     isp: { id: "isp", kind: "isp", label: "ISP", sub: "Internet" },
@@ -77,7 +80,12 @@ export function makeOffice(seed) {
     printer: { id: "printer", kind: "printer", label: "Office printer", sub: prefix + "." + printerHost, on: true,
       /* an older printer: its network card is fixed at 100 Mb/s, full duplex, and can't negotiate (SO-J3, SO-01) */
       ifaces: [{ name: "Wired", type: "eth", port: "NET", mac: mac(r), cfg: { mode: "static", ip: prefix + "." + printerHost, mask: mask, gw: gw, dns: [gw], speed: "100", duplex: "full" }, lease: null, apipa: null }] },
-    tech: { id: "tech", kind: "techlaptop", label: "Your laptop", sub: "console", on: true, os: "windows", user: "tech", host: "RAFIKI-TECH" }
+    /* your laptop: the console cable's USB serial adapter, its own Ethernet port (asking for an address by DHCP when it's
+       plugged in), and a TFTP server to take a switch's configuration (SO-J5). Its hardware address comes from a stream of
+       its own, so the rest of the office is drawn exactly as before */
+    tech: { id: "tech", kind: "techlaptop", label: "Your laptop", sub: "console", on: true, os: "windows", user: "tech", host: "RAFIKI-TECH",
+      ifaces: [{ name: "Ethernet", type: "eth", port: "ETH", mac: mac(rng(seed ^ 0x7ec4)), desc: "Ethernet Connection (USB-C dock)", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }],
+      tftp: { on: false, root: "C:\\TFTP-Root", files: [], log: [] } }
   };
   const cab = function (id, a, ap, b, bp, len) { return { id: id, kind: "cat6", a: { dev: a, port: ap, seated: true }, b: { dev: b, port: bp, seated: true }, cond: "good", length: len }; };
   const cables = [

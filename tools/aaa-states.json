@@ -589,5 +589,36 @@
   "name": "office: SO-J4 done, every block checks out",
   "page": "build.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J4',true,4242); const J=c.T, good=J.def.solve(J.v)[0].rows; c.act({t:'ipam',rows:good}); document.getElementById('doCheck').click();"
+ },
+ {
+  "name": "office: SO-J5 start, your laptop's TFTP server tab, stopped",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J5',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), mid=sol.findIndex(a=>a.t==='pull'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=tech]').click(); tab('TFTP server');"
+ },
+ {
+  "name": "office: SO-J5 mid-job, the logical diagram, the files received and one open to read",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J5',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), mid=sol.findIndex(a=>a.t==='pull'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); sol.slice(0,mid).forEach(a=>c.act(a)); document.getElementById('vLog').click(); document.querySelector('#devtabs [data-d=tech]').click(); tab('TFTP server'); document.querySelector('.tftp button[aria-expanded]').click();"
+ },
+ {
+  "name": "office: SO-J5 mid-job, your laptop's Command Prompt: ipconfig and dir",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J5',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), mid=sol.findIndex(a=>a.t==='pull'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); sol.slice(0,mid).forEach(a=>c.act(a)); document.querySelector('#devtabs [data-d=tech]').click(); tab('Command Prompt'); const k=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; k('ipconfig'); k('dir C:\\\\TFTP-Root');"
+ },
+ {
+  "name": "office: SO-J5 mid-job, your laptop's 3D model with both cables in",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J5',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), mid=sol.findIndex(a=>a.t==='pull'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); sol.slice(0,mid).forEach(a=>c.act(a)); document.querySelector('#devtabs [data-d=tech]').click(); tab('Physical');",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "office: SO-J5 copies of the running configuration, checks with Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J5',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), mid=sol.findIndex(a=>a.t==='pull'); sol.map(a=>a.line==='copy startup-config tftp:'?Object.assign({},a,{line:'copy running-config tftp:'}):a).forEach(a=>c.act(a)); for(let i=0;i<5;i++) c.check(); document.getElementById('doCheck').scrollIntoView();"
+ },
+ {
+  "name": "office: SO-J5 done, the banner as the console wakes",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J5',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), mid=sol.findIndex(a=>a.t==='pull'); sol.forEach(a=>c.act(a)); document.getElementById('doCheck').click(); document.querySelector('#devtabs [data-d=tech]').click(); const k=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; k('exit'); k('');"
  }
 ]

@@ -10,7 +10,7 @@
 import { makeOffice } from "../net/office.js";
 import { Sim } from "../net/sim.js";
 import { exec } from "../net/cmd.js";
-import { unsaved, duplexEnds, PORT_NAMES } from "../net/swcli.js";
+import { unsaved, duplexEnds, PORT_NAMES, configText } from "../net/swcli.js";
 import { online } from "./jobs.js";
 import { checkSheet, parseBlock } from "../net/ipam.js";
 import { ip2n, n2ip } from "../net/util.js";
@@ -460,4 +460,114 @@ const SO4 = {
   }
 };
 
-export const OFFICE_JOBS = [SO1, SO2, SO3, SO4];
+/* ---------------------------------------------------------------- SO-J5 */
+const norm = function (t) { return String(t == null ? "" : t).replace(/\s+/g, " ").trim().toLowerCase(); };
+function bannerCauses(sim, v) {
+  const b = SW(sim).banner, have = norm(b), want = norm(v.plan.banner);
+  return [
+    C("none", !have, "There's no warning banner: a login shows nothing before it asks for the password", "A banner is set.", "Log out of the console and press RETURN: no warning comes up before the password."),
+    C("part", !!have && have !== want && want.indexOf(have) >= 0, "The banner holds only part of the wording: the character that opens and closes it turns up in the wording itself, so it was cut short", "The banner holds the whole wording.", "show running-config: the banner is only part of the records' wording."),
+    C("wrong", !!have && have !== want && want.indexOf(have) < 0, "There's a banner, but it isn't the wording in the office's records", "The banner is the records' wording.", "show running-config: the banner's words aren't the records' wording.")];
+}
+/* the TFTP server's folder on your laptop, a file in it by name (Windows: case doesn't matter), and the switch's own name for its backups */
+const files = function (sim) { return sim.d.tech.tftp.files; };
+const fileNamed = function (sim, name) { const n = name.toLowerCase(); return files(sim).find(function (f) { return f.name.toLowerCase() === n; }) || null; };
+const backupName = function (sim) { return SW(sim).hostname.toLowerCase() + "-confg"; };
+const lapOnNet = function (sim) { const a = sim.addr("tech"); return !!(a && a.kind !== "apipa"); };
+/* a copy on your laptop, worked out the same way for the backup and the baseline: the server and the network first, then the
+   file under its name, then whether it holds what's saved (a copy of the running configuration with changes not yet saved,
+   or one taken before the last save, isn't what the switch comes back with) */
+function copyCauses(sim, name, others, what) {
+  const f = fileNamed(sim, name), st = configText(SW(sim), "startup"), s = sim.d.tech.tftp, any = files(sim).length > 0;   /* once a file has landed, the server and the network have done their part */
+  const elsewhere = !f && files(sim).some(function (g) { return others(g.name.toLowerCase()); });
+  const off = !!f && f.text !== st, run = off && f.which === "running" && f.unsaved, landed = "Files have reached your laptop, so that isn't what's missing.";
+  return [
+    C("server", !f && !any && !s.on, "The TFTP server on your laptop isn't running, so nothing can send it a file", s.on ? "The TFTP server is running." : landed, "Your laptop's TFTP server tab: Stopped."),
+    C("net", !f && !any && !lapOnNet(sim), "Your laptop isn't on the office network, so the switch can't reach it", lapOnNet(sim) ? "Your laptop has an address on the office network." : landed, "Your laptop's TFTP server tab: no address to listen on."),
+    C("none", !f && !elsewhere, "There's no " + what + " on your laptop yet", "There's a " + what + " on your laptop.", "Your laptop's TFTP server tab: no " + what + " among the files received."),
+    C("name", !f && elsewhere, "A copy is on your laptop, but not under the name the " + what + " goes by", "The " + what + " is under its own name.", "Your laptop's TFTP server tab: a copy, under another name."),
+    C("running", run, "The copy was taken from the running configuration while it had changes that weren't saved: it isn't what the switch would come back with", "The copy matches what's saved.", "The file on your laptop differs from show startup-config."),
+    C("stale", off && !run, "The copy is older than what's saved now", "The copy matches what's saved now.", "The file on your laptop differs from show startup-config.")];
+}
+function backupCauses(sim, v) { const bn = v.plan.baseline.toLowerCase(); return copyCauses(sim, backupName(sim), function (n) { return n !== bn; }, "backup"); }
+function baselineCauses(sim, v) { const bk = backupName(sim); return copyCauses(sim, v.plan.baseline, function (n) { return n !== bk; }, "baseline copy"); }
+function tidyCauses(sim) {
+  const sw = SW(sim), used = {}, lap = sim.cablesOf("tech").find(function (c) { return c.kind === "cat6"; });
+  ["router", "pc", "printer"].forEach(function (id) { const n = portOf(sim, id); if (n) used[n] = id; });
+  const cut = Object.keys(used).find(function (n) { return sw.ports[n].shutdown; });
+  const open = PORT_NAMES.find(function (n) { return !used[n] && !sw.ports[n].sfp && !sw.ports[n].shutdown; });
+  const sfp = PORT_NAMES.find(function (n) { return !used[n] && sw.ports[n].sfp && !sw.ports[n].shutdown; });
+  return [
+    C("plugged", !!lap, "Your laptop is still cabled to the office network", "Your laptop's Ethernet is unplugged.", "Cable runs: your laptop's ETHERNET still has a cable in it."),
+    C("used", !!cut, "A port that's in use has been shut down", "Every port in use is on.", cut ? "show interfaces status: " + shortPort(cut) + ", " + WHO[used[cut]] + "'s port, is disabled." : ""),
+    C("open", !!open, "A spare port is live again: anyone in the office could plug something into it", "Every spare copper port is shut down.", open ? "show interfaces status: " + shortPort(open) + " is not disabled." : ""),
+    C("sfp", !!sfp, "A fibre slot is live again", "The fibre slots are shut down.", sfp ? "show interfaces status: " + shortPort(sfp) + " (a fibre slot) is not disabled." : "")];
+}
+const SO5 = {
+  id: "SO-J5", level: "office", title: "A warning banner, a backup and a baseline",
+  already: ["saved", "tidy", "keep"],
+  start(seed) {
+    const b = SO4.start(seed), sim = b.sim;
+    for (const a of SO4.solve(b.v)) sim.apply(a);
+    sim.cli = {};
+    /* for the instructor's worked way: the address your laptop will be given when it's plugged in, and that cable's name */
+    return { sim: sim, v: Object.assign({}, b.v, { lapIp: sim.offer("router", sim.d.tech.ifaces[0].mac, null), lapCable: "c-run-" + ((sim.net.extra.runs || 0) + 1) }) };
+  },
+  brief() { return { quote: "Our insurer's checklist again. Every login to the switch has to show our warning first. And if that switch ever died, we'd want a copy of how it's set up kept somewhere other than the switch, so a new one could go in the same; plus a baseline we can compare against if we ever think someone's changed something.", from: "the office manager" }; },
+  mason: "A backup is only worth what it would bring back. Know which configuration you're copying before you copy it, and read the file once it lands.",
+  limits: function (v) { return ["The office's records, the banner's wording: " + v.plan.banner, "Backups go to your laptop by TFTP, under the name the switch suggests for its own backup. The baseline is a second copy, kept under the name " + v.plan.baseline + ".", "Your laptop has its own Ethernet port and a TFTP server (its own tab). Every spare port on the switch was shut down last visit and must be again when you leave; take your laptop's cable with you.", "Your laptop is still on the console. The switch's console password and enable secret are the office's: " + v.plan.console + " and " + v.plan.secret + "."]; },
+  reqs: [{
+    id: "banner", text: "Every login shows the office's warning banner first",
+    causes: bannerCauses,
+    ok: function () { return "Every login shows the office's warning first."; },
+    rung1: function () { return "Log out of the console (exit) and press RETURN: what comes up before the password? Then read show running-config near the end."; },
+    rung2: function () { return "A banner's text sits between two copies of one delimiter character, which mustn't appear anywhere in the text. The message of the day shows on every console and remote login."; }
+  }, Object.assign({}, L_SAVED), {
+    id: "backup", text: "A backup of the saved configuration is on your laptop, under the switch's own name for it",
+    causes: backupCauses,
+    ok: function () { return "Your laptop holds a backup matching what's saved."; },
+    rung1: function () { return "Your laptop's TFTP server tab: is it running, and what is it listening on? Then read what's arrived beside show startup-config."; },
+    rung2: function () { return "A switch sends a copy of either configuration to a TFTP server at the address you give it: the running one (what's in memory now, saved or not) or the startup one (what comes back after a reload). The server has to be running and reachable."; }
+  }, {
+    id: "baseline", text: "A baseline copy of the saved configuration is on your laptop, under the name in the office's records",
+    causes: baselineCauses,
+    ok: function () { return "Your laptop holds the baseline, matching what's saved."; },
+    rung1: function () { return "Your laptop's TFTP server tab: what is each file called, and does the baseline match show startup-config?"; },
+    rung2: function () { return "A baseline is the known-good configuration, kept under a fixed name to compare against later. It's a copy like any other: only its name sets it apart."; }
+  }, {
+    id: "tidy", text: "Your laptop is unplugged, every spare port is shut down again, and every port in use is on",
+    causes: tidyCauses,
+    ok: function () { return "Your laptop's cable is out; the spare ports and fibre slots are shut down; the three in use are on."; },
+    rung1: function () { return "The Cable runs table, then show interfaces status: is anything of yours still plugged in, and which spare ports aren't disabled?"; },
+    rung2: function () { return "A port opened for one job goes back to shut when the job's done, or it's a way in for anyone who plugs into it."; }
+  }, {
+    id: "keep", text: "Everything still works: the front desk PC online, and printing",
+    causes: keepAll,
+    ok: function () { return "The front desk PC is online and reaches the printer."; },
+    rung1: function () { return "On the front desk PC: ping the router and the printer."; },
+    rung2: function () { return "A spare port opened and shut again changes nothing for the ports in use."; }
+  }],
+  /* one way: the banner saved first; a spare port opened without saving it, so the saved configuration still has it shut;
+     the saved configuration copied (twice: the backup and the baseline); then the port shut again and the cable pulled,
+     so what's running is what's saved once more */
+  solve(v) {
+    const p = v.plan;
+    return [cli(""), cli(p.console), cli("enable"), cli(p.secret), cli("configure terminal"), cli("banner motd #" + p.banner + "#"), cli("end"), cli("copy running-config startup-config"), cli(""),
+      cli("configure terminal"), cli("interface gi0/4"), cli("no shutdown"), cli("end"),
+      { t: "lay", a: E("tech", "ETH"), b: E("msw", "4") }, { t: "tftp", dev: "tech", on: true },
+      cli("copy startup-config tftp:"), cli(v.lapIp), cli(""), cli("copy startup-config tftp:"), cli(v.lapIp), cli(p.baseline),
+      { t: "pull", cable: v.lapCable }, cli("configure terminal"), cli("interface gi0/4"), cli("shutdown"), cli("end"), cli("")];
+  },
+  answer(v) {
+    return ["On the console (its password, enable and the secret): configure terminal; banner motd, then a delimiter that isn't in the wording (such as #), the records' wording, the same delimiter; end; copy running-config startup-config.",
+      "Open a spare port without saving it: interface gi0/4, no shutdown, end. Lay a cable from your laptop's ETHERNET to port 4, start the TFTP server, and read its address (the TFTP tab, or ipconfig in its Command Prompt).",
+      "copy startup-config tftp: to your laptop's address, accepting the switch's own name; again, naming it " + v.plan.baseline + ". Read both files in the TFTP tab: they match show startup-config.",
+      "Pull your laptop's cable and shut the port again (interface gi0/4, shutdown): what's running is what's saved once more, and the saved copy never had the port open. (A spare router port works for the laptop too, and then the switch's ports never change.)"];
+  },
+  summary(v, sim) {
+    return ["Every login to " + SW(sim).hostname + " shows the office's warning first.", "The saved configuration is backed up on your laptop under the switch's own name, with a baseline copy under the records' name, both matching what the switch would come back with.",
+      "The spare port is shut again and your laptop's cable is out.", "It's all saved, and the office runs as before."];
+  }
+};
+
+export const OFFICE_JOBS = [SO1, SO2, SO3, SO4, SO5];

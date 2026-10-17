@@ -170,6 +170,15 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, summary:focus-v
 .pane { background: #ffffff; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 8px 8px; padding: 10px 12px 12px; }
 .pane h3 { margin: 0 0 4px; font-size: 1.02rem; }
 .pane .addr { margin: 0 0 8px; color: var(--muted); font-size: 0.9rem; }
+.tftp h3.sub { margin: 14px 0 6px; font-size: 1rem; }
+.tftp .tfiles { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.tftp .tfiles li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); }
+.tftp .tfiles b { flex: 1 1 100%; overflow-wrap: anywhere; font-family: Consolas, "DejaVu Sans Mono", monospace; }
+.tftp .tfiles span { flex: 1 1 auto; }
+.tftp .tftpfile { max-height: 320px; overflow: auto; margin: 10px 0 0; padding: 10px 12px; background: var(--term); color: #e6e6e6; border-radius: 8px; }
+.tftp .tftpfile pre { margin: 0; font: 13px/1.45 Consolas, "DejaVu Sans Mono", monospace; white-space: pre; }
+.tftp .tftpfile:focus { outline: 3px solid var(--gold); outline-offset: 2px; }
+body.dys .tftp .tftpfile pre { letter-spacing: 0; word-spacing: 0; }   /* a configuration file keeps its own spacing */
 .kv { width: 100%; border-collapse: collapse; }
 .kv th { text-align: left; color: var(--muted); font-weight: 700; padding: 6px 8px 6px 0; width: 44%; vertical-align: top; border-bottom: 1px solid #d5dbea; }
 .kv td { padding: 6px 0; vertical-align: top; border-bottom: 1px solid #d5dbea; overflow-wrap: anywhere; }

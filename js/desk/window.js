@@ -11,7 +11,7 @@ import { physicalState } from "../net/physical.js";
 let m3dLoad = null, m3d = null;
 function load3d() { return m3dLoad || (m3dLoad = import("./model3d.js").then(function (m) { m3d = m; return m; })); }
 
-const terms = {};            /* device id -> { node, out, input, hist, hi } for the open ticket */
+const terms = {};            /* device id (your laptop's Command Prompt: "tech/win") -> { node, out, input, hist, hi } for the open ticket */
 const physLog = {};          /* device id -> last physical result per cable end */
 const said = {};             /* device id -> last result of a page button (test page, speed test, rejoin) */
 export function forgetTerminals() { for (const k in terms) delete terms[k]; for (const k in physLog) delete physLog[k]; for (const k in said) delete said[k]; if (m3d) m3d.forget(); }
@@ -22,43 +22,44 @@ export function renderWindow(host, ctx) {
   host.innerHTML = "";
   const bar = el("div", { class: "win-tabs", role: "tablist", "aria-label": T.sim.d[id].label + " tabs" });
   tabs.forEach(function (t) {
-    bar.appendChild(el("button", { type: "button", role: "tab", "aria-selected": String(t.key === ctx.tab), onclick: function () { ctx.tab = t.key; ctx.view(id, t.key); renderWindow(host, ctx); if (t.key === "cmd") focusCmd(id); } }, t.title));
+    bar.appendChild(el("button", { type: "button", role: "tab", "aria-selected": String(t.key === ctx.tab), onclick: function () { ctx.tab = t.key; ctx.view(id, t.key); renderWindow(host, ctx); if (t.key === "cmd" || t.key === "wcmd") focusCmd(id, t.key === "wcmd"); } }, t.title));
   });
   host.appendChild(bar);
   const body = el("div", { class: "win-body", role: "tabpanel" });
   host.appendChild(body);
-  if (ctx.tab === "cmd") body.appendChild(cmdPane(id, ctx));
+  if (ctx.tab === "cmd" || ctx.tab === "wcmd") body.appendChild(cmdPane(id, ctx, ctx.tab === "wcmd"));   /* wcmd: your laptop's Windows Command Prompt, beside its serial terminal */
   else body.appendChild(pagePane(id, ctx.tab, ctx, function () { renderWindow(host, ctx); }));
 }
-export function focusCmd(id) { const t = terms[id]; if (t) t.input.focus({ preventScroll: true }); }
+export function focusCmd(id, win) { const t = terms[win ? id + "/win" : id]; if (t) t.input.focus({ preventScroll: true }); }
 
 /* your laptop's serial terminal: what a terminal program shows when it opens the USB serial adapter's port */
 const SERIAL_INTRO = "Serial terminal · COM3 (the USB serial adapter) · 9600 baud, 8 data bits, no parity, 1 stop bit, no flow control.\nWhat the switch on the other end of the console cable sends shows here. Press Enter to wake its console.\n\n";
-function cmdPane(id, ctx) {
-  let t = terms[id];
-  const sim = function () { return ctx.T.sim; }, serialDev = sim().d[id].kind === "techlaptop", name = sim().d[id].label;
+function cmdPane(id, ctx, win) {
+  const key = win ? id + "/win" : id, W = win ? { win: true } : {};
+  let t = terms[key];
+  const sim = function () { return ctx.T.sim; }, serialDev = sim().d[id].kind === "techlaptop" && !win, name = sim().d[id].label;
   if (!t) {
     const out = el("pre", { "aria-live": "polite" });
     out.textContent = serialDev ? SERIAL_INTRO : "Type help to see the commands you can use here.\n\n";
     const input = el("input", { class: "cmdin", type: "text", autocomplete: "off", autocapitalize: "off", spellcheck: "false", "aria-label": "Command for the " + name });
-    const label = el("span", { class: "prompt", "aria-hidden": "true" }, prompt(sim(), id));
+    const label = el("span", { class: "prompt", "aria-hidden": "true" }, prompt(sim(), id, win));
     const line = el("div", { class: "line" }, label, input);
     const node = el("div", { class: "term", role: "log", "aria-label": name + (serialDev ? " serial terminal" : " Command Prompt"), onclick: function (e) { if (!window.getSelection().toString()) input.focus({ preventScroll: true }); } }, out, line);
     /* the prompt says where you are and which mode you're in; a password asked for isn't shown as it's typed */
     const sync = function () {
-      const s = secretNext(sim(), id); label.textContent = prompt(sim(), id); input.type = s ? "password" : "text";
+      const s = secretNext(sim(), id, win); label.textContent = prompt(sim(), id, win); input.type = s ? "password" : "text";
       input.setAttribute("aria-label", s ? "Password, not shown as you type" : "Command for the " + name);
     };
-    t = terms[id] = { node: node, out: out, input: input, hist: [], hi: 0, sync: sync };
+    t = terms[key] = { node: node, out: out, input: input, hist: [], hi: 0, sync: sync };
     input.addEventListener("keydown", function (e) {
-      const S = cliSession(sim(), id);   /* on a switch's command line, ready for a command: ? and Tab work as they do there */
+      const S = cliSession(sim(), id, win);   /* on a switch's command line, ready for a command: ? and Tab work as they do there */
       if (e.key === "Enter") {
         const v = input.value, hide = input.type === "password"; input.value = "";
-        const sw = serialDev || !!(sim().cli && sim().cli[id]);   /* talking to a switch: every line goes to it, an empty one too (it wakes the console) */
+        const sw = serialDev || !!(sim().cli && sim().cli[key]);   /* talking to a switch: every line goes to it, an empty one too (it wakes the console) */
         if (v.trim() && !hide) { t.hist.push(v); } t.hi = t.hist.length;
-        out.textContent += prompt(sim(), id) + (hide ? "" : v) + "\n";
+        out.textContent += prompt(sim(), id, win) + (hide ? "" : v) + "\n";
         if (v.trim() || sw) {
-          const r = ctx.act(sw ? { t: "cmd", dev: id, line: v, cli: true } : { t: "cmd", dev: id, line: v });
+          const r = ctx.act(Object.assign(sw ? { t: "cmd", dev: id, line: v, cli: true } : { t: "cmd", dev: id, line: v }, W));
           if (r && r.clear) out.textContent = "";
           else if (r) out.textContent += (r.out || "") + (r.cli || r.serial ? "" : "\n");   /* a switch puts no blank line before its next prompt; Windows does */
         }
@@ -69,8 +70,8 @@ function cmdPane(id, ctx) {
         if (c !== input.value) { e.preventDefault(); input.value = c; } else if (input.value.trim()) e.preventDefault();
       } else if (e.key === "?" && S) {   /* help at once, without Enter, and the line comes back to finish */
         e.preventDefault();
-        const v = input.value, r = ctx.act({ t: "cmd", dev: id, line: v + "?" });
-        out.textContent += prompt(sim(), id) + v + "?\n" + ((r && r.out) || "");
+        const v = input.value, r = ctx.act(Object.assign({ t: "cmd", dev: id, line: v + "?" }, W));
+        out.textContent += prompt(sim(), id, win) + v + "?\n" + ((r && r.out) || "");
         input.value = r && r.keep != null ? r.keep : v;
         node.scrollTop = node.scrollHeight;
       } else if (e.key === "ArrowUp") { if (t.hi > 0) { t.hi--; input.value = t.hist[t.hi]; } e.preventDefault(); }
@@ -132,7 +133,35 @@ function pagePane(id, key, ctx, rerender) {
   else if (P.kind === "form" && P.form === "printer") pane.appendChild(printerForm(P, ctx, rerender));
   else if (P.kind === "form" && P.form === "rogue") pane.appendChild(rogueForm(P, ctx, rerender));
   else if (P.kind === "physical") pane.appendChild(physicalPane(id, P, ctx, rerender));
+  else if (P.kind === "tftp") pane.appendChild(tftpPane(id, P, ctx, rerender));
   return pane;
+}
+
+/* your laptop's TFTP server: start or stop it, what it listens on, and the files it has been sent (each one opens to read) */
+const tftpView = {};         /* device id -> the name of the file open for reading */
+function tftpPane(id, P, ctx, rerender) {
+  const wrap = el("div", { class: "tftp" });
+  const where = !P.on ? "Nothing: the server is stopped" : P.addr ? P.addr + ", UDP port 69 (Ethernet)" : !P.linked ? "No network: nothing is plugged into Ethernet" : P.apipa ? "No address from the network (Ethernet gave itself a 169.254 address)" : "No address yet";
+  wrap.appendChild(el("table", { class: "kv" }, el("tbody", null,
+    el("tr", null, el("th", { scope: "row" }, "Server"), el("td", null, P.on ? "Running" : "Stopped")),
+    el("tr", null, el("th", { scope: "row" }, "Listening on"), el("td", null, where)),
+    el("tr", null, el("th", { scope: "row" }, "Its folder"), el("td", { class: "mono" }, P.root)))));
+  wrap.appendChild(button(id, "tftp", P.on ? "Stop the TFTP server" : "Start the TFTP server", ctx, rerender, function () { const r = ctx.act({ t: "tftp", dev: id, on: !P.on }); return r && r.result && r.result.on ? "Started: it takes files sent to this laptop's address." : "Stopped: nothing can send it files now."; }));
+  wrap.appendChild(el("h3", { class: "sub" }, "Files received"));
+  if (!P.files.length) wrap.appendChild(el("p", { class: "note" }, "None yet."));
+  else {
+    const ul = el("ul", { class: "tfiles" });   /* a list, not a table: it fits a phone's width */
+    P.files.forEach(function (f) {
+      const open = tftpView[id] === f.name;
+      ul.appendChild(el("li", null, el("b", { class: "mono" }, f.name), el("span", null, f.bytes.toLocaleString("en-US") + " bytes, sent from " + f.from),
+        el("button", { type: "button", class: "btn ghost small", "aria-expanded": String(open), "aria-label": (open ? "Close " : "Read ") + f.name, onclick: function () { tftpView[id] = open ? null : f.name; rerender(); } }, open ? "Close" : "Read")));
+    });
+    wrap.appendChild(ul);
+    const f = P.files.find(function (x) { return x.name === tftpView[id]; });
+    if (f) { const pre = el("pre"); pre.textContent = f.text; wrap.appendChild(el("div", { class: "tftpfile", tabindex: "0", role: "region", "aria-label": "The file " + f.name }, pre)); }   /* the box scrolls, the file inside it: as the terminals do */
+  }
+  if (P.log.length) { wrap.appendChild(el("p", { class: "note" }, "Server log")); const lg = el("div", { class: "log" }, P.log.join("\n")); lg.style.whiteSpace = "pre-wrap"; wrap.appendChild(lg); }
+  return wrap;
 }
 
 function radio(name, value, checked, text) { const i = el("input", { type: "radio", name: name, value: value }); i.checked = !!checked; return el("label", { class: "radio" }, i, text); }

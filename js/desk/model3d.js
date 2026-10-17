@@ -40,6 +40,8 @@ const SETUP = {
     views: [["Ports close-up", { focus: "panel:I/O plate", view: [0, 0.08, -1] }], ["Cable run", { view: [0.5, 0.8, -0.55], frame: [-45, 0, -450, 55, 30, -290] }]] },
   laptop: { build: function (o) { return END.laptop({ screen: o.screen }); }, view: [-1, 0.55, 0.85], light: [-0.7, 1.3, 0.9],
     views: [["Ports close-up", { focus: "panel:Left side ports", view: [-1, 0.25, 0.35] }], ["Screen", { view: [0.05, 0.3, 1], light: [0.3, 1.2, 1.0] }]] },
+  techlaptop: { build: function (o) { return OFF.techLaptop({ screen: o.screen, title: o.title, console: o.console }); }, view: [-1, 0.55, 0.85], light: [-0.7, 1.3, 0.9],
+    views: [["Ports close-up", { focus: "panel:Left side ports", view: [-1, 0.25, 0.35] }], ["Screen", { view: [0.05, 0.3, 1], light: [0.3, 1.2, 1.0] }]] },
   printer: { build: function (o) { return END.networkPrinter({ screen: o.screen }); }, view: [-0.6, 0.45, -1], light: [-0.4, 1.2, -1.0],
     views: [["Back ports", { focus: "panel:Ports", view: [-0.35, 0.2, -1] }], ["Control panel", { focus: "panel:Control panel", view: [0.15, 0.75, 0.66], light: [0.3, 1.3, 1.0] }]] },
   tv: { build: function (o) { return END.smartTV({ screen: o.screen }); }, view: [-0.75, 0.32, -1], light: [-0.5, 1.2, -1.0],

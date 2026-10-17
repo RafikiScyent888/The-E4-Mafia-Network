@@ -56,7 +56,7 @@ export function act(T, a) {
 
 function apply(T, a, replay) {
   if (STATE_CHANGING[a.t] && !replay) T.net.push(a);
-  if (a.t === "cmd") return exec(T.sim, a.dev, a.line);
+  if (a.t === "cmd") return exec(T.sim, a.dev, a.line, a.win);
   if (a.t === "view") return page(T.sim, a.dev, a.key);
   if (PHYSICAL[a.t]) return physical(T.sim, a);
   if (a.t === "router") { const r = T.sim.apply(a); return { result: r, facts: r.ok ? { saved: a.page } : {} }; }

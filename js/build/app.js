@@ -233,6 +233,7 @@ function describe(a) {
   if (a.t === "power") return "restarting " + theName(sim, a.dev);
   if (a.t === "pcprinter") return "the office PC's printer port";
   if (a.t === "ipam") return "saving the IPAM sheet";
+  if (a.t === "tftp") return (a.on ? "starting" : "stopping") + " the TFTP server on your laptop";
   if (a.t === "join" || a.t === "rejoin" || a.t === "forget") return theName(sim, a.dev) + "'s Wi-Fi";
   return "your last change";
 }

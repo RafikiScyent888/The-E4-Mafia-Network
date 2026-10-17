@@ -437,3 +437,17 @@ export function consoleKit(o = {}) {
   cableFrom(g, ua, [[200, 2.1, 430], [170, 2.1, 450], [bx2.x, 2.1, bx2.z], [bx.x, bx.y, bx.z]], { straight: 14, r: 2.1 });
   return named(g, "device:Console kit", { type: "console" });
 }
+
+/* Your laptop on the job, for its Physical tab: the photographed laptop with its own patch cable in the ETHERNET port
+   (taken out by the viewer when it isn't cabled) and, while the console cable is in (o.console), the USB serial
+   adapter's USB-C plug in its left side, the adapter's grey cord dropping to the bench and running off towards the
+   switch. On screen (o.title, o.screen): whatever is open, the TFTP server, the serial terminal or Command Prompt. */
+export function techLaptop(o = {}) {
+  const g = new THREE.Group();
+  const lt = laptop({ title: o.title, screen: o.screen }); g.add(lt);
+  if (o.console) {
+    const up = plugInto(lt.getObjectByName("port:USB-C"), usbCPlug({ cable: 0x9ea2a7 }), { y: 0, z: 0.6 });
+    cableFrom(g, up, [[-198, 6, 4], [-197, 2.1, 30], [-198, 2.1, 90], [-194, 2.1, 170], [-186, 2.1, 280]], { straight: 12, r: 2.0 });   /* down beside the laptop, inside the patch cable's run */
+  }
+  return named(g, "device:Your laptop", { type: "laptop", w: 324, h: 230, d: 226 });
+}

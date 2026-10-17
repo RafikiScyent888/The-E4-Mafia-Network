@@ -507,7 +507,7 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
   }
   const ser = async (p, line) => { await type(p, line); };
   const promptNow = (p) => p.$eval(".term .prompt", (n) => n.textContent);
-  for (const job of ["SO-J1", "SO-J2", "SO-J3"]) for (const seed of [11, 2025, 777777]) {
+  for (const job of ["SO-J1", "SO-J2", "SO-J3", "SO-J4"]) for (const seed of [11, 2025, 777777]) {
     const { p, ctx } = await opage("build.html", { net: homeDone.t, build: { current: job, j: { [job]: { seed } }, done: homeDone.j } });
     const tag = "office " + job + " " + seed + ": ";
     try {
@@ -553,6 +553,23 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
         await ser(p, "enable"); check((await p.getAttribute(".term .cmdin", "type")) === "password", tag + "enable asks for the secret, hidden");
         await ser(p, plan.secret); check((await promptNow(p)) === plan.hostname + "#", tag + "the secret opens privileged mode");
         await dev(p, "msw"); check(/SYSTEM/.test(await p.$eval(".pane", (n) => n.textContent)) && /CONSOLE|console cable/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the switch's Lights tab shows its own lights and the console cable");
+      } else if (job === "SO-J4") {
+        /* the IPAM sheet, by hand: one block too small first (the row marked, the field flagged, the reason given), Undo, then a plan that fits */
+        const groups = plan.ipam.groups, good = await BJ(p, () => window.__e4b.T.def.solve(window.__e4b.T.v)[0].rows);
+        const F6 = ["net", "mask", "first", "last", "bc", "gw"];
+        const fill = async (rows) => { for (let i = 0; i < rows.length; i++) for (const f of F6) await p.fill("#ipam" + i + f, rows[i][f]); await p.click("#ipamSave"); await p.waitForTimeout(60); };
+        check((await p.$$("#ipam fieldset.blk")).length === groups.length && /needs \d+ addresses/.test(await p.$eval("#ipam legend", (n) => n.textContent)), tag + "the IPAM sheet has a card per group, each saying how many addresses it needs");
+        const st = groups.findIndex((g) => g[0] === "Staff"), wrong = good.map((r) => Object.assign({}, r));
+        wrong[st].mask = "/" + (+good[st].mask.slice(1) + 1);
+        await fill(wrong);
+        const row = await p.$eval("#ipamRow" + st, (n) => ({ cls: n.className, text: n.textContent, bad: n.querySelector("#ipam" + n.id.slice(7) + "mask").getAttribute("aria-invalid") }));
+        check(/badrow/.test(row.cls) && row.bad === "true" && /usable addresses/.test(row.text) && /✕/.test(row.text), tag + "a block too small: its row marked (edge, inset rule, the words), its mask flagged, the reason given");
+        check(!new RegExp("/" + good[st].mask.slice(1) + "\\b").test(row.text), tag + "the sheet never says the right mask");
+        t = await checkJob(p); check(/fewer usable addresses/.test(t), tag + "the check says a block is too small");
+        await p.click("#bmUndo"); await p.waitForTimeout(60);
+        check((await p.inputValue("#ipam0net")) === "" && /saving the IPAM sheet/.test(await p.$eval("#bmUmsg", (n) => n.textContent)), tag + "Undo takes back saving the sheet");
+        await fill(good);
+        check((await p.$$("#ipam fieldset.goodrow")).length === groups.length && new RegExp(groups.length + " of " + groups.length + " blocks check out").test(await p.$eval("#ipamSum", (n) => n.textContent)), tag + "every block checks out");
       } else if (job === "SO-J3") {
         /* the printer's port, as found: half duplex, and the late collisions climb each time you look */
         await dev(p, "tech"); await ser(p, "");

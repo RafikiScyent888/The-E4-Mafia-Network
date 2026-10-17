@@ -12,6 +12,8 @@ import { Sim } from "../net/sim.js";
 import { exec } from "../net/cmd.js";
 import { unsaved, duplexEnds, PORT_NAMES } from "../net/swcli.js";
 import { online } from "./jobs.js";
+import { checkSheet, parseBlock } from "../net/ipam.js";
+import { ip2n, n2ip } from "../net/util.js";
 
 const C = function (id, on, text, not, ev, skip) { return { id: id, on: !!on, text: text, not: not, ev: ev, skip: !!skip }; };
 const E = function (dev, port) { return { dev: dev, port: port }; };
@@ -326,4 +328,136 @@ const SO3 = {
   }
 };
 
-export const OFFICE_JOBS = [SO1, SO2, SO3];
+/* ---------------------------------------------------------------- SO-J4 */
+/* the sheet as saved, a row per group of the office's plan, and what the IPAM checker says of each */
+const sheetOf = function (sim, v) { const rows = sim.net.ipam || []; return v.plan.ipam.groups.map(function (g, i) { return Object.assign({ name: g[0], hosts: g[1] }, rows[i] || {}); }); };
+const sheetRes = function (sim, v) { return checkSheet(v.plan.ipam.block, sheetOf(sim, v)); };
+const groupWhere = function (res, v, test) { const i = res.findIndex(test); return i < 0 ? null : v.plan.ipam.groups[i][0]; };
+const has = function (r, field, re) { return r.issues.some(function (x) { return x.field === field && (!re || re.test(x.text)); }); };
+const unreadable = function (r) { return r.empty || has(r, "net", /isn't an IPv4/) || has(r, "mask", /write it as/); };
+const unreadCause = function (res, v) { const g = groupWhere(res, v, unreadable); return C("unread", !!g, "Not every group's block is written so it can be read yet", "Every block can be read.", g ? "The IPAM sheet: " + g + "'s network or mask is blank or can't be read." : ""); };
+function filledCauses(sim, v) {
+  const res = sheetRes(sim, v), none = res.every(function (r) { return r.empty; });
+  const blank = groupWhere(res, v, function (r) { return r.empty; });
+  const bad = groupWhere(res, v, function (r) { return !r.empty && unreadable(r); });
+  return [
+    C("none", none, "Nothing is written in the IPAM sheet yet", "The sheet has been filled in.", "The IPAM sheet is empty."),
+    C("row", !none && !!blank, "A group has no block written for it", "Every group has a block.", blank ? "The IPAM sheet: " + blank + " is blank." : ""),
+    C("format", !!bad, "A block's network or mask isn't written as an address and a mask or /prefix", "Every network and mask can be read.", bad ? "The IPAM sheet: " + bad + "'s network or mask can't be read." : "")];
+}
+function sizeCauses(sim, v) {
+  const res = sheetRes(sim, v);
+  const small = groupWhere(res, v, function (r) { return has(r, "mask", /usable addresses/); });
+  const big = groupWhere(res, v, function (r) { return !unreadable(r) && !has(r, "mask", /usable addresses/) && r.notes.some(function (n) { return /smaller block/.test(n); }); });
+  return [unreadCause(res, v),
+    C("small", !!small, "A block is too small for its group", "Every block is big enough for its group.", small ? "The IPAM sheet: " + small + "'s block has fewer usable addresses than the group needs." : ""),
+    C("big", !!big, "A block is bigger than its group needs: a smaller one would fit", "Every block is the smallest that fits.", big ? "The IPAM sheet: " + big + "'s block would fit in a smaller one." : "")];
+}
+function placeCauses(sim, v) {
+  const res = sheetRes(sim, v);
+  const out = groupWhere(res, v, function (r) { return has(r, "net", /reaches outside/); });
+  const align = groupWhere(res, v, function (r) { return has(r, "net", /isn't where a/); });
+  const lap = groupWhere(res, v, function (r) { return has(r, "net", /^Overlap/); });
+  return [unreadCause(res, v),
+    C("outside", !!out, "A block reaches outside the office's range", "Every block is inside the office's range.", out ? "The IPAM sheet: " + out + "'s block runs past the office's range." : ""),
+    C("align", !!align, "A block doesn't start where a block of its size begins", "Every block starts on its own boundary.", align ? "The IPAM sheet: " + align + "'s network isn't where a block of its size begins." : ""),
+    C("overlap", !!lap, "Two blocks share addresses", "No two blocks overlap.", lap ? "The IPAM sheet: " + lap + "'s block shares addresses with another group's." : "")];
+}
+function addrCauses(sim, v) {
+  const res = sheetRes(sim, v), w = function (f) { return groupWhere(res, v, function (r) { return !unreadable(r) && has(r, f); }); };
+  const f = w("first"), l = w("last"), b = w("bc");
+  return [unreadCause(res, v),
+    C("first", !!f, "A first usable address is wrong", "Every first usable address is right.", f ? "The IPAM sheet: " + f + "'s first usable isn't the first address after its network address." : ""),
+    C("last", !!l, "A last usable address is wrong", "Every last usable address is right.", l ? "The IPAM sheet: " + l + "'s last usable isn't the address just before its broadcast." : ""),
+    C("bc", !!b, "A broadcast address is wrong", "Every broadcast address is right.", b ? "The IPAM sheet: " + b + "'s broadcast isn't its block's last address." : "")];
+}
+function gwCausesSheet(sim, v) {
+  const res = sheetRes(sim, v), rows = sheetOf(sim, v);
+  const blank = groupWhere(res, v, function (r, i) { return !unreadable(r) && has(r, "gw", /not written/); });
+  const unusable = groupWhere(res, v, function (r) { return !unreadable(r) && has(r, "gw") && !has(r, "gw", /not written/); });
+  const notFirst = groupWhere(res, v, function (r, i) {
+    if (unreadable(r) || has(r, "gw")) return false;
+    const n = ip2n(rows[i].net); return n != null && ip2n(rows[i].gw) !== n + 1;
+  });
+  return [unreadCause(res, v),
+    C("blank", !!blank, "A block has no gateway written", "Every block has a gateway.", blank ? "The IPAM sheet: " + blank + " has no gateway." : ""),
+    C("unusable", !!unusable, "A gateway isn't a usable address in its own block", "Every gateway is a usable address in its block.", unusable ? "The IPAM sheet: " + unusable + "'s gateway can't be used by the devices in its block." : ""),
+    C("first", !!notFirst, "A gateway works, but isn't the first usable address, as this office does it", "Every gateway is its block's first usable address.", notFirst ? "The IPAM sheet: " + notFirst + "'s gateway isn't its first usable address." : "")];
+}
+const keepAll = function (sim) {
+  return [C("pc", !online(sim, "pc"), "The front desk PC isn't online any more", "The front desk PC is online.", "The front desk PC can't reach the internet."),
+    C("print", !printOk(sim), "The front desk PC can't reach the printer", "The front desk PC reaches the printer.", "Test pages from the front desk don't print.")];
+};
+const SO4 = {
+  id: "SO-J4", level: "office", title: "Subnet the office: the IPAM sheet",
+  already: ["keep"], ipam: true,
+  start(seed) {
+    const b = SO3.start(seed), sim = b.sim;
+    for (const a of SO3.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    sim.cli = {};
+    return { sim: sim, v: b.v };
+  },
+  brief(v) { return { quote: "We're growing: guests keep asking for the Wi-Fi, and we're getting a small server. Before anything else is set up, our IT plan says the office's addresses get split into a block for each group, each just big enough, written in the IPAM sheet. Work it out by hand: we'd like you to be able to explain it.", from: "the office manager" }; },
+  mason: "Biggest group first. For each one, find the smallest block whose usable addresses cover it, write where it starts and ends, then move on to the next free address.",
+  limits: function (v) { const g = v.plan.ipam.groups; return ["The office's range: " + v.plan.ipam.block + ". Groups and how many addresses each needs: " + g.map(function (x) { return x[0] + " " + x[1]; }).join(", ") + ".", "The office's convention: a block's gateway is its first usable address.", "Nothing on the network changes on this visit: the plan is for the next one (the groups' VLANs)."]; },
+  reqs: [{
+    id: "filled", text: "Every group has its block written in the IPAM sheet",
+    causes: filledCauses,
+    ok: function () { return "Every group has a block in the sheet."; },
+    rung1: function () { return "Open the IPAM sheet: is there a block for every group, written as a network and a mask or /prefix?"; },
+    rung2: function () { return "An address plan gives every group its own block, each written as its network address and its size (a mask, or a /prefix)."; }
+  }, {
+    id: "size", text: "Each block is big enough for its group, and no bigger than it needs",
+    causes: sizeCauses,
+    ok: function () { return "Each block is the smallest that fits its group."; },
+    rung1: function () { return "For each group: how many addresses does it need, and how many usable addresses does its block give?"; },
+    rung2: function () { return "A block of /n holds 2 to the power (32 minus n) addresses, two of which no device can use: the network and the broadcast. VLSM gives each group the smallest block whose usable addresses cover it."; }
+  }, {
+    id: "place", text: "Each block starts where a block its size begins, inside the office's range, with no two overlapping",
+    causes: placeCauses,
+    ok: function () { return "The blocks sit inside the office's range, each on its own boundary, none overlapping."; },
+    rung1: function () { return "Write out where each block starts and ends: does any run past the office's range, or into another?"; },
+    rung2: function () { return "A block must start on a multiple of its own size. Placing the biggest first, one straight after another, keeps every block on its boundary and none overlapping."; }
+  }, {
+    id: "addrs", text: "Each block's first usable, last usable and broadcast addresses are right",
+    causes: addrCauses,
+    ok: function () { return "Every row's first usable, last usable and broadcast addresses are right."; },
+    rung1: function () { return "For each block: what is its network address, and what is its very last address?"; },
+    rung2: function () { return "The first usable is one after the network address. The broadcast is the block's last address, and the last usable is the one before it."; }
+  }, {
+    id: "gw", text: "Each block's gateway is its first usable address, as the office does it",
+    causes: gwCausesSheet,
+    ok: function () { return "Every block's gateway is its first usable address."; },
+    rung1: function () { return "Read the office's convention in the limits, then each row's gateway against its first usable."; },
+    rung2: function () { return "A gateway has to be a usable address inside its own block, or the devices there can't reach it. Offices keep it predictable by always using the same one."; }
+  }, {
+    id: "keep", text: "Everything still works: the front desk PC online, and printing",
+    causes: keepAll,
+    ok: function () { return "The front desk PC is online and reaches the printer."; },
+    rung1: function () { return "On the front desk PC: ping the router and the printer."; },
+    rung2: function () { return "This visit is paperwork: nothing on the network needs to change for the plan."; }
+  }],
+  /* one plan that fits, biggest group first, each block straight after the last (any plan the checker accepts passes) */
+  solve(v) {
+    const B = parseBlock(v.plan.ipam.block), rows = [];
+    let at = B.net;
+    v.plan.ipam.groups.map(function (g, i) { return { i: i, hosts: g[1] }; }).sort(function (a, b) { return b.hosts - a.hosts; }).forEach(function (o) {
+      let p = 30; while (Math.pow(2, 32 - p) - 2 < o.hosts) p--;
+      const sz = Math.pow(2, 32 - p); at = Math.ceil(at / sz) * sz;
+      rows[o.i] = { net: n2ip(at), mask: "/" + p, first: n2ip(at + 1), last: n2ip(at + sz - 2), bc: n2ip(at + sz - 1), gw: n2ip(at + 1) };
+      at += sz;
+    });
+    return [{ t: "ipam", rows: rows }];
+  },
+  answer(v) {
+    const r = SO4.solve(v)[0].rows;
+    return v.plan.ipam.groups.map(function (g, i) { return g[0] + " (" + g[1] + "): " + r[i].net + " " + r[i].mask + ", usable " + r[i].first + " to " + r[i].last + ", broadcast " + r[i].bc + ", gateway " + r[i].gw + "."; })
+      .concat(["Any plan the sheet accepts passes: the blocks can go in another order, as long as each is the smallest that fits, on its boundary, inside the range, with no overlaps."]);
+  },
+  summary(v) {
+    return ["The office's range is split into a block per group, each the smallest that fits (VLSM).", "Every block sits on its own boundary, inside the range, none overlapping; every address in the sheet checks out.",
+      "Each block's gateway is its first usable address, ready for the groups' VLANs on the next visit."];
+  }
+};
+
+export const OFFICE_JOBS = [SO1, SO2, SO3, SO4];

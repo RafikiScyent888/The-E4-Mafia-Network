@@ -42,6 +42,12 @@ export const OFFICE_LAYOUT = {
 };
 export const OFFICE_ROOM_BOX = { closet: [30, 30, 300, 370], front: [300, 30, 640, 270], open: [300, 270, 760, 520], manager: [640, 30, 980, 270], meeting: [760, 270, 980, 520] };
 
+/* the address plan for the office's next step (SO-J4): its /24 split by hand into a block per group, each group's
+   head count drawn from its own random stream so the rest of the office is drawn exactly as before */
+function ipamPlan(seed, prefix) {
+  const r = rng(seed ^ 0x1ba3);
+  return { block: prefix + ".0/24", groups: [["Staff", r.pick([28, 36, 40, 50, 58])], ["Guests", r.pick([12, 18, 20, 25, 29])], ["Printers and servers", r.pick([5, 8, 10, 12])], ["Network gear", r.pick([3, 4, 5, 6])]] };
+}
 export function makeOffice(seed) {
   const r = rng(seed ^ 0x5a17);
   const biz = r.pick(BUSINESSES), k = r.int(0, PREFIXES.length - 1), prefix = PREFIXES[k], range = RANGES[k], mask = "255.255.255.0", gw = prefix + ".1";
@@ -50,7 +56,8 @@ export function makeOffice(seed) {
     hostname: biz.tag + "-CLOSET-SW1", ip: prefix + "." + swHost, mask: mask, gw: gw, domain: biz.name.split(/[ &]/)[0].toLowerCase().replace(/[^a-z]/g, "") + ".lan",
     secret: r.pick(SECRETS), console: r.pick(CONSOLES), user: r.pick(USERS), userPw: r.pick(USERPW),
     /* the office's port descriptions, by what's plugged in (SO-J3) */
-    desc: { router: "UPLINK-ROUTER", pc: "FRONT-DESK-PC", printer: "OFFICE-PRINTER" }
+    desc: { router: "UPLINK-ROUTER", pc: "FRONT-DESK-PC", printer: "OFFICE-PRINTER" },
+    ipam: ipamPlan(seed, prefix)
   };
   const dev = {
     isp: { id: "isp", kind: "isp", label: "ISP", sub: "Internet" },

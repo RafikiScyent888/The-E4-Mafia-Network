@@ -152,6 +152,7 @@ test("undo takes back the last line typed to the switch, and the job replays exa
     const K = B.restore(def, JSON.parse(JSON.stringify(B.save(J))));
     assert.equal(JSON.stringify(K.sim.net), JSON.stringify(J.sim.net)); assert.equal(K.sim.n, J.sim.n); assert.equal(prompt(K.sim, "tech"), prompt(J.sim, "tech"));
     assert.deepEqual([K.checks, K.done, K.notes], [J.checks, J.done, J.notes]);
+    if (!/#\s*$/.test(prompt(J.sim, "tech"))) run(J, [cli(""), cli(p.console), cli("enable"), cli(p.secret)]);   /* a job with no switch work (SO-J4) hasn't logged in */
     B.act(J, cli("configure terminal")); B.act(J, cli("hostname TEMP"));
     assert.equal(J.sim.d.msw.sw.hostname, "TEMP");
     const gone = B.undo(J); assert.equal(gone.line, "hostname TEMP"); assert.equal(J.sim.d.msw.sw.hostname, p.hostname);
@@ -268,4 +269,42 @@ test("SO-J3: show interfaces on the printer's port: half duplex and late collisi
   assert.match(c, /Full-duplex, 100Mb\/s/);
   assert.equal(late(c), 0, "no late collisions once the port matches the printer");
   void lateNow;
+});
+
+test("SO-J4: the IPAM sheet's tempting wrong ways fail the right line, for the right reason; any plan the checker accepts passes", () => {
+  const n2ip = (n) => [n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join(".");
+  const ip2n = (s) => s.split(".").reduce((a, x) => a * 256 + +x, 0);
+  for (const s of seeds("SO-J4").slice(0, 60)) {
+    const def = byId["SO-J4"], J0 = B.open(def, s), groups = J0.v.plan.ipam.groups, good = def.solve(J0.v, J0.sim)[0].rows;
+    const sheet = (rows) => { const J = B.open(def, s); run(J, [{ t: "ipam", rows }]); return J; };
+    const edit = (i, o) => good.map((r, k) => (k === i ? Object.assign({}, r, o) : r));
+    const staff = groups.findIndex((g) => g[0] === "Staff"), gear = groups.findIndex((g) => g[0] === "Network gear");
+    const blk = (r) => { const p = +r.mask.slice(1), sz = 2 ** (32 - p), n = ip2n(r.net); return { n, p, sz }; };
+    assert.equal(line(B.open(def, s), "filled").real.id, "none");
+    assert.equal(line(sheet(edit(gear, { net: "", mask: "", first: "", last: "", bc: "", gw: "" })), "filled").real.id, "row");
+    assert.equal(line(sheet(edit(gear, { mask: "/xx" })), "filled").real.id, "format");
+    /* too small: staff one size down; too big: staff one size up (both kept on a boundary) */
+    const S = blk(good[staff]);
+    assert.equal(line(sheet(edit(staff, { mask: "/" + (S.p + 1), last: n2ip(S.n + S.sz / 2 - 2), bc: n2ip(S.n + S.sz / 2 - 1) })), "size").real.id, "small");
+    const big = sheet(edit(staff, { mask: "/" + (S.p - 1), last: n2ip(S.n + S.sz * 2 - 2), bc: n2ip(S.n + S.sz * 2 - 1) }));
+    assert.equal(line(big, "size").real.id, "big");
+    /* off its boundary; reaching outside; overlapping the next block */
+    const G = blk(good[gear]);
+    assert.equal(line(sheet(edit(gear, { net: n2ip(G.n + 2), first: n2ip(G.n + 3), last: n2ip(G.n + G.sz), bc: n2ip(G.n + G.sz + 1), gw: n2ip(G.n + 3) })), "place").real.id, "align");
+    const other = good[gear].net.replace(/^(\d+\.\d+\.)(\d+)/, (m, a, b) => a + (+b + 1));
+    assert.equal(line(sheet(edit(gear, { net: other, first: n2ip(ip2n(other) + 1), last: n2ip(ip2n(other) + G.sz - 2), bc: n2ip(ip2n(other) + G.sz - 1), gw: n2ip(ip2n(other) + 1) })), "place").real.id, "outside");
+    assert.equal(line(sheet(edit(gear, { net: good[staff].net, first: good[staff].first, last: n2ip(S.n + G.sz - 2), bc: n2ip(S.n + G.sz - 1), gw: good[staff].first })), "place").real.id, "overlap");
+    /* the addresses inside a block */
+    assert.equal(line(sheet(edit(staff, { first: good[staff].net })), "addrs").real.id, "first");
+    assert.equal(line(sheet(edit(staff, { bc: good[staff].last })), "addrs").real.id, "bc");
+    assert.equal(line(sheet(edit(staff, { last: good[staff].bc })), "addrs").real.id, "last");
+    /* the gateway: blank, unusable, usable but not the first */
+    assert.equal(line(sheet(edit(staff, { gw: "" })), "gw").real.id, "blank");
+    assert.equal(line(sheet(edit(staff, { gw: good[staff].bc })), "gw").real.id, "unusable");
+    assert.equal(line(sheet(edit(staff, { gw: good[staff].last })), "gw").real.id, "first");
+    /* another right plan: smallest first, each on its boundary, passes every line */
+    const B0 = ip2n(good[0].net) & ~255, alt = []; let at = B0;
+    groups.map((g, i) => ({ i, p: +good[i].mask.slice(1) })).sort((a, b) => b.p - a.p).forEach((o) => { const sz = 2 ** (32 - o.p); at = Math.ceil(at / sz) * sz; alt[o.i] = { net: n2ip(at), mask: "255.255.255." + (256 - sz), first: n2ip(at + 1), last: n2ip(at + sz - 2), bc: n2ip(at + sz - 1), gw: n2ip(at + 1) }; at += sz; });
+    const J = sheet(alt); assert.ok(B.check(J).res.every((x) => x.ok), "another right plan (smallest first, dotted masks) passes, seed " + s);
+  }
 });

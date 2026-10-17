@@ -15,6 +15,7 @@ import { renderWindow, forgetTerminals, focusCmd } from "../desk/window.js";
 import { setupInstructor } from "../desk/instructor.js";
 import { LEVELS, isOpen, levelOfJob, finished, built, counts, progress, openHere, setOpenHere, instructorOn } from "../desk/levels.js";
 import { levelList, lockPanel } from "../desk/levelsui.js";
+import { checkSheet } from "../net/ipam.js";
 
 const KEY = "e4-build-v1";
 const ALL = JOBS.concat(OFFICE_JOBS);   /* every level's work orders */
@@ -114,6 +115,7 @@ function renderBuild() {
   host.innerHTML = "";
   host.appendChild(el("h3", null, "Limits on this job"));
   const lim = el("ul", { class: "limits" }); (typeof J.def.limits === "function" ? J.def.limits(J.v, J.sim) : J.def.limits).forEach(function (t) { lim.appendChild(el("li", null, t)); }); host.appendChild(lim);
+  if (J.def.ipam) ipamSheet(host, J, sim);
   const boxed = devices(sim).filter(function (id) { return sim.d[id].boxed; });
   host.appendChild(el("h3", null, "In the box, not placed yet"));
   if (boxed.length) { const tr = el("ul", { class: "tray" }); boxed.forEach(function (id) { tr.appendChild(el("li", null, sim.d[id].label)); }); host.appendChild(tr); }
@@ -180,6 +182,46 @@ function renderBuild() {
   if (ctx.said) { const m = $({ p: "bmPmsg", l: "bmLmsg", u: "bmUmsg" }[ctx.said.k]); if (m) { m.className = "msg " + (ctx.said.ok ? "ok" : "err"); m.textContent = ctx.said.text; } }
   if (keepFocus && $(keepFocus)) $(keepFocus).focus({ preventScroll: true });
 }
+/* the IPAM sheet (SO-J4 on): a card per group, the six values written by hand; saving it is a change like any other
+   (Undo takes it back). What the sheet's checker found is shown for the sheet as saved: what's wrong, never the
+   right value (js/net/ipam.js). Each row is marked three ways: the edge colour with its inset rule, and the words. */
+const IPF = [["net", "Network"], ["mask", "Mask or /prefix"], ["first", "First usable"], ["last", "Last usable"], ["bc", "Broadcast"], ["gw", "Gateway"]];
+function ipamSheet(host, J, sim) {
+  const plan = sim.net.plan.ipam, saved = sim.net.ipam || [], rows = plan.groups.map(function (g, i) { return Object.assign({ name: g[0], hosts: g[1] }, saved[i] || {}); });
+  const res = checkSheet(plan.block, rows), any = saved.length > 0;
+  const box = el("section", { class: "ipam", id: "ipam", "aria-labelledby": "ipamh" }, el("h3", { id: "ipamh" }, "IPAM sheet · " + plan.block));
+  box.appendChild(el("p", { class: "note" }, "Work each block out by hand: the sheet says what's wrong with what you wrote, never what the right value is."));
+  const form = el("form", { class: "sheet", novalidate: true });
+  plan.groups.forEach(function (g, i) {
+    const r = res[i], state = !any || r.empty ? "" : r.ok ? " goodrow" : " badrow";
+    const fs = el("fieldset", { class: "blk" + state, id: "ipamRow" + i }, el("legend", null, g[0] + " · needs " + g[1] + " addresses"));
+    const grid = el("div", { class: "blkgrid" });
+    IPF.forEach(function (f) {
+      const bad = any && r.issues.some(function (x) { return x.field === f[0]; });
+      grid.appendChild(el("label", { for: "ipam" + i + f[0] }, el("span", null, f[1]), el("input", { id: "ipam" + i + f[0], name: f[0], value: (saved[i] && saved[i][f[0]]) || "", spellcheck: "false", autocomplete: "off", "aria-invalid": bad ? "true" : null })));
+    });
+    fs.appendChild(grid);
+    if (any) {
+      const ul = el("ul", { class: "res" });
+      if (r.empty) ul.appendChild(el("li", { class: "nt" }, "Not filled in yet."));
+      else if (r.ok) ul.appendChild(el("li", { class: "ok" }, "✓ Every value checks out."));
+      r.issues.forEach(function (x) { ul.appendChild(el("li", null, el("span", { class: "x" }, "✕ "), x.text)); });
+      r.notes.forEach(function (n) { ul.appendChild(el("li", { class: "nt" }, "Note: " + n)); });
+      fs.appendChild(ul);
+    }
+    form.appendChild(fs);
+  });
+  const good = res.filter(function (r) { return r.ok; }).length;
+  form.appendChild(el("div", { class: "acts" }, el("button", { class: "btn small", type: "submit", id: "ipamSave" }, "Save the sheet"),
+    el("span", { class: "msg", role: "status", id: "ipamSum" }, any ? good + " of " + plan.groups.length + " blocks check out." : "")));
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    const out = plan.groups.map(function (g, i) { const o = {}; IPF.forEach(function (f) { o[f[0]] = $("ipam" + i + f[0]).value; }); return o; });
+    ctx.act({ t: "ipam", rows: out }); renderBuild(); const b = $("ipamSave"); if (b) b.focus();
+  });
+  box.appendChild(form);
+  host.appendChild(box);
+}
 function describe(a) {
   const sim = ctx.T.sim;
   if (a.t === "place") return "placing " + theName(sim, a.dev) + " in " + IN[a.room];
@@ -190,6 +232,7 @@ function describe(a) {
   if (a.t === "cmd" && a.cli) return "the last line typed on the switch's command line";
   if (a.t === "power") return "restarting " + theName(sim, a.dev);
   if (a.t === "pcprinter") return "the office PC's printer port";
+  if (a.t === "ipam") return "saving the IPAM sheet";
   if (a.t === "join" || a.t === "rejoin" || a.t === "forget") return theName(sim, a.dev) + "'s Wi-Fi";
   return "your last change";
 }

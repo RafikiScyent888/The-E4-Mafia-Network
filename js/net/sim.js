@@ -496,6 +496,10 @@ export class Sim {
       case "pcprinter": { const ip = String(act.ip || "").trim(); if (!isIp(ip)) { res = { ok: false, errs: ["The printer port must be an IPv4 address"] }; break; } this.d.pc.printer.port = ip; res = { ok: true }; break; }
       case "client": res = this.setClient(act.dev, act.values); break;
       case "cmd": res = { ok: true }; break;                    /* commands are replayed by the command runner */
+      case "ipam": {                                            /* the IPAM sheet as saved: the strings as typed, trimmed */
+        this.net.ipam = (act.rows || []).slice(0, 8).map(function (r) { const o = {}; ["net", "mask", "first", "last", "bc", "gw"].forEach(function (k) { o[k] = String(r && r[k] != null ? r[k] : "").trim().slice(0, 40); }); return o; });
+        res = { ok: true }; break;
+      }
       default: res = { ok: false, err: "unknown action" };
     }
     this.relink(before);

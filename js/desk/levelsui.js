@@ -2,7 +2,7 @@
    marked three ways (the lock with its words, the dashed edge, the grey
    ground), never colour alone. Used by the Ticket Desk and build mode. */
 import { el } from "./store.js";
-import { LEVELS, progress, counts, finished, isOpen, whatsLeft, titleOf } from "./levels.js";
+import { LEVELS, progress, counts, finished, isOpen, whatsLeft, titleOf, built } from "./levels.js";
 
 function parts(c) { const a = []; if (c.ntickets) a.push(c.tickets + " of " + c.ntickets + " tickets"); if (c.njobs) a.push(c.jobs + " of " + c.njobs + " work orders"); return a.join(", "); }
 const lock = function () { return el("span", { class: "lk", "aria-hidden": "true" }, "\u{1F512} "); };
@@ -35,6 +35,7 @@ export function lockPanel(n) {
     el("p", null, "A level opens when the one before it is finished: every ticket and every work order, which is every objective it teaches." + (go.length ? " You have " + go.join(" and ") + " to go:" : "")));
   const ul = el("ul"); left.tickets.concat(left.jobs).forEach(function (id) { ul.appendChild(el("li", null, el("b", null, id), " " + titleOf(id))); });
   if (ul.children.length) box.appendChild(ul);
+  if (!built(prev)) box.appendChild(el("p", null, prev.name + " is still being built: more work orders and tickets are on the way" + (go.length ? "." : ", and you've done everything ready so far.")));
   if (L.later) box.appendChild(el("p", null, L.name + " is still being built."));
   box.appendChild(el("p", null, "Your instructor can open any level for a class demonstration (Instructor menu, with their PIN)."));
   return box;

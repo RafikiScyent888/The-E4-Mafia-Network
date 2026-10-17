@@ -601,8 +601,8 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
   try {
     await p.goto(base + "build.html"); await p.waitForTimeout(350);
     if (plant) await p.evaluate(plant);
-    await p.evaluate(() => { const c = window.__e4b; c.openJob("SO-J2", true, 2026); const J = c.T; J.def.solve(J.v, J.sim).forEach((a) => c.act(a)); c.check(); });
-    await p.waitForTimeout(150);
+    await p.evaluate(() => { const c = window.__e4b; c.openJob("SO-J2", true, 2026); const J = c.T; J.def.solve(J.v, J.sim).forEach((a) => c.act(a)); });
+    await p.click("#doCheck"); await p.waitForTimeout(150);   /* the real button: it's what counts a job done */
     const box = await p.$eval("#check", (n) => n.textContent);
     check(/That's everything on the small office so far/.test(box) && /More work orders and tickets are on the way/.test(box), tag + "SO-J2's done box says that's everything so far, more on the way");
     check(!/Level 2 finished/.test(box), tag + "and does not call the level finished");
@@ -610,7 +610,7 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
     const L3 = await p.$eval('#left [data-level="3"]', (b) => ({ locked: b.parentNode.classList.contains("locked"), text: b.textContent }));
     check(L3.locked, tag + "Level 3 stays locked (" + L3.text + ")");
     await p.click('#left [data-level="3"]'); await p.waitForTimeout(60);
-    check(/Small office is still being built, and you've done everything ready so far/.test(await p.$eval("#left", (n) => n.textContent)), tag + "its lock panel says the small office is still being built");
+    check(/Small office is still being built: more work orders and tickets are on the way, and you've done everything ready so far/.test(await p.$eval("#lockpanel", (n) => n.textContent)), tag + "its lock panel says the small office is still being built");
     check(/2 of 2 work orders done · more work orders and tickets are on the way/.test(await p.$eval('#left [data-level="2"]', (n) => n.textContent)), tag + "Level 2 counts 2 of 2 and says more is coming");
   } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
   await ctx.close();

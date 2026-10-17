@@ -486,5 +486,78 @@
   "name": "build: J10 done, the TV upstairs and the printer in the kitchen",
   "page": "build.html",
   "setup": "const c=window.__e4b; c.openJob('J10',true,4242); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check();"
+ },
+ {
+  "name": "levels: build, fresh student, the small office locked (lock panel)",
+  "page": "build.html",
+  "setup": "document.querySelector('#left [data-level=\"2\"]').click();"
+ },
+ {
+  "name": "levels: desk, fresh student, the small office locked (lock panel)",
+  "page": "index.html",
+  "setup": "document.querySelector('#left [data-level=\"2\"]').click();"
+ },
+ {
+  "name": "levels: desk, Home finished, the small office open with its work orders",
+  "page": "index.html",
+  "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS[0].tickets.map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS[0].jobs.map(id=>[id,1]))})); document.querySelector('#left [data-level=\"2\"]').click();})()"
+ },
+ {
+  "name": "levels: build, Home finished, the last home job done",
+  "page": "build.html",
+  "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS[0].tickets.map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS[0].jobs.map(id=>[id,1]))})); const c=window.__e4b; c.openJob('J10',true,4242); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check();})()"
+ },
+ {
+  "name": "levels: instructor dialog with the Levels section",
+  "page": "build.html",
+  "mode": "view",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); document.getElementById('mInst').click(); document.querySelector('#inst .db').scrollTop = 99999;"
+ },
+ {
+  "name": "office: SO-J1 first check, console cable laid, serial terminal with ? help",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J1',true,4242); c.check(); c.act({t:'place',dev:'msw',room:'closet'}); c.act({t:'lay',a:{dev:'tech',port:'USB-C'},b:{dev:'msw',port:'CONSOLE'}}); document.querySelector('#devtabs [data-d=tech]').click(); const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; k(''); k('enable'); k('','?');"
+ },
+ {
+  "name": "office: SO-J1 console password prompt, Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J1',true,4242); const J=c.T; J.def.solve(J.v,J.sim).slice(0,-2).forEach(a=>c.act(a)); for(let i=0;i<5;i++) c.check(); c.act({t:'cmd',dev:'tech',line:'disable',cli:true}); c.act({t:'cmd',dev:'tech',line:'exit',cli:true}); document.querySelector('#devtabs [data-d=tech]').click(); const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; k('');"
+ },
+ {
+  "name": "office: SO-J1 done, the managed switch's 3D model with the console cable",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J1',true,4242); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); document.querySelector('#devtabs [data-d=msw]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click();",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "office: SO-J2 start, the old 8-port switch's 3D model",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J2',true,4242); document.querySelector('#devtabs [data-d=switch]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Physical').click();",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "office: SO-J2 done, the office floor plan and the switch's lights",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J2',true,4242); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); document.querySelector('#devtabs [data-d=msw]').click();"
+ },
+ {
+  "name": "office: SO-J2 done, the logical diagram, SSH from the PC",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J2',true,4242); const J=c.T, p=J.sim.net.plan; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); document.getElementById('vLog').click(); document.querySelector('#devtabs [data-d=pc]').click(); [...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent==='Command Prompt').click(); const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; k('ssh '+p.user+'@'+p.ip); k(p.userPw); k('show ip interface brief');"
+ },
+ {
+  "name": "office: SO-J2 old switch pulled, runs table with a dead run",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J2',true,4242); c.act({t:'pull',cable:'c-old-pc'}); c.act({t:'lay',a:{dev:'msw',port:'2'},b:{dev:'pc',port:'NIC'}}); c.act({t:'cmd',dev:'tech',line:'',cli:true}); for(let i=0;i<3;i++) c.check();"
+ },
+ {
+  "name": "levels: build, everything on the small office so far done (still being built)",
+  "page": "build.html",
+  "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS[0].tickets.map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS[0].jobs.concat(['SO-J1']).map(id=>[id,1]))})); const c=window.__e4b; c.openJob('SO-J2',true,4242); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); document.getElementById('doCheck').click();})()"
+ },
+ {
+  "name": "levels: desk, small office done so far, level 3 locked (still being built)",
+  "page": "index.html",
+  "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS[0].tickets.map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS[0].jobs.concat(L.LEVELS[1].jobs).map(id=>[id,1]))})); document.querySelector('#left [data-level=\"3\"]').click();})()"
  }
 ]

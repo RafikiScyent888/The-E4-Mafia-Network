@@ -5,7 +5,8 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
+**Status (17 October 2026): Level 2 (the small office) is going live stage by stage; stage 1 is live: the level lock, work orders SO-J1 and SO-J2, the managed switch. See "Level 2, stage 1" below.**
+**Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
 from the Under the Hood tile (decision 6). See "The real site" below. The owner, 11
 October 2026: **"Build it like the preview you gave me just keep the layout
 exactly the same just remove the C with A bars."** Confirmed with the owner
@@ -870,20 +871,26 @@ scope."** On subnetting by hand on the IPAM sheet: **"I really like this."**
 - **Next:** the owner's go-ahead on the preview, then the build. Given 12 October
   2026: **"Keep building"**.
 
-### SAVE POINT, 12 October 2026: Level 2 stage 1, NOT live
+### Level 2, stage 1: live 17 October 2026
 
-The owner asked for a save point mid-build ("create a save point that you can
-start back up from"). This work is on the branch **`save/level2-stage1`**, not
-on `main`: nothing here is live to students yet. To resume: check out that
-branch, read this section, finish the steps under "Still to do", then merge to
-`main` and push (rule 1), verify the remote and the Pages deploy.
+Built on the branch `save/level2-stage1` (the owner asked for a save point on
+12 October 2026), finished and merged 17 October 2026. **Stage 1 of 5**: the
+level lock on the live site and the instructor's "open every level"; Level 2
+visible, locked until Home is finished; work orders SO-J1 and SO-J2; the
+managed switch and the old 8-port switch live in the Physical tab.
 
-**Stage 1 of 5** (the owner's agreed scope): the level lock on the live site and
-the instructor's "open every level"; Level 2 visible, locked until Home is
-finished; work orders SO-J1 and SO-J2; the managed switch and the old 8-port
-switch live in the Physical tab.
+**Stage by stage** (the owner, 17 October 2026, asked whether Level 2 should
+go live a stage at a time or all at once: **"Stage by stage"**). Each stage
+goes live once it's verified. A level still being built carries `planned` in
+`js/desk/levels.js` (the small office: 25, that is 10 work orders and 15
+tickets); it can't count as finished until all of them exist, so Level 3
+can't open early. The queues say "More work orders and tickets are on the
+way"; with everything built so far done, the done box says "That's
+everything on the small office so far", and Level 3's lock panel says the
+small office is still being built. Set `planned` to the real total, or drop
+it, when the last stage lands.
 
-**Done and verified on this branch:**
+**What stage 1 added:**
 - `js/net/office.js`: the office template (six businesses, the closet, front
   desk, open-plan office, manager's office, meeting room; the old 8-port switch
   running the office; the managed switch in its box; your laptop with its
@@ -927,27 +934,29 @@ switch live in the Physical tab.
   one that no interface path can reach: the console working with the switch
   off, since a placed switch is never left off; the guard is defensive).
 
-**Still to do before this goes live:**
-1. AAA on painted pixels for the new screens (was about to run it; the twelve
-   states are written in `tools/aaa-states-office.json`, NOT yet measured:
-   `node tools/aaa.mjs tools/aaa-states-office.json`): the lock
-   panel on both pages, the Home-finished desk with the job links, the J10
-   done box with the level message, the instructor's Levels section, the
-   serial terminal with `?` help, the console password prompt with Mason's
-   third rung, the managed switch's and the old switch's 3D models, the office
-   floor plan with the switch's lights, the logical diagram with SSH from the
-   PC, a dead run in the runs table. Then add them to `tools/aaa-states.json`
-   and check the scrolled states. Show a plant fails (e.g. lighten the lock
-   panel's text).
-2. `node tools/models.mjs` for the managed switch: its lights and the console
-   plug drawn as the sim says, pulled plugs out; add the plants.
-3. The full `node tools/drive.mjs` (all tickets and jobs, not only office).
-4. This CLAUDE.md: move this section into the build log, update the status
-   line, the levels and instructor notes.
-5. Merge to `main`, PIN scan, push, verify the remote tree and the Pages
-   deploy, report to the owner which files went live.
-Then stages 2 to 5: SO-J3 to J5; tickets SO-01 to 05; SO-06 to 10; five extra
-jobs and five extra tickets; the rack in the Physical tab.
+- Finishing checks, 17 October 2026: AAA on painted pixels across the 14
+  Level 2 states (now in `tools/aaa-states.json`; `ONLY=office,levels node
+  tools/aaa.mjs tools/aaa-states.json` runs just them) and two scrolled
+  ones; the checker caught the logical diagram printing the managed
+  switch's labels over your laptop's (the console cable ran straight between
+  them): the laptop now sits below and right of the switch. A lightened lock
+  panel was planted and caught. `ONLY=office node tools/models.mjs`: the
+  managed switch's console plug, lights and port plugs drawn as the sim
+  says, and the old switch emptied after the move; it caught the old
+  switch's POWER light sitting 0.6 mm from port 1's (a dark port 1 read as
+  lit; moved). `tools/plants-office-models.py`: 5 plants, all caught.
+  `tests/levels.test.js` proves a level still being built is never
+  finished (shown to fail on the old rule). The lock panel now says when
+  the level before is still being built. Totals at merge: `npm test` 166
+  of 166; `ONLY=office node tools/drive.mjs` 157 checks; `node
+  tools/models.mjs` 94 checks; `tools/plants-office-page.py` 13 plants
+  (two new: a level finished before it's all built, the done box silent
+  about more coming), all caught. The drive clicks the real Check button
+  (`#doCheck`): the page hook's `check()` re-checks without counting the
+  job done.
+
+Next: stages 2 to 5: SO-J3 to J5; tickets SO-01 to 05; SO-06 to 10; five
+extra jobs and five extra tickets; the rack in the Physical tab.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

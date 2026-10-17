@@ -36,7 +36,7 @@ export const OFFICE_LAYOUT = {
   router: { x: 420, y: 80, px: 120, py: 210, room: "closet", lab: "above" },
   switch: { x: 230, y: 280, px: 230, py: 210, room: "closet", lab: "left" },
   msw: { x: 560, y: 280, px: 230, py: 120, room: "closet", lab: "right" },
-  tech: { x: 760, y: 280, px: 120, py: 300, room: "closet", lab: "left" },
+  tech: { x: 760, y: 420, px: 120, py: 300, room: "closet" },   /* below and right of the switch, so the console cable runs clear of both labels */
   pc: { x: 300, y: 440, px: 470, py: 140, room: "front" },
   printer: { x: 540, y: 440, px: 520, py: 400, room: "open" }
 };

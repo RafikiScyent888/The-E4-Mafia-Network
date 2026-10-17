@@ -1,5 +1,5 @@
 // AAA on painted pixels for the real site, state by state.
-// node tools/aaa.mjs tools/aaa-states.json [plantCSS]   states: [{name, page, ticket, seed, setup, wait, after, nogl, mode: "full"|"view"}]
+// node tools/aaa.mjs tools/aaa-states.json [plantCSS]   (ONLY=office,levels runs just the states named with those words)   states: [{name, page, ticket, seed, setup, wait, after, nogl, mode: "full"|"view"}]
 // wait: a page expression to wait for (the 3D model drawn); after: run once it's true; nogl: in a browser with WebGL off
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
 import url from 'node:url';
@@ -12,7 +12,7 @@ const B = await chromium.launch({ executablePath: CHROME, args: ['--headless=new
 const NOGL = await chromium.launch({ executablePath: CHROME, args: ['--headless=new', '--no-sandbox', '--disable-3d-apis'] });
 const lum = ([r, g, b]) => { const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
 const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
-const states = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')), plant = process.argv[3] || '';
+const states = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).filter(s => !process.env.ONLY || process.env.ONLY.split(',').some(o => s.name.indexOf(o) >= 0)), plant = process.argv[3] || '';   /* ONLY=office,levels: just the states whose names have those words */
 let total = 0, allBad = [], errs = [];
 for (const st of states) {
   const bad = []; let n = 0;

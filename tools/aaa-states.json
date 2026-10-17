@@ -574,5 +574,20 @@
   "name": "office: SO-J3 done, the ports described and the spares shut",
   "page": "build.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J3',true,4242); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); document.getElementById('doCheck').click(); document.querySelector('#devtabs [data-d=msw]').click();"
+ },
+ {
+  "name": "office: SO-J4 start, the empty IPAM sheet",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J4',true,4242); const J=c.T, good=J.def.solve(J.v)[0].rows; document.getElementById('ipam').scrollIntoView();"
+ },
+ {
+  "name": "office: SO-J4 sheet with mistakes marked, checks with Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J4',true,4242); const J=c.T, good=J.def.solve(J.v)[0].rows; const w=good.map(r=>Object.assign({},r)); w[0].mask='/'+(+good[0].mask.slice(1)+1); w[1].gw=good[1].bc; w[2].first=good[2].net; w[3]={net:'',mask:'',first:'',last:'',bc:'',gw:''}; c.act({t:'ipam',rows:w}); for(let i=0;i<5;i++) c.check(); document.getElementById('ipam').scrollIntoView();"
+ },
+ {
+  "name": "office: SO-J4 done, every block checks out",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J4',true,4242); const J=c.T, good=J.def.solve(J.v)[0].rows; c.act({t:'ipam',rows:good}); document.getElementById('doCheck').click();"
  }
 ]

@@ -16,6 +16,9 @@ PLANTS = [
  ("late collisions never climb", "js/net/swcli.js", "const t = (l.tick || 0) + 1;", "const t = 1;"),
  ("a duplex mismatch shows no errors", "js/net/swcli.js", "const d = duplexEnds(p, l); if (!d.mismatch) return null;", "return null;"),
  ("interface range stops at the copper ports", "js/net/swcli.js", "if (a < 1 || b > COPPER + SFP || a > b) return null;", "if (a < 1 || b > COPPER || a > b) return null;"),
+ ("IPAM row never marked bad", "js/build/app.js", 'r.ok ? " goodrow" : " badrow";', 'r.ok ? " goodrow" : "";'),
+ ("saving the sheet can't be undone", "js/build/engine.js", "pull: 1, ipam: 1 };", "pull: 1 };"),
+ ("the sheet gives the right mask", "js/net/ipam.js", 'if (usable < (+r.hosts || 0)) bad("mask", "Mask: a /" + x.p + " has " + usable + " usable addresses; " + (r.name || "this block") + " needs " + r.hosts + ".");', 'if (usable < (+r.hosts || 0)) { let q = x.p; while (Math.pow(2, 32 - q) - 2 < (+r.hosts || 0)) q--; bad("mask", "Mask: use /" + q + "."); }'),
  ("instructor lock doesn't relock levels", "js/desk/instructor.js", 'draw(); if (api.levels) api.levels(); } }, "Lock the instructor tools")', 'draw(); } }, "Lock the instructor tools")'),
 ]
 only = sys.argv[1:] 

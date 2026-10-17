@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (17 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1, SO-J2 and SO-J3, the managed switch. See "Level 2, stage 1" and "Level 2, SO-J3" below.**
+**Status (17 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1 to SO-J4, the managed switch, the IPAM sheet. See "Level 2, stage 1", "Level 2, SO-J3" and "Level 2, SO-J4" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
 from the Under the Hood tile (decision 6). See "The real site" below. The owner, 11
 October 2026: **"Build it like the preview you gave me just keep the layout
@@ -992,9 +992,39 @@ work order at a time inside the stages.
   Node plants 13 (new: a port left on auto accepted, the fibre slots left
   live accepted), all caught but the known unreachable one.
 
-Next: SO-J4 (subnet the office on the IPAM sheet) and SO-J5 (save, back
-up, baseline); then tickets SO-01 to 05; SO-06 to 10; five extra jobs and
-five extra tickets; the rack in the Physical tab.
+### Level 2, SO-J4: live 17 October 2026
+
+- **The address plan** (`plan.ipam` in `js/net/office.js`): the office's /24
+  and four groups (Staff, Guests, Printers and servers, Network gear) with
+  head counts from their own random stream (`ipamPlan`, seed ^ 0x1ba3), so
+  every other part of the office is drawn exactly as before.
+- **The IPAM sheet in build mode** (`ipamSheet` in `js/build/app.js`, shown
+  when a job has `ipam: true`): a card per group (network, mask or /prefix,
+  first and last usable, broadcast, gateway), typed by hand. Saving is an
+  action (`{ t: "ipam", rows }`, in the engine's `STATE` list, so Undo takes
+  it back and a saved job replays it; the replay test caught it missing).
+  What the checker (`js/net/ipam.js`) finds is shown for the saved sheet:
+  each row marked three ways (edge colour, inset rule, the words), each
+  wrong field flagged, the reason given, never the right value.
+- **SO-J4, Subnet the office:** every group's block written (causes: empty,
+  a blank row, an unreadable network or mask); big enough and no bigger
+  (VLSM); on its own boundary, inside the range, no overlaps; first usable,
+  last usable and broadcast right; the gateway the first usable, the
+  office's convention (blank, unusable, usable but not the first). Nothing
+  on the network changes; the plan is for the small business's VLANs. Any
+  plan the checker accepts passes (the tests try smallest-first with dotted
+  masks). The instructor's "one way" shows a worked plan.
+- Checks: `npm test` 169 (SO-J4's tempting wrong ways; the Undo test logs
+  in first when a job did no switch work); the office drive 235 (the sheet
+  filled through the page: a block too small marked and explained, never
+  the right mask, Undo, then a plan that fits); AAA on three states (empty,
+  mistakes with Mason's third rung, done); page plants 19 (new: a row never
+  marked, saving not undoable, the sheet naming the right mask) and Node
+  plants 16 (new: a block too big, overlaps, a gateway not the first
+  usable, each accepted), all caught but the known unreachable one.
+
+Next: SO-J5 (save, back up, baseline); then tickets SO-01 to 05; SO-06 to
+10; five extra jobs and five extra tickets; the rack in the Physical tab.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

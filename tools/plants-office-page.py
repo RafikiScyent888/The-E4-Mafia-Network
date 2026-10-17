@@ -13,6 +13,9 @@ PLANTS = [
  ("? needs Enter", "js/desk/window.js", '} else if (e.key === "?" && S) {', '} else if (e.key === "?" && false) {'),
  ("level finished before it is all built", "js/desk/levels.js", "return !L.later && built(L) && c.tickets", "return !L.later && c.tickets"),
  ("no word that more is coming", "js/build/app.js", '"That\'s everything on " + Lv.the + " so far. "', '"Done. "'),
+ ("late collisions never climb", "js/net/swcli.js", "const t = (l.tick || 0) + 1;", "const t = 1;"),
+ ("a duplex mismatch shows no errors", "js/net/swcli.js", "const d = duplexEnds(p, l); if (!d.mismatch) return null;", "return null;"),
+ ("interface range stops at the copper ports", "js/net/swcli.js", "if (a < 1 || b > COPPER + SFP || a > b) return null;", "if (a < 1 || b > COPPER || a > b) return null;"),
  ("instructor lock doesn't relock levels", "js/desk/instructor.js", 'draw(); if (api.levels) api.levels(); } }, "Lock the instructor tools")', 'draw(); } }, "Lock the instructor tools")'),
 ]
 only = sys.argv[1:] 

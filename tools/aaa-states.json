@@ -559,5 +559,20 @@
   "name": "levels: desk, small office done so far, level 3 locked (still being built)",
   "page": "index.html",
   "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS[0].tickets.map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS[0].jobs.concat(L.LEVELS[1].jobs).map(id=>[id,1]))})); document.querySelector('#left [data-level=\"3\"]').click();})()"
+ },
+ {
+  "name": "office: SO-J3 start, the brief and the records, show interfaces with late collisions climbing",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J3',true,4242); const J=c.T, p=J.sim.net.plan; document.querySelector('#devtabs [data-d=tech]').click(); const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; k(''); k(p.console); k('enable'); k(p.secret); k('show interfaces gi0/3'); k('show interfaces gi0/3');"
+ },
+ {
+  "name": "office: SO-J3 checks with Mason's third rung, show interfaces status",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J3',true,4242); const J=c.T, p=J.sim.net.plan; for(let i=0;i<5;i++) c.check(); document.querySelector('#devtabs [data-d=tech]').click(); const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; k(''); k(p.console); k('enable'); k(p.secret); k('show interfaces status');"
+ },
+ {
+  "name": "office: SO-J3 done, the ports described and the spares shut",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J3',true,4242); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); document.getElementById('doCheck').click(); document.querySelector('#devtabs [data-d=msw]').click();"
  }
 ]

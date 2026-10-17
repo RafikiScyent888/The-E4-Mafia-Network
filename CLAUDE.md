@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (17 October 2026): Level 2 (the small office) is going live stage by stage; stage 1 is live: the level lock, work orders SO-J1 and SO-J2, the managed switch. See "Level 2, stage 1" below.**
+**Status (17 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1, SO-J2 and SO-J3, the managed switch. See "Level 2, stage 1" and "Level 2, SO-J3" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
 from the Under the Hood tile (decision 6). See "The real site" below. The owner, 11
 October 2026: **"Build it like the preview you gave me just keep the layout
@@ -955,8 +955,46 @@ it, when the last stage lands.
   (`#doCheck`): the page hook's `check()` re-checks without counting the
   job done.
 
-Next: stages 2 to 5: SO-J3 to J5; tickets SO-01 to 05; SO-06 to 10; five
-extra jobs and five extra tickets; the rack in the Physical tab.
+### Level 2, SO-J3 (stage 2, first work order): live 17 October 2026
+
+Each verified work order goes live on its own (rule 1), so Level 2 grows a
+work order at a time inside the stages.
+- **The office printer** is an older model: its network card is fixed at
+  100 Mb/s, full duplex, and can't negotiate (`cfg.speed`/`cfg.duplex` in
+  `js/net/office.js`). A switch port left on auto senses its speed but not
+  its duplex and falls back to half: a **duplex mismatch**. The link stays
+  up; `show interfaces` on that port says Half-duplex, and the late
+  collisions (and collisions, output errors) climb every time you look,
+  on the simulation's clock (`duplexEnds` and the mismatch counters in
+  `swcli.js`; the half-duplex end counts late collisions, the full end CRC
+  errors and runts). Since SO-J2's move the printer's port shows it: SO-J3's
+  client says printing crawls. SO-01 (printing slow) builds on the same.
+- **SO-J3, The ports:** every port in use described as the office's records
+  say (`plan.desc`: UPLINK-ROUTER, FRONT-DESK-PC, OFFICE-PRINTER; checked by
+  the device cabled there, so the description must match what's really on
+  the port; case doesn't matter); the printer's port set by hand to 100,
+  full (causes: no link, left on auto, forced half, duplex set but speed
+  still auto); every unused port and fibre slot shut down, every port in use
+  on (causes: a port in use shut, copper ports live, fibre slots live);
+  saved; everything still works. It starts from SO-J2's work done.
+- **A check never changes the network:** `sim.switchLinks(id)` works the
+  links out without storing them; the printer check reads that. (A first
+  version called `syncSwitch` from the check, which stamped the clock into
+  the saved links and broke the exact-replay test; caught by it.)
+- Checks: `npm test` 168 of 168 (SO-J3's tempting wrong ways, and the late
+  collisions climbing then stopping at 0 once the port matches); the office
+  drive 199 checks (SO-J3 typed through the page on three offices: show
+  interfaces twice, the fix, show interfaces status, saved); AAA on three
+  new states (the brief and the climbing counters, the check with Mason's
+  third rung, done) and the stage-by-stage states now follow whichever work
+  order is last; page plants 16 (new: late collisions that never climb, a
+  mismatch with no errors, interface range stopping at the copper ports);
+  Node plants 13 (new: a port left on auto accepted, the fibre slots left
+  live accepted), all caught but the known unreachable one.
+
+Next: SO-J4 (subnet the office on the IPAM sheet) and SO-J5 (save, back
+up, baseline); then tickets SO-01 to 05; SO-06 to 10; five extra jobs and
+five extra tickets; the rack in the Physical tab.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

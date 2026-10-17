@@ -463,7 +463,7 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
       const lp = await p.$eval("#lockpanel", (n) => n.textContent).catch(() => "");
       check(/Finish the home level to open the small office/.test(lp) && /15 tickets \(on the Ticket Desk\) and 10 work orders \(in Build\) to go/.test(lp) && /HOME-01/.test(lp) && /J10/.test(lp), tag + "the lock panel says what's left, item by item");
       if (file !== "index.html") {
-        check(await p.$$eval("#queue button.locked", (l) => l.length === 2 && l.every((b) => b.getAttribute("aria-disabled") === "true" && /Locked/.test(b.textContent))), tag + "SO-J1 and SO-J2 are listed, locked");
+        check(await p.$$eval("#queue button.locked", (l, n) => l.length === n && l.every((b) => b.getAttribute("aria-disabled") === "true" && /Locked/.test(b.textContent)), LEVELS[1].jobs.length), tag + "the small office's " + LEVELS[1].jobs.length + " work orders are listed, locked");
         await p.click('#queue [data-j="SO-J1"]').catch(() => {}); await p.waitForTimeout(60);
         check((await BJ(p, () => window.__e4b.T.def.id)) === "J1", tag + "clicking a locked work order opens nothing");
       } else check(!(await p.$('#left a[href^="build.html#job="]')), tag + "the Ticket Desk links no locked work orders");
@@ -507,7 +507,7 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
   }
   const ser = async (p, line) => { await type(p, line); };
   const promptNow = (p) => p.$eval(".term .prompt", (n) => n.textContent);
-  for (const job of ["SO-J1", "SO-J2"]) for (const seed of [11, 2025, 777777]) {
+  for (const job of ["SO-J1", "SO-J2", "SO-J3"]) for (const seed of [11, 2025, 777777]) {
     const { p, ctx } = await opage("build.html", { net: homeDone.t, build: { current: job, j: { [job]: { seed } }, done: homeDone.j } });
     const tag = "office " + job + " " + seed + ": ";
     try {
@@ -553,6 +553,26 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
         await ser(p, "enable"); check((await p.getAttribute(".term .cmdin", "type")) === "password", tag + "enable asks for the secret, hidden");
         await ser(p, plan.secret); check((await promptNow(p)) === plan.hostname + "#", tag + "the secret opens privileged mode");
         await dev(p, "msw"); check(/SYSTEM/.test(await p.$eval(".pane", (n) => n.textContent)) && /CONSOLE|console cable/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "the switch's Lights tab shows its own lights and the console cable");
+      } else if (job === "SO-J3") {
+        /* the printer's port, as found: half duplex, and the late collisions climb each time you look */
+        await dev(p, "tech"); await ser(p, "");
+        for (const l of [plan.console, "enable", plan.secret]) await ser(p, l);
+        await ser(p, "show interfaces gi0/3"); const t1 = await term(p); await ser(p, "show interfaces gi0/3");
+        const lates = [...(await term(p)).matchAll(/(\d+) late collision/g)].map((m) => +m[1]);
+        check(/Half-duplex, 100Mb\/s/.test(t1) && lates.length >= 2 && lates[lates.length - 1] > lates[lates.length - 2], tag + "show interfaces on the printer's port: half duplex, late collisions climbing (" + lates.slice(-2).join(" then ") + ")");
+        t = await checkJob(p); check(/late collisions climb/.test(t) || (await p.$$("#check .rq.bad")).length === 3, tag + "the first check finds the descriptions, the printer's port and the unused ports to do");
+        for (const l of ["configure terminal", "interface gi0/1", "description " + plan.desc.router, "interface gi0/2", "description " + plan.desc.pc, "interface gi0/3", "description " + plan.desc.printer, "speed 100", "duplex full"]) await ser(p, l);
+        check((await promptNow(p)) === plan.hostname + "(config-if)#", tag + "interface configuration mode in the prompt");
+        await ser(p, "interface range gi0/4 - 28");
+        check((await promptNow(p)) === plan.hostname + "(config-if-range)#", tag + "interface range mode in the prompt");
+        await ser(p, "shutdown"); await ser(p, "end"); await ser(p, "show interfaces status");
+        const st = await term(p);
+        check(new RegExp("Gi0/3\\s+" + plan.desc.printer + "\\s+connected\\s+1\\s+full\\s+100\\b").test(st), tag + "show interfaces status: the printer's port named, connected, full duplex, 100");
+        check(/Gi0\/4\s+disabled/.test(st) && /Gi0\/28\s+disabled/.test(st), tag + "show interfaces status: the spare ports and fibre slots disabled");
+        await ser(p, "show interfaces gi0/3"); const t3 = await term(p);
+        check(/Full-duplex, 100Mb\/s/.test(t3.slice(t3.lastIndexOf("GigabitEthernet0/3 is"))) && /\b0 late collision/.test(t3.slice(t3.lastIndexOf("GigabitEthernet0/3 is"))), tag + "the printer's port now full duplex with no late collisions");
+        t = await checkJob(p); check((await p.$$("#check .rq.bad")).length === 1, tag + "not saved yet: only the saving line is not met");
+        await dev(p, "tech"); await ser(p, "copy running-config startup-config"); await ser(p, "");
       } else {
         for (const port of ["2", "3"]) { await p.click('#runs tr:has-text("Old 8-port switch, port ' + port + '") button:text-is("Pull")'); await p.waitForTimeout(40); }
         await p.click('#runs tr:has-text("Office router, LAN 1") button:text-is("Pull")'); await p.waitForTimeout(40);
@@ -582,7 +602,7 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
       check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
       await p.reload(); await p.waitForTimeout(350);
       check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)) && /done 1×|Done 1×/.test(await p.$eval('#queue [data-j="' + job + '"]', (n) => n.textContent)), tag + "still done after a reload, and the list counts it");
-      if (job === "SO-J2") check(/1 of 2 work orders done · more work orders and tickets are on the way/.test((await lv(p, 2)).text), tag + "the level counts its work orders and says more is coming (" + (await lv(p, 2)).text + ")");
+      if (job === "SO-J2") check(new RegExp("1 of " + LEVELS[1].jobs.length + " work orders done · more work orders and tickets are on the way").test((await lv(p, 2)).text), tag + "the level counts its work orders and says more is coming (" + (await lv(p, 2)).text + ")");
     } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
     await ctx.close();
   }
@@ -593,7 +613,8 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
 if (!process.env.ONLY || process.env.ONLY === "office") {
   const { LEVELS } = await import("../js/desk/levels.js");
   const net = { t: {}, solved: Object.fromEntries(LEVELS[0].tickets.map((id) => [id, 1])) };
-  const built = { j: {}, done: Object.fromEntries(LEVELS[0].jobs.concat(["SO-J1"]).map((id) => [id, 1])) };
+  const lastJob = LEVELS[1].jobs[LEVELS[1].jobs.length - 1];   /* every work order built so far done but the last, which the drive finishes */
+  const built = { j: {}, done: Object.fromEntries(LEVELS[0].jobs.concat(LEVELS[1].jobs.slice(0, -1)).map((id) => [id, 1])) };
   const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
   await ctx.addInitScript(([n, b]) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify(n)); localStorage.setItem("e4-build-v1", JSON.stringify(b)); sessionStorage.setItem("seeded", "1"); } }, [net, built]);
   const p = await ctx.newPage(); p.setDefaultTimeout(5000); p.on("pageerror", (e) => errs.push("office so far: " + e.message));
@@ -601,17 +622,18 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
   try {
     await p.goto(base + "build.html"); await p.waitForTimeout(350);
     if (plant) await p.evaluate(plant);
-    await p.evaluate(() => { const c = window.__e4b; c.openJob("SO-J2", true, 2026); const J = c.T; J.def.solve(J.v, J.sim).forEach((a) => c.act(a)); });
+    await p.evaluate((id) => { const c = window.__e4b; c.openJob(id, true, 2026); const J = c.T; J.def.solve(J.v, J.sim).forEach((a) => c.act(a)); }, lastJob);
     await p.click("#doCheck"); await p.waitForTimeout(150);   /* the real button: it's what counts a job done */
     const box = await p.$eval("#check", (n) => n.textContent);
-    check(/That's everything on the small office so far/.test(box) && /More work orders and tickets are on the way/.test(box), tag + "SO-J2's done box says that's everything so far, more on the way");
+    check(/That's everything on the small office so far/.test(box) && /More work orders and tickets are on the way/.test(box), tag + lastJob + "'s done box says that's everything so far, more on the way");
     check(!/Level 2 finished/.test(box), tag + "and does not call the level finished");
     await p.goto(base + "index.html"); await p.waitForTimeout(350);
     const L3 = await p.$eval('#left [data-level="3"]', (b) => ({ locked: b.parentNode.classList.contains("locked"), text: b.textContent }));
     check(L3.locked, tag + "Level 3 stays locked (" + L3.text + ")");
     await p.click('#left [data-level="3"]'); await p.waitForTimeout(60);
     check(/Small office is still being built: more work orders and tickets are on the way, and you've done everything ready so far/.test(await p.$eval("#lockpanel", (n) => n.textContent)), tag + "its lock panel says the small office is still being built");
-    check(/2 of 2 work orders done · more work orders and tickets are on the way/.test(await p.$eval('#left [data-level="2"]', (n) => n.textContent)), tag + "Level 2 counts 2 of 2 and says more is coming");
+    const nj = LEVELS[1].jobs.length;
+    check(new RegExp(nj + " of " + nj + " work orders done · more work orders and tickets are on the way").test(await p.$eval('#left [data-level="2"]', (n) => n.textContent)), tag + "Level 2 counts " + nj + " of " + nj + " and says more is coming");
   } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
   await ctx.close();
 }

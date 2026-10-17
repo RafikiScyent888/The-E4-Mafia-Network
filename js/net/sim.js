@@ -114,16 +114,22 @@ export class Sim {
   /* the managed switch's view of its own links, for its show commands: refreshed from the cables before it's asked */
   syncSwitch(id) {
     const x = this.d[id]; if (!x || x.kind !== "mswitch") return null;
+    x.sw.links = this.switchLinks(id); x.sw.uptime = (2 + this.n) + " minutes";
+    return x.sw;
+  }
+  /* what each of a managed switch's ports sees at the far end of its cable, worked out without changing anything
+     (a check must never change the network: a saved job has to replay exactly) */
+  switchLinks(id) {
+    const x = this.d[id]; if (!x || x.kind !== "mswitch") return {};
     const L = {};
     for (const c of this.cablesOf(id)) {
       if (c.kind !== "cat6") continue;
       const me = c.a.dev === id ? c.a : c.b, far = c.a.dev === id ? c.b : c.a, fd = this.d[far.dev];
       if (!/^\d+$/.test(me.port) || !me.seated || !far.seated || c.cond === "crushed" || (c.length || 0) > COPPER_MAX || !this.on(far.dev)) continue;
       const m = (fd.kind === "router" || fd.kind === "rogue" ? fd.mac : fd.ifaces ? fd.ifaces[0].mac : "02-00-5e-" + (hash(far.dev) >>> 0).toString(16).padStart(8, "0").slice(0, 6).replace(/(..)(..)(..)/, "$1-$2-$3")).replace(/-/g, "");
-      L["GigabitEthernet0/" + me.port] = { mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null };
+      L["GigabitEthernet0/" + me.port] = { mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n };
     }
-    x.sw.links = L; x.sw.uptime = (2 + this.n) + " minutes";
-    return x.sw;
+    return L;
   }
 
   /* ------------------------------------------------------------ the provider and the modem */

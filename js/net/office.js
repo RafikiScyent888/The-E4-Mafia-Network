@@ -48,7 +48,9 @@ export function makeOffice(seed) {
   const swHost = r.pick([2, 3, 5, 250, 252]), printerHost = r.pick([10, 11, 20, 21, 30]);
   const plan = {
     hostname: biz.tag + "-CLOSET-SW1", ip: prefix + "." + swHost, mask: mask, gw: gw, domain: biz.name.split(/[ &]/)[0].toLowerCase().replace(/[^a-z]/g, "") + ".lan",
-    secret: r.pick(SECRETS), console: r.pick(CONSOLES), user: r.pick(USERS), userPw: r.pick(USERPW)
+    secret: r.pick(SECRETS), console: r.pick(CONSOLES), user: r.pick(USERS), userPw: r.pick(USERPW),
+    /* the office's port descriptions, by what's plugged in (SO-J3) */
+    desc: { router: "UPLINK-ROUTER", pc: "FRONT-DESK-PC", printer: "OFFICE-PRINTER" }
   };
   const dev = {
     isp: { id: "isp", kind: "isp", label: "ISP", sub: "Internet" },
@@ -66,7 +68,8 @@ export function makeOffice(seed) {
     pc: { id: "pc", kind: "pc", label: "Front desk PC", sub: "DHCP", on: true, os: "windows", user: "frontdesk", host: "FRONTDESK-PC", printer: { name: "Office printer", port: prefix + "." + printerHost },
       ifaces: [{ name: "Ethernet", type: "eth", port: "NIC", mac: mac(r), desc: "Gigabit Network Connection", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] },
     printer: { id: "printer", kind: "printer", label: "Office printer", sub: prefix + "." + printerHost, on: true,
-      ifaces: [{ name: "Wired", type: "eth", port: "NET", mac: mac(r), cfg: { mode: "static", ip: prefix + "." + printerHost, mask: mask, gw: gw, dns: [gw] }, lease: null, apipa: null }] },
+      /* an older printer: its network card is fixed at 100 Mb/s, full duplex, and can't negotiate (SO-J3, SO-01) */
+      ifaces: [{ name: "Wired", type: "eth", port: "NET", mac: mac(r), cfg: { mode: "static", ip: prefix + "." + printerHost, mask: mask, gw: gw, dns: [gw], speed: "100", duplex: "full" }, lease: null, apipa: null }] },
     tech: { id: "tech", kind: "techlaptop", label: "Your laptop", sub: "console", on: true, os: "windows", user: "tech", host: "RAFIKI-TECH" }
   };
   const cab = function (id, a, ap, b, bp, len) { return { id: id, kind: "cat6", a: { dev: a, port: ap, seated: true }, b: { dev: b, port: bp, seated: true }, cond: "good", length: len }; };

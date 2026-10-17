@@ -216,3 +216,56 @@ test("the managed switch on the Physical tab: plugs where the cables are, lights
   assert.equal(physicalState(J.sim, "msw").ports[2].lights, "off", "a shut port goes dark");
   const O = physicalState(J.sim, "switch"); assert.equal(O.model, "switch8"); assert.ok(O.opts.plugged.every((x) => !x), "the old switch emptied");
 });
+
+test("SO-J3: the tempting wrong ways fail the right line, for the right reason; a duplex mismatch shows climbing late collisions", () => {
+  for (const s of seeds("SO-J3").slice(0, 60)) {
+    const def = byId["SO-J3"], J0 = B.open(def, s), p = J0.v.plan, sol = def.solve(J0.v, J0.sim);
+    const tryIt = (acts) => { const J = B.open(def, s); run(J, acts); return J; };
+    /* the printer's port: left to negotiate, forced half, duplex only, a speed the printer can't match */
+    let J = tryIt(drop(sol, (a) => a.line === "duplex full"));
+    assert.equal(line(J, "printer").real.id, "auto", "speed set, duplex left to negotiate: still a mismatch");
+    J = tryIt(swap(sol, "duplex full", "duplex half"));
+    assert.equal(line(J, "printer").real.id, "half");
+    J = tryIt(drop(sol, (a) => a.line === "speed 100"));
+    assert.equal(line(J, "printer").real.id, "speed", "duplex set by hand, speed still auto");
+    J = tryIt(swap(sol, "speed 100", "speed 1000"));
+    assert.equal(line(J, "printer").real.id, "link", "a speed the printer can't run: no link");
+    assert.equal(line(J, "keep").real.id, "print", "and nothing prints");
+    /* the descriptions: one missing, two swapped, one misspelt */
+    J = tryIt(drop(sol, (a) => a.line === "description " + p.desc.printer));
+    assert.equal(line(J, "desc").real.id, "none");
+    J = tryIt(swap(swap(sol, "description " + p.desc.pc, "description TMP"), "description " + p.desc.printer, "description " + p.desc.pc));
+    assert.equal(line(J, "desc").real.id, "swap", "the PC's name on the printer's port");
+    J = tryIt(swap(sol, "description " + p.desc.router, "description UPLINK-RTR"));
+    assert.equal(line(J, "desc").real.id, "wrong");
+    J = tryIt(swap(sol, "description " + p.desc.router, "description " + p.desc.router.toLowerCase()));
+    assert.ok(line(J, "desc").ok, "the records' wording in lower case still counts");
+    /* the unused ports: the copper only, none, or a range that takes in a port in use */
+    J = tryIt(swap(sol, "interface range gi0/4 - 28", "interface range gi0/4 - 24"));
+    assert.equal(line(J, "unused").real.id, "sfp", "the fibre slots left live");
+    J = tryIt(drop(sol, (a) => a.line === "shutdown"));
+    assert.equal(line(J, "unused").real.id, "open");
+    J = tryIt(swap(sol, "interface range gi0/4 - 28", "interface range gi0/3 - 28"));
+    assert.equal(line(J, "unused").real.id, "used", "the printer's port shut with the spares");
+    assert.equal(line(J, "keep").real.id, "print");
+    /* not saved */
+    J = tryIt(drop(sol, (a) => a.line === "copy running-config startup-config" || (a.line === "" && sol.indexOf(a) > 0)));
+    assert.equal(line(J, "saved").real.id, "since");
+  }
+});
+
+test("SO-J3: show interfaces on the printer's port: half duplex and late collisions that climb; set by hand, full duplex and none", () => {
+  const def = byId["SO-J3"], J = B.open(def, 5003), p = J.v.plan;
+  const lateNow = () => { const out = B.act(J, cli("do show interfaces gi0/3")).result; const t = (out.lines || out.out || []).join ? (out.lines || out.out).join("\n") : String(out.text || ""); return t; };
+  run(J, [cli(""), cli(p.console), cli("enable"), cli(p.secret)]);
+  const show = () => { const r = B.act(J, cli("show interfaces gi0/3")); return JSON.stringify(r); };
+  const a = show(), b = show();
+  const late = (t) => +(/(\d+) late collision/.exec(t) || [0, -1])[1];
+  assert.match(a, /Half-duplex, 100Mb\/s/);
+  assert.ok(late(a) > 0 && late(b) > late(a), "late collisions climb: " + late(a) + " then " + late(b));
+  run(J, [cli("configure terminal"), cli("interface gi0/3"), cli("speed 100"), cli("duplex full"), cli("end")]);
+  const c = show();
+  assert.match(c, /Full-duplex, 100Mb\/s/);
+  assert.equal(late(c), 0, "no late collisions once the port matches the printer");
+  void lateNow;
+});

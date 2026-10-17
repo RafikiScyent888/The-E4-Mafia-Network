@@ -76,6 +76,20 @@ function negotiated(p, l) {
   let dx; if (p.duplex !== "auto") dx = p.duplex; else if (l.duplex && l.duplex !== "auto") dx = "half"; else dx = "full";
   return { speed: sp, duplex: dx, auto: { speed: p.speed === "auto", duplex: p.duplex === "auto" } };
 }
+/* the duplex each end of a link runs at: a fixed end facing one that negotiates leaves the negotiating end on half duplex,
+   so the two disagree (a duplex mismatch); the link stays up, which is what makes it hard to spot */
+export function duplexEnds(p, l) {
+  const me = negotiated(p, l).duplex, farSet = l.duplex || "auto";
+  const far = farSet !== "auto" ? farSet : p.duplex !== "auto" ? "half" : "full";
+  return { me: me, far: far, mismatch: me !== far };
+}
+/* a duplex mismatch shows in the port's counters, climbing as time goes on: late collisions on the half-duplex end,
+   CRC errors and runts on the full-duplex end (l.tick: the simulation's clock) */
+function mismatchCounters(p, l) {
+  const d = duplexEnds(p, l); if (!d.mismatch) return null;
+  const t = (l.tick || 0) + 1;
+  return d.me === "half" ? { late: 37 * t + 11, collisions: 412 * t + 90, outErr: 37 * t + 11 } : { crc: 53 * t + 7, inErr: 61 * t + 9, runts: 8 * t + 2 };
+}
 
 const SHOW = [
   ["running-config", "Current operating configuration", function (S) { return runningConfig(S.sw); }],
@@ -262,7 +276,7 @@ function ifStatus(sw) {
   return L;
 }
 function ifDetail(sw, n) {
-  const p = sw.ports[n], l = sw.links[n], st = status(sw, n), up = st[0] === "up", ng = up ? negotiated(p, l) : null, c = (l && l.counters) || {};
+  const p = sw.ports[n], l = sw.links[n], st = status(sw, n), up = st[0] === "up", ng = up ? negotiated(p, l) : null, c = (l && (l.counters || (up ? mismatchCounters(p, l) : null))) || {};
   const L = [n + " is " + st[0] + ", line protocol is " + st[1] + (up ? " (connected)" : p.shutdown ? " (disabled)" : " (notconnect)"),
     "  Hardware is Gigabit Ethernet, address is " + sw.mac + " (bia " + sw.mac + ")"];
   if (p.desc) L.push("  Description: " + p.desc);

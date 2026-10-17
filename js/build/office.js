@@ -10,7 +10,7 @@
 import { makeOffice } from "../net/office.js";
 import { Sim } from "../net/sim.js";
 import { exec } from "../net/cmd.js";
-import { unsaved } from "../net/swcli.js";
+import { unsaved, duplexEnds, PORT_NAMES } from "../net/swcli.js";
 import { online } from "./jobs.js";
 
 const C = function (id, on, text, not, ev, skip) { return { id: id, on: !!on, text: text, not: not, ev: ev, skip: !!skip }; };
@@ -233,4 +233,97 @@ const SO2 = {
   }
 };
 
-export const OFFICE_JOBS = [SO1, SO2];
+/* ---------------------------------------------------------------- SO-J3 */
+const WHO = { router: "the router", pc: "the front desk PC", printer: "the printer" };
+/* the managed switch's port a device is cabled to ("GigabitEthernet0/3"), or null */
+const portOf = function (sim, id) { const c = onMsw(sim, id); if (!c) return null; return "GigabitEthernet0/" + (c.a.dev === "msw" ? c.a.port : c.b.port); };
+const shortPort = function (n) { return n.replace("GigabitEthernet", "Gi"); };
+function descCauses(sim, v) {
+  const sw = SW(sim), want = v.plan.desc, ids = ["router", "pc", "printer"].filter(function (id) { return portOf(sim, id); });
+  const has = function (id) { return (sw.ports[portOf(sim, id)].desc || "").trim().toUpperCase(); };
+  const blank = ids.find(function (id) { return !has(id); });
+  const swapped = ids.find(function (id) { const d = has(id); return d && d !== want[id] && ids.some(function (o) { return o !== id && want[o] === d; }); });
+  const wrong = ids.find(function (id) { const d = has(id); return d && d !== want[id]; });
+  return [
+    C("none", !!blank, "Some ports in use have no description", "Every port in use has a description.", blank ? "show interfaces status: the Name column is empty on " + shortPort(portOf(sim, blank)) + ", " + WHO[blank] + "'s port." : ""),
+    C("swap", !!swapped, "A description is on the wrong port: it names another device", "Each description is on its own device's port.", swapped ? shortPort(portOf(sim, swapped)) + " is " + WHO[swapped] + "'s port, but it's named " + has(swapped) + "." : ""),
+    C("wrong", !!wrong, "A description isn't the one in the office's records", "Every description matches the office's records.", wrong ? shortPort(portOf(sim, wrong)) + " is named " + has(wrong) + "." : "")];
+}
+function printerCauses(sim) {
+  const sw = SW(sim), n = portOf(sim, "printer"), p = n && sw.ports[n], l = n && sim.switchLinks("msw")[n];   /* read, never sync: a check changes nothing */
+  const up = !!(p && l && !p.shutdown && !(p.speed !== "auto" && l.speed && l.speed !== "auto" && p.speed !== l.speed));
+  const d = up ? duplexEnds(p, l) : null;
+  return [
+    C("link", !up, "The printer's port has no link", "The printer's port has a link.", n ? "show interfaces status: " + shortPort(n) + " is " + (p && p.shutdown ? "disabled" : "notconnect") + "." : "The printer isn't cabled to the new switch."),
+    C("auto", up && d.mismatch && p.duplex === "auto", "The port is left to negotiate, but the printer can't: the switch falls back to half duplex while the printer runs full", "The port's duplex is set, not left to negotiate.", "show interfaces " + (n ? shortPort(n) : "") + ": Half-duplex, and the late collisions climb every time you look."),
+    C("half", up && d.mismatch && p.duplex === "half", "The port is forced to half duplex; the printer runs full", "The port runs full duplex, like the printer.", "show interfaces " + (n ? shortPort(n) : "") + ": Half-duplex, late collisions climbing."),
+    C("speed", up && !d.mismatch && p.speed === "auto", "Its duplex is set, but its speed is still left to negotiate: set both to match a device that can't negotiate", "Its speed is set to match the printer.", "show running-config: " + (n ? "interface " + n : "the printer's port") + " has a duplex line but no speed line.")];
+}
+function unusedCauses(sim) {
+  const sw = SW(sim), used = {};
+  ["router", "pc", "printer"].forEach(function (id) { const n = portOf(sim, id); if (n) used[n] = id; });
+  const cut = Object.keys(used).find(function (n) { return sw.ports[n].shutdown; });
+  const open = PORT_NAMES.find(function (n) { return !used[n] && !sw.ports[n].sfp && !sw.ports[n].shutdown; });
+  const sfp = PORT_NAMES.find(function (n) { return !used[n] && sw.ports[n].sfp && !sw.ports[n].shutdown; });
+  return [
+    C("used", !!cut, "A port that's in use has been shut down", "Every port in use is on.", cut ? "show interfaces status: " + shortPort(cut) + ", " + WHO[used[cut]] + "'s port, is disabled." : ""),
+    C("open", !!open, "Unused ports are still live: anyone in the office could plug something in", "Every unused copper port is shut down.", open ? "show interfaces status: " + shortPort(open) + " is notconnect, not disabled." : ""),
+    C("sfp", !!sfp, "The fibre slots are unused but still live", "The unused fibre slots are shut down too.", sfp ? "show interfaces status: " + shortPort(sfp) + " (a fibre slot) is notconnect, not disabled." : "")];
+}
+const SO3 = {
+  id: "SO-J3", level: "office", title: "The ports: descriptions, the printer's speed and duplex, unused ports shut",
+  already: ["keep", "saved"],
+  start(seed) {
+    const b = SO2.start(seed), sim = b.sim;
+    for (const a of SO2.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    sim.cli = {};   /* a few days later: the console asks for its password again */
+    return { sim: sim, v: b.v };
+  },
+  brief() { return { quote: "Since you moved us onto the new switch, printing crawls: a page can take minutes, and some never come out. And our insurer's checklist says every switch port should say what's plugged into it, and the spare ones should be switched off.", from: "the office manager" }; },
+  mason: "Read before you change anything: show interfaces status lists every port, and show interfaces on one port shows how it's really running. Look twice: errors that climb are the clue.",
+  limits: function (v) { return ["The office's records, port descriptions: the router's port " + v.plan.desc.router + ", the front desk PC's " + v.plan.desc.pc + ", the printer's " + v.plan.desc.printer + ".", "The printer is an older model: its network card is fixed at 100 Mb/s, full duplex, and can't negotiate.", "Your laptop is still on the console; the switch's passwords are the office's."]; },
+  reqs: [{
+    id: "desc", text: "Every port in use is described as the office's records say",
+    causes: descCauses,
+    ok: function () { return "Each port in use says what's plugged into it, as the records say."; },
+    rung1: function () { return "On the switch: show interfaces status, and read the Name column against the records."; },
+    rung2: function () { return "A description is set on the port itself, in interface configuration. It's only a label, so it has to be checked against what's really cabled there."; }
+  }, {
+    id: "printer", text: "The printer's port matches the printer: 100 Mb/s, full duplex, no errors climbing",
+    causes: printerCauses,
+    ok: function (sim) { return "The printer's port runs 100 Mb/s, full duplex, set by hand to match the printer, with no errors climbing."; },
+    rung1: function () { return "show interfaces on the printer's port, twice: read the duplex line, then the late collisions."; },
+    rung2: function () { return "Negotiation needs both ends to take part. When one end is fixed, the other can sense its speed but not its duplex, and falls back to half. Set the port by hand to match the device."; }
+  }, {
+    id: "unused", text: "Every unused port is shut down, the fibre slots too; every port in use stays on",
+    causes: unusedCauses,
+    ok: function () { return "The unused ports and fibre slots are shut down; the three in use are on."; },
+    rung1: function () { return "show interfaces status: which ports are notconnect, and which say disabled?"; },
+    rung2: function () { return "A port that isn't shut down will bring up whatever is plugged into it. Shutting unused ports is a basic hardening step, and a range of ports can be configured at once."; }
+  }, Object.assign({}, L_SAVED), {
+    id: "keep", text: "Everything still works: the front desk PC online, and printing",
+    causes: keepCauses,
+    ok: function () { return "The front desk PC is online and reaches the printer."; },
+    rung1: function () { return "On the front desk PC: ping the router and the printer. On the switch: show interfaces status."; },
+    rung2: function () { return "Shutting a port takes down whatever is on it. Check which ports are really in use before shutting a range."; }
+  }],
+  solve(v) {
+    const p = v.plan;
+    return [cli(""), cli(p.console), cli("enable"), cli(p.secret), cli("configure terminal"),
+      cli("interface gi0/1"), cli("description " + p.desc.router), cli("interface gi0/2"), cli("description " + p.desc.pc),
+      cli("interface gi0/3"), cli("description " + p.desc.printer), cli("speed 100"), cli("duplex full"),
+      cli("interface range gi0/4 - 28"), cli("shutdown"), cli("end"), cli("copy running-config startup-config"), cli("")];
+  },
+  answer(v) {
+    return ["On the console (its password, enable and the secret): configure terminal.",
+      "interface gi0/1, description " + v.plan.desc.router + "; interface gi0/2, description " + v.plan.desc.pc + "; interface gi0/3, description " + v.plan.desc.printer + ", speed 100, duplex full.",
+      "interface range gi0/4 - 28, shutdown; end.",
+      "copy running-config startup-config. Check with show interfaces status, and show interfaces gi0/3 twice: no late collisions climbing."];
+  },
+  summary(v, sim) {
+    return ["Every port in use says what's on it, as the office's records say.", "The printer's port is set to 100 Mb/s, full duplex, to match the printer: no more late collisions, and printing runs at full speed.",
+      "The unused ports and fibre slots are shut down.", "It's all saved."];
+  }
+};
+
+export const OFFICE_JOBS = [SO1, SO2, SO3];

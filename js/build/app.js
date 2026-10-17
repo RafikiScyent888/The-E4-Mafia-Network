@@ -13,7 +13,7 @@ import { newSeed, dyslexia, el } from "../desk/store.js";
 import { drawLogical, drawPlan, plates } from "../desk/draw.js";
 import { renderWindow, forgetTerminals, focusCmd } from "../desk/window.js";
 import { setupInstructor } from "../desk/instructor.js";
-import { LEVELS, isOpen, levelOfJob, finished, progress, openHere, setOpenHere, instructorOn } from "../desk/levels.js";
+import { LEVELS, isOpen, levelOfJob, finished, built, counts, progress, openHere, setOpenHere, instructorOn } from "../desk/levels.js";
 import { levelList, lockPanel } from "../desk/levelsui.js";
 
 const KEY = "e4-build-v1";
@@ -88,7 +88,7 @@ function renderLeft() {
     ol.appendChild(el("li", { class: "tier" }, "Your own"));
     JOBS.filter(function (d) { return d.free; }).forEach(item);
   }
-  if (L.coming) ol.appendChild(el("li", { class: "tier" }, "Tickets: " + L.coming));
+  if (L.coming) ol.appendChild(el("li", { class: "tier" }, L.coming.charAt(0).toUpperCase() + L.coming.slice(1)));
   host.appendChild(ol);
 }
 function renderTitle() {
@@ -243,6 +243,7 @@ function renderCheck() {
       box.appendChild(el("p", null, "Every line of the order checked by the network itself, in " + last.n + " check" + (last.n === 1 ? "" : "s") + "."));
       if (!J.def.free && finished(Lv, progress()) && LEVELS[Lv.n]) box.appendChild(el("p", null, el("b", null, "Level " + Lv.n + " finished. "), LEVELS[Lv.n].later ? LEVELS[Lv.n].name + " is still being built." : LEVELS[Lv.n].the.replace(/^./, function (m) { return m.toUpperCase(); }) + " is open: level " + (Lv.n + 1) + "."));
       else if (after && Ln.n !== Lv.n && !next) box.appendChild(el("p", null, "That's every work order on " + Lv.the + ". " + Ln.the.replace(/^./, function (m) { return m.toUpperCase(); }) + " opens when " + Lv.the + " is finished: its tickets are on the Ticket Desk."));
+      else if (!J.def.free && !built(Lv) && !after) { const c = counts(Lv, progress()); if (c.jobs === c.njobs && c.tickets === c.ntickets) box.appendChild(el("p", null, el("b", null, "That's everything on " + Lv.the + " so far. "), "More work orders and tickets are on the way; " + Lv.the + " is finished when they're all done.")); }
       box.appendChild(el("div", { class: "boardbar" }, el("button", { type: "button", class: "btn", onclick: function () { openJob(J.def.id, true); window.scrollTo({ top: 0 }); } }, "Start this job again (a new house)"),
         next ? el("button", { type: "button", class: "btn ghost", onclick: function () { openJob(next.id, false); window.scrollTo({ top: 0 }); } }, "Next job: " + next.id) : null));
       body.appendChild(box);

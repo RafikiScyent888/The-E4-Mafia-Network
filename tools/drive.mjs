@@ -582,10 +582,38 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
       check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
       await p.reload(); await p.waitForTimeout(350);
       check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)) && /done 1×|Done 1×/.test(await p.$eval('#queue [data-j="' + job + '"]', (n) => n.textContent)), tag + "still done after a reload, and the list counts it");
-      if (job === "SO-J2") check(/1 of 2 work orders done · its tickets come next/.test((await lv(p, 2)).text), tag + "the level counts its work orders (" + (await lv(p, 2)).text + ")");
+      if (job === "SO-J2") check(/1 of 2 work orders done · more work orders and tickets are on the way/.test((await lv(p, 2)).text), tag + "the level counts its work orders and says more is coming (" + (await lv(p, 2)).text + ")");
     } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
     await ctx.close();
   }
+}
+
+/* stage by stage (the owner, 17 October 2026): with everything built so far on the small office done, it says more is
+   on the way, and it doesn't count as finished, so Level 3 stays locked and says why */
+if (!process.env.ONLY || process.env.ONLY === "office") {
+  const { LEVELS } = await import("../js/desk/levels.js");
+  const net = { t: {}, solved: Object.fromEntries(LEVELS[0].tickets.map((id) => [id, 1])) };
+  const built = { j: {}, done: Object.fromEntries(LEVELS[0].jobs.concat(["SO-J1"]).map((id) => [id, 1])) };
+  const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
+  await ctx.addInitScript(([n, b]) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify(n)); localStorage.setItem("e4-build-v1", JSON.stringify(b)); sessionStorage.setItem("seeded", "1"); } }, [net, built]);
+  const p = await ctx.newPage(); p.setDefaultTimeout(5000); p.on("pageerror", (e) => errs.push("office so far: " + e.message));
+  const tag = "levels, the small office done so far: ";
+  try {
+    await p.goto(base + "build.html"); await p.waitForTimeout(350);
+    if (plant) await p.evaluate(plant);
+    await p.evaluate(() => { const c = window.__e4b; c.openJob("SO-J2", true, 2026); const J = c.T; J.def.solve(J.v, J.sim).forEach((a) => c.act(a)); c.check(); });
+    await p.waitForTimeout(150);
+    const box = await p.$eval("#check", (n) => n.textContent);
+    check(/That's everything on the small office so far/.test(box) && /More work orders and tickets are on the way/.test(box), tag + "SO-J2's done box says that's everything so far, more on the way");
+    check(!/Level 2 finished/.test(box), tag + "and does not call the level finished");
+    await p.goto(base + "index.html"); await p.waitForTimeout(350);
+    const L3 = await p.$eval('#left [data-level="3"]', (b) => ({ locked: b.parentNode.classList.contains("locked"), text: b.textContent }));
+    check(L3.locked, tag + "Level 3 stays locked (" + L3.text + ")");
+    await p.click('#left [data-level="3"]'); await p.waitForTimeout(60);
+    check(/Small office is still being built, and you've done everything ready so far/.test(await p.$eval("#left", (n) => n.textContent)), tag + "its lock panel says the small office is still being built");
+    check(/2 of 2 work orders done · more work orders and tickets are on the way/.test(await p.$eval('#left [data-level="2"]', (n) => n.textContent)), tag + "Level 2 counts 2 of 2 and says more is coming");
+  } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+  await ctx.close();
 }
 
 console.log(errs.length ? "PAGE ERRORS\n" + [...new Set(errs)].join("\n") : "no page errors");

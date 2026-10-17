@@ -240,7 +240,57 @@ C.push(async () => {
   await ctx.close();
 });
 
-for (const c of C) { try { await c(); } catch (e) { bad.push("crashed: " + e.message.split("\n")[0]); } }
+/* Level 2, build mode: the managed switch and the old 8-port, drawn as the simulation says.
+   SO-J1: racked, the console cable in CONSOLE, SYSTEM and POWER lit, no network cables yet.
+   SO-J2 done: the router and both desks in ports 1 to 3, lit; port 4 empty and dark; the old
+   switch emptied, its lights dark. ONLY=office runs just these. */
+async function office(job, seed, steps) {
+  const ctx = await GL.newContext({ viewport: { width: 900, height: 1000 }, reducedMotion: "reduce" });
+  await ctx.addInitScript(() => { try { sessionStorage.setItem("e4-instructor", "1"); } catch (e) { } });   /* the level lock opened, as the instructor */
+  const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push("build " + job + ": " + e.message));
+  await p.goto(base + "build.html"); await p.waitForFunction(() => window.__e4b);
+  if (plant) await p.evaluate(plant);
+  await p.evaluate(([job, seed, steps]) => { const c = window.__e4b; c.openJob(job, true, seed); const J = c.T, all = J.def.solve(J.v, J.sim); (steps == null ? all : all.slice(0, steps)).forEach((a) => c.act(a)); }, [job, seed, steps]);
+  return { p, ctx };
+}
+const CO = [];
+CO.push(async () => {
+  const { p, ctx } = await office("SO-J1", 5101, 2);
+  await physical(p, "msw", "Console port");
+  const k = await plugAt(p, "CONSOLE"); check(!k.missing && k.plug && k.off < 1, "SO-J1 managed switch: the console cable is in CONSOLE " + JSON.stringify(k));
+  await led(p, "SO-J1 managed switch SYSTEM", null, "SYSTEM", "green");
+  await led(p, "SO-J1 managed switch POWER", null, "POWER", "green");
+  for (const port of ["1", "2", "3"]) { const q = await plugAt(p, port); check(!q.missing && q.plug === false, "SO-J1 managed switch: port " + port + " is empty before the move " + JSON.stringify(q)); }
+  await ctx.close();
+});
+CO.push(async () => {
+  const { p, ctx } = await office("SO-J2", 5102);
+  await physical(p, "msw", "Front close-up");
+  for (const port of ["1", "2", "3"]) {
+    const q = await plugAt(p, port); check(!q.missing && q.plug && q.off < 1, "SO-J2 managed switch: a cable is in port " + port + " " + JSON.stringify(q));
+    await led(p, "SO-J2 managed switch port " + port + " link", port, "link", "green");
+  }
+  const e = await plugAt(p, "4"); check(!e.missing && e.plug === false, "SO-J2 managed switch: port 4 is empty " + JSON.stringify(e));
+  await led(p, "SO-J2 managed switch port 4 link", "4", "link", "off");
+  const k = await plugAt(p, "CONSOLE"); check(!k.missing && k.plug, "SO-J2 managed switch: the console cable is still in CONSOLE");
+  await physical(p, "switch", "Ports close-up");
+  for (const port of ["1", "2", "3", "4", "5", "6", "7", "8"]) { const q = await plugAt(p, port); check(!q.missing && q.plug === false, "SO-J2 old switch: port " + port + " is empty " + JSON.stringify(q)); }
+  for (const n of ["1", "2", "3"]) await led(p, "SO-J2 old switch LINK " + n, null, "LINK " + n, "off");
+  await ctx.close();
+});
+/* SO-J2 part way: the printer's cable pulled from the old switch and not yet laid: its port empty and dark, the PC's still lit */
+CO.push(async () => {
+  const { p, ctx } = await office("SO-J2", 5103, 3);
+  await physical(p, "switch", "Ports close-up");
+  const st = await p.evaluate(() => { const s = window.__e4b.T.sim, out = {}; ["router", "pc", "printer"].forEach((d) => { const c = s.cablesOf(d).find((x) => x.a.dev === "switch" || x.b.dev === "switch"); out[d] = c ? (c.a.dev === "switch" ? c.a.port : c.b.port) : null; }); return out; });
+  check(st.router === null && st.pc === null && st.printer === null, "SO-J2 step 3: all three cables are off the old switch in the sim " + JSON.stringify(st));
+  const lit = await p.evaluate(() => window.__e4b.T.sim.cablesOf("switch").length);
+  check(lit === 0, "SO-J2 step 3: the old switch has no cables left in the sim (" + lit + ")");
+  for (const port of ["1", "2", "3"]) { const q = await plugAt(p, port); check(!q.missing && q.plug === false, "SO-J2 step 3 old switch: port " + port + " drawn empty " + JSON.stringify(q)); }
+  await ctx.close();
+});
+const RUN = process.env.ONLY === "office" ? CO : C.concat(CO);
+for (const c of RUN) { try { await c(); } catch (e) { bad.push("crashed: " + e.message.split("\n")[0]); } }
 
 /* without WebGL: the still and the words, no errors */
 const NOGL = await chromium.launch({ executablePath: CHROME, args: ["--headless=new", "--no-sandbox", "--disable-3d-apis"] });

@@ -30,7 +30,7 @@ export function renderQueue(host, ctx) {
     host.appendChild(el("h2", null, "Queue · Level " + L.n + " · " + L.name));
     if (!isOpen(sel)) { host.appendChild(lockPanel(sel)); return; }
     const ol = el("ol", { id: "queue" });
-    ol.appendChild(el("li", { class: "tier" }, "Tickets: " + (L.coming || "built later")));
+    ol.appendChild(el("li", { class: "tier" }, L.coming ? L.coming.charAt(0).toUpperCase() + L.coming.slice(1) : "Tickets: built later"));
     if (L.jobs.length) {
       ol.appendChild(el("li", { class: "tier" }, "Work orders, in Build"));
       L.jobs.forEach(function (id) { ol.appendChild(el("li", null, el("a", { class: "joblink", href: "build.html#job=" + id }, el("span", { class: "num" }, id), el("span", { class: "what" }, titleOf(id)), el("span", { class: "st" }, "Open it in Build")))); });

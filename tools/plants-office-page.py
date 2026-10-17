@@ -11,6 +11,8 @@ PLANTS = [
  ("undo skips switch lines", "js/build/engine.js", "&& !J.net[i].cli) i--;", ") i--;"),
  ("console drawn as patch cable", "js/desk/draw.js", 'r.c.kind === "console" ? "run-con" : "run"', '"run"'),
  ("? needs Enter", "js/desk/window.js", '} else if (e.key === "?" && S) {', '} else if (e.key === "?" && false) {'),
+ ("level finished before it is all built", "js/desk/levels.js", "return !L.later && built(L) && c.tickets", "return !L.later && c.tickets"),
+ ("no word that more is coming", "js/build/app.js", '"That\'s everything on " + Lv.the + " so far. "', '"Done. "'),
  ("instructor lock doesn't relock levels", "js/desk/instructor.js", 'draw(); if (api.levels) api.levels(); } }, "Lock the instructor tools")', 'draw(); } }, "Lock the instructor tools")'),
 ]
 only = sys.argv[1:] 

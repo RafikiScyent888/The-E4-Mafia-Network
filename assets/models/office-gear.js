@@ -246,8 +246,10 @@ export function desktopSwitch8(o = {}) {
   const f = new THREE.Group(); f.name = "panel:Ports"; at(f, 0, Y0, D / 2 + 0.75); g.add(f);
   /* the lights: power, then a link light for each port, in a grid as photographed */
   const on = o.plugged || [true, true, true, true, true, true, true, false];
-  [[-84, 18.5, "POWER", true]].concat(on.map(function (p, i) { return [-96 + (i % 4) * 6, 12.5 - Math.floor(i / 4) * 5.4 + 5.4, String(i + 1), p]; })).forEach(function (l) {
-    const d = led(COL.ledGreen, l[3], 0.95); d.userData.role = l[2] === "POWER" ? "POWER" : "LINK " + l[2]; f.add(at(d, l[0] + (l[2] === "POWER" ? -12 : 0), l[1], 0.3));
+  /* POWER sits to the left of the 4 x 2 grid of port lights (until 17 October 2026 it sat 0.6 mm from port 1's,
+     so a dark port 1 read as lit: caught by tools/models.mjs) */
+  [[-104, 15.2, "POWER", true]].concat(on.map(function (p, i) { return [-96 + (i % 4) * 6, 12.5 - Math.floor(i / 4) * 5.4 + 5.4, String(i + 1), p]; })).forEach(function (l) {
+    const d = led(COL.ledGreen, l[3], 0.95); d.userData.role = l[2] === "POWER" ? "POWER" : "LINK " + l[2]; f.add(at(d, l[0], l[1], 0.3));
   });
   const jacks = [];
   for (let i = 0; i < 8; i++) { const j = rj45Jack({ name: String(i + 1), metal: true, on: [on[i], on[i]], actColor: COL.ledGreen }); at(j, -28 + i * 16.6, 13.6, 0.2); f.add(j); jacks.push(j); }

@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (17 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1 to SO-J4, the managed switch, the IPAM sheet. See "Level 2, stage 1", "Level 2, SO-J3" and "Level 2, SO-J4" below.**
+**Status (17 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1 to SO-J5, the managed switch, the IPAM sheet, your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4" and "Level 2, SO-J5" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
 from the Under the Hood tile (decision 6). See "The real site" below. The owner, 11
 October 2026: **"Build it like the preview you gave me just keep the layout
@@ -1023,8 +1023,91 @@ work order at a time inside the stages.
   plants 16 (new: a block too big, overlaps, a gateway not the first
   usable, each accepted), all caught but the known unreachable one.
 
-Next: SO-J5 (save, back up, baseline); then tickets SO-01 to 05; SO-06 to
-10; five extra jobs and five extra tickets; the rack in the Physical tab.
+### Level 2, SO-J5: live 17 October 2026
+
+- **The switch** (`js/net/swcli.js`):
+  - `banner motd`: the first character after `motd` is the delimiter and the
+    message runs to the next one. On one line it ends there; if the line ends
+    first, the message carries on over the following lines ("Enter TEXT
+    message. End with the character 'X'.", no prompt meanwhile). A delimiter
+    that turns up in the wording cuts the banner short, as on the real thing.
+    `show running-config` prints it as `banner motd ^C...^C`. It shows as the
+    console wakes (before "User Access Verification"), before a Telnet
+    password, and after an SSH login. `banner` is in `CONFIG_KEYS`, so it is
+    saved and reloaded like the rest.
+  - `copy running-config tftp:` and `copy startup-config tftp:`: "Address or
+    name of remote host []?", then "Destination filename [<hostname in lower
+    case>-confg]?", then `!!` and the bytes copied, or `.....` and "%Error
+    opening tftp://host/file (Timed out)". `tftp://host/file` on the line
+    fills both defaults. With nothing saved: "%Error opening
+    nvram:/startup-config (No such file or directory)". The file is the
+    configuration from its first `!` to `end` (`configText`). The session's
+    `tftp` callback, given by `cmd.js`, does the sending.
+- **Your laptop** (`js/net/office.js`, `cmd.js`, `pages.js`, `window.js`):
+  - Its own Ethernet port (`ETH`, the ETHERNET on its model). It asks for an
+    address by DHCP when plugged in; its hardware address comes from its own
+    random stream (seed ^ 0x7ec4), so every office is drawn as before.
+  - Tabs: Serial terminal, **Command Prompt** (Windows', with `dir`; its own
+    logins, kept under `tech/win`, so an SSH session there is separate from
+    the console), **TFTP server** (start or stop it; what it listens on; the
+    files received, each with Read; the server log), and **Physical**.
+  - The TFTP server (`tech.tftp`; `{ t: "tftp", on }` is in the engine's
+    `STATE`) takes a file only while running, from a switch that can reach it.
+    A file of the same name is replaced. Windows' firewall still drops ping to
+    the laptop, as on any Windows computer.
+  - The 3D model (`techLaptop` in `office-gear.js`): the photographed laptop
+    with its Ethernet cable when it's cabled, the serial adapter's USB-C plug
+    and grey cord while the console cable is in. On screen: the TFTP server
+    while it runs, otherwise the serial terminal or Command Prompt.
+- **An opened port brings DHCP** (`cmd.js` `exec`): links are worked out
+  again after every command, so a device cabled to a port brought up by
+  `no shutdown` gets its link and asks for an address. Before this, the
+  laptop on a port opened after it was cabled got no address at all.
+- **Two cables between the same two devices** (your laptop's console and
+  Ethernet to the switch) are drawn side by side on the logical diagram. The
+  first stays where it always ran; the second fans out from the busier
+  device, with its port label further along, clear of the other labels.
+- **SO-J5, a warning banner, a backup and a baseline:**
+  - The banner is the records' wording (`plan.banner`). Causes: none; only
+    part of it (the delimiter in the wording); other words. Case and spacing
+    don't matter, so several lines are fine.
+  - Saved.
+  - A backup under the switch's own name, and the baseline under the records'
+    name (`plan.baseline`). Both must hold what's saved. Causes, in order:
+    - the server isn't running, and the laptop isn't on the network (these
+      two count only while nothing has landed at all);
+    - no copy, or a copy under another name;
+    - a copy of the running configuration taken with changes not saved;
+    - a copy older than the last save.
+  - Your laptop unplugged, every spare port shut again, every port in use on.
+  - Everything still works.
+  - **The trap, on purpose:** opening a spare port and saving it, copying,
+    then shutting it and saving again leaves a stale backup. The way through
+    is to copy the startup configuration while the opened port isn't saved,
+    or to plug the laptop into a spare router port. Mason's opening line:
+    "Know which configuration you're copying before you copy it."
+  - The instructor's "one way" uses the address the laptop will be given
+    (`v.lapIp`, from the router's `offer`, which changes nothing).
+- **Checks:**
+  - `npm test`: 171, with two new SO-J5 tests. They cover the tempting wrong
+    ways, two other right ways (the router's port; a running copy once all
+    is saved), the prompts, the two terminals, and the TFTP tab matching the
+    model.
+  - The office drive: 295 checks. SO-J5 is done through the page on three
+    offices, with a copy of the running configuration caught on the way.
+  - AAA: six SO-J5 states, all passing.
+  - `ONLY=office node tools/models.mjs`: 42 checks.
+  - Plants, all caught: page 8 new; Node 8 new (with the known unreachable
+    one still missed); models 3 new.
+  - The plant scripts now run in whichever checkout they're in.
+- **A blind spot in `tools/aaa.mjs`:** it skips text clipped by a scrolling
+  ancestor, but not text clipped by its own element. So a `pre` that scrolls
+  itself, or a screen-reader-only span, is measured where it isn't painted.
+  Keep scrolling text inside a scrolling box, as the terminals and the TFTP
+  reader do. The checker isn't changed yet.
+
+Next: tickets SO-01 to 05; SO-06 to 10; five extra jobs and five extra
+tickets; the rack in the Physical tab.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

@@ -261,12 +261,17 @@ function printerCauses(sim) {
     C("half", up && d.mismatch && p.duplex === "half", "The port is forced to half duplex; the printer runs full", "The port runs full duplex, like the printer.", "show interfaces " + (n ? shortPort(n) : "") + ": Half-duplex, late collisions climbing."),
     C("speed", up && !d.mismatch && p.speed === "auto", "Its duplex is set, but its speed is still left to negotiate: set both to match a device that can't negotiate", "Its speed is set to match the printer.", "show running-config: " + (n ? "interface " + n : "the printer's port") + " has a duplex line but no speed line.")];
 }
-function unusedCauses(sim) {
+/* the switch's ports: the ones in use (by whose device), a port in use shut down, a spare copper port live, a spare fibre slot live */
+function spares(sim) {
   const sw = SW(sim), used = {};
   ["router", "pc", "printer"].forEach(function (id) { const n = portOf(sim, id); if (n) used[n] = id; });
   const cut = Object.keys(used).find(function (n) { return sw.ports[n].shutdown; });
   const open = PORT_NAMES.find(function (n) { return !used[n] && !sw.ports[n].sfp && !sw.ports[n].shutdown; });
   const sfp = PORT_NAMES.find(function (n) { return !used[n] && sw.ports[n].sfp && !sw.ports[n].shutdown; });
+  return { used: used, cut: cut, open: open, sfp: sfp };
+}
+function unusedCauses(sim) {
+  const x = spares(sim), used = x.used, cut = x.cut, open = x.open, sfp = x.sfp;
   return [
     C("used", !!cut, "A port that's in use has been shut down", "Every port in use is on.", cut ? "show interfaces status: " + shortPort(cut) + ", " + WHO[used[cut]] + "'s port, is disabled." : ""),
     C("open", !!open, "Unused ports are still live: anyone in the office could plug something in", "Every unused copper port is shut down.", open ? "show interfaces status: " + shortPort(open) + " is notconnect, not disabled." : ""),
@@ -492,11 +497,7 @@ function copyCauses(sim, name, others, what) {
 function backupCauses(sim, v) { const bn = v.plan.baseline.toLowerCase(); return copyCauses(sim, backupName(sim), function (n) { return n !== bn; }, "backup"); }
 function baselineCauses(sim, v) { const bk = backupName(sim); return copyCauses(sim, v.plan.baseline, function (n) { return n !== bk; }, "baseline copy"); }
 function tidyCauses(sim) {
-  const sw = SW(sim), used = {}, lap = sim.cablesOf("tech").find(function (c) { return c.kind === "cat6"; });
-  ["router", "pc", "printer"].forEach(function (id) { const n = portOf(sim, id); if (n) used[n] = id; });
-  const cut = Object.keys(used).find(function (n) { return sw.ports[n].shutdown; });
-  const open = PORT_NAMES.find(function (n) { return !used[n] && !sw.ports[n].sfp && !sw.ports[n].shutdown; });
-  const sfp = PORT_NAMES.find(function (n) { return !used[n] && sw.ports[n].sfp && !sw.ports[n].shutdown; });
+  const x = spares(sim), used = x.used, cut = x.cut, open = x.open, sfp = x.sfp, lap = sim.cablesOf("tech").find(function (c) { return c.kind === "cat6"; });
   return [
     C("plugged", !!lap, "Your laptop is still cabled to the office network", "Your laptop's Ethernet is unplugged.", "Cable runs: your laptop's ETHERNET still has a cable in it."),
     C("used", !!cut, "A port that's in use has been shut down", "Every port in use is on.", cut ? "show interfaces status: " + shortPort(cut) + ", " + WHO[used[cut]] + "'s port, is disabled." : ""),

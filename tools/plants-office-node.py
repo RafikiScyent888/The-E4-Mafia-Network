@@ -1,5 +1,5 @@
 import subprocess, shutil, os
-os.chdir("/home/user/the-e4-mafia-network")
+os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))   # this checkout, wherever it is
 PLANTS = [
  ("changes after saving not seen", "js/build/office.js", 'C("since", !!sw.startup && unsaved(sw),', 'C("since", false,'),
  ("enable password taken for a secret", "js/build/office.js", 'C("plain", !sw.enableSecret && !!sw.enablePassword,', 'C("plain", false,'),
@@ -16,6 +16,14 @@ PLANTS = [
  ("a block bigger than it needs, accepted", "js/build/office.js", 'C("big", !!big,', 'C("big", false,'),
  ("overlapping blocks, accepted", "js/build/office.js", 'C("overlap", !!lap,', 'C("overlap", false,'),
  ("a gateway that isn't the first usable, accepted", "js/build/office.js", 'C("first", !!notFirst,', 'C("first", false,'),
+ ("the TFTP server takes files when stopped", "js/net/cmd.js", "if (!srv || !srv.on) return { err: \"Timed out\" };", "if (!srv) return { err: \"Timed out\" };"),
+ ("a banner cut short, accepted", "js/build/office.js", 'C("part", !!have && have !== want && want.indexOf(have) >= 0,', 'C("part", false,'),
+ ("the backup under any name, accepted", "js/build/office.js", "return files(sim).find(function (f) { return f.name.toLowerCase() === n; }) || null; };", "return files(sim)[0] || null; };"),
+ ("a copy of the running configuration with changes not saved, accepted", "js/build/office.js", "const off = !!f && f.text !== st,", "const off = false,"),
+ ("the laptop left plugged in, accepted", "js/build/office.js", 'C("plugged", !!lap,', 'C("plugged", false,'),
+ ("the server or the network blamed after files landed", "js/build/office.js", 'C("net", !f && !any && !lapOnNet(sim),', 'C("net", !f && !lapOnNet(sim),'),
+ ("the laptop's two terminals share one login", "js/net/cmd.js", 'const keyOf = function (id, win) { return win ? id + "/win" : id; };', 'const keyOf = function (id, win) { return id; };'),
+ ("no banner after an SSH login", "js/net/cmd.js", 'const m = st.via === "ssh" ? SW.motd(sw.sw) : [];', 'const m = [];'),
  ("reload keeps unsaved changes", "js/net/swcli.js", "  const base = sw.startup ? clone(sw.startup) : snapshot(newSwitch());\n  CONFIG_KEYS.forEach(function (k) { sw[k] = base[k]; });", "  const base = sw.startup ? clone(sw.startup) : snapshot(newSwitch());"),
 ]
 for name, f, a, b in PLANTS:

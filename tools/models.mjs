@@ -289,6 +289,34 @@ CO.push(async () => {
   for (const port of ["1", "2", "3"]) { const q = await plugAt(p, port); check(!q.missing && q.plug === false, "SO-J2 step 3 old switch: port " + port + " drawn empty " + JSON.stringify(q)); }
   await ctx.close();
 });
+/* SO-J5, your laptop: mid-job its own Ethernet cable in (its jack's link light lit) and the serial adapter's USB-C plug in;
+   at the end the Ethernet cable out (the port empty, its light dark), the adapter still in; and with the console cable
+   unplugged at the switch's end the adapter stays in the laptop, while unplugged at the laptop it hangs out of the port */
+const lapSteps = (seed) => (async () => { const { p, ctx } = await office("SO-J5", seed, 0); const n = await p.evaluate(() => window.__e4b.T.def.solve(window.__e4b.T.v, window.__e4b.T.sim).findIndex((a) => a.t === "pull")); await ctx.close(); return n; })();
+CO.push(async () => {
+  const { p, ctx } = await office("SO-J5", 5105, await lapSteps(5105));
+  await physical(p, "tech", "Ports close-up");
+  const e = await plugAt(p, "ETHERNET"); check(!e.missing && e.plug && e.off < 1, "SO-J5 your laptop: its Ethernet cable is in " + JSON.stringify(e));
+  await led(p, "SO-J5 your laptop ETHERNET link", "ETHERNET", "link", "green");
+  const u = await plugAt(p, "USB-C"); check(!u.missing && u.plug && u.off < 1 && u.run, "SO-J5 your laptop: the serial adapter's USB-C plug is in, with its cord " + JSON.stringify(u));
+  await ctx.close();
+});
+CO.push(async () => {
+  const { p, ctx } = await office("SO-J5", 5106);
+  await physical(p, "tech", "Ports close-up");
+  const e = await plugAt(p, "ETHERNET"); check(!e.missing && e.plug === false, "SO-J5 done, your laptop: the Ethernet port is empty " + JSON.stringify(e));
+  await led(p, "SO-J5 done, your laptop ETHERNET link", "ETHERNET", "link", "off");
+  const u = await plugAt(p, "USB-C"); check(!u.missing && u.plug && u.off < 1, "SO-J5 done, your laptop: the serial adapter is still in " + JSON.stringify(u));
+  await ctx.close();
+});
+CO.push(async () => {
+  const { p, ctx } = await office("SO-J5", 5107, 0);
+  const end = await p.evaluate(() => { const c = window.__e4b.T.sim.cablesOf("tech").find((x) => x.kind === "console"); return c.a.dev === "tech" ? "a" : "b"; });
+  await p.evaluate((end) => window.__e4b.act({ t: "unplug", cable: "c-console-1", end: end }), end);
+  await physical(p, "tech", "Ports close-up");
+  const u = await plugAt(p, "USB-C"); check(!u.missing && u.plug && u.off > 10, "SO-J5 your laptop: the adapter unplugged from the laptop hangs out of its port " + JSON.stringify(u));
+  await ctx.close();
+});
 const RUN = process.env.ONLY === "office" ? CO : C.concat(CO);
 for (const c of RUN) { try { await c(); } catch (e) { bad.push("crashed: " + e.message.split("\n")[0]); } }
 

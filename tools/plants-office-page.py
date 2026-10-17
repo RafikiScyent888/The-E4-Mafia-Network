@@ -1,5 +1,5 @@
 import subprocess, shutil, sys, os
-os.chdir("/home/user/the-e4-mafia-network")
+os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))   # this checkout, wherever it is
 PLANTS = [
  ("levels always open", "js/desk/levels.js", "  if (n <= 1) return true;\n", "  return true;\n"),
  ("lock icon dropped", "js/desk/levelsui.js", '!open ? [lock(), "Locked:', '!open ? ["Locked:'),
@@ -19,6 +19,14 @@ PLANTS = [
  ("IPAM row never marked bad", "js/build/app.js", 'r.ok ? " goodrow" : " badrow";', 'r.ok ? " goodrow" : "";'),
  ("saving the sheet can't be undone", "js/build/engine.js", "pull: 1, ipam: 1 };", "pull: 1 };"),
  ("the sheet gives the right mask", "js/net/ipam.js", 'if (usable < (+r.hosts || 0)) bad("mask", "Mask: a /" + x.p + " has " + usable + " usable addresses; " + (r.name || "this block") + " needs " + r.hosts + ".");', 'if (usable < (+r.hosts || 0)) { let q = x.p; while (Math.pow(2, 32 - q) - 2 < (+r.hosts || 0)) q--; bad("mask", "Mask: use /" + q + "."); }'),
+ ("no banner as the console wakes", "js/net/swcli.js", 'function wake(S) { return motd(S.sw).concat(', 'function wake(S) { return [].concat('),
+ ("the switch offers no name of its own for the backup", "js/net/swcli.js", 'file: u && u[2] ? u[2] : S.sw.hostname.toLowerCase() + "-confg" };', 'file: u && u[2] ? u[2] : "switch-confg" };'),
+ ("an opened port brings no address", "js/net/cmd.js", "  sim.relink(before);   /* a switch port", "  /* a switch port"),
+ ("the laptop's Command Prompt goes to its serial terminal", "js/desk/window.js", 'W = win ? { win: true } : {};', 'W = {};'),
+ ("the file reader shows nothing", "js/desk/window.js", "const pre = el(\"pre\"); pre.textContent = f.text;", "const pre = el(\"pre\"); pre.textContent = \"\";"),
+ ("the TFTP tab doesn't say the laptop's address", "js/desk/window.js", ': P.addr ? P.addr + ", UDP port 69 (Ethernet)"', ': P.addr ? "Ethernet"'),
+ ("a copy of the running configuration accepted", "js/build/office.js", "const off = !!f && f.text !== st,", "const off = false,"),
+ ("the laptop's Physical tab never empties", "js/net/physical.js", 'if (model === "techlaptop") { if (ports[0].plug === "none") says.push("ETHERNET: empty.");', 'if (model === "techlaptop") {'),
  ("instructor lock doesn't relock levels", "js/desk/instructor.js", 'draw(); if (api.levels) api.levels(); } }, "Lock the instructor tools")', 'draw(); } }, "Lock the instructor tools")'),
 ]
 only = sys.argv[1:] 

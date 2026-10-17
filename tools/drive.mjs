@@ -507,7 +507,7 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
   }
   const ser = async (p, line) => { await type(p, line); };
   const promptNow = (p) => p.$eval(".term .prompt", (n) => n.textContent);
-  for (const job of ["SO-J1", "SO-J2", "SO-J3", "SO-J4"]) for (const seed of [11, 2025, 777777]) {
+  for (const job of ["SO-J1", "SO-J2", "SO-J3", "SO-J4", "SO-J5"]) for (const seed of [11, 2025, 777777]) {
     const { p, ctx } = await opage("build.html", { net: homeDone.t, build: { current: job, j: { [job]: { seed } }, done: homeDone.j } });
     const tag = "office " + job + " " + seed + ": ";
     try {
@@ -570,6 +570,44 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
         check((await p.inputValue("#ipam0net")) === "" && /saving the IPAM sheet/.test(await p.$eval("#bmUmsg", (n) => n.textContent)), tag + "Undo takes back saving the sheet");
         await fill(good);
         check((await p.$$("#ipam fieldset.goodrow")).length === groups.length && new RegExp(groups.length + " of " + groups.length + " blocks check out").test(await p.$eval("#ipamSum", (n) => n.textContent)), tag + "every block checks out");
+      } else if (job === "SO-J5") {
+        /* the banner, saved first; a spare port opened but not saved; the laptop's Ethernet in it; the TFTP server started; a copy of
+           the RUNNING configuration first (the port open, not saved: the wrong one), caught; then the saved one, twice, read in the
+           TFTP tab and listed in the laptop's own Command Prompt; the cable pulled and the port shut again */
+        const lapIp = await BJ(p, () => window.__e4b.T.v.lapIp), esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), back = plan.hostname.toLowerCase() + "-confg";
+        await dev(p, "tech"); await ser(p, "");
+        for (const l of [plan.console, "enable", plan.secret, "configure terminal", "banner motd #" + plan.banner + "#", "end", "copy running-config startup-config", "", "exit", ""]) await ser(p, l);
+        const wake = await term(p);
+        check(wake.lastIndexOf(plan.banner) > wake.lastIndexOf("con0 is now available") && wake.lastIndexOf(plan.banner) < wake.lastIndexOf("User Access Verification"), tag + "the console wakes with the banner, then asks for the password");
+        for (const l of [plan.console, "enable", plan.secret, "configure terminal", "interface gi0/4", "no shutdown", "end"]) await ser(p, l);
+        await lay(p, "tech", "ETH", "msw", "4");
+        check(/Your laptop, ETHERNET[^]*?Link, 1 Gb\/s/.test(await p.$eval("#runs", (n) => n.textContent)), tag + "your laptop's Ethernet in port 4: in the runs table, with a link");
+        await dev(p, "tech"); await tab(p, "TFTP server");
+        check(/Stopped/.test(await p.$eval(".tftp", (n) => n.textContent)), tag + "the TFTP server tab: stopped at first");
+        await p.click('.tftp button:text-is("Start the TFTP server")'); await p.waitForTimeout(40);
+        check(new RegExp("Running[^]*" + esc(lapIp) + ", UDP port 69").test(await p.$eval(".tftp", (n) => n.textContent)), tag + "started: it listens on the address the office's router gave the laptop");
+        await tab(p, "Serial terminal"); await ser(p, "copy running-config tftp:");
+        check((await promptNow(p)) === "Address or name of remote host []? ", tag + "copy asks for the server's address");
+        await ser(p, lapIp); check((await promptNow(p)) === "Destination filename [" + back + "]? ", tag + "then the file name, offering the switch's own (" + back + ")");
+        await ser(p, ""); check(/!!\n\d+ bytes copied in/.test(await term(p)), tag + "!! and the bytes copied");
+        t = await checkJob(p); check(/differs from show startup-config/.test(t), tag + "a copy of the running configuration with the port open, not saved: the check says it isn't the saved one");
+        await dev(p, "tech");
+        for (const l of ["copy startup-config tftp:", lapIp, "", "copy startup-config tftp:", lapIp, plan.baseline]) await ser(p, l);
+        await tab(p, "TFTP server");
+        const files = await p.$$eval(".tftp .tfiles li b", (l) => l.map((x) => x.textContent));
+        check(files.length === 2 && files[0] === back && files[1] === plan.baseline, tag + "the TFTP tab lists the backup (replaced) and the baseline");
+        await p.click('.tftp button[aria-label="Read ' + plan.baseline + '"]'); await p.waitForTimeout(40);
+        const txt = await p.$eval(".tftpfile pre", (n) => n.textContent);
+        check(txt.includes("banner motd ^C" + plan.banner + "^C") && /interface GigabitEthernet0\/4\n shutdown\n/.test(txt), tag + "Read: the baseline holds the banner, and port 4 shut, as saved");
+        await tab(p, "Command Prompt"); await type(p, "ipconfig");
+        check(new RegExp("IPv4 Address[ .]*: " + esc(lapIp)).test(await term(p)) && /C:\\Users\\tech>/.test(await promptNow(p)), tag + "your laptop's own Command Prompt: its address by ipconfig");
+        await type(p, "dir C:\\TFTP-Root"); check(new RegExp(esc(plan.baseline)).test(await term(p)) && /2 File\(s\)/.test(await term(p)), tag + "dir C:\\TFTP-Root lists the two files");
+        await p.click('#runs tr:has-text("Your laptop, ETHERNET") button:text-is("Pull")'); await p.waitForTimeout(40);
+        t = await checkJob(p); check(/not disabled/.test(t), tag + "the cable pulled, the port still open: the check says so");
+        await dev(p, "tech"); await tab(p, "Serial terminal");
+        for (const l of ["configure terminal", "interface gi0/4", "shutdown", "end"]) await ser(p, l);
+        await tab(p, "Physical"); await p.waitForTimeout(60);
+        check(/ETHERNET: empty\./.test(await p.$eval(".pane", (n) => n.textContent)) && /USB serial adapter is plugged in/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "your laptop's Physical tab: Ethernet empty, the serial adapter in");
       } else if (job === "SO-J3") {
         /* the printer's port, as found: half duplex, and the late collisions climb each time you look */
         await dev(p, "tech"); await ser(p, "");

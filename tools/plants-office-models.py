@@ -7,6 +7,9 @@ PLANTS = [
  ("managed switch drawn empty", "js/desk/model3d.js", "OFF.managedSwitch({ plugged: o.plugged,", "OFF.managedSwitch({ plugged: [],"),
  ("old switch lights as photographed", "assets/models/office-gear.js", "const d = led(COL.ledGreen, l[3], 0.95);", "const d = led(COL.ledGreen, true, 0.95);"),
  ("POWER back on top of port 1", "assets/models/office-gear.js", '[[-104, 15.2, "POWER", true]]', '[[-96, 18.5, "POWER", true]]'),
+ ("the laptop's serial adapter never drawn", "js/desk/model3d.js", "OFF.techLaptop({ screen: o.screen, title: o.title, console: o.console })", "OFF.techLaptop({ screen: o.screen, title: o.title, console: false })"),
+ ("the laptop's Ethernet port read from the wrong port", "js/net/physical.js", 'techlaptop: [["ETHERNET", "ETH"], ["USB-C", "USB-C"]]', 'techlaptop: [["ETHERNET", "NIC"], ["USB-C", "USB-C"]]'),
+ ("the laptop's Ethernet light lit with no link", "js/net/physical.js", '    ports[1].lights = null;', '    ports[1].lights = null; ports[0].lights = "green";'),
  ("old switch keeps its cords", "js/desk/model3d.js", "OFF.desktopSwitch8({ plugged: o.plugged, cords: true })", "OFF.desktopSwitch8({ cords: true })"),
 ]
 only = sys.argv[1:]

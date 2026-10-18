@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (18 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1 to SO-J5, tickets SO-01 to SO-09, the managed switch, the closet rack and patch panel, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05", "Level 2, tickets SO-06, SO-07 and SO-09" and "Level 2, ticket SO-08" below.**
+**Status (18 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1 to SO-J5, tickets SO-01 to SO-10, the managed switch, the closet rack and patch panel, SFP modules and fibre, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05", "Level 2, tickets SO-06, SO-07 and SO-09", "Level 2, ticket SO-08" and "Level 2, ticket SO-10" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
 from the Under the Hood tile (decision 6). See "The real site" below. The owner, 11
 October 2026: **"Build it like the preview you gave me just keep the layout
@@ -1386,8 +1386,90 @@ and SO-10 with the rack and patch panel in the Physical tab.
 
     Before a plant run, check each anchor matches its file exactly once.
 
-Next: SO-10 with the SFP modules and fibre; then five extra jobs (SO-J6 to
-J10) and five extra tickets (SO-11 to 15); then `planned` set to the real total.
+### Level 2, ticket SO-10: live 18 October 2026
+
+- **SO-10, the fibre link to the back office is dark** (the preview's title).
+  - **The office:** the back office (the meeting room) is on a second managed
+    switch of the photographed model (`bsw`), joined to the closet switch's
+    SFP1 (gi0/25, BACK-OFFICE-FIBRE, opened and saved) by an orange OM2
+    multimode run. The installer chose fibre because the run passes the
+    lift's motor room. The back office PC is on `bsw` port 1, on 169.254.
+  - **Variants:**
+    - the closet's module is a 1000BASE-LX (1310 nm, single-mode);
+    - the back office's module is the LX;
+    - the closet's slot holds an SFP+ 10GBASE-SR. Its light is right, but a
+      1 Gb/s SFP slot can't run a 10 Gb/s module.
+  - **What the student sees:**
+    - `show interfaces status`: notconnect with the module's type, or
+      err-disabled;
+    - `show interfaces transceiver`: -5.6 dBm sent and -40.0 received (no
+      light), or unsupported;
+    - `show inventory`: the module's PID;
+    - the console logs %PHY-4-UNSUPPORTED_TRANSCEIVER and %PM-4-ERR_DISABLE
+      for the SFP+;
+    - each end's module label and bail colour, read with "Look at the plug";
+    - the back office switch's lights page (`bsw-lights`).
+  - **Fix:** swap the wrong module for a 1000BASE-SX from the van, on the
+    Physical tab, then renew the back office PC. These don't fix it:
+    - swapping the LC pair (it breaks a good link too);
+    - matching the other end to the LX (single-mode modules on multimode);
+    - restarts.
+  - It has no "works but isn't saved" state, so the tests' unsaved check is
+    skipped for it (`UNSAVED` returns null).
+- **SFP in the simulation** (`SFP_MODULES`, `swPort`): a managed switch's
+  slots are "SFP1" to "SFP4", the switch's gi0/25 to gi0/28, holding modules
+  in `x.sfp`. Each module has its wavelength, the fibre it's made for, its
+  speed, its bail colour (black SX, blue LX) and its label.
+  - A fibre cable (`kind: "fibre"`, `fiber`, `jacket`, `polarity`) links only
+    when all of these hold (`fibreUp`):
+    - both plugs are in;
+    - both modules can run in their slots;
+    - the two modules use the same wavelength;
+    - each module suits the fibre;
+    - the LC pair isn't flipped;
+    - both switches are on and both ports open.
+  - The switch's own view gives each slot with a module its type, PID,
+    light, and unsupported state.
+  - New actions: `sfp` (swap a module), `polarity` (swap the LC pair at one
+    end).
+- **On the page:**
+  - The fibre cord takes "Look at the plug" and "Swap the LC pair over at
+    this end".
+  - Each switch with modules offers "Swap in a 1000BASE-SX/LX module".
+  - Fibre is royal green on both drawings, solid when up and red dashes when
+    down.
+  - The lights pages are per device (`msw-lights`, `bsw-lights`): before
+    this, every managed switch said `msw-lights`.
+- **3D:** `managedSwitch` takes `sfpBail` and `sfpText`, so each module is
+  drawn with its bail colour and its cord's jacket print. The slot lights
+  follow the sim. The managed switch has a new view, "Fibre slots".
+- **Checks:**
+  - `npm test`: 243.
+  - The full drive: 2678 checks. SO-10 alone is 96, every variant through
+    the page: the commands, both ends' labels read, the LC pair swapped as a
+    wrong fix, the module swapped.
+  - AAA: 4 new states, 7,830 text runs. The SFP+ state was confirmed to open
+    office 11 (states take `ticket` and `seed`; `c.go` restores the seeded
+    office once the level is unlocked).
+  - `node tools/models.mjs`: 134 checks. The SO-10 case (office 2025) checks
+    the module in each slot, its bail colour (blue LX, black SX) and the
+    slot's light, then swaps the module through the page and checks again.
+  - Node plants: 8. Seven are caught.
+    - The eighth, "any two modules link" (the wavelength check removed), is
+      unreachable with these modules: an SX and an LX never both sit on
+      fibre made for them, so the fibre check always decides first. It's
+      kept as a defensive guard, for a multimode-capable LX one day.
+    - A redundant err-disabled line in `status()` was removed (an
+      unsupported module already fails the link), and its plant now aims at
+      the err-disabled text, where it's caught.
+  - Page plants: 3 new, all caught. Two renamed now that there are two back
+    office switches.
+  - Models plants: 2, caught.
+  - The build page's "console drawn as patch cable" plant was put back on its
+    line after the fibre run style joined it, and is caught.
+
+Next: five extra jobs (SO-J6 to J10) and five extra tickets (SO-11 to 15),
+then `planned` set to the real total.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

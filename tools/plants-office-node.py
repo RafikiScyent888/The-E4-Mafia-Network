@@ -63,7 +63,7 @@ PLANTS = [
  ("a 10 Gb/s module runs in a 1 Gb/s slot", "js/net/sim.js", "return m.rate !== 1000 || m.fiber !== c.fiber;", "return m.fiber !== c.fiber;"),
  ("the LC pair can be crossed any way", "js/net/sim.js", '    if (!c.a.seated || !c.b.seated || c.polarity === "flipped") return false;', '    if (!c.a.seated || !c.b.seated) return false;'),
  ("the switch reads light whatever comes back", "js/net/swcli.js", '(l.light ? "-6.1" : "-40.0")', '"-6.1"'),
- ("an unsupported module isn't err-disabled", "js/net/swcli.js", '  if (l.unsupported) return ["down", "down"];   /* a module the slot can\'t run: err-disabled */\n', ""),
+ ("an unsupported module isn't err-disabled", "js/net/swcli.js", 'p.shutdown ? "disabled" : l && l.unsupported ? "err-disabled" : up', 'p.shutdown ? "disabled" : up'),
  ("no console log for an unsupported module", "js/net/cmd.js", "const m = x.sfp[k] && SFP_MODULES[x.sfp[k]]; if (!m || m.rate === 1000) return;", "return;"),
  ("the module's label left off the look", "js/net/pages.js", '" The module\'s label: " + m.label + "; its bail latch is " + m.bail + "."', '""'),
 ]

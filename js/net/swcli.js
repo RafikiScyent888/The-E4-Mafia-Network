@@ -67,7 +67,6 @@ function status(sw, n) {
   const p = sw.ports[n], l = sw.links[n];
   if (p.shutdown) return ["administratively down", "down"];
   if (!l) return ["down", "down"];
-  if (l.unsupported) return ["down", "down"];   /* a module the slot can't run: err-disabled */
   if (linkFails(p, l)) return ["down", "down"];
   return ["up", "up"];
 }

@@ -218,9 +218,9 @@ for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY 
   /* the progress is kept */
   await p.reload(); await p.waitForTimeout(350);
   check(await p.$("#board .solved") !== null, id + ": still solved after a reload");
-  const qtext = await p.$eval('#queue [data-t="' + id + '"]', (n) => n.textContent);
+  const qtext = await p.$eval('#queue [data-t="' + id + '"]', (n) => n.textContent).catch(() => "(not in the queue)");   /* missing from the queue: a named failure, not a crash */
   check(/Solved 1×|solved 1×/.test(qtext), id + ": the queue counts it solved (" + qtext + ")");
-  check(await p.$eval('#queue [data-t="' + id + '"] .st', (n) => getComputedStyle(n).borderTopStyle === "none" && parseFloat(getComputedStyle(n).paddingTop) === 0), id + ": the solved status is words in the queue, not the summary's box");
+  check(await p.$eval('#queue [data-t="' + id + '"] .st', (n) => getComputedStyle(n).borderTopStyle === "none" && parseFloat(getComputedStyle(n).paddingTop) === 0).catch(() => false), id + ": the solved status is words in the queue, not the summary's box");
   const s1 = await T(p, () => window.__e4.T.seed);
   await p.click('#board button:text-is("Try another one like this")'); await p.waitForTimeout(80);
   check((await T(p, () => window.__e4.T.seed)) !== s1 && !(await T(p, () => window.__e4.T.solved)), id + ": a fresh house, unsolved");

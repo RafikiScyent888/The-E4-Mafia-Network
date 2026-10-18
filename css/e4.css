@@ -198,7 +198,7 @@ body.dys .tftp .tftpfile pre { letter-spacing: 0; word-spacing: 0; }   /* a conf
 .devform { display: grid; gap: 10px; }
 .devform fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px 10px; margin: 0; display: grid; gap: 8px; }
 .devform legend { font-weight: 700; padding: 0 4px; }
-.devform label.f { display: grid; gap: 3px; font-weight: 600; }
+.devform label.f { display: grid; gap: 7px; font-weight: 600; }   /* the box's focus ring reaches 5px out: it clears the label's words */
 .devform .radio { display: flex; gap: 8px; align-items: center; font-weight: 500; }
 .devform input[type="text"], .devform select { padding: 6px 8px; border: 1px solid #5d6a8c; border-radius: 6px; color: var(--ink); background: #ffffff; min-height: 38px; width: 100%; }
 .devform input[readonly] { background: var(--soft); }

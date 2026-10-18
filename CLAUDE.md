@@ -1536,8 +1536,11 @@ and SO-10 with the rack and patch panel in the Physical tab.
   - AAA: 5 new states (11,222 text runs). The full set, 141 states and
     286,053 text runs, was run with the port-marker fix: 140 pass. The one
     failure is the instructor's PIN dialog: the PIN box's focus ring overlaps
-    the bottom of its label (1.71:1), live on `main` before today too. It's
-    fixed with the next work.
+    the bottom of its label (1.71:1), live on `main` before today too. Fixed
+    19 October 2026 as its own push after SO-J10: the gap between a form
+    label's words and its box (`.devform label.f`) is 7 px, clear of the focus
+    ring (3 px out, 2 px offset). Calibrated: 3 px fails, 7 px passes; the PIN
+    dialog's state passes in the full run.
   - `node tools/models.mjs`: 134 checks.
   - Node plants: 9 new, all caught. Page plants: the office's records left
     off the ticket (105 failing checks) and SO-11 to SO-15 left off the desk,

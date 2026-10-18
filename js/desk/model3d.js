@@ -32,7 +32,7 @@ const SETUP = {
     views: [["Ports close-up", { view: [0.12, 0.22, 1], frame: [-58, 2, 46, 62, 34, 58] }]] },
   switch8: { build: function (o) { return OFF.desktopSwitch8({ plugged: o.plugged, cords: true }); }, view: [0.55, 0.42, 1], light: [0.6, 1.3, 0.9], frame: [-130, 0, -80, 130, 40, 260],
     views: [["Ports close-up", { focus: "panel:Ports", view: [0.12, 0.22, 1] }]] },
-  msw: { build: function (o) { return OFF.managedSwitch({ plugged: o.plugged, console: o.console, sfp: o.sfp || [null, null, null, null], sfpBail: o.sfpBail, sfpText: o.sfpText }); }, view: [0.42, 0.42, 1], light: [0.5, 1.3, 1.0], frame: [-250, 0, -140, 250, 50, 260],
+  msw: { build: function (o) { return OFF.managedSwitch({ plugged: o.plugged, console: o.console, sfp: o.sfp || [null, null, null, null], sfpBail: o.sfpBail, sfpText: o.sfpText, sfpBare: o.sfpBare }); }, view: [0.42, 0.42, 1], light: [0.5, 1.3, 1.0], frame: [-250, 0, -140, 250, 50, 260],
     views: [["Front close-up", { focus: "panel:Front", view: [0.06, 0.12, 1], light: [0.3, 1.2, 1.0] }], ["Fibre slots", { view: [0.12, 0.2, 1], frame: [64, 2, 125, 148, 44, 178], light: [0.3, 1.2, 1.0] }], ["Console port", { view: [0.2, 0.2, 1], frame: [150, 0, 125, 215, 50, 175], light: [0.3, 1.2, 1.0] }], ["Rear", { view: [0.5, 0.3, -1], frame: [-40, 0, -150, 250, 50, -110], light: [0.5, 1.3, -1.0] }]] },
   mesh: { build: function (o) { return GEAR.meshNode(o.weak ? "weak" : undefined); }, view: [-0.75, 0.3, -1], light: [-0.6, 1.3, -0.9], frame: [-70, 0, -110, 70, 160, 70],
     views: [["Front light", { view: [0.5, 0.25, 1], light: [0.5, 1.2, 1.0] }]] },
@@ -161,7 +161,7 @@ function build(S) {
     const jack = g.getObjectByName("port:" + p.name); if (!jack) return;
     const plug = jack.children.find(function (c) { return /^plug:/.test(c.name); });
     if (p.coax) { if (p.plug === "loose" && plug) loosen(plug); return; }
-    if (p.plug === "none") { if (plug) removePlug(plug); closeJaw(jack); }
+    if (p.plug === "none") { if (plug && !plug.userData.bare) removePlug(plug); closeJaw(jack); }   /* a module in its slot with nothing plugged into it stays (SO-J10) */
     else if (p.plug === "out") { if (plug) pullOut(jack, plug, p.damage && DAMAGE[p.damage]); }
     else if (plug && p.damage) relay(plug, DAMAGE[p.damage]);
     if (p.lights) jackLeds(jack, p.lights);

@@ -392,6 +392,32 @@ CO.push(async () => {
   await led(p, "SO-10 back office switch SFP1 after the swap", "SFP1", "link", "green");
   await ctx.close();
 });
+/* SO-J10 in build mode, office 2025: the back office switch out of its box with its SFP slots empty; an SX put in through the
+   page, drawn with its black bail and no cord, its light dark; the closet's module, the run and the closet's port opened, and
+   the slot drawn with its cord and lit */
+CO.push(async () => {
+  const ctx = await GL.newContext({ viewport: { width: 900, height: 1000 }, reducedMotion: "reduce" });
+  await ctx.addInitScript(() => { try { sessionStorage.setItem("e4-instructor", "1"); } catch (e) { } });
+  const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push("build SO-J10: " + e.message));
+  await p.goto(base + "build.html"); await p.waitForFunction(() => window.__e4b);
+  if (plant) await p.evaluate(plant);
+  await p.evaluate(() => { const c = window.__e4b; c.openJob("SO-J10", true, 2025); c.act({ t: "place", dev: "bsw", room: "meeting" }); });
+  check(await p.evaluate(() => window.__e4b.T.def.id === "SO-J10" && window.__e4b.T.seed === 2025), "SO-J10 models: build mode opened SO-J10 on office 2025");
+  await physical(p, "bsw", "Fibre slots");
+  const e = await plugAt(p, "SFP1"); check(!e.missing && e.plug === false, "SO-J10 back office switch: SFP1 empty from the box " + JSON.stringify(e));
+  const n = await fine(p); await p.click('.acts:has-text("SFP1: empty") button:text-is("Put in a 1000BASE-SX module")'); await settled(p, n);
+  const k = await fine(p); await p.click('.m3d-bar button:text-is("Fibre slots")'); await settled(p, k);
+  check(await bail(p) === "#1d1e21", "SO-J10 back office switch: the SX put in is drawn with its black bail: " + await bail(p));
+  const m = await plugAt(p, "SFP1"); check(!m.missing && m.plug && !m.run, "SO-J10 back office switch: a module in SFP1, no cord yet " + JSON.stringify(m));
+  await led(p, "SO-J10 back office switch SFP1 (a module, no fibre)", "SFP1", "link", "off");
+  await p.evaluate(() => { const c = window.__e4b, p = c.T.v.plan, cl = (line) => c.act({ t: "cmd", dev: "tech", line, cli: true });
+    c.act({ t: "sfp", dev: "msw", slot: "SFP1", type: "1000BASE-SX" }); c.act({ t: "lay", a: { dev: "msw", port: "SFP1" }, b: { dev: "bsw", port: "SFP1" } });
+    ["", p.console, "enable", p.secret, "configure terminal", "interface gi0/25", "no shutdown", "end"].forEach(cl); });
+  await physical(p, "bsw", "Fibre slots");
+  const r = await plugAt(p, "SFP1"); check(!r.missing && r.plug && r.off < 1 && r.run, "SO-J10 back office switch: the fibre's cord in its module " + JSON.stringify(r));
+  await led(p, "SO-J10 back office switch SFP1 (the link up)", "SFP1", "link", "green");
+  await ctx.close();
+});
 const RUN = process.env.ONLY === "office" ? CO : C.concat(CO);
 for (const c of RUN) { try { await c(); } catch (e) { bad.push("crashed: " + e.message.split("\n")[0]); } }
 

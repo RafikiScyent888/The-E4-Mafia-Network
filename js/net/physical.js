@@ -73,9 +73,11 @@ export function physicalState(sim, id) {
   } else if (model === "msw") {
     L("SYSTEM", "SYSTEM", on ? "on" : "off"); L("POWER", "POWER", on ? "on" : "off"); L("PSU", "Power supply", on ? "on" : "off"); L("FAN", "Fan", on ? "on" : "off");
     opts.plugged = ports.slice(0, 24).map(function (p) { return p.plug !== "none"; }); opts.console = ports[24].plug !== "none";
-    /* the SFP slots (SO-10): a module drawn where the switch has one with its cord in, its bail latch the module's colour */
-    const mods = x.sfp || {}, slot = function (k) { return mods["SFP" + (k + 1)] && ports[25 + k].plug !== "none" ? SFP_MODULES[mods["SFP" + (k + 1)]] : null; };
-    opts.sfp = [0, 1, 2, 3].map(function (k) { const c = sim.cableAt(id, "SFP" + (k + 1)); return slot(k) ? (c && c.fiber === "SMF" ? 0xf2c200 : 0xe8893a) : null; });   /* orange multimode, yellow single-mode */
+    /* the SFP slots (SO-10): a module drawn wherever the switch has one, its bail latch the module's colour, with its cord when a
+       fibre is in it (SO-J10: a module just put in has none) */
+    const mods = x.sfp || {}, slot = function (k) { return mods["SFP" + (k + 1)] ? SFP_MODULES[mods["SFP" + (k + 1)]] : null; }, corded = function (k) { return ports[25 + k].plug !== "none"; };
+    opts.sfp = [0, 1, 2, 3].map(function (k) { const c = sim.cableAt(id, "SFP" + (k + 1)); return slot(k) && corded(k) ? (c && c.fiber === "SMF" ? 0xf2c200 : 0xe8893a) : null; });   /* orange multimode, yellow single-mode */
+    opts.sfpBare = [0, 1, 2, 3].map(function (k) { return !!slot(k) && !corded(k); });
     opts.sfpBail = [0, 1, 2, 3].map(function (k) { const m = slot(k); return m ? (m.bail === "blue" ? 0x2f6fd0 : 0x1d1e21) : null; });
     opts.sfpText = [0, 1, 2, 3].map(function (k) { const c = sim.cableAt(id, "SFP" + (k + 1)); return c && c.jacket ? c.jacket + "  ·  LC-LC DUPLEX" : null; });
   } else if (model === "rack") {

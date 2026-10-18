@@ -83,14 +83,15 @@ export function sfpModule(o = {}) {
   bail.rotation.set(0, 0, Math.PI); bail.position.set(0, -2.6, -16.4); bail.rotation.x = -0.25; g.add(bail);
   const face = new THREE.Group(); face.position.z = -16.05; g.add(face);
   face.add(at(box(12.6, 7.6, 0.2, mat(0x16171a, { rough: 0.7 })), 0, 0, 0));
-  /* the LC duplex plug: two latched LC bodies on a clip, the boot, the cord */
+  /* the LC duplex plug: two latched LC bodies on a clip, the boot, the cord (o.bare: a module in its slot with nothing plugged into it) */
+  named(g, "plug:SFP", { type: "sfp-module", bare: !!o.bare });
+  if (o.bare) return g;
   const lc = mat(o.plug || 0x2a2c30, { rough: 0.45 });
   [-3.125, 3.125].forEach(function (x) { g.add(at(box(4.5, 4.5, 11, lc), x, 0, -21.5)); g.add(at(box(2.2, 0.8, 7, lc), x, 2.75, -22, -0.18, 0, 0)); });
   g.add(at(rbox(12.4, 7, 7, 1, lc), 0, 0.4, -29.5));                                 /* the duplex clip */
   const L = 22, geo = tubeVar(new THREE.LineCurve3(V(0, 0, -33), V(0, 0, -33 - L)), { n: 80, m: 24, up: V(0, 1, 0),
     radius: function (t) { const zz = t * L, r = THREE.MathUtils.lerp(4.2, 2.0, zz / L) + (zz > 4 && Math.sin(zz * 2.2) > 0.4 ? -0.3 : 0); return [r * 1.25, r]; } });
   g.add(new THREE.Mesh(geo, lc));
-  named(g, "plug:SFP", { type: "sfp-module" });
   g.userData.exitZ = -33 - L + 2; g.userData.cable = { r: 1.6, flat: true, color: jc, text: o.text || "OM3 50/125 µm  ·  LC-LC DUPLEX  ·  LSZH", ink: "rgba(30,30,30,0.5)" };
   return g;
 }
@@ -197,6 +198,7 @@ export function managedSwitch(o = {}) {
     cables.push(p);
   }
   sfps.forEach(function (cg, k) {
+    if (!sfpCol[k] && o.sfpBare && o.sfpBare[k]) { plugInto(cg, sfpModule({ bare: true, bail: o.sfpBail && o.sfpBail[k] }), { y: 0, z: 0.4 }); return; }   /* o.sfpBare: a module put in, nothing plugged into it yet (SO-J10) */
     if (!sfpCol[k]) return;
     const m = plugInto(cg, sfpModule({ cable: sfpCol[k], bail: o.sfpBail && o.sfpBail[k], text: o.sfpText && o.sfpText[k] }), { y: 0, z: 0.4 }), x = SX[k];   /* o.sfpBail: each module's bail latch colour; o.sfpText: what its cord's jacket says */
     cableFrom(g, m, [[x + 14 + k * 4, Y0 + 8, D / 2 + 76], [x + 40 + k * 10, 1.6, D / 2 + 128 + k * 6], [x + 230 + k * 16, 1.6, D / 2 + 200 + k * 10]], { straight: 16, r: 1.6 });

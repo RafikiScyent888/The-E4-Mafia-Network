@@ -366,6 +366,32 @@ CO.push(async () => {
   await led(p, "SO-08 rack after the move: the switch's port 4 (the manager's PC now)", "4", "link", "green");
   await ctx.close();
 });
+/* SO-10 on the desk, office 2025 (the back office's end holds the LX): a module in each switch's SFP1 with its orange cord,
+   the back office's bail latch blue (LX), the closet's black (SX), both slots' lights dark; the LX swapped for an SX through
+   the page, and the back office's latch drawn black and its slot lit */
+const bail = (p) => p.evaluate(async () => { const m = await import("./js/desk/model3d.js"), d = m.debug(), j = d.model.getObjectByName("port:SFP1"); if (!j) return "missing"; const plug = j.children.find((c) => /^plug:/.test(c.name)); if (!plug) return "no module"; let col = null; plug.traverse((o) => { if (!col && o.geometry && o.geometry.type === "TorusGeometry") col = "#" + o.material.color.getHexString(); }); return col; });
+CO.push(async () => {
+  const ctx = await GL.newContext({ viewport: { width: 900, height: 1000 }, reducedMotion: "reduce" });
+  await ctx.addInitScript(() => { try { sessionStorage.setItem("e4-instructor", "1"); if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify({ current: "SO-10", t: { "SO-10": { seed: 2025 } }, solved: {} })); sessionStorage.setItem("seeded", "1"); } } catch (e) { } });
+  const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push("desk SO-10: " + e.message));
+  await p.goto(base + "index.html"); await p.waitForFunction(() => window.__e4);
+  if (plant) await p.evaluate(plant);
+  check(await p.evaluate(() => window.__e4.T.def.id === "SO-10" && window.__e4.T.v.kind === "lx-back"), "SO-10 models: the desk opened SO-10 on office 2025 (the back office's end holds the LX)");
+  await physical(p, "bsw", "Fibre slots");
+  const q = await plugAt(p, "SFP1"); check(!q.missing && q.plug && q.off < 1 && q.run, "SO-10 back office switch: a module and its cord in SFP1 " + JSON.stringify(q));
+  check(await bail(p) === "#2f6fd0", "SO-10 back office switch: the module's bail latch is blue (LX): " + await bail(p));
+  await led(p, "SO-10 back office switch SFP1 (850 nm facing 1310 nm)", "SFP1", "link", "off");
+  await physical(p, "msw", "Fibre slots");
+  check(await bail(p) === "#1d1e21", "SO-10 closet switch: the module's bail latch is black (SX): " + await bail(p));
+  await led(p, "SO-10 closet switch SFP1", "SFP1", "link", "off");
+  /* the fix, through the page: the back office's LX out, an SX from the van in */
+  await physical(p, "bsw", "Fibre slots");
+  const n = await fine(p); await p.click('.phys button:text-is("Swap in a 1000BASE-SX module")'); await settled(p, n);
+  const k = await fine(p); await p.click('.m3d-bar button:text-is("Fibre slots")'); await settled(p, k);
+  check(await bail(p) === "#1d1e21", "SO-10 back office switch after the swap: the bail latch is black (SX): " + await bail(p));
+  await led(p, "SO-10 back office switch SFP1 after the swap", "SFP1", "link", "green");
+  await ctx.close();
+});
 const RUN = process.env.ONLY === "office" ? CO : C.concat(CO);
 for (const c of RUN) { try { await c(); } catch (e) { bad.push("crashed: " + e.message.split("\n")[0]); } }
 

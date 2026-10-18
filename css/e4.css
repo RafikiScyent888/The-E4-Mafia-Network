@@ -132,13 +132,13 @@ button:focus-visible, [tabindex]:focus-visible, a:focus-visible, summary:focus-v
 .is, .ip { fill: var(--royal); } .is2 { fill: #ffffff; stroke: var(--royal); stroke-width: 2; } .ok { fill: #1fa04a; } .on { fill: #2f6fe0; }
 .nl, .ns, .pl { paint-order: stroke; stroke: #fbfcfe; stroke-width: 6px; stroke-linejoin: round; }
 .nl { fill: currentColor; color: var(--ink); font-weight: 700; font-size: 19px; } .ns { fill: currentColor; color: var(--muted); font-size: 17px; } .pl { fill: currentColor; color: var(--muted); font-size: 16px; font-weight: 700; }
-.lk { stroke: #3a4150; stroke-width: 3.5; } .lk-coax { stroke: var(--purple); stroke-width: 5; } .lk-wifi { stroke: #2f6fe0; stroke-width: 2.5; stroke-dasharray: 3 7; stroke-linecap: round; } .lk-down { stroke: var(--bad); stroke-dasharray: 10 6; } .lk-console { stroke: #2b5fd9; stroke-width: 3; }
+.lk { stroke: #3a4150; stroke-width: 3.5; } .lk-coax { stroke: var(--purple); stroke-width: 5; } .lk-wifi { stroke: #2f6fe0; stroke-width: 2.5; stroke-dasharray: 3 7; stroke-linecap: round; } .lk-fibre { stroke: #1e7a3c; stroke-width: 4; } .lk-down { stroke: var(--bad); stroke-dasharray: 10 6; } .lk-console { stroke: #2b5fd9; stroke-width: 3; }
 .pd-up { fill: #1fa04a; stroke: #ffffff; stroke-width: 2; } .pd-down { fill: var(--bad); stroke: #ffffff; stroke-width: 2; }
 /* the floor plan */
 .room { fill: #f4f6fb; stroke: #4a5675; stroke-width: 5; }
 .rl, .pdev .ns { paint-order: stroke; stroke: #f4f6fb; stroke-width: 6px; stroke-linejoin: round; } .door { stroke: #fbfcfe; stroke-width: 7; }
 .rl { fill: currentColor; color: var(--muted); font-weight: 800; font-size: 16px; letter-spacing: 0.06em; }
-.run { fill: none; stroke: #3a4150; stroke-width: 3; } .run-bad { fill: none; stroke: var(--bad); stroke-width: 3; stroke-dasharray: 8 5; } .run-coax { fill: none; stroke: var(--purple); stroke-width: 4; } .run-con { fill: none; stroke: #2b5fd9; stroke-width: 3; }
+.run { fill: none; stroke: #3a4150; stroke-width: 3; } .run-bad { fill: none; stroke: var(--bad); stroke-width: 3; stroke-dasharray: 8 5; } .run-coax { fill: none; stroke: var(--purple); stroke-width: 4; } .run-con { fill: none; stroke: #2b5fd9; stroke-width: 3; } .run-fib { fill: none; stroke: #1e7a3c; stroke-width: 4; }
 .pdev .tile { fill: #ffffff; stroke: #9aa6c4; }
 .plate { fill: #ffffff; stroke: #4a5675; stroke-width: 2; }
 /* step through */

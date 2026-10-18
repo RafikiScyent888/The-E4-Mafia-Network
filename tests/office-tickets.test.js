@@ -24,6 +24,8 @@ const sheetFixed = (T) => { const rows = T.sim.net.ipam.map((r) => Object.assign
 /* SO-08: the cable map as it really is */
 const rightMap = (T) => { const P = T.v.ports, m = { 7: "meeting" }; m[P.front] = "front"; m[P.open] = "open"; m[P.manager] = "manager"; return m; };
 const mgr = (line) => ({ t: "cmd", dev: "mgr", line });
+const mpc = (line) => ({ t: "cmd", dev: "mpc", line });
+const otherEnd = (T) => T.v.end === "msw" ? "bsw" : "msw";
 const homeAddr = (T) => n2ip(ip2n(T.v.orig.net) + 2);
 const moveDevice = (T, ip, save) => T.v.kind === "gear" ? conf(T, ["interface vlan 1", "ip address " + ip + " " + T.v.plan.mask]).concat(save === false ? [] : SAVE) : [{ t: "client", dev: "printer", values: { mode: "static", ip, mask: T.v.plan.mask, gw: T.v.plan.gw } }].concat(save === false ? [] : [{ t: "pcprinter", ip }]);
 
@@ -37,7 +39,8 @@ const FIX = {
   "SO-06": (T) => conf(T, ["interface vlan 1", "ip address " + T.v.plan.ip + " " + T.v.plan.mask]).concat(SAVE),
   "SO-07": (T) => conf(T, ["interface gi0/2", T.seed % 2 ? "speed auto" : "speed 100"]).concat(SAVE),
   "SO-09": (T) => [{ t: "ipam", rows: sheetFixed(T) }].concat(moveDevice(T, homeAddr(T))),
-  "SO-08": (T) => [{ t: "tone", cable: "c-run-mgr" }, { t: "probe", dev: "pp" }, { t: "repatch", cable: "c-cord-mgr", port: T.v.ports.manager }, { t: "cablemap", map: rightMap(T) }]
+  "SO-08": (T) => [{ t: "tone", cable: "c-run-mgr" }, { t: "probe", dev: "pp" }, { t: "repatch", cable: "c-cord-mgr", port: T.v.ports.manager }, { t: "cablemap", map: rightMap(T) }],
+  "SO-10": (T) => [{ t: "sfp", dev: T.v.end, slot: "SFP1", type: "1000BASE-SX" }, mpc("ipconfig /renew")]
 };
 /* what proves it, run from the front desk PC */
 const PROOF = {
@@ -49,10 +52,12 @@ const PROOF = {
   "SO-06": (T) => [pc("ping " + T.v.plan.ip)],
   "SO-07": (T) => [pc("ping " + T.v.plan.gw)],
   "SO-09": () => [{ t: "print" }],
-  "SO-08": () => [mgr("ping 203.0.113.80")]
+  "SO-08": () => [mgr("ping 203.0.113.80")],
+  "SO-10": () => [mpc("ping 203.0.113.80")]
 };
 /* the real fix without saving it: it works, it isn't the fix */
-const UNSAVED = (def, T) => def.id === "SO-08" ? FIX[def.id](T).slice(0, -1) : def.id === "SO-09" ? FIX[def.id](T).slice(1) : def.id === "SO-04" ? conf(T, ["interface gi0/5", "mdix auto"]).concat([{ t: "cmd", dev: "mpc", line: "ipconfig /renew" }]) : FIX[def.id](T).slice(0, -2);
+/* null: a ticket whose fix has no "works but isn't saved" state (a module swapped is swapped) */
+const UNSAVED = (def, T) => def.id === "SO-10" ? null : def.id === "SO-08" ? FIX[def.id](T).slice(0, -1) : def.id === "SO-09" ? FIX[def.id](T).slice(1) : def.id === "SO-04" ? conf(T, ["interface gi0/5", "mdix auto"]).concat([{ t: "cmd", dev: "mpc", line: "ipconfig /renew" }]) : FIX[def.id](T).slice(0, -2);
 /* tempting fixes that treat a symptom, or the wrong part: none may fix it */
 const WRONG = {
   "SO-01": (T) => [[{ t: "power", dev: "printer" }], [{ t: "power", dev: "msw" }], conf(T, ["interface gi0/3", "duplex half"]).concat(SAVE), conf(T, ["interface gi0/3", "shutdown", "no shutdown"]).concat(SAVE)],
@@ -74,7 +79,11 @@ const WRONG = {
   /* a new cord in port 7; the map put right with the cord left where it is; the front desk's cord moved to the manager's run;
      restarts; the manager's port bounced */
   "SO-08": (T) => [[{ t: "replace", cable: "c-cord-mgr" }, mgr("ipconfig /renew")], [{ t: "cablemap", map: rightMap(T) }], [{ t: "repatch", cable: "c-cord-pc", port: T.v.ports.manager }, { t: "cablemap", map: rightMap(T) }],
-    [{ t: "power", dev: "mgr" }], [{ t: "power", dev: "msw" }], conf(T, ["interface gi0/4", "shutdown", "no shutdown"]).concat(SAVE)]
+    [{ t: "power", dev: "mgr" }], [{ t: "power", dev: "msw" }], conf(T, ["interface gi0/4", "shutdown", "no shutdown"]).concat(SAVE)],
+  /* the LC pair swapped; the other end matched to the wrong one (both LX on multimode); restarts; the port bounced; a renew */
+  "SO-10": (T) => [[{ t: "polarity", cable: "c-fibre" }, mpc("ipconfig /renew")], [{ t: "sfp", dev: otherEnd(T), slot: "SFP1", type: "1000BASE-LX" }, mpc("ipconfig /renew")],
+    [{ t: "power", dev: "msw" }, { t: "power", dev: "bsw" }], conf(T, ["interface gi0/25", "shutdown", "no shutdown"]).concat(SAVE, [mpc("ipconfig /renew")]), [mpc("ipconfig /renew")],
+    [{ t: "sfp", dev: T.v.end, slot: "SFP1", type: "1000BASE-SX" }, { t: "polarity", cable: "c-fibre" }, mpc("ipconfig /renew")]]
 };
 /* the fault, in real output */
 const SYMPTOM = {
@@ -143,6 +152,20 @@ const SYMPTOM = {
     assert.equal(E.act(T, { t: "repatch", cable: "c-cord-mgr", port: P.front }).facts.ok, false, "a cord can't go into a port that has one");
     assert.equal(T.sim.cable("c-cord-mgr").b.port, "7");
   },
+  "SO-10": (T) => {
+    const v = T.v, plus = v.kind === "plus";
+    assert.match(E.act(T, mpc("ipconfig")).out, /Autoconfiguration IPv4 Address[ .]*: 169\.254\./);
+    const o = out(T, login(T).concat([cli("show interfaces status"), cli("show interfaces transceiver"), cli("show inventory")]));
+    assert.match(o, plus ? /Gi0\/25\s+BACK-OFFICE-FIBRE\s+err-disabled.*10GBaseSR/ : /Gi0\/25\s+BACK-OFFICE-FIBRE\s+notconnect.*1000Base(SX|LX)/);
+    assert.match(o, plus ? /Gi0\/25\s+% Unsupported transceiver/ : /Gi0\/25\s+.*-40\.0\s+\(no light received\)/);
+    assert.match(o, plus ? /PID: SFP-10G-SR/ : v.kind === "lx" ? /PID: SFP-1000BASE-LX/ : /PID: SFP-1000BASE-SX/);
+    if (plus) assert.match(o, /%PHY-4-UNSUPPORTED_TRANSCEIVER: Unsupported transceiver found in Gi0\/25/); else assert.doesNotMatch(o, /UNSUPPORTED_TRANSCEIVER/);
+    const a = E.act(T, { t: "look", cable: "c-fibre", end: "a" }).text, b = E.act(T, { t: "look", cable: "c-fibre", end: "b" }).text;
+    assert.match(a, plus ? /SFP\+ 10GBASE-SR/ : v.kind === "lx" ? /1000BASE-LX · 1310 nm/ : /1000BASE-SX · 850 nm/); assert.match(b, v.kind === "lx-back" ? /1000BASE-LX/ : /1000BASE-SX/);
+    assert.match(a, /orange, printed OM2 50\/125/); assert.match(a, v.kind === "lx" ? /bail latch is blue/ : /bail latch is black/);
+    const L = E.act(T, { t: "view", dev: "bsw", key: "lights" }); assert.deepEqual(L.ports.map((x) => x.port + ":" + x.up), ["1:true", "SFP1:false"]); assert.equal(L.facts.page, "bsw-lights");
+    assert.deepEqual(E.act(T, { t: "view", dev: "msw", key: "physical" }).sfp.map((m) => m.slot + "=" + m.swaps.join("/")), ["SFP1=" + ["1000BASE-SX", "1000BASE-LX"].filter((t) => t !== T.sim.d.msw.sfp.SFP1).join("/")]);
+  },
   "SO-09": (T) => {
     const v = T.v, prints = [], seen = new Set();
     for (let k = 0; k < 2; k++) { prints.push(E.act(T, { t: "print" }).facts.print); seen.add(E.act(T, pc("arp -a")).facts.entries.find((e) => e[0] === v.addr)[1]); }
@@ -178,10 +201,13 @@ for (const def of OFFICE_TICKETS) {
         const T = E.open(def, s); for (const a of wrong) E.act(T, a);
         assert.equal(T.fixed, false, def.id + " seed " + s + " wrong fix " + JSON.stringify(wrong.map((a) => a.line || a.t)) + " should not fix");
       }
-      let T = E.open(def, s); for (const a of UNSAVED(def, T)) E.act(T, a);
-      assert.equal(T.fixed, false, def.id + " seed " + s + ": not saved isn't fixed");
-      for (const a of PROOF[def.id](T)) E.act(T, a);
-      assert.equal(T.proven, false); assert.ok(T.partial && T.partial.length > 20, def.id + " seed " + s + ": Mason says it works but isn't saved (" + T.partial + ")");
+      let T = E.open(def, s); const un = UNSAVED(def, T);
+      if (un) {
+        for (const a of un) E.act(T, a);
+        assert.equal(T.fixed, false, def.id + " seed " + s + ": not saved isn't fixed");
+        for (const a of PROOF[def.id](T)) E.act(T, a);
+        assert.equal(T.proven, false); assert.ok(T.partial && T.partial.length > 20, def.id + " seed " + s + ": Mason says it works but isn't saved (" + T.partial + ")");
+      }
       T = E.open(def, s); E.guess(T, "right");
       for (const a of FIX[def.id](T)) E.act(T, a);
       assert.equal(T.fixed, true, def.id + " seed " + s + " real fix");

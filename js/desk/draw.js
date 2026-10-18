@@ -26,7 +26,7 @@ export const ICONS = {
   patchpanel: '<rect x="4" y="22" width="56" height="20" rx="2" class="ib"/><rect x="9" y="26" width="8" height="3" class="is"/><rect x="20" y="26" width="8" height="3" class="is"/><rect x="31" y="26" width="8" height="3" class="is"/><rect x="42" y="26" width="8" height="3" class="is"/><rect x="10" y="32" width="6" height="5" class="ip"/><rect x="21" y="32" width="6" height="5" class="ip"/><rect x="32" y="32" width="6" height="5" class="ip"/><rect x="43" y="32" width="6" height="5" class="ip"/><path d="M13 42v8M35 42v8" class="il"/>',
   jack: '<rect x="20" y="10" width="24" height="44" rx="3" class="ib"/><rect x="26" y="22" width="12" height="10" rx="1" class="ip"/><path d="M29 32v-4M35 32v-4" class="il"/>'
 };
-const ICON_OF = { isp: "cloud", modem: "modem", router: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", tv: "tv", camera: "camera", mesh: "mesh", phone: "phone", guest: "phone", rogue: "router", injector: "injector", injector2: "injector", msw: "mswitch", tech: "laptop", meet: "switch", mpc: "pc", pp: "patchpanel", mjack: "jack", mgr: "pc" };
+const ICON_OF = { isp: "cloud", modem: "modem", router: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", tv: "tv", camera: "camera", mesh: "mesh", phone: "phone", guest: "phone", rogue: "router", injector: "injector", injector2: "injector", msw: "mswitch", tech: "laptop", meet: "switch", mpc: "pc", pp: "patchpanel", mjack: "jack", mgr: "pc", bsw: "mswitch" };
 function defs(svg, prefix) {
   const d = document.createElementNS(NS, "defs");
   d.innerHTML = Object.keys(ICONS).map(function (k) { return '<symbol id="' + prefix + k + '" viewBox="0 0 64 64">' + ICONS[k] + "</symbol>"; }).join("");
@@ -90,7 +90,7 @@ export function linksOf(sim) {
       if (v) out.push({ a: v.a.dev, b: v.b.dev, kind: "copper", up: sim.cableUp(c), pa: v.a.port, pb: v.b.port, cable: c.id });
       continue;
     }   /* the diagram is the documentation: an undocumented box isn't on it */
-    out.push({ a: c.a.dev, b: c.b.dev, kind: c.kind === "console" ? "console" : "copper", up: sim.cableUp(c), pa: sim.d[c.a.dev].kind === "injector" ? "" : c.a.port, pb: sim.d[c.b.dev].kind === "injector" ? "" : c.b.port, cable: c.id });   /* the injector's own port names are on its Physical tab: the diagram has no room for them */
+    out.push({ a: c.a.dev, b: c.b.dev, kind: c.kind === "console" ? "console" : c.kind === "fibre" ? "fibre" : "copper", up: sim.cableUp(c), pa: sim.d[c.a.dev].kind === "injector" ? "" : c.a.port, pb: sim.d[c.b.dev].kind === "injector" ? "" : c.b.port, cable: c.id });   /* the injector's own port names are on its Physical tab: the diagram has no room for them */
   }
   const m = sim.d.mesh;
   if (m && shown(sim, "mesh") && shown(sim, "router") && sim.meshLink().kind !== "wired") out.push({ a: "router", b: "mesh", kind: "wifi", up: sim.meshLink().ok });   /* wired: its cable is drawn with the others */
@@ -100,7 +100,7 @@ export function linksOf(sim) {
 
 export function drawLogical(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "i-");
-  const ids = ["isp", "modem", "router", "tv", "switch", "msw", "meet", "mpc", "mgr", "tech", "pc", "printer", "injector", "injector2", "camera", "mesh", "phone", "laptop", "guest"].filter(function (id) { return shown(sim, id) && !sim.d[id].undocumented; });
+  const ids = ["isp", "modem", "router", "tv", "switch", "msw", "meet", "bsw", "mpc", "mgr", "tech", "pc", "printer", "injector", "injector2", "camera", "mesh", "phone", "laptop", "guest"].filter(function (id) { return shown(sim, id) && !sim.d[id].undocumented; });
   const P = {}; ids.forEach(function (id) { P[id] = pos(sim, id); });
   if (P.injector && P.injector2) Object.assign(P.injector2, { x: 520, y: 190 });   /* both injectors out of the van: the second one moves up out of the way */
   const below = function (id) { return !P[id].lab || P[id].lab === "below"; };
@@ -159,8 +159,8 @@ const RUNS = {
   "c-rogue": ["M250 200 L 330 235"]
 };
 const RUNS_OFFICE = { "c-coax": ["M40 120 L 96 120"] };   /* the provider's line comes in on the closet wall, beside the modem */
-const PLAN_NAME_OFFICE = { switch: "Old 8-port switch", pc: "Front desk PC", printer: "Printer", tech: "Your laptop", meet: "Back office switch", mpc: "Back office PC" };
-const PLAN_NAME = { pp: "Patch panel", mgr: "Manager's PC", mjack: "Wall jack", msw: "Managed switch", meet: "Back office switch", mpc: "Back office PC", tech: "Your laptop", injector: "PoE injector", injector2: "PoE+ injector", modem: "Modem", router: "Router", tv: "Smart TV", switch: "Switch", pc: "Office PC", printer: "Printer", camera: "Camera", mesh: "Mesh node", laptop: "Laptop", phone: "Phone", guest: "Guest's phone", rogue: "Old router" };
+const PLAN_NAME_OFFICE = { switch: "Old 8-port switch", pc: "Front desk PC", printer: "Printer", tech: "Your laptop", meet: "Back office switch", bsw: "Back office switch", mpc: "Back office PC" };
+const PLAN_NAME = { bsw: "Back office switch", pp: "Patch panel", mgr: "Manager's PC", mjack: "Wall jack", msw: "Managed switch", meet: "Back office switch", mpc: "Back office PC", tech: "Your laptop", injector: "PoE injector", injector2: "PoE+ injector", modem: "Modem", router: "Router", tv: "Smart TV", switch: "Switch", pc: "Office PC", printer: "Printer", camera: "Camera", mesh: "Mesh node", laptop: "Laptop", phone: "Phone", guest: "Guest's phone", rogue: "Old router" };
 export function drawPlan(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "p-");
   const build = sim.net.extra.build, off = office(sim);   /* a build house shows upstairs as the back bedroom and the landing; the office is its own plan */
@@ -191,7 +191,7 @@ export function drawPlan(svg, sim, o) {
   }
   for (const r of runs) {
     const up = sim.cableUp(r.c); if (!up) anyDown = true;
-    for (const d of r.d) h += '<path class="' + (up ? (r.c.kind === "coax" ? "run-coax" : r.c.kind === "console" ? "run-con" : "run") : "run-bad") + '" d="' + d + '"/>';
+    for (const d of r.d) h += '<path class="' + (up ? (r.c.kind === "coax" ? "run-coax" : r.c.kind === "console" ? "run-con" : r.c.kind === "fibre" ? "run-fib" : "run") : "run-bad") + '" d="' + d + '"/>';
   }
   svg.innerHTML += h + names;
   for (const id of ids) {

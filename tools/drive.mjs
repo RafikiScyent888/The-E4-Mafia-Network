@@ -238,6 +238,22 @@ Object.assign(PLAN, {
     },
     proof: async (p) => { await dev(p, "mgr"); await tab(p, "Command Prompt"); await type(p, "ping 203.0.113.80"); }
   },
+  "SO-10": {
+    look: async (p, v) => {
+      await dev(p, "mpc"); await tab(p, "Command Prompt"); await type(p, "ipconfig"); check(/169\.254\./.test(await term(p)), "SO-10: the back office PC is on 169.254");
+      await swLogin(p, v); await type(p, "show interfaces status"); await type(p, "show interfaces transceiver");
+      const t = await term(p); check(v.kind === "plus" ? /Gi0\/25\s+BACK-OFFICE-FIBRE\s+err-disabled/.test(t) && /Unsupported transceiver/.test(t) : /Gi0\/25\s+BACK-OFFICE-FIBRE\s+notconnect/.test(t) && /-40\.0\s+\(no light received\)/.test(t), "SO-10 (" + v.kind + "): show interfaces status and transceiver say why the fibre is dark");
+      for (const d of ["msw", "bsw"]) { await dev(p, d); await tab(p, "Physical"); await p.click('.cabs li:has-text("Fibre patch cord") button:text-is("Look at the plug")'); await p.waitForTimeout(40); }
+      const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(ev.indexOf("lookc") >= 0 && ev.indexOf("lookb") >= 0, "SO-10: both ends' modules read and noted (" + ev + ")");
+    },
+    wrong: async (p) => { await dev(p, "msw"); await tab(p, "Physical"); await p.click('.cabs li:has-text("Fibre patch cord") button:text-is("Swap the LC pair over at this end")'); await dev(p, "mpc"); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); },
+    fix: async (p, v) => {
+      await dev(p, v.end); await tab(p, "Physical"); await p.click('.phys button:text-is("Swap in a 1000BASE-SX module")'); await p.waitForTimeout(40);
+      check(/link light comes on/.test(await p.$eval(".phys", (n) => n.textContent)), "SO-10: the module swapped, the slot's link light comes on");
+      await dev(p, "mpc"); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew");
+    },
+    proof: async (p) => { await dev(p, "mpc"); await tab(p, "Command Prompt"); await type(p, "ping 203.0.113.80"); }
+  },
   "SO-09": {
     look: async (p, v) => {
       await dev(p, "pc"); await tab(p, "Printers"); for (let k = 0; k < 2; k++) { await p.click('.pane button:text-is("Print a test page")'); await p.waitForTimeout(40); }
@@ -327,7 +343,7 @@ if (!process.env.ONLY || process.env.ONLY === "tickets-office") {
   {
     const { p, ctx } = await page("SO-02", 2025);
     const q = await p.$$eval('#queue [data-t^="SO-"]', (l) => l.map((b) => b.dataset.t + ":" + (b.getAttribute("aria-disabled") === "true" ? "off" : "on")));
-    check(q.join(",") === "SO-01:on,SO-02:on,SO-03:on,SO-04:on,SO-05:on,SO-06:on,SO-07:on,SO-08:on,SO-09:on", "office tickets: the level 2 queue lists SO-01 to SO-09 (" + q.join(",") + ")");
+    check(q.join(",") === "SO-01:on,SO-02:on,SO-03:on,SO-04:on,SO-05:on,SO-06:on,SO-07:on,SO-08:on,SO-09:on,SO-10:on", "office tickets: the level 2 queue lists SO-01 to SO-10 (" + q.join(",") + ")");
     check(/office network/.test(await p.$eval("#tk .from", (n) => n.textContent)) && /Tier 2 · Small office/.test(await p.$eval("#labtitle", (n) => n.textContent)), "office tickets: the card says office network, the title Tier 2 · Small office");
     check(!!(await p.$('#devtabs [data-d="msw"]')) && !!(await p.$('#devtabs [data-d="tech"]')), "office tickets: the managed switch and your laptop have device buttons");
     await ctx.close();

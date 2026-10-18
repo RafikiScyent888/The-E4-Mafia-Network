@@ -67,6 +67,7 @@ function status(sw, n) {
   const p = sw.ports[n], l = sw.links[n];
   if (p.shutdown) return ["administratively down", "down"];
   if (!l) return ["down", "down"];
+  if (l.unsupported) return ["down", "down"];   /* a module the slot can't run: err-disabled */
   if (linkFails(p, l)) return ["down", "down"];
   return ["up", "up"];
 }
@@ -101,10 +102,12 @@ const SHOW = [
   ["interfaces", "Interface status and configuration", function (S, args) {
     if (!args.length) return PORT_NAMES.slice(0, 4).reduce(function (a, n) { return a.concat(ifDetail(S.sw, n)); }, []).concat(["(showing the first four; name a port: show interfaces gi0/5)"]);
     if (/^st/i.test(args[0])) return ifStatus(S.sw);
+    if (/^tr/i.test(args[0])) return transceivers(S.sw);
     const f = ifName(args, 0); if (!f || f.err) return ["% Invalid input detected at '^' marker."];
     return f.name === "Vlan1" ? vlanDetail(S.sw) : ifDetail(S.sw, f.name);
-  }, { sub: [["status", "Show interface line status"], ["GigabitEthernet", "GigabitEthernet IEEE 802.3z"], ["Vlan", "The switch's own interface (VLAN 1)"]] }],
+  }, { sub: [["status", "Show interface line status"], ["transceiver", "Show the SFP modules' readings (DOM)"], ["GigabitEthernet", "GigabitEthernet IEEE 802.3z"], ["Vlan", "The switch's own interface (VLAN 1)"]] }],
   ["mac", "MAC configuration", [["address-table", "MAC forwarding table", function (S) { return macTable(S.sw); }]]],
+  ["inventory", "Physical inventory: the chassis and its modules", function (S) { return inventory(S.sw); }],
   ["history", "Display the session command history", function (S) { return S.history.slice(-10).map(function (h) { return "  " + h; }); }],
   ["clock", "Display the system clock", function () { return ["*10:42:07.311 UTC Sun Oct 11 2026"]; }],
   ["users", "Display information about terminal lines", function (S) { return ["    Line       User       Host(s)              Idle       Location", S.via === "console" ? "*  0 con 0                idle                 00:00:00" : "*  1 vty 0                idle                 00:00:00 (remote)"]; }],
@@ -301,6 +304,20 @@ function ipBrief(sw) {
   PORT_NAMES.forEach(function (n) { const s = status(sw, n); L.push(pad(n, 23) + pad("unassigned", 16) + "YES " + pad("unset", 7) + pad(s[0], 22) + s[1]); });
   return L;
 }
+/* what each SFP module reads about itself (digital optical monitoring): it sends light whatever happens; it receives
+   only what the far end sends it on a wavelength it can hear. -40 dBm is no light at all */
+function transceivers(sw) {
+  const pad = function (s, n) { return (s + " ".repeat(n)).slice(0, n); }, rows = PORT_NAMES.filter(function (n) { return sw.links[n] && sw.links[n].module; });
+  if (!rows.length) return ["% No transceivers found: every SFP slot is empty."];
+  const L = ["                                    Optical   Optical", "           Temperature  Voltage     Tx Power  Rx Power", "Port       (Celsius)    (Volts)     (dBm)     (dBm)", "---------  -----------  ----------  --------  --------"];
+  rows.forEach(function (n) { const l = sw.links[n]; if (l.unsupported) { L.push(pad(short(n), 11) + "% Unsupported transceiver (" + l.module + "): no readings"); return; } L.push(pad(short(n), 11) + pad("33.8", 13) + pad("3.29", 12) + pad("-5.6", 10) + (l.light ? "-6.1" : "-40.0") + (l.light ? "" : "    (no light received)")); });
+  return L;
+}
+function inventory(sw) {
+  const L = ['NAME: "1", DESCR: "MSW-2800G 24 x 10/100/1000 + 4 x SFP"', "PID: MSW-2800G       , VID: V01  , SN: ████████", ""];
+  PORT_NAMES.forEach(function (n) { const l = sw.links[n]; if (l && l.module) L.push('NAME: "' + n + '", DESCR: "' + l.module + ' SFP' + (l.unsupported ? "+ (not supported in this slot)" : "") + '"', "PID: " + l.pid + (l.unsupported ? "" : "") + "   , VID: V01  , SN: ████████", ""); });
+  return L;
+}
 function ifStatus(sw) {
   const pad = function (s, n) { return (s + " ".repeat(n)).slice(0, n); };
   const L = [pad("Port", 10) + pad("Name", 19) + pad("Status", 13) + pad("Vlan", 11) + pad("Duplex", 7) + pad("Speed", 7) + "Type"];
@@ -309,7 +326,7 @@ function ifStatus(sw) {
     const ng = up ? negotiated(p, l) : null;
     const dx = up ? (ng.auto.duplex ? "a-" : "") + ng.duplex : p.duplex === "auto" ? "auto" : p.duplex;
     const sp = up ? (ng.auto.speed ? "a-" : "") + ng.speed : p.speed === "auto" ? "auto" : p.speed;
-    L.push(pad(short(n), 10) + pad(p.desc, 19) + pad(p.shutdown ? "disabled" : up ? "connected" : "notconnect", 13) + pad("1", 11) + pad(dx, 7) + pad(sp, 7) + (p.sfp ? (l && l.module ? l.module : "Not Present") : "10/100/1000BaseTX"));
+    L.push(pad(short(n), 10) + pad(p.desc, 19) + pad(p.shutdown ? "disabled" : l && l.unsupported ? "err-disabled" : up ? "connected" : "notconnect", 13) + pad("1", 11) + pad(dx, 7) + pad(sp, 7) + (p.sfp ? (l && l.module ? l.module : "Not Present") : "10/100/1000BaseTX"));
   });
   return L;
 }

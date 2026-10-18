@@ -14,6 +14,7 @@ import * as SW from "../net/swcli.js";
 import { rng, hash, mac, ip2n, n2ip } from "../net/util.js";
 import { checkSheet, sheetRows, usableIn, prefixOf } from "../net/ipam.js";
 import { OFFICE_RUN } from "../net/office.js";
+import { SFP_MODULES } from "../net/sim.js";
 
 const SO5 = OFFICE_JOBS.find(function (d) { return d.id === "SO-J5"; });
 const PC_PORT = "GigabitEthernet0/2", PR_PORT = "GigabitEthernet0/3";
@@ -493,6 +494,71 @@ const SO08 = {
   }
 };
 
+/* ---------------------------------------------------------------- SO-10 */
+/* the back office (what was the meeting room) on a second managed switch of the same model, joined to the closet over
+   fibre: the run passes the lift's motor room, and fibre doesn't pick up its interference. Multimode fibre, and an SX
+   module in the back office's switch; the closet's slot holds the wrong kind of module */
+function fibreBackOffice(sim, r, closetModule) {
+  const d = sim.d, net = sim.net;
+  d.bsw = { id: "bsw", kind: "mswitch", label: "Back office switch", sub: "MSW-2800G", on: true, mac: mac(r), sw: SW.newSwitch(), sfp: { SFP1: "1000BASE-SX", SFP2: null, SFP3: null, SFP4: null } };
+  d.msw.sfp = { SFP1: closetModule, SFP2: null, SFP3: null, SFP4: null };
+  d.mpc = { id: "mpc", kind: "pc", label: "Back office PC", sub: "DHCP", on: true, os: "windows", user: "backoffice", host: "BACKOFFICE-PC", printer: { name: "Office printer", port: d.pc.printer.port },
+    ifaces: [{ name: "Ethernet", type: "eth", port: "NIC", mac: mac(r), desc: "Gigabit Network Connection", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] };
+  net.rooms.bsw = "meeting"; net.rooms.mpc = "meeting"; sim.arp.bsw = {}; sim.arp.mpc = {};
+  net.cables.push({ id: "c-fibre", kind: "fibre", fiber: "MMF", jacket: "OM2 50/125 µm MULTIMODE", polarity: "ab", a: { dev: "msw", port: "SFP1", seated: true }, b: { dev: "bsw", port: "SFP1", seated: true }, length: OFFICE_RUN.closet.meeting + 9 });
+  net.cables.push({ id: "c-back-pc", kind: "cat6", a: { dev: "bsw", port: "1", seated: true }, b: { dev: "mpc", port: "NIC", seated: true }, cond: "good", length: 3 });
+}
+const SO10 = {
+  id: "SO-10", n: "10", level: 2, tier: "harder", title: "The fibre link to the back office is dark", priority: 2, due: "2 h",
+  build(seed) {
+    const B = settled(seed), sim = B.sim, r = rng(hash("SO-10:" + seed)), kind = r.pick(["lx", "lx-back", "plus"]);
+    fibreBackOffice(sim, r, kind === "lx" ? "1000BASE-LX" : kind === "plus" ? "10GBASE-SR" : "1000BASE-SX");
+    if (kind === "lx-back") sim.d.bsw.sfp.SFP1 = "1000BASE-LX";   /* this time it's the back office's end that holds the wrong one */
+    onSwitch(sim, ["configure terminal", "interface gi0/25", "description BACK-OFFICE-FIBRE", "no shutdown", "end"].concat(SAVE));
+    sim.dhcp("mpc", "boot");   /* it asks, and nothing beyond its own switch answers: 169.254 */
+    return { sim: sim, v: { kind: kind, plan: B.plan, end: kind === "lx-back" ? "bsw" : "msw", story: r.pick(["spare", "shop"]) } };
+  },
+  brief(v) {
+    return { quote: "The back office is on its own switch now, joined to the closet by a fibre run: the installer said fibre because the run passes the lift's motor room. Since he left, nothing in the back office connects. " +
+      (v.story === "spare" ? "He fitted the modules from the spares in his van, and said they're \"all the same thing really\"." : "We bought the modules ourselves from a computer shop, from his list, to save money.") };
+  },
+  mason: "Light has to leave one end on a wavelength the other end can hear. Read both ends.",
+  affected: "mpc",
+  options(v) {
+    const rightText = v.kind === "plus" ? "The closet's SFP slot holds a 10 Gb/s SFP+ module, which a 1 Gb/s SFP slot can't run" : "The two ends' SFP modules don't match: one is 1000BASE-LX (1310 nm, single-mode), the other 1000BASE-SX (850 nm, multimode)";
+    return [
+      { id: "right", right: true, text: rightText },
+      v.kind === "plus" ? { id: "mismatch", text: "The two ends' SFP modules don't match: one is 1000BASE-LX (1310 nm, single-mode), the other 1000BASE-SX (850 nm, multimode)", why: "Both modules' labels say 850 nm, multimode: they're the same kind of light. The closet's is SFP+, 10 Gb/s, and its slot is err-disabled." }
+        : { id: "plus", text: "The closet's SFP slot holds a 10 Gb/s SFP+ module, which a 1 Gb/s SFP slot can't run", why: "Both modules are 1 Gb/s SFP modules: show interfaces status lists the port as notconnect, not err-disabled, and show inventory has no SFP+." },
+      { id: "polarity", text: "The fibre's LC pair is crossed the wrong way, transmit to transmit", why: "No turn of the LC pair can join 850 nm to 1310 nm, or run an SFP+ in an SFP slot. Read the modules' labels first." },
+      { id: "dirty", text: "The LC connectors are dirty, and too little light gets through", why: "A dirty connector dims the light; it doesn't take it away entirely. And show interfaces transceiver can't hear a wavelength it isn't made for at all." },
+      { id: "shut", text: "The closet switch's fibre port is shut down", why: "show interfaces status doesn't say disabled: the port is open." },
+      { id: "long", text: "The fibre run is too long for the modules", why: "It's " + (OFFICE_RUN.closet.meeting + 9) + " m. Multimode at 1 Gb/s reaches hundreds of metres; single-mode, kilometres." }
+    ];
+  },
+  rung1() { return "On the closet switch: show interfaces status, show interfaces transceiver and show inventory. Then read the modules' labels and the cord's jacket, at both ends."; },
+  rung2() { return "An SFP module sends one wavelength on one kind of fibre at one speed. Both ends must send and listen on the same wavelength, on fibre made for it, at a speed their slots can run; a 1 Gb/s SFP slot can't run a 10 Gb/s SFP+ module."; },
+  fixHints() { return ["The van has both kinds of 1 Gb/s module: SX for multimode, LX for single-mode.", "The fibre in the wall is the one thing you can't swap: match the modules to it.", "Then have the back office PC ask for its address again, and test from it."]; },
+  exhibits(sim) { const c = sim.cable("c-fibre"); return !!c && !sim.cableUp(c) && c.a.seated && c.b.seated && !SW_(sim).ports["GigabitEthernet0/25"].shutdown && sim.hasLink("mpc"); },
+  fixed(sim) { const c = sim.cable("c-fibre"); return sim.cableUp(c) && online(sim, "mpc"); },
+  proves(f) { return f.cmd === "ping" && f.dev === "mpc" && f.beyond; },
+  proofText: "a ping from the back office PC that gets replies from beyond it",
+  evidence: [
+    { id: "ipc", test: function (f) { return f.cmd === "ipconfig" && f.dev === "mpc" && f.apipa; }, text: function () { return "ipconfig on the back office PC: a 169.254 address (no DHCP server reached)"; } },
+    { id: "status", test: function (f) { return /^Gi0\/25\s.*\b(notconnect|err-disabled)\b/m.test(swOut(f)); }, text: function (f) { return "show interfaces status: Gi0/25, the fibre to the back office, is " + (/^Gi0\/25\s.*err-disabled/m.test(swOut(f)) ? "err-disabled" : "notconnect") + ", its module " + ((swOut(f).match(/^Gi0\/25\s.*\s(\S+)$/m) || [])[1] || ""); } },
+    { id: "dom", test: function (f) { return /^Gi0\/25\s+(.*-40\.0|% Unsupported)/m.test(swOut(f)); }, text: function (f) { return /Unsupported/.test(swOut(f)) ? "show interfaces transceiver: Gi0/25, unsupported transceiver, no readings" : "show interfaces transceiver: Gi0/25 sends light (-5.6 dBm) and receives none (-40.0 dBm)"; } },
+    { id: "inv", test: function (f) { return /NAME: "GigabitEthernet0\/25"/.test(swOut(f)); }, text: function (f) { return "show inventory: Gi0/25 holds " + ((swOut(f).match(/NAME: "GigabitEthernet0\/25", DESCR: "([^"]+)"/) || [])[1] || "a module"); } },
+    { id: "log", test: function (f) { return /%PHY-4-UNSUPPORTED_TRANSCEIVER/.test(swOut(f)); }, text: function () { return "The switch's console: %PHY-4-UNSUPPORTED_TRANSCEIVER on Gi0/25, put in err-disable state"; } },
+    { id: "lookc", test: function (f) { return f.phys === "look" && f.cable === "c-fibre" && f.end === "a"; }, text: function (f, v, sim) { return "The closet's end: module labelled " + SFP_MODULES[sim.d.msw.sfp.SFP1].label + "; the cord's jacket: orange, OM2 50/125 µm multimode"; } },
+    { id: "lookb", test: function (f) { return f.phys === "look" && f.cable === "c-fibre" && f.end === "b"; }, text: function (f, v, sim) { return "The back office's end: module labelled " + SFP_MODULES[sim.d.bsw.sfp.SFP1].label; } }
+  ],
+  summary(v) {
+    return { cause: v.kind === "plus" ? "The closet switch's SFP slot held an SFP+ 10GBASE-SR module. Its light was the right kind (850 nm, multimode), but a 1 Gb/s SFP slot can't run a 10 Gb/s module: the switch flagged it unsupported and err-disabled the port."
+      : "The " + (v.kind === "lx" ? "closet's" : "back office's") + " module was a 1000BASE-LX: 1310 nm light, made for single-mode fibre. The other end's 1000BASE-SX sends and listens at 850 nm, and the run is multimode. Neither end could hear the other.",
+      fix: "Swapped the wrong module for a 1000BASE-SX, to match the other end and the multimode fibre, then had the back office PC ask for its address again." };
+  }
+};
+
 /* ---------------------------------------------------------------- SO-09 */
 /* the office has started using SO-J4's address plan, ready for next year's VLANs: the router hands out only the Staff
    block, and each fixed device takes the first address after its block's gateway, keeping the office's mask and
@@ -576,6 +642,6 @@ const SO09 = {
   }
 };
 
-export const OFFICE_TICKETS = [SO01, SO02, SO03, SO04, SO05, SO06, SO07, SO08, SO09];
+export const OFFICE_TICKETS = [SO01, SO02, SO03, SO04, SO05, SO06, SO07, SO08, SO09, SO10];
 export { ROOM_NAME };
 export const OFFICE_COMING = [];

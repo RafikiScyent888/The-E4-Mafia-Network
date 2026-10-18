@@ -198,7 +198,7 @@ export function managedSwitch(o = {}) {
   }
   sfps.forEach(function (cg, k) {
     if (!sfpCol[k]) return;
-    const m = plugInto(cg, sfpModule({ cable: sfpCol[k] }), { y: 0, z: 0.4 }), x = SX[k];
+    const m = plugInto(cg, sfpModule({ cable: sfpCol[k], bail: o.sfpBail && o.sfpBail[k], text: o.sfpText && o.sfpText[k] }), { y: 0, z: 0.4 }), x = SX[k];   /* o.sfpBail: each module's bail latch colour; o.sfpText: what its cord's jacket says */
     cableFrom(g, m, [[x + 14 + k * 4, Y0 + 8, D / 2 + 76], [x + 40 + k * 10, 1.6, D / 2 + 128 + k * 6], [x + 230 + k * 16, 1.6, D / 2 + 200 + k * 10]], { straight: 16, r: 1.6 });
   });
   if (o.console) {

@@ -3,7 +3,7 @@
    it and the tests read exactly what a student would see. Each page also
    returns "facts" the notebook can record. */
 import { isIp } from "./util.js";
-import { portName as printedPort } from "./sim.js";
+import { portName as printedPort, SFP_MODULES } from "./sim.js";
 
 const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", meet: "switch", mpc: "pc", mgr: "pc" };   /* the office's back office (SO-04) and the manager's PC (SO-08): the same housings */
 
@@ -47,6 +47,7 @@ export function cableName(sim, c, fromDev) {
   if (sim.d[fromDev].kind === "jack") return "The run from this jack back to the closet";
   if (sim.d[other.dev].kind === "patchpanel") return /R$/.test(other.port) ? "Cable to the wall jack (its run goes back to the patch panel in the closet)" : "Patch cord to the patch panel (port " + other.port + ")";
   if (c.kind === "coax") return "Coax cable, wall outlet to the modem's CABLE IN";
+  if (c.kind === "fibre") return "Fibre patch cord, " + me.port + " to the " + lowerFirst(sim.d[other.dev].label) + " (" + other.port + ")";
   if (c.kind === "console") return fromDev === "tech" ? "Console cable to the managed switch (CONSOLE)" : "Console cable to your laptop (its USB serial adapter)";
   if (fromDev === "tech") return "Patch cable from your laptop's ETHERNET to the " + sim.d[other.dev].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }) + (/^\d+$/.test(other.port) ? " (port " + other.port + ")" : other.port ? " (" + other.port + ")" : "");
   if (other.dev === "tech") return "Patch cable to your laptop (its ETHERNET port)";
@@ -59,6 +60,11 @@ export function cableName(sim, c, fromDev) {
 export function look(sim, cableId, end) {
   const c = sim.cable(cableId), e = c[end];
   if (c.kind === "coax") return e.tight ? "Screwed on snugly; it doesn't turn by hand." : "Loose: the F-connector spins freely by hand, and the centre wire is barely touching.";
+  if (c.kind === "fibre") {   /* an SFP module with its LC duplex cord: what's printed on the module, its bail, the cord's jacket */
+    const x = sim.d[e.dev], m = x.sfp && SFP_MODULES[x.sfp[e.port]];
+    return (e.seated ? "The LC duplex plug is clicked into the module in " + e.port + "." : "The LC plug is out of the module.") + (m ? " The module's label: " + m.label + "; its bail latch is " + m.bail + "." : " The slot is empty.") +
+      " The cord's jacket: " + (c.fiber === "SMF" ? "yellow" : "orange") + ", printed " + c.jacket + ". " + (sim.cableUp(c) ? "The slot's link light is on." : "The slot's link light is off.");
+  }
   const ex = sim.d[e.dev];
   if (ex.kind === "patchpanel" && /R$/.test(e.port)) return "Punched down at the back of port " + e.port.slice(0, -1) + ": the eight wires sit firmly in their slots, in order. Nothing on it says which room it goes to.";
   if (ex.kind === "jack") return "Nothing is plugged into this jack. The run behind it goes back to the closet.";
@@ -83,7 +89,7 @@ export function page(sim, id, key) {
   if (key === "physical") {
     const cables = sim.cablesOf(id).map(function (c) {
       const end = c.a.dev === id ? "a" : "b", me = c[end], far = c[end === "a" ? "b" : "a"], pp = x.kind === "patchpanel", toPanelBack = sim.d[far.dev].kind === "patchpanel" && /R$/.test(far.port);
-      let acts = c.kind === "coax" ? ["look", "tighten"] : c.kind === "console" ? ["look", "reseat", "unplug"] : ["look", "reseat", "unplug", "test", "replace"].concat(sim.net.site === "office" ? ["crossover"] : []);   /* the office's van carries crossover cables too */
+      let acts = c.kind === "coax" ? ["look", "tighten"] : c.kind === "console" ? ["look", "reseat", "unplug"] : c.kind === "fibre" ? ["look", "polarity"] : ["look", "reseat", "unplug", "test", "replace"].concat(sim.net.site === "office" ? ["crossover"] : []);   /* the office's van carries crossover cables too */
       if (pp && /R$/.test(me.port)) acts = ["look", "test"];                     /* a run punched down at the back of the panel */
       else if (pp) acts = acts.concat(["repatch"]);                               /* a patch cord in the panel's front */
       else if (x.kind === "jack") acts = ["look", "test", "tone"];
@@ -97,6 +103,7 @@ export function page(sim, id, key) {
     const inj = x.kind === "injector" ? { power: !!x.power, std: x.std, swap: !sim.net.extra.build } : null;   /* in a build house the right injector comes out of the van, not a swap */
     const free = x.kind === "patchpanel" ? Array.from({ length: 24 }, function (_, i) { return String(i + 1); }).filter(function (p) { return !sim.cableAt(id, p); }) : null;   /* front ports a cord can move to */
     return { kind: "physical", still: STILL[id] ? "assets/stills/" + STILL[id] + ".jpg" : null, label: x.label, cables: cables, restart: x.kind !== "injector" && x.kind !== "patchpanel" && x.kind !== "jack", injector: inj, probe: x.kind === "patchpanel", freePorts: free,
+      sfp: x.kind === "mswitch" ? Object.keys(x.sfp || {}).filter(function (k) { return x.sfp[k]; }).map(function (k) { return { slot: k, type: x.sfp[k], label: SFP_MODULES[x.sfp[k]].label, swaps: ["1000BASE-SX", "1000BASE-LX"].filter(function (t) { return t !== x.sfp[k]; }) }; }) : null,
       facts: { page: id + "-physical", rogue: id === "rogue", injector: inj, camera: id === "camera" ? sim.on("camera") : undefined } };
   }
   if (id === "router") {
@@ -153,10 +160,15 @@ export function page(sim, id, key) {
       const state = !c ? "off (nothing plugged in)" : sp === 0 ? "off" : x.kind === "mswitch" ? "on, green: link up" : sp === 1000 ? "on, green: 1 Gb/s link" : "on, amber: 10/100 Mb/s link";
       rows.push({ port: p, who: who, state: state, up: sp > 0, speed: sp });
     }
+    if (x.kind === "mswitch") Object.keys(x.sfp || {}).forEach(function (k) {   /* its fibre slots with a cord in (SO-10): a link light each */
+      const c = sim.cableAt(id, k); if (!c) return;
+      const o = c.a.dev === id ? c.b : c.a, up = sim.cableUp(c);
+      rows.push({ port: k, who: "the " + sim.d[o.dev].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }) + " (fibre)", state: up ? "on, green: link up" : "off", up: up, speed: up ? 1000 : 0 });
+    });
     if (x.kind === "mswitch") {
       const on = sim.on(id), con = sim.cablesOf(id).find(function (c) { return c.kind === "console"; });
       return { kind: "lights-ports", title: "Lights", ports: rows, lights: [{ name: "SYSTEM", state: on ? "on" : "off", text: on ? "on, green" : "off", mean: "the switch has started" }, { name: "POWER", state: on ? "on" : "off", text: on ? "on, green" : "off", mean: "power is on" }],
-        note: "Managed: every port's settings, and the switch's own address, are on its command line. Reach it from your laptop's serial terminal on the console cable" + (con ? " (plugged into its CONSOLE port now)" : "") + ", or over the network once it has an address. Its port lights are green when a port has a link, whatever the speed: ask the switch (show interfaces status) for the speed and duplex.", facts: { page: "msw-lights", ports: rows } };
+        note: "Managed: every port's settings, and the switch's own address, are on its command line. Reach it from your laptop's serial terminal on the console cable" + (con ? " (plugged into its CONSOLE port now)" : "") + ", or over the network once it has an address. Its port lights are green when a port has a link, whatever the speed: ask the switch (show interfaces status) for the speed and duplex.", facts: { page: id + "-lights", ports: rows } };
     }
     return { kind: "lights-ports", title: "Lights", ports: rows, note: "Unmanaged: no console and no settings. Read the lights: green is 1 Gb/s, amber is 10/100 Mb/s." + (x.labelText ? " Its label: " + x.labelText + "." : ""), facts: { page: id + "-lights", ports: rows } };
   }
@@ -239,6 +251,7 @@ export function physical(sim, act) {
   const done = sim.apply(act) || {};
   if (act.t === "reseat") return { text: c[act.end].seated && before === JSON.stringify([c.a, c.b, c.cond]) ? "Pushed it home: it was already clicked in." : "Plugged it back in until it clicked.", facts: { phys: "reseat", cable: act.cable, end: act.end } };
   if (act.t === "replace") return { text: "Swapped in a new, tested patch cable (straight-through).", facts: { phys: "replace", cable: act.cable } };
+  if (act.t === "polarity") return { text: done.polarity === "flipped" ? "Unclipped the LC duplex plug at this end and swapped its two fibres over: each end's transmit now meets the other end's transmit." : "Swapped the LC pair back over: each end's transmit meets the other end's receive again.", facts: { phys: "polarity", cable: act.cable, polarity: done.polarity } };
   if (act.t === "tone") return { text: "Clipped the tone generator onto the run at the desk end and switched it on: it's sending its warble down the cable.", facts: { phys: "tone", cable: act.cable } };
   if (act.t === "repatch") { const r = done; return { text: r.ok === false ? r.err + ": nothing moved." : r.same ? "It's already in that port." : "Moved the patch cord to port " + act.port + " on the panel.", facts: { phys: "repatch", cable: act.cable, port: act.port, ok: r.ok !== false } }; }
   if (act.t === "crossover") return { text: "Swapped in a crossover patch cable (T568A at one end, T568B at the other).", facts: { phys: "crossover", cable: act.cable } };

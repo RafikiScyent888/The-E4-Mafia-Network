@@ -5,6 +5,7 @@
    source on replay). */
 import { isIp, isApipa, isLoopback, sameSubnet, hash, pad, lpad } from "./util.js";
 import * as SW from "./swcli.js";
+import { SFP_MODULES, swPort } from "./sim.js";
 
 const STATIC_ARP = [["224.0.0.22", "01-00-5e-00-00-16"], ["224.0.0.251", "01-00-5e-00-00-fb"], ["239.255.255.250", "01-00-5e-7f-ff-fa"], ["255.255.255.255", "ff-ff-ff-ff-ff-ff"]];
 
@@ -128,6 +129,7 @@ function serial(sim, id, raw) {
   if (!st || st.sw !== tgt) st = sim.cli[id] = { S: SW.session(sim.d[tgt].sw, { via: "console", reach: reachFrom(sim, tgt), tftp: tftpFrom(sim, tgt) }), sw: tgt, via: "console" };
   const r = SW.exec(st.S, raw); st.prompt = r.prompt;
   const dup = dupAddr(sim, tgt); if (dup && st.dup !== dup) { st.dup = dup; r.out = r.out.concat([dup]); }   /* once a session, as the console log shows it */
+  const sl = sfpLog(sim, tgt), sk = sl.join("|"); if (sl.length && st.sfp !== sk) { st.sfp = sk; r.out = r.out.concat(sl); }
   return { out: lines(r.out), facts: { cmd: "serial", dev: id, connected: true, mode: st.S.mode, line: raw.trim(), out: r.out.join("\n") }, secret: !!r.secret, cli: true, keep: r.keep };
 }
 function remote(sim, id, raw, k) {
@@ -158,6 +160,13 @@ function dupAddr(sim, sw) {
   const o = sim.owners(a.ip, sim.domain(sim.homeNode(sw))).filter(function (d) { return d !== sw; }); if (!o.length) return null;
   const m = sim.macOf(o[0]).replace(/[^0-9a-f]/gi, "").toLowerCase();
   return "%IP-4-DUPADDR: Duplicate address " + a.ip + " on Vlan1, sourced by " + m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12);
+}
+/* a module its slot can't run (a 10 Gb/s SFP+ in a 1 Gb/s SFP slot): the switch says so on the console and err-disables the port */
+function sfpLog(sim, sw) {
+  const x = sim.d[sw], L = [];
+  Object.keys(x.sfp || {}).forEach(function (k) { const m = x.sfp[k] && SFP_MODULES[x.sfp[k]]; if (!m || m.rate === 1000) return; const n = swPort(k).replace("GigabitEthernet", "Gi");
+    L.push("%PHY-4-UNSUPPORTED_TRANSCEIVER: Unsupported transceiver found in " + n, "%PM-4-ERR_DISABLE: gbic-invalid error detected on " + n + ", putting " + n + " in err-disable state"); });
+  return L;
 }
 /* ssh user@host, or ssh -l user host: Windows' own OpenSSH client */
 function ssh(sim, id, args, k) {

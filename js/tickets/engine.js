@@ -15,8 +15,8 @@ import { page, physical } from "../net/pages.js";
 import { rng, hash } from "../net/util.js";
 import { checkSheet, sheetRows } from "../net/ipam.js";
 
-const STATE_CHANGING = { cmd: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1, router: 1, client: 1, rogue: 1, print: 1, speed: 1, outside: 1, rejoin: 1, pcprinter: 1, forget: 1, join: 1, injector: 1, tftp: 1, crossover: 1, ipam: 1, tone: 1, repatch: 1, cablemap: 1 };   /* print, speed and outside change nothing, but they draw on the same counter as ping, so replay needs them */
-const PHYSICAL = { look: 1, test: 1, reseat: 1, unplug: 1, replace: 1, crossover: 1, tighten: 1, power: 1, tone: 1, probe: 1, repatch: 1 };
+const STATE_CHANGING = { cmd: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1, router: 1, client: 1, rogue: 1, print: 1, speed: 1, outside: 1, rejoin: 1, pcprinter: 1, forget: 1, join: 1, injector: 1, tftp: 1, crossover: 1, ipam: 1, tone: 1, repatch: 1, cablemap: 1, sfp: 1, polarity: 1 };   /* print, speed and outside change nothing, but they draw on the same counter as ping, so replay needs them */
+const PHYSICAL = { look: 1, test: 1, reseat: 1, unplug: 1, replace: 1, crossover: 1, tighten: 1, power: 1, tone: 1, probe: 1, repatch: 1, polarity: 1 };
 
 /* open a ticket on a seed; if a generated network ever failed to show its fault, move to the next seed */
 export function open(def, seed) {
@@ -65,6 +65,7 @@ function apply(T, a, replay) {
   if (a.t === "rogue") { const r = T.sim.apply(a); return { result: r, facts: { rogueDhcp: T.sim.d.rogue.dhcp.on } }; }
   if (a.t === "pcprinter") { const r = T.sim.apply(a); return { result: r, facts: r.ok ? { pcprinter: a.ip } : {} }; }
   if (a.t === "print") { const r = T.sim.apply(a); return { result: r, facts: { print: r.ok ? "ok" : "fail", slow: !!r.slow, port: r.port, who: r.who, conflict: !!r.conflict } }; }
+  if (a.t === "sfp") { const r = T.sim.apply(a), c = T.sim.cableAt(a.dev, a.slot); return { result: r, facts: { sfp: a.type, dev: a.dev, slot: a.slot, link: !!c && T.sim.cableUp(c) } }; }   /* a module from the van swapped into an SFP slot */
   if (a.t === "cablemap") { const r = T.sim.apply(a); return { result: r, facts: { cablemap: "saved", map: T.sim.net.cablemap } }; }   /* the office's cable map, saved */
   if (a.t === "ipam" || a.t === "ipamcheck") { const r = a.t === "ipam" ? T.sim.apply(a) : { ok: true }; return { result: r, facts: { ipam: a.t === "ipam" ? "saved" : "checked", sheet: checkSheet(T.sim.net.plan.ipam.block, sheetRows(T.sim.net)) } }; }   /* the office's IPAM sheet, saved or only checked */
   if (a.t === "tftp") { const r = T.sim.apply(a); return { result: r, facts: { tftp: r.on } }; }

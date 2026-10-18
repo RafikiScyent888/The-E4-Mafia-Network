@@ -40,7 +40,16 @@ const DUAL_NAME = { "DATA IN": "DATA IN 1", "DATA IN 2": "DATA IN 2", "PoE OUT":
 /* the name printed by a port on the device itself: what the student reads on the model and in every list */
 export function portName(x, port) { if (x && x.kind === "patchpanel") return /R$/.test(port) ? "port " + port.slice(0, -1) + " (punched down at the back)" : "port " + port; return (x && x.dual && DUAL_NAME[port]) || (x && x.kind === "techlaptop" && port === "USB-C" ? "USB-C (its USB serial adapter)" : null) || PORT_NAME[port] || port; }
 /* the managed switch's copper ports and its console port (its SFP slots take a fibre module: level 2's later jobs) */
-export const MSW_PORTS = Array.from({ length: 24 }, function (_, i) { return String(i + 1); }).concat(["CONSOLE"]);
+export const MSW_PORTS = Array.from({ length: 24 }, function (_, i) { return String(i + 1); }).concat(["CONSOLE", "SFP1", "SFP2", "SFP3", "SFP4"]);
+/* a managed switch's port, by the name the switch itself uses: copper "4" is GigabitEthernet0/4, fibre slot "SFP1" is GigabitEthernet0/25 */
+export function swPort(port) { const m = /^SFP(\d)$/.exec(port); return "GigabitEthernet0/" + (m ? 24 + +m[1] : port); }
+/* the SFP modules in the van, and what each one is: its wavelength, the fibre it's made for, its speed, the colour of
+   its bail latch (the industry's habit: black for SX, blue for LX), and what's printed on its label */
+export const SFP_MODULES = {
+  "1000BASE-SX": { nm: 850, fiber: "MMF", rate: 1000, bail: "black", show: "1000BaseSX", pid: "SFP-1000BASE-SX", label: "1000BASE-SX · 850 nm · multimode · up to 550 m" },
+  "1000BASE-LX": { nm: 1310, fiber: "SMF", rate: 1000, bail: "blue", show: "1000BaseLX", pid: "SFP-1000BASE-LX", label: "1000BASE-LX · 1310 nm · single-mode · up to 10 km" },
+  "10GBASE-SR": { nm: 850, fiber: "MMF", rate: 10000, bail: "black", show: "10GBaseSR", pid: "SFP-10G-SR", label: "SFP+ 10GBASE-SR · 850 nm · multimode · up to 300 m" }
+};
 /* a patch panel's 24 ports: the jack at the front ("7") and the run punched down behind it ("7R") */
 export const PANEL_PORTS = Array.from({ length: 24 }, function (_, i) { return String(i + 1); }).concat(Array.from({ length: 24 }, function (_, i) { return (i + 1) + "R"; }));
 export function portsOf(x) {
@@ -95,8 +104,18 @@ export class Sim {
     const worst = [c.cond, o.cond].indexOf("crushed") >= 0 ? "crushed" : [c.cond, o.cond].indexOf("damaged") >= 0 ? "damaged" : "good";
     return { id: c.id, kind: "cat6", a: near, b: far, cond: worst, length: (c.length || 0) + (o.length || 0), wiring: (c.wiring === "crossover") !== (o.wiring === "crossover") ? "crossover" : "straight", via: [c.id, o.id] };
   }
+  /* a fibre link: both plugs in, a module in each end that its slot can run (a 1 Gb/s SFP slot can't run a 10 Gb/s SFP+
+     module), the two modules the same kind (850 nm talks only to 850 nm), each made for the fibre between them, the
+     LC pair the right way round (each end's transmit to the other's receive), both switches on and both ports open */
+  fibreUp(c) {
+    if (!c.a.seated || !c.b.seated || c.polarity === "flipped") return false;
+    const mods = [c.a, c.b].map(function (e) { const x = this.d[e.dev], m = x && x.sfp && x.sfp[e.port]; return m ? SFP_MODULES[m] : null; }, this);
+    if (!mods[0] || !mods[1] || mods.some(function (m) { return m.rate !== 1000 || m.fiber !== c.fiber; }) || mods[0].nm !== mods[1].nm) return false;
+    return [c.a, c.b].every(function (e) { const x = this.d[e.dev]; if (!this.on(e.dev)) return false; if (x.kind !== "mswitch") return true; const p = x.sw.ports[swPort(e.port)]; return !!p && !p.shutdown; }, this);
+  }
   cableUp(c) {
     if (!c) return false;
+    if (c.kind === "fibre") return this.fibreUp(c);
     if (c.kind === "cat6" && this.panelEnd(c)) { const v = this.viaPanel(c); return !!v && this.cableUp(v); }
     if ([c.a, c.b].some(function (e) { return this.d[e.dev] && this.d[e.dev].kind === "jack"; }, this)) return false;   /* a run to a wall jack with nothing plugged into it */
     if (c.kind === "coax") return c.a.tight && c.b.tight && c.cond === "good";
@@ -106,7 +125,7 @@ export class Sim {
     if (c.cond === "crushed") return false;                 /* pairs 1-2 or 3-6 open: no link at all */
     for (const e of [c.a, c.b]) {   /* a managed switch's port: shut down, or a fixed speed the far end can't match, and there's no link */
       const x = this.d[e.dev]; if (!x || x.kind !== "mswitch") continue;
-      const p = x.sw.ports["GigabitEthernet0/" + e.port]; if (!p || p.shutdown) return false;
+      const p = x.sw.ports[swPort(e.port)]; if (!p || p.shutdown) return false;
       const fs = this.speedSetting(e === c.a ? c.b : c.a); if (p.speed !== "auto" && fs !== "auto" && p.speed !== fs) return false;
       const fx = this.d[(e === c.a ? c.b : c.a).dev], top = Math.min((fx && fx.maxMbps) || 1000, c.cond === "damaged" ? 100 : 1000);
       if (p.speed !== "auto" && +p.speed > top) return false;   /* a speed forced above what the far end (or the cable) can run: no link */
@@ -124,7 +143,7 @@ export class Sim {
      computer's (MDI-X against MDI), so like to like needs a crossover cable, unless either end swaps its pairs by itself
      (auto-MDIX: every modern port, a managed switch's port unless turned off, never an old 10/100 switch) */
   pairsMeet(c) {
-    const auto = function (e) { const x = this.d[e.dev]; if (!x) return true; if (x.kind === "mswitch") { const p = x.sw.ports["GigabitEthernet0/" + e.port]; return !p || p.mdix !== false; } return x.mdix !== false; }.bind(this);
+    const auto = function (e) { const x = this.d[e.dev]; if (!x) return true; if (x.kind === "mswitch") { const p = x.sw.ports[swPort(e.port)]; return !p || p.mdix !== false; } return x.mdix !== false; }.bind(this);
     if (auto(c.a) || auto(c.b)) return true;
     const mdix = function (e) { const k = this.d[e.dev].kind; return k === "switch" || k === "mswitch"; }.bind(this);
     return (mdix(c.a) !== mdix(c.b)) === (c.wiring !== "crossover");
@@ -140,7 +159,7 @@ export class Sim {
   /* what speed an end of a cable is set to: a managed switch port's setting, a computer's adapter's, or auto */
   speedSetting(e) {
     const x = this.d[e.dev]; if (!x) return "auto";
-    if (x.kind === "mswitch") { const p = x.sw.ports["GigabitEthernet0/" + e.port]; return p ? p.speed : "auto"; }
+    if (x.kind === "mswitch") { const p = x.sw.ports[swPort(e.port)]; return p ? p.speed : "auto"; }
     return (x.ifaces && x.ifaces[0].cfg.speed) || "auto";
   }
   /* the managed switch's view of its own links, for its show commands: refreshed from the cables before it's asked */
@@ -154,6 +173,12 @@ export class Sim {
   switchLinks(id) {
     const x = this.d[id]; if (!x || x.kind !== "mswitch") return {};
     const L = {};
+    /* each SFP slot with a module in it: what the switch reads from the module, and whether light comes back */
+    Object.keys(x.sfp || {}).forEach(function (slot) {
+      const M = SFP_MODULES[x.sfp[slot]], c = this.cableAt(id, slot); if (!M) return;
+      const far = c ? (c.a.dev === id && c.a.port === slot ? c.b : c.a) : null, fd = far && this.d[far.dev], up = !!c && c.kind === "fibre" && this.fibreUp(c), mm = fd && fd.mac ? fd.mac.replace(/[^0-9a-f]/gi, "").toLowerCase() : "";
+      L[swPort(slot)] = { module: M.show, pid: M.pid, unsupported: M.rate !== 1000, sfpMismatch: !up, light: up, mac: up ? mm.slice(0, 4) + "." + mm.slice(4, 8) + "." + mm.slice(8, 12) : null, speed: "1000", duplex: "full", max: 1000, tick: this.n };
+    }, this);
     for (const c0 of this.cablesOf(id)) {
       if (c0.kind !== "cat6") continue;
       const c = this.panelEnd(c0) ? this.viaPanel(c0) : c0; if (!c) continue;   /* patched through a panel: the device beyond it */
@@ -477,7 +502,7 @@ export class Sim {
   mismatched(id) {
     const c = this.cablesOf(id).map(function (k) { return k.kind === "cat6" && this.panelEnd(k) ? this.viaPanel(k) : k; }, this).find(function (k) { return k && k.kind === "cat6" && (k.a.dev === "msw" || k.b.dev === "msw"); }); if (!c || !this.cableUp(c)) return false;
     const e = c.a.dev === "msw" ? c.a : c.b; if (!/^\d+$/.test(e.port)) return false;
-    const n = "GigabitEthernet0/" + e.port, p = this.d.msw.sw.ports[n], lk = this.switchLinks("msw")[n];
+    const n = swPort(e.port), p = this.d.msw.sw.ports[n], lk = this.switchLinks("msw")[n];
     return !!(p && lk && duplexEnds(p, lk).mismatch);
   }
 
@@ -543,6 +568,11 @@ export class Sim {
       case "client": res = this.setClient(act.dev, act.values); break;
       case "cmd": res = { ok: true }; break;                    /* commands are replayed by the command runner */
       case "tftp": { const s = this.d[act.dev || "tech"].tftp; if (s) s.on = !!act.on; res = { ok: !!s, on: !!(s && s.on) }; break; }   /* your laptop's TFTP server, started or stopped */
+      case "sfp": {                                             /* a module out of an SFP slot and another from the van in */
+        const x = this.d[act.dev]; if (!x || !x.sfp || !(act.slot in x.sfp) || !SFP_MODULES[act.type]) { res = { ok: false }; break; }
+        x.sfp[act.slot] = act.type; res = { ok: true, type: act.type }; break;
+      }
+      case "polarity": { const c = this.cable(act.cable); if (!c || c.kind !== "fibre") { res = { ok: false }; break; } c.polarity = c.polarity === "flipped" ? "ab" : "flipped"; res = { ok: true, polarity: c.polarity }; break; }   /* the LC pair swapped over at one end */
       case "tone": { const c = this.cable(act.cable); this.net.extra.tone = c ? c.id : null; res = { ok: !!c }; break; }   /* the tone generator clipped onto a run at the desk end */
       case "repatch": {                                         /* a patch cord moved to another front port of the panel */
         const c = this.cable(act.cable), pe = c && this.panelEnd(c), to = String(act.port || "");

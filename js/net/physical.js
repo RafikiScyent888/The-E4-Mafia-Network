@@ -6,7 +6,7 @@
    prove each fault really shows on the model. */
 import { page } from "./pages.js";
 import { prompt } from "./cmd.js";
-import { POE } from "./sim.js";
+import { POE, SFP_MODULES } from "./sim.js";
 
 /* the model each device is drawn with (the old router in HOME-10 is a home router too) */
 export const MODEL_OF = { modem: "modem", router: "router", rogue: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", injector: "injector", meet: "switch", mpc: "pc", mgr: "pc" };   /* the office's meeting room (SO-04): an old 5-port switch in the same housing, and a desktop */
@@ -20,7 +20,7 @@ const PORTS = {
   laptop: [["ETHERNET", "ETH"]], techlaptop: [["ETHERNET", "ETH"], ["USB-C", "USB-C"]], mesh: [["WAN", "WAN"], ["LAN", "LAN"]], injector: [["DATA IN", "DATA IN"], ["DATA + POWER OUT", "PoE OUT"]],
   switch8: [1, 2, 3, 4, 5, 6, 7, 8].map(function (n) { return [String(n), String(n)]; }),
   /* the managed switch: its 24 ports by the numbers printed over and under them, and CONSOLE */
-  msw: Array.from({ length: 24 }, function (_, i) { return [String(i + 1), String(i + 1)]; }).concat([["CONSOLE", "CONSOLE"]]),
+  msw: Array.from({ length: 24 }, function (_, i) { return [String(i + 1), String(i + 1)]; }).concat([["CONSOLE", "CONSOLE"], ["SFP1", "SFP1"], ["SFP2", "SFP2"], ["SFP3", "SFP3"], ["SFP4", "SFP4"]]),
   /* build mode's PoE+ injector, as photographed: two pairs, "DATA IN" over each input and the pair's number under it */
   injectorDual: [["DATA IN 1", "DATA IN"], ["DATA IN 2", "DATA IN 2"], ["DATA + POWER OUT 1", "PoE OUT"], ["DATA + POWER OUT 2", "PoE OUT 2"]],
   /* the closet rack (SO-08): the patch panel's 24 front jacks, "P1" to "P24" on the model; the wall jack has nothing in its front */
@@ -73,6 +73,11 @@ export function physicalState(sim, id) {
   } else if (model === "msw") {
     L("SYSTEM", "SYSTEM", on ? "on" : "off"); L("POWER", "POWER", on ? "on" : "off"); L("PSU", "Power supply", on ? "on" : "off"); L("FAN", "Fan", on ? "on" : "off");
     opts.plugged = ports.slice(0, 24).map(function (p) { return p.plug !== "none"; }); opts.console = ports[24].plug !== "none";
+    /* the SFP slots (SO-10): a module drawn where the switch has one with its cord in, its bail latch the module's colour */
+    const mods = x.sfp || {}, slot = function (k) { return mods["SFP" + (k + 1)] && ports[25 + k].plug !== "none" ? SFP_MODULES[mods["SFP" + (k + 1)]] : null; };
+    opts.sfp = [0, 1, 2, 3].map(function (k) { const c = sim.cableAt(id, "SFP" + (k + 1)); return slot(k) ? (c && c.fiber === "SMF" ? 0xf2c200 : 0xe8893a) : null; });   /* orange multimode, yellow single-mode */
+    opts.sfpBail = [0, 1, 2, 3].map(function (k) { const m = slot(k); return m ? (m.bail === "blue" ? 0x2f6fd0 : 0x1d1e21) : null; });
+    opts.sfpText = [0, 1, 2, 3].map(function (k) { const c = sim.cableAt(id, "SFP" + (k + 1)); return c && c.jacket ? c.jacket + "  ·  LC-LC DUPLEX" : null; });
   } else if (model === "rack") {
     /* the patch panel's cords down to the managed switch under it, the tabs as written, the switch's port lights */
     opts.patches = []; opts.tabs = {};
@@ -145,6 +150,7 @@ export function physicalState(sim, id) {
   if (model === "laptop" && ports[0].plug === "none") says.push("ETHERNET: empty (this laptop is on Wi-Fi). On screen: Command Prompt, waiting for a command.");
   if (model === "techlaptop") { if (ports[0].plug === "none") says.push("ETHERNET: empty."); if (ports[1].plug === "none") says.push("USB-C: empty (the console cable isn't plugged in)."); says.push("On screen: " + opts.title.replace(/\s+\u00b7\s+/g, ", ") + (x.tftp.on ? ". " + opts.screen.filter(Boolean).join(". ") + "." : ".")); }
   if (model === "mesh") says.push("No network cables: it reaches the router over Wi-Fi.");
+  if (model === "msw") Object.keys(x.sfp || {}).forEach(function (k) { const m = x.sfp[k] && SFP_MODULES[x.sfp[k]]; if (m) says.push(k + ": a module, its label " + m.label + ", its bail latch " + m.bail + "."); });
   if (model === "msw") { if (!ports.some(function (p) { return p.plug !== "none"; })) says.push("Nothing plugged into it yet."); says.push("Printed on the front: MANAGED SWITCH 24-PORT + 4 SFP, MODEL: MSW-2800G. Its settings are on its command line, not on lights or buttons."); }
   if (x.labelText) says.push("Its label: " + x.labelText + ".");
   if (model === "printer") says.push("Control panel screen: " + opts.screen.status + ", IP address " + opts.screen.ip + ".");

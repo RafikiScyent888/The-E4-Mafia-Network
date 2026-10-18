@@ -725,5 +725,35 @@
   "name": "office tickets: SO-08 the cord moved, the map left wrong: Mason's word",
   "page": "index.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-08'); const T=c.T, v=T.v; c.guess('right'); c.act({t:'repatch',cable:'c-cord-mgr',port:v.ports.manager}); c.act({t:'cmd',dev:'mgr',line:'ping 203.0.113.80'}); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "office tickets: SO-10 the fibre to the back office on the diagram, the closet switch's console",
+  "page": "index.html",
+  "ticket": "SO-10",
+  "seed": 2025,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-10'); const v=c.T.v; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; document.querySelector('#devtabs [data-d=tech]').click(); ['',v.plan.console,'enable',v.plan.secret,'show interfaces transceiver','show inventory'].forEach(k);"
+ },
+ {
+  "name": "office tickets: SO-10 the floor plan, the dark fibre run",
+  "page": "index.html",
+  "ticket": "SO-10",
+  "seed": 2025,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-10'); document.getElementById('vPhy').click();"
+ },
+ {
+  "name": "office tickets: SO-10 the back office switch's Physical tab, its module and the swaps",
+  "page": "index.html",
+  "ticket": "SO-10",
+  "seed": 2025,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-10'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=bsw]').click(); tab('Physical');",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))",
+  "after": "[...document.querySelectorAll('.m3d-bar button')].find(b=>b.textContent==='Fibre slots').click()"
+ },
+ {
+  "name": "office tickets: SO-10 the 10 Gb/s module: err-disabled, the console's log",
+  "page": "index.html",
+  "ticket": "SO-10",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-10'); const v=c.T.v; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; document.querySelector('#devtabs [data-d=tech]').click(); ['',v.plan.console,'enable',v.plan.secret,'show interfaces status'].forEach(k);"
  }
 ]

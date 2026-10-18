@@ -58,6 +58,14 @@ PLANTS = [
  ("SO-08: the front desk patched away, accepted", "js/tickets/office.js", 'fixed(sim) { return online(sim, "mgr") && mapRight(sim) && online(sim, "pc") && printOk(sim); },', 'fixed(sim) { return online(sim, "mgr") && mapRight(sim); },'),
  ("a cord moved onto a port that has one", "js/net/sim.js", '        if (this.cableAt(pe.dev, to)) { res = { ok: false, err: "Port " + to + " already has a cord in it" }; break; }\n', ""),
  ("the panel names the room each run goes to", "js/net/pages.js", '"Run punched down at the back of port " + me.port.slice(0, -1) :', '"Run punched down at the back of port " + me.port.slice(0, -1) + " to the " + sim.d[other.dev].label :'),
+ ("any two modules link", "js/net/sim.js", " || mods[0].nm !== mods[1].nm) return false;", ") return false;"),
+ ("a module links on any fibre", "js/net/sim.js", "return m.rate !== 1000 || m.fiber !== c.fiber;", "return m.rate !== 1000;"),
+ ("a 10 Gb/s module runs in a 1 Gb/s slot", "js/net/sim.js", "return m.rate !== 1000 || m.fiber !== c.fiber;", "return m.fiber !== c.fiber;"),
+ ("the LC pair can be crossed any way", "js/net/sim.js", '    if (!c.a.seated || !c.b.seated || c.polarity === "flipped") return false;', '    if (!c.a.seated || !c.b.seated) return false;'),
+ ("the switch reads light whatever comes back", "js/net/swcli.js", '(l.light ? "-6.1" : "-40.0")', '"-6.1"'),
+ ("an unsupported module isn't err-disabled", "js/net/swcli.js", '  if (l.unsupported) return ["down", "down"];   /* a module the slot can\'t run: err-disabled */\n', ""),
+ ("no console log for an unsupported module", "js/net/cmd.js", "const m = x.sfp[k] && SFP_MODULES[x.sfp[k]]; if (!m || m.rate === 1000) return;", "return;"),
+ ("the module's label left off the look", "js/net/pages.js", '" The module\'s label: " + m.label + "; its bail latch is " + m.bail + "."', '""'),
 ]
 only = sys.argv[1:]
 for name, f, a, b in PLANTS:

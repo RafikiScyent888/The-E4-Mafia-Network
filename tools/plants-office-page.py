@@ -9,7 +9,7 @@ PLANTS = [
  ("empty line not sent to the switch", "js/desk/window.js", "if (v.trim() || sw) {", "if (v.trim()) {"),
  ("locked job opens anyway", "js/build/app.js", "  if (!isOpen(levelOfJob(def.id).n)) def = JOBS[0];", ""),
  ("undo skips switch lines", "js/build/engine.js", "&& !J.net[i].cli) i--;", ") i--;"),
- ("console drawn as patch cable", "js/desk/draw.js", 'r.c.kind === "console" ? "run-con" : "run"', '"run"'),
+ ("console drawn as patch cable", "js/desk/draw.js", 'r.c.kind === "console" ? "run-con" : r.c.kind === "fibre" ? "run-fib" : "run"', 'r.c.kind === "fibre" ? "run-fib" : "run"'),
  ("? needs Enter", "js/desk/window.js", '} else if (e.key === "?" && S) {', '} else if (e.key === "?" && false) {'),
  ("level finished before it is all built", "js/desk/levels.js", "return !L.later && built(L) && c.tickets", "return !L.later && c.tickets"),
  ("no word that more is coming", "js/build/app.js", '"That\'s everything on " + Lv.the + " so far. "', '"Done. "'),

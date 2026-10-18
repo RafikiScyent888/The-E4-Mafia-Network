@@ -15,6 +15,8 @@ PLANTS = [
  ("old switch keeps its cords", "js/desk/model3d.js", "OFF.desktopSwitch8({ plugged: o.plugged, cords: true })", "OFF.desktopSwitch8({ cords: true })"),
  ("the rack draws the preview's cords, not the sim's", "js/desk/model3d.js", "OFF.wallRack6U({ managed: true, patches: o.patches,", "OFF.wallRack6U({ managed: true,"),
  ("the rack's switch lights ignore the sim", "js/desk/model3d.js", "tabs: o.tabs, swLights: o.swLights });", "tabs: o.tabs });"),
+ ("the SFP modules never drawn", "js/desk/model3d.js", "sfp: o.sfp || [null, null, null, null], sfpBail: o.sfpBail,", "sfp: [null, null, null, null], sfpBail: o.sfpBail,"),
+ ("every module drawn with the SX's black bail", "js/desk/model3d.js", "sfpBail: o.sfpBail, sfpText: o.sfpText })", "sfpText: o.sfpText })"),
 ]
 only = sys.argv[1:]
 bad = 0

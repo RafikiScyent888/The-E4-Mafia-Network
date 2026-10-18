@@ -211,7 +211,8 @@ export function managedSwitch(o = {}) {
 /* ------------------------------------------------------- the patch panel */
 /* A 24-port Cat6 patch panel, 1U, as photographed: the dark face, four groups of six jacks in their light
    modules, a white write-on tab over each jack and its number under it, "Cat6 Patch Panel (24-Port)" at the
-   right, silver rack screws in the ears. Jacks named "port:P1" to "port:P24". o.plugged: which have a cord */
+   right, silver rack screws in the ears. Jacks named "port:P1" to "port:P24". o.plugged: which have a cord;
+   o.tabs: what's written on a port's tab, by port number (blank otherwise, as photographed) */
 export function patchPanel24(o = {}) {
   const g = new THREE.Group(), U = 44.45, face = paintedSteel(0x232528, { rough: 0.5 });
   g.add(at(box(482.6, U - 0.8, 1.6, face), 0, U / 2, 0.8));
@@ -225,6 +226,7 @@ export function patchPanel24(o = {}) {
   for (let n = 1; n <= 24; n++) {
     const j = rj45Jack({ name: "P" + n, insert: 0x141517, leds: false }); at(j, gx(n), U / 2 + 0.6, 2.7); g.add(j); jacks[n] = j;
     g.add(at(box(12.6, 4.2, 0.3, plastic(0xf2f2ee, { rough: 0.7 })), gx(n), U - 6.2, 1.75));      /* the write-on tab */
+    if (o.tabs && o.tabs[n]) g.add(at(dark(o.tabs[n], 11.6, 3.2, { weight: "700" }), gx(n), U - 6.2, 1.95));   /* written on it in marker */
     g.add(at(ink(String(n), 6, 3.4, { weight: "600" }), gx(n), 5.6, 1.65));
   }
   g.add(at(ink("Cat6\nPatch Panel\n(24-Port)", 26, 10, { weight: "600" }), 201, U / 2 + 0.6, 1.65));
@@ -271,7 +273,9 @@ export function desktopSwitch8(o = {}) {
    holes, a 24-port Cat6 patch panel at the top, the rack's own "6U Wall Rack" panel under it, a vented
    shelf below with the 8-port switch on it; grey patch cords looping down from the panel and from the switch.
    o.managed: the small office's version, the managed switch mounted under the patch panel in place of the
-   name panel, short cords from the panel down to it */
+   name panel, short cords from the panel down to it (ports 1 to 10 to ports 1 to 10, as previewed); o.patches:
+   [[panel port, switch port], ...] for the cords as they really are; o.tabs: the panel's tabs; o.swLights: the
+   switch's 24 port lights */
 export function wallRack6U(o = {}) {
   const g = new THREE.Group(), U = 44.45, Y = 20, TOP = Y + 6 * U, DP = 380, frame = paintedSteel(0xaeb2b7, { rough: 0.38 }), hole = mat(0x0c0d0e, { rough: 1 });
   if (o.wall !== false) g.add(at(box(1100, 760, 4, mat(0xe6e4df, { rough: 0.92, grain: 0.1, scale: 1.3 })), 0, 150, -DP - 14));
@@ -288,13 +292,14 @@ export function wallRack6U(o = {}) {
   /* top and bottom: a flat bar across the front and the back */
   [Y - 10, TOP + 10].forEach(function (y) { g.add(at(box(510, 20, 3, frame), 0, y, 0.5)); g.add(at(box(510, 20, 3, frame), 0, y, -DP + 2)); });
   /* the patch panel in U6 */
-  const pp = patchPanel24(o.managed ? { plugged: Array.from({ length: 24 }, function (_, i) { return i < 10; }) } : {}); at(pp, 0, Y + 5 * U, 0); g.add(pp);
+  const patches = o.patches || Array.from({ length: 10 }, function (_, i) { return [i + 1, i + 1]; });
+  const pp = patchPanel24(o.managed ? { plugged: Array.from({ length: 24 }, function (_, i) { return patches.some(function (p) { return p[0] === i + 1; }); }), tabs: o.tabs } : {}); at(pp, 0, Y + 5 * U, 0); g.add(pp);
   if (o.managed) {
-    const sw = managedSwitch({ cords: false, lights: Array.from({ length: 24 }, function (_, i) { return i < 10; }), sfp: [null, null, null, null] });
+    const sw = managedSwitch({ cords: false, lights: o.swLights || Array.from({ length: 24 }, function (_, i) { return i < 10; }), sfp: [null, null, null, null] });
     at(sw, 0, Y + 4 * U - 1.4, -130); g.add(sw);   /* its ears against the rails, under the patch panel */
-    /* short blue cords: patch panel port n down to switch port n, each landing straight into its port */
-    for (let n = 1; n <= 10; n++) {
-      const pj = pp.userData.jacks[n], plug = patch(pj, 0x2f6fd0), sj = sw.getObjectByName("port:" + n), sp = patch(sj, 0x2f6fd0);
+    /* short blue cords: a patch panel port down to its switch port, each landing straight into its port */
+    for (const pc of patches) {
+      const pj = pp.userData.jacks[pc[0]], plug = patch(pj, 0x2f6fd0), sj = sw.getObjectByName("port:" + pc[1]), sp = patch(sj, 0x2f6fd0);
       g.updateMatrixWorld(true);
       const p0 = pj.getWorldPosition(new THREE.Vector3()); g.worldToLocal(p0);
       const ex = sp.localToWorld(new THREE.Vector3(0, 0, sp.userData.exitZ)); g.worldToLocal(ex);

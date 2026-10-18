@@ -50,6 +50,10 @@ const SETUP = {
     views: [["Ports close-up", { focus: "panel:Ports", view: [0.1, 0.22, 1] }], ["Lights", { view: [0.1, 0.2, 1], frame: [0, 32, 62, 30, 42, 68], light: [0.3, 1.2, 1.0] }], ["Label on top", { view: [0.05, 1, 0.3], frame: [-42, 47, -62, 42, 48, 62], light: [0.3, 1.3, 0.5] }], ["Power cord", { view: [-1, 0.35, 0.5], frame: [-110, 0, 20, -40, 30, 75], light: [-0.6, 1.2, 0.8] }]] },
   injectorDual: { build: function () { return GEAR.poeInjectorDual(); }, view: [0.5, 0.42, 1], light: [0.5, 1.3, 1.0], frame: [-80, 0, -80, 160, 64, 130],
     views: [["Ports close-up", { focus: "panel:Ports", view: [0.08, 0.2, 1] }], ["Lights", { view: [0.1, 0.2, 1], frame: [-4, 18, 62, 46, 48, 70], light: [0.3, 1.2, 1.0] }], ["Label on top", { view: [0.05, 1, 0.3], frame: [-56, 61, -62, 56, 63, 62], light: [0.3, 1.3, 0.5] }], ["Power cord", { view: [1, 0.35, 0.5], frame: [60, 0, 10, 170, 34, 80], light: [0.6, 1.2, 0.8] }]] },
+  rack: { build: function (o) { return OFF.wallRack6U({ managed: true, patches: o.patches, tabs: o.tabs, swLights: o.swLights }); }, view: [0.32, 0.22, 1], light: [0.5, 1.3, 1.0], frame: [-260, 40, -380, 260, 300, 120],
+    views: [["Patch panel close-up", { focus: "device:Patch panel", view: [0.05, 0.12, 1], light: [0.3, 1.2, 1.0] }], ["Ports 1 to 12", { view: [0.04, 0.08, 1], frame: [-216, 238, -6, -2, 290, 30], light: [0.3, 1.2, 1.0] }], ["Panel and switch", { view: [0.08, 0.1, 1], frame: [-245, 150, -20, 245, 270, 60], light: [0.3, 1.2, 1.0] }], ["Switch ports close-up", { view: [0.04, -0.3, 1], frame: [-215, 194, -132, 15, 242, -100], light: [0.3, 1.0, 1.2] }]] },
+  wallplate: { build: function () { return END.wallPlate({ plugged: false }); }, view: [0.2, 0.1, 1], light: [0.4, 1.2, 1.0], frame: [-60, -80, -4, 60, 80, 10],
+    views: [["Jacks close-up", { view: [0.05, 0.05, 1], frame: [-30, -40, 0, 30, 45, 10] }]] },
   camera: { build: function (o) { return END.ipCamera({ ipLine: o.ipLine, poe: o.poe }); }, stage: "concrete", view: [1, 0.5, 0.75], light: [0.7, 1.3, 0.9], frame: [-70, 0, -70, 125, 112, 125],
     views: [["Port close-up", { focus: "panel:PoE port", view: [0.91, 0.3, 0.41] }]] }
 };

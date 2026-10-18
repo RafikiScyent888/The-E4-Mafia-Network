@@ -415,6 +415,84 @@ const SO07 = {
   }
 };
 
+/* ---------------------------------------------------------------- SO-08 */
+/* last week's new cabling: every desk's wall jack runs back to a 24-port patch panel in the closet rack, punched down
+   behind one of its ports, and a short patch cord joins that port's front to the switch. The installer's cable map has
+   the manager's run and the meeting room's the wrong way round, and the manager's new PC was patched from the map */
+const ROOM_NAME = { front: "Front desk", open: "Open-plan office", manager: "Manager's office", meeting: "Meeting room" };
+function newCabling(sim, r) {
+  const d = sim.d, net = sim.net, free = r.shuffle(["1", "2", "3", "4", "5", "6", "8", "9", "10", "11", "12"]);
+  const P = { front: free[0], open: free[1], manager: free[2], meeting: "7" };   /* the map says the manager's is 7: it's the meeting room's */
+  d.pp = { id: "pp", kind: "patchpanel", label: "Patch panel", sub: "24-port Cat6", on: true };
+  d.mjack = { id: "mjack", kind: "jack", label: "Meeting room wall jack", sub: "nothing plugged in", on: true };
+  d.mgr = { id: "mgr", kind: "pc", label: "Manager's PC", sub: "DHCP", on: true, os: "windows", user: "manager", host: "MANAGER-PC", printer: { name: "Office printer", port: d.pc.printer.port },
+    ifaces: [{ name: "Ethernet", type: "eth", port: "NIC", mac: mac(r), desc: "Gigabit Network Connection", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] };
+  ["pp", "mjack", "mgr"].forEach(function (id) { sim.arp[id] = {}; }); net.rooms.pp = "closet"; net.rooms.mjack = "meeting"; net.rooms.mgr = "manager";
+  if (d.switch && !sim.cablesOf("switch").length) { delete d.switch; delete net.rooms.switch; delete sim.arp.switch; }   /* the installer took the old 8-port switch away: the panel is where it stood */
+  /* the front desk's and the printer's runs now come back to the panel, each patched to the switch port they had */
+  const rewire = function (dev, port, room) { const c = sim.cablesOf(dev)[0], sw = c.a.dev === "msw" ? c.a : c.b; net.cables.push({ id: "c-cord-" + dev, kind: "cat6", a: { dev: "msw", port: sw.port, seated: true }, b: { dev: "pp", port: P[room], seated: true }, cond: "good", length: 0.5 }); sw.dev = "pp"; sw.port = P[room] + "R"; };
+  rewire("pc", "2", "front"); rewire("printer", "3", "open");
+  net.cables.push({ id: "c-run-mgr", kind: "cat6", a: { dev: "pp", port: P.manager + "R", seated: true }, b: { dev: "mgr", port: "NIC", seated: true }, cond: "good", length: OFFICE_RUN.closet.manager });
+  net.cables.push({ id: "c-run-meet", kind: "cat6", a: { dev: "pp", port: "7R", seated: true }, b: { dev: "mjack", port: "JACK", seated: true }, cond: "good", length: OFFICE_RUN.closet.meeting });
+  net.cables.push({ id: "c-cord-mgr", kind: "cat6", a: { dev: "msw", port: "4", seated: true }, b: { dev: "pp", port: "7", seated: true }, cond: "good", length: 0.5 });   /* patched from the map */
+  const map = {}; map[P.front] = "front"; map[P.open] = "open"; map["7"] = "manager"; map[P.manager] = "meeting";
+  net.cablemap = map; d.pp.tabs = Object.assign({}, map);   /* the installer wrote the panel's tabs from his map */
+  return P;
+}
+/* does the cable map name, for every panel port, the room its run really goes to (and nothing for a port with no run)? */
+const mapRight = function (sim) {
+  const m = sim.net.cablemap || {}, real = {};
+  sim.cablesOf("pp").forEach(function (c) { const e = c.a.dev === "pp" ? c.a : c.b, o = e === c.a ? c.b : c.a; if (/R$/.test(e.port)) real[e.port.slice(0, -1)] = sim.net.rooms[o.dev]; });
+  for (let n = 1; n <= 24; n++) if ((m[n] || "") !== (real[n] || "")) return false;
+  return true;
+};
+const SO08 = {
+  id: "SO-08", n: "08", level: 2, tier: "harder", title: "The cable map says port 7; the cable isn't in port 7", priority: 2, due: "2 h", cablemap: true,
+  build(seed) {
+    const B = settled(seed), sim = B.sim, r = rng(hash("SO-08:" + seed)), P = newCabling(sim, r);
+    onSwitch(sim, ["configure terminal", "interface gi0/4", "description MANAGER-PC", "no shutdown", "end"].concat(SAVE));
+    sim.dhcp("mgr", "boot");
+    return { sim: sim, v: { plan: B.plan, ports: P, story: r.pick(["away", "door"]) } };
+  },
+  brief(v) {
+    return { quote: "Last week we had new cabling put in: every desk's wall jack now runs back to a patch panel in the closet rack, and short patch cords join the panel to the switch. The manager's new PC in the manager's office has no network at all. The installer's cable map says the manager's jack is port 7, so that's the port he patched to the manager's port on the switch, and he swears the cord is good. " +
+      (v.story === "away" ? "He's on another job this week." : "His cable map is taped inside the rack door.") };
+  },
+  mason: "A map is only as good as whoever wrote it. Ask the cable.",
+  affected: "mgr",
+  options() {
+    return [
+      { id: "right", right: true, text: "The manager's run is punched down on a different panel port from the one the cable map gives, so the switch was patched to the wrong run" },
+      { id: "cord", text: "The patch cord from panel port 7 to the switch is faulty", why: "Port 7's cord is fine; port 7's run goes somewhere else. The tone from the manager's jack comes out at another port, with nothing patched into it." },
+      { id: "shut", text: "The manager's switch port is shut down", why: "show interfaces status says notconnect, not disabled: the port is on, but sees no link." },
+      { id: "run", text: "The manager's run is damaged", why: "The cable tester passes every pin of the manager's run, from the panel to the jack." },
+      { id: "nic", text: "The manager's PC's network adapter has failed", why: "Its run lands at the panel on a port with nothing patched into it: there's no path to the switch for it to link on, whatever the adapter." },
+      { id: "dhcp", text: "The router has run out of addresses to hand out", why: "ipconfig says Media disconnected: there's no link at all, so DHCP never comes into it." }
+    ];
+  },
+  rung1() { return "On the manager's PC: ipconfig. On the switch: show interfaces status. Then the cable map, and follow the manager's cable to the panel: the tone generator on it at the desk end, the probe along the back of the panel."; },
+  rung2() { return "A patch panel joins each run at its back to whatever is patched into the same port at its front. A map is somebody's notes: a tone put on a cable at one end shows where it really lands at the other."; },
+  fixHints() { return ["Find where the manager's run really lands: tone it at the desk end, then probe the back of the panel.", "Move the manager's patch cord to that port.", "Then put the cable map right, so it matches what the tone showed you: the next technician will trust it."]; },
+  exhibits(sim, v) { const c = sim.cable("c-cord-mgr"); return !sim.hasLink("mgr") && !!c && c.b.port === "7" && (sim.net.cablemap || {})["7"] === "manager" && online(sim, "pc") && printOk(sim); },
+  fixed(sim) { return online(sim, "mgr") && mapRight(sim) && online(sim, "pc") && printOk(sim); },
+  partial(v, sim) { return !online(sim, "pc") || !printOk(sim) ? "The manager's online, but the front desk or the printer isn't any more: a cord that was right has been moved." : "The manager's online, but the cable map still has the runs the wrong way round: the next technician will patch from it and get it wrong again."; },
+  proves(f) { return f.cmd === "ping" && f.dev === "mgr" && f.beyond; },
+  proofText: "a ping from the manager's PC that gets replies from something else",
+  evidence: [
+    { id: "ipc", test: function (f) { return f.cmd === "ipconfig" && f.dev === "mgr" && f.media === "disconnected"; }, text: function () { return "ipconfig on the manager's PC: Media disconnected (no link)"; } },
+    { id: "status", test: function (f) { return /^Gi0\/4\s+MANAGER-PC\s+notconnect/m.test(swOut(f)); }, text: function () { return "show interfaces status: Gi0/4, the manager's port, is notconnect (on, but no link)"; } },
+    { id: "lights", test: function (f) { return f.page === "msw-lights" && f.ports.some(function (p) { return p.port === 4 && !p.up; }); }, text: function () { return "The switch's lights: port 4 (the manager's) dark"; } },
+    { id: "test", test: function (f) { return f.phys === "test" && f.cable === "c-run-mgr"; }, text: function () { return "Cable tester on the manager's run: all eight pins pass"; } },
+    { id: "probe", test: function (f) { return f.phys === "probe" && f.toned === "c-run-mgr" && !!f.port; }, text: function (f) { return "Tone on the manager's run at the desk: the probe finds it at the back of panel port " + f.port; } },
+    { id: "probe7", test: function (f) { return f.phys === "probe" && f.toned === "c-run-meet" && !!f.port; }, text: function (f) { return "Tone on the meeting room's wall jack: the probe finds it at the back of panel port " + f.port; } },
+    { id: "cord", test: function (f, v, sim) { const c = sim.cable("c-cord-mgr"); return f.phys === "look" && f.cable === "c-cord-mgr" && c.b.port === "7"; }, text: function () { return "The cord in panel port 7: clicked in, and it runs down to the switch's port 4"; } }
+  ],
+  summary(v) {
+    return { cause: "The installer's cable map had the manager's run and the meeting room's the wrong way round. The manager's run is punched down at port " + v.ports.manager + ", the meeting room's at port 7, so patching port 7 to the manager's switch port joined it to an empty jack in the meeting room.",
+      fix: "Toned the manager's run to find it at port " + v.ports.manager + ", moved the patch cord there, and put the cable map right." };
+  }
+};
+
 /* ---------------------------------------------------------------- SO-09 */
 /* the office has started using SO-J4's address plan, ready for next year's VLANs: the router hands out only the Staff
    block, and each fixed device takes the first address after its block's gateway, keeping the office's mask and
@@ -498,5 +576,6 @@ const SO09 = {
   }
 };
 
-export const OFFICE_TICKETS = [SO01, SO02, SO03, SO04, SO05, SO06, SO07, SO09];
+export const OFFICE_TICKETS = [SO01, SO02, SO03, SO04, SO05, SO06, SO07, SO08, SO09];
+export { ROOM_NAME };
 export const OFFICE_COMING = [];

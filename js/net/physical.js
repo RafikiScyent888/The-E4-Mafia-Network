@@ -9,7 +9,7 @@ import { prompt } from "./cmd.js";
 import { POE } from "./sim.js";
 
 /* the model each device is drawn with (the old router in HOME-10 is a home router too) */
-export const MODEL_OF = { modem: "modem", router: "router", rogue: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", injector: "injector", meet: "switch", mpc: "pc" };   /* the office's meeting room (SO-04): an old 5-port switch in the same housing, and a desktop */
+export const MODEL_OF = { modem: "modem", router: "router", rogue: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", injector: "injector", meet: "switch", mpc: "pc", mgr: "pc" };   /* the office's meeting room (SO-04): an old 5-port switch in the same housing, and a desktop */
 
 /* each model's network ports: the name printed on the model, and the sim's port at that device */
 const PORTS = {
@@ -22,14 +22,19 @@ const PORTS = {
   /* the managed switch: its 24 ports by the numbers printed over and under them, and CONSOLE */
   msw: Array.from({ length: 24 }, function (_, i) { return [String(i + 1), String(i + 1)]; }).concat([["CONSOLE", "CONSOLE"]]),
   /* build mode's PoE+ injector, as photographed: two pairs, "DATA IN" over each input and the pair's number under it */
-  injectorDual: [["DATA IN 1", "DATA IN"], ["DATA IN 2", "DATA IN 2"], ["DATA + POWER OUT 1", "PoE OUT"], ["DATA + POWER OUT 2", "PoE OUT 2"]]
+  injectorDual: [["DATA IN 1", "DATA IN"], ["DATA IN 2", "DATA IN 2"], ["DATA + POWER OUT 1", "PoE OUT"], ["DATA + POWER OUT 2", "PoE OUT 2"]],
+  /* the closet rack (SO-08): the patch panel's 24 front jacks, "P1" to "P24" on the model; the wall jack has nothing in its front */
+  rack: Array.from({ length: 24 }, function (_, i) { return ["P" + (i + 1), String(i + 1)]; }),
+  wallplate: []
 };
+/* what the installer wrote on the panel's tabs, from his map */
+const TAB = { front: "FRONT", open: "OPEN", manager: "MGR", meeting: "MEET" };
 const INJ = { injector: true, injectorDual: true };
-const SAY_PORT = { switch: function (p) { return "Port " + p; }, switch8: function (p) { return "Port " + p; }, msw: function (p) { return /^\d+$/.test(p) ? "Port " + p : p; } };
+const SAY_PORT = { switch: function (p) { return "Port " + p; }, switch8: function (p) { return "Port " + p; }, msw: function (p) { return /^\d+$/.test(p) ? "Port " + p : p; }, rack: function (p) { return "Patch panel port " + p.slice(1); } };
 
 export function physicalState(sim, id) {
   const x = sim.d[id]; if (!x) return null;
-  const model = x.kind === "injector" ? (x.dual ? "injectorDual" : "injector") : x.kind === "mswitch" ? "msw" : x.kind === "techlaptop" ? "techlaptop" : x.kind === "switch" && x.ports === 8 ? "switch8" : MODEL_OF[id]; if (!model) return null;   /* build mode's PoE+ injector is the dual-port one; the office has the managed switch and an old 8-port */
+  const model = x.kind === "patchpanel" ? "rack" : x.kind === "jack" ? "wallplate" : x.kind === "injector" ? (x.dual ? "injectorDual" : "injector") : x.kind === "mswitch" ? "msw" : x.kind === "techlaptop" ? "techlaptop" : x.kind === "switch" && x.ports === 8 ? "switch8" : MODEL_OF[id]; if (!model) return null;   /* build mode's PoE+ injector is the dual-port one; the office has the managed switch and an old 8-port */
   const ports = [], leds = [], says = [], opts = {};
   /* the device an injector output powers right now (its PoE light lit), or null */
   const feeds = function (port) { const c = sim.cableAt(id, port); if (!c) return null; const o = c.a.dev === id ? c.b.dev : c.a.dev; return sim.d[o] && sim.d[o].poe && sim.on(o) && sim.poeSource(o) === x ? o : null; };
@@ -48,7 +53,7 @@ export function physicalState(sim, id) {
     }
     if (c && c.kind === "console") { p.console = true; p.link = false; }
     p.lights = model === "injectorDual" ? (/^PoE OUT/.test(pp[1]) ? (feeds(pp[1]) ? "green" : "off") : null)   /* its outputs' corner lights: lit while that output powers a device */
-      : p.coax || INJ[model] || p.console || pp[1] === "CONSOLE" ? null : p.link ? ((model === "switch" || model === "switch8") && p.speed !== 1000 ? "amber" : "green") : "off";
+      : p.coax || INJ[model] || p.console || pp[1] === "CONSOLE" || model === "rack" ? null : p.link ? ((model === "switch" || model === "switch8") && p.speed !== 1000 ? "amber" : "green") : "off";
     ports.push(p);
   });
   if (INJ[model]) ports.push({ name: "DC IN", label: "Power adapter cord (DC IN, " + (model === "injectorDual" ? "right" : "left") + " side)", plug: x.power ? "in" : "out", dc: true, link: false, speed: 0, damage: null, coax: false, lights: null });
@@ -68,6 +73,15 @@ export function physicalState(sim, id) {
   } else if (model === "msw") {
     L("SYSTEM", "SYSTEM", on ? "on" : "off"); L("POWER", "POWER", on ? "on" : "off"); L("PSU", "Power supply", on ? "on" : "off"); L("FAN", "Fan", on ? "on" : "off");
     opts.plugged = ports.slice(0, 24).map(function (p) { return p.plug !== "none"; }); opts.console = ports[24].plug !== "none";
+  } else if (model === "rack") {
+    /* the patch panel's cords down to the managed switch under it, the tabs as written, the switch's port lights */
+    opts.patches = []; opts.tabs = {};
+    sim.cablesOf(id).forEach(function (c) { const e = c.a.dev === id ? c.a : c.b, o = e === c.a ? c.b : c.a; if (!/R$/.test(e.port) && o.dev === "msw") opts.patches.push([+e.port, +o.port]); });
+    opts.patches.sort(function (a, b) { return a[0] - b[0]; });
+    Object.keys(x.tabs || {}).forEach(function (n) { opts.tabs[n] = TAB[x.tabs[n]] || ""; });
+    opts.swLights = Array.from({ length: 24 }, function (_, i) { const c = sim.cableAt("msw", String(i + 1)); return !!c && sim.cableUp(c); });
+  } else if (model === "wallplate") {
+    opts.plugged = false;
   } else if (model === "mesh") {
     const ok = on && sim.meshLink().ok;
     L("STATUS", "Status ring", on ? "on" : "off", ok ? "green" : "amber"); L("LINK", "Side light", on && !ok ? "on" : "off", "amber");
@@ -103,6 +117,16 @@ export function physicalState(sim, id) {
   /* the same facts in words, for the list under the model */
   const lit = function (l) { return l.name + " " + (l.state === "on" ? (l.color === "amber" ? "on, amber" : l.color === "blue" ? "on, blue" : "on") : l.state === "blinking" ? "blinking" : "off"); };
   if (leds.length) says.push((model === "modem" ? "Front lights: " : model === "router" ? "Top lights: " : "Lights: ") + leds.filter(function (l) { return !(model === "mesh" && l.role === "LINK" && l.state === "off"); }).map(lit).join(", ") + ".");
+  if (model === "rack") {
+    says.push("The managed switch is mounted under the patch panel; short blue cords join the panel's front to it.");
+    opts.patches.forEach(function (pc) { const port = ports[pc[0] - 1]; says.push("Patch panel port " + pc[0] + ": a cord " + (port.plug === "in" ? "clicked in" : "out of the port, hanging loose") + ", down to the switch's port " + pc[1] + ". The switch's light for port " + pc[1] + ": " + (opts.swLights[pc[1] - 1] ? "on" : "off") + "."); });
+    const tabs = Object.keys(opts.tabs).filter(function (n) { return opts.tabs[n]; }).sort(function (a, b) { return a - b; });
+    if (tabs.length) says.push("Written on the panel's tabs: " + tabs.map(function (n) { return "port " + n + " " + opts.tabs[n]; }).join(", ") + ".");
+    const back = sim.cablesOf(id).map(function (c) { const e = c.a.dev === id ? c.a : c.b; return /R$/.test(e.port) ? +e.port.slice(0, -1) : null; }).filter(function (n) { return n; }).sort(function (a, b) { return a - b; });
+    says.push("At the back of the panel: runs punched down behind ports " + back.join(", ") + ". Nothing on them says where they go.");
+    return { id: id, model: model, label: x.label, ports: ports, leds: leds, opts: opts, says: says };
+  }
+  if (model === "wallplate") { says.push("A data/voice wall plate: nothing plugged into its ETHERNET or TELEPHONE jack. Its run goes back through the wall to the closet."); return { id: id, model: model, label: x.label, ports: ports, leds: leds, opts: opts, says: says }; }
   ports.forEach(function (p) {
     if (model === "laptop" || model === "mesh" || model === "msw" || model === "techlaptop") { if (p.plug === "none") return; }
     if (model === "techlaptop" && p.name === "USB-C") { says.push("USB-C: the USB serial adapter is plugged in, its console cable running to the switch's CONSOLE port."); return; }

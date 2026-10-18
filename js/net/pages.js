@@ -5,10 +5,10 @@
 import { isIp } from "./util.js";
 import { portName as printedPort } from "./sim.js";
 
-const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", meet: "switch", mpc: "pc" };   /* the office's back office (SO-04): the same housings */
+const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", meet: "switch", mpc: "pc", mgr: "pc" };   /* the office's back office (SO-04) and the manager's PC (SO-08): the same housings */
 
 export function tabsFor(sim, id) {
-  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" || k === "techlaptop" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
+  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" || k === "techlaptop" || k === "patchpanel" || k === "jack" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
   const T = {
     pc: [["cmd", "Command Prompt"], ["settings", "Network settings"], ["printers", "Printers"]],
     laptop: [["cmd", "Command Prompt"], ["wifi", "Wi-Fi"]],
@@ -38,9 +38,14 @@ export function tester(c) {
 }
 
 function endName(sim, c, end) { const e = c[end]; const d = sim.d[e.dev]; return d.label + (e.port && e.dev !== "wall" ? " (" + (d.kind === "injector" ? printedPort(d, e.port) : portName(e)) + ")" : ""); }   /* an injector's ports by the names printed on it */
+const lowerFirst = function (s) { return s.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }); };
 function portName(e) { return /^\d$/.test(e.port) ? "port " + e.port : e.port; }
 export function cableName(sim, c, fromDev) {
-  const other = c.a.dev === fromDev ? c.b : c.a;
+  const other = c.a.dev === fromDev ? c.b : c.a, me = other === c.a ? c.b : c.a;
+  /* the patch panel: at the back, a run you can't tell from the others without tracing it; at the front, a cord you can follow by eye */
+  if (sim.d[fromDev].kind === "patchpanel") return /R$/.test(me.port) ? "Run punched down at the back of port " + me.port.slice(0, -1) : "Patch cord in port " + me.port + ", down to the " + lowerFirst(sim.d[other.dev].label) + (/^\d+$/.test(other.port) ? " (port " + other.port + ")" : "");
+  if (sim.d[fromDev].kind === "jack") return "The run from this jack back to the closet";
+  if (sim.d[other.dev].kind === "patchpanel") return /R$/.test(other.port) ? "Cable to the wall jack (its run goes back to the patch panel in the closet)" : "Patch cord to the patch panel (port " + other.port + ")";
   if (c.kind === "coax") return "Coax cable, wall outlet to the modem's CABLE IN";
   if (c.kind === "console") return fromDev === "tech" ? "Console cable to the managed switch (CONSOLE)" : "Console cable to your laptop (its USB serial adapter)";
   if (fromDev === "tech") return "Patch cable from your laptop's ETHERNET to the " + sim.d[other.dev].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }) + (/^\d+$/.test(other.port) ? " (port " + other.port + ")" : other.port ? " (" + other.port + ")" : "");
@@ -54,6 +59,9 @@ export function cableName(sim, c, fromDev) {
 export function look(sim, cableId, end) {
   const c = sim.cable(cableId), e = c[end];
   if (c.kind === "coax") return e.tight ? "Screwed on snugly; it doesn't turn by hand." : "Loose: the F-connector spins freely by hand, and the centre wire is barely touching.";
+  const ex = sim.d[e.dev];
+  if (ex.kind === "patchpanel" && /R$/.test(e.port)) return "Punched down at the back of port " + e.port.slice(0, -1) + ": the eight wires sit firmly in their slots, in order. Nothing on it says which room it goes to.";
+  if (ex.kind === "jack") return "Nothing is plugged into this jack. The run behind it goes back to the closet.";
   if (!e.seated) return "Not plugged in: the plug is lying loose behind the " + (e.dev === "pc" ? "desk" : e.dev === "switch" ? "shelf" : "furniture") + ".";
   let s = "Clicked in and latched.";
   if (c.cond === "crushed") s += " Along the run under the desk, the jacket is flattened where a chair wheel rolls over it.";
@@ -74,16 +82,21 @@ export function page(sim, id, key) {
   const yes = function (b) { return b ? "Yes" : "No"; };
   if (key === "physical") {
     const cables = sim.cablesOf(id).map(function (c) {
-      const end = c.a.dev === id ? "a" : "b";
-      const acts = c.kind === "coax" ? ["look", "tighten"] : c.kind === "console" ? ["look", "reseat", "unplug"] : ["look", "reseat", "unplug", "test", "replace"].concat(sim.net.site === "office" ? ["crossover"] : []);   /* the office's van carries crossover cables too */
-      return { cable: c.id, end: end, name: cableName(sim, c, id), acts: acts };
-    });
+      const end = c.a.dev === id ? "a" : "b", me = c[end], far = c[end === "a" ? "b" : "a"], pp = x.kind === "patchpanel", toPanelBack = sim.d[far.dev].kind === "patchpanel" && /R$/.test(far.port);
+      let acts = c.kind === "coax" ? ["look", "tighten"] : c.kind === "console" ? ["look", "reseat", "unplug"] : ["look", "reseat", "unplug", "test", "replace"].concat(sim.net.site === "office" ? ["crossover"] : []);   /* the office's van carries crossover cables too */
+      if (pp && /R$/.test(me.port)) acts = ["look", "test"];                     /* a run punched down at the back of the panel */
+      else if (pp) acts = acts.concat(["repatch"]);                               /* a patch cord in the panel's front */
+      else if (x.kind === "jack") acts = ["look", "test", "tone"];
+      else if (toPanelBack) acts = acts.concat(["tone"]);                         /* a desk's cable whose run goes back to the panel */
+      return { cable: c.id, end: end, name: cableName(sim, c, id), acts: acts, labels: pp && /R$/.test(me.port) ? { look: "Look at the punch-down" } : x.kind === "jack" ? { look: "Look at the jack" } : null };
+    }).sort(function (p, q) { return x.kind === "patchpanel" ? (/^Patch/.test(p.name) ? 0 : 1) - (/^Patch/.test(q.name) ? 0 : 1) || parseInt(p.name.replace(/^\D+/, ""), 10) - parseInt(q.name.replace(/^\D+/, ""), 10) : 0; });
     if (id === "modem") { /* the coax's wall end is reached from the modem too: it's behind the TV stand */
       const cx = sim.cable("c-coax"); cables.forEach(function (k) { if (k.cable === "c-coax") k.name = "Coax cable at the modem's CABLE IN"; });
       cables.push({ cable: "c-coax", end: "a", name: "Coax cable at the wall outlet (behind the TV stand)", acts: ["look", "tighten"] });
     }
     const inj = x.kind === "injector" ? { power: !!x.power, std: x.std, swap: !sim.net.extra.build } : null;   /* in a build house the right injector comes out of the van, not a swap */
-    return { kind: "physical", still: STILL[id] ? "assets/stills/" + STILL[id] + ".jpg" : null, label: x.label, cables: cables, restart: x.kind !== "injector", injector: inj,
+    const free = x.kind === "patchpanel" ? Array.from({ length: 24 }, function (_, i) { return String(i + 1); }).filter(function (p) { return !sim.cableAt(id, p); }) : null;   /* front ports a cord can move to */
+    return { kind: "physical", still: STILL[id] ? "assets/stills/" + STILL[id] + ".jpg" : null, label: x.label, cables: cables, restart: x.kind !== "injector" && x.kind !== "patchpanel" && x.kind !== "jack", injector: inj, probe: x.kind === "patchpanel", freePorts: free,
       facts: { page: id + "-physical", rogue: id === "rogue", injector: inj, camera: id === "camera" ? sim.on("camera") : undefined } };
   }
   if (id === "router") {
@@ -218,10 +231,16 @@ export function physical(sim, act) {
   const c = act.cable ? sim.cable(act.cable) : null;
   if (act.t === "look") { const text = look(sim, act.cable, act.end); return { text: text, facts: { phys: "look", cable: act.cable, end: act.end, seated: c.kind === "coax" ? c[act.end].tight : c[act.end].seated, cond: c.cond } }; }
   if (act.t === "test") { const t = tester(c); return { text: t.text, facts: { phys: "test", cable: act.cable, open: t.open || [] } }; }
+  if (act.t === "probe") {   /* the inductive probe run along the back of the panel: it sounds where the toned run is punched down */
+    const tc = sim.net.extra.tone && sim.cable(sim.net.extra.tone), pe = tc && sim.panelEnd(tc), port = pe && /R$/.test(pe.port) ? pe.port.slice(0, -1) : null;
+    return { text: !tc ? "Nothing to hear: the tone generator isn't on any run yet. Clip it onto a run at the desk end first." : port ? "The probe screams at the back of port " + port + ": that's where the toned run is punched down. Every other port is quiet." : "The probe hears nothing along the back of the panel: the run with the tone on it doesn't come here.", facts: { phys: "probe", dev: act.dev, toned: tc ? tc.id : null, port: port } };
+  }
   const before = c ? JSON.stringify([c.a, c.b, c.cond]) : null;
-  sim.apply(act);
+  const done = sim.apply(act) || {};
   if (act.t === "reseat") return { text: c[act.end].seated && before === JSON.stringify([c.a, c.b, c.cond]) ? "Pushed it home: it was already clicked in." : "Plugged it back in until it clicked.", facts: { phys: "reseat", cable: act.cable, end: act.end } };
   if (act.t === "replace") return { text: "Swapped in a new, tested patch cable (straight-through).", facts: { phys: "replace", cable: act.cable } };
+  if (act.t === "tone") return { text: "Clipped the tone generator onto the run at the desk end and switched it on: it's sending its warble down the cable.", facts: { phys: "tone", cable: act.cable } };
+  if (act.t === "repatch") { const r = done; return { text: r.ok === false ? r.err + ": nothing moved." : r.same ? "It's already in that port." : "Moved the patch cord to port " + act.port + " on the panel.", facts: { phys: "repatch", cable: act.cable, port: act.port, ok: r.ok !== false } }; }
   if (act.t === "crossover") return { text: "Swapped in a crossover patch cable (T568A at one end, T568B at the other).", facts: { phys: "crossover", cable: act.cable } };
   if (act.t === "unplug") return { text: "Unplugged it.", facts: { phys: "unplug", cable: act.cable, end: act.end } };
   if (act.t === "tighten") return { text: before === JSON.stringify([c.a, c.b, c.cond]) ? "Already snug: no change." : "Screwed the connector on finger-tight.", facts: { phys: "tighten", cable: act.cable, end: act.end } };

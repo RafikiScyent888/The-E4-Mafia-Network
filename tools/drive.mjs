@@ -218,6 +218,26 @@ Object.assign(PLAN, {
     fix: async (p, v) => { await swConf(p, v, ["interface gi0/2", v.kind === "contractor" ? "speed auto" : "speed 100"]); },
     proof: async (p, gw) => { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping " + gw); }
   },
+  "SO-08": {
+    look: async (p, v) => {
+      await dev(p, "mgr"); await tab(p, "Command Prompt"); await type(p, "ipconfig"); check(/Media disconnected/.test(await term(p)), "SO-08: ipconfig on the manager's PC: Media disconnected");
+      await swLogin(p, v); await type(p, "show interfaces status"); check(/Gi0\/4\s+MANAGER-PC\s+notconnect/.test(await term(p)), "SO-08: show interfaces status: the manager's port is notconnect");
+      check(await p.$eval("#cm7", (n) => n.value) === "manager", "SO-08: the cable map under the ticket says port 7 is the manager's");
+      await dev(p, "mgr"); await tab(p, "Physical"); await p.click('.cabs li:has-text("wall jack") button:text-is("Put the tone generator on it")'); await p.waitForTimeout(40);
+      await dev(p, "pp"); await p.click("#probeBtn"); await p.waitForTimeout(40);
+      check(new RegExp("back of port " + v.ports.manager + "\\b").test(await p.$eval(".phys", (n) => n.textContent)), "SO-08: the probe at the panel finds the manager's run at port " + v.ports.manager);
+      check(!/manager|meeting/i.test(await p.$$eval(".cabs .nm", (l) => l.map((x) => x.textContent).join(" "))), "SO-08: nothing on the panel's list says which room a run goes to");
+    },
+    wrong: async (p, v) => { await dev(p, "pp"); await p.selectOption("#rp-c-cord-mgr", v.ports.manager); await p.click('.cabs li:has-text("port 7") button:text-is("Move the cord")'); await p.waitForTimeout(40); },
+    afterWrong: async (p) => { check(/still has the runs the wrong way round/.test(await p.$eval("#board", (n) => n.textContent)), "SO-08: the cord moved but the map left wrong: Mason says so"); },
+    fix: async (p, v) => {
+      await dev(p, "pp"); await p.selectOption("#rp-c-cord-mgr", v.ports.manager); await p.click('.cabs li:has-text("port 7") button:text-is("Move the cord")'); await p.waitForTimeout(40);
+      const m = { 7: "meeting" }; m[v.ports.front] = "front"; m[v.ports.open] = "open"; m[v.ports.manager] = "manager";
+      for (const port of Object.keys(m)) await p.selectOption("#cm" + port, m[port]);
+      await p.click("#cmapSave"); await p.waitForTimeout(40); check(/Saved/.test(await p.$eval("#cmapSum", (n) => n.textContent)), "SO-08: the map says Saved");
+    },
+    proof: async (p) => { await dev(p, "mgr"); await tab(p, "Command Prompt"); await type(p, "ping 203.0.113.80"); }
+  },
   "SO-09": {
     look: async (p, v) => {
       await dev(p, "pc"); await tab(p, "Printers"); for (let k = 0; k < 2; k++) { await p.click('.pane button:text-is("Print a test page")'); await p.waitForTimeout(40); }
@@ -307,7 +327,7 @@ if (!process.env.ONLY || process.env.ONLY === "tickets-office") {
   {
     const { p, ctx } = await page("SO-02", 2025);
     const q = await p.$$eval('#queue [data-t^="SO-"]', (l) => l.map((b) => b.dataset.t + ":" + (b.getAttribute("aria-disabled") === "true" ? "off" : "on")));
-    check(q.join(",") === "SO-01:on,SO-02:on,SO-03:on,SO-04:on,SO-05:on,SO-06:on,SO-07:on,SO-09:on", "office tickets: the level 2 queue lists SO-01 to SO-07 and SO-09 (" + q.join(",") + ")");
+    check(q.join(",") === "SO-01:on,SO-02:on,SO-03:on,SO-04:on,SO-05:on,SO-06:on,SO-07:on,SO-08:on,SO-09:on", "office tickets: the level 2 queue lists SO-01 to SO-09 (" + q.join(",") + ")");
     check(/office network/.test(await p.$eval("#tk .from", (n) => n.textContent)) && /Tier 2 · Small office/.test(await p.$eval("#labtitle", (n) => n.textContent)), "office tickets: the card says office network, the title Tier 2 · Small office");
     check(!!(await p.$('#devtabs [data-d="msw"]')) && !!(await p.$('#devtabs [data-d="tech"]')), "office tickets: the managed switch and your laptop have device buttons");
     await ctx.close();

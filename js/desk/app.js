@@ -14,6 +14,7 @@ import { renderBoard } from "./board.js";
 import { renderQueue, renderShelves, renderMap } from "./left.js";
 import { setupInstructor } from "./instructor.js";
 import { ipamSheet } from "./ipamui.js";
+import { cableMap } from "./cablemapui.js";
 
 const PAGE = document.body.dataset.page;
 const S = load();
@@ -21,7 +22,7 @@ const DEFS = {}; HOME_TICKETS.concat(OFFICE_TICKETS).forEach(function (d) { DEFS
 const item = function (d) { return { id: d.id, n: d.n, tier: d.tier, title: d.title, level: d.level || 1, built: true }; };
 const LIST = HOME_TICKETS.map(item).concat(HOME_COMING.map(function (c) { return Object.assign({ built: false, level: 1 }, c); }),
   OFFICE_TICKETS.map(item), OFFICE_COMING.map(function (c) { return Object.assign({ built: false }, c); }));   /* every level's tickets; the queue shows the chosen level's */
-const DEVICES = ["pc", "switch", "msw", "meet", "mpc", "router", "modem", "printer", "tech", "injector", "camera", "tv", "mesh", "laptop", "phone", "guest"];   /* an undocumented box gets no button: find it on the floor plan */
+const DEVICES = ["pc", "switch", "msw", "pp", "mgr", "mjack", "meet", "mpc", "router", "modem", "printer", "tech", "injector", "camera", "tv", "mesh", "laptop", "phone", "guest"];   /* an undocumented box gets no button: find it on the floor plan */
 const $ = function (id) { return document.getElementById(id); };
 let replateMap = null;
 
@@ -96,14 +97,21 @@ function renderTicketCard() {
   tk.appendChild(el("p", { class: "q" }, "“" + b.quote + "”"));
   tk.appendChild(el("p", { class: "mason2" }, el("b", null, "Mason: "), d.mason));
 }
-/* a ticket that needs the office's records (SO-09) shows its IPAM sheet under the ticket. Checking it is evidence like
-   any other; saving it changes the records, and is replayed like the rest. Redrawn only by its own buttons and a new
-   ticket, so what's typed in it survives commands run meanwhile. */
+/* a ticket that needs the office's records shows them under the ticket: the IPAM sheet (SO-09), the cable map (SO-08).
+   Checking the sheet is evidence like any other; saving either changes the records, and is replayed like the rest.
+   Redrawn only by their own buttons and a new ticket, so what's typed in them survives commands run meanwhile. */
 function renderRecords() {
   let host = $("records"); const T = ctx.T;
-  if (!T.def.ipam) { if (host) host.remove(); return; }
+  if (!T.def.ipam && !T.def.cablemap) { if (host) host.remove(); return; }
   if (!host) { host = el("section", { class: "box records", id: "records", "aria-label": "The office's records" }); $("ticket").after(host); }
   host.innerHTML = "";
+  if (T.def.cablemap) {
+    const map = T.sim.net.cablemap || {}, ports = Object.keys(map);
+    T.sim.cablesOf("pp").forEach(function (c) { const e = c.a.dev === "pp" ? c.a : c.b; if (/R$/.test(e.port) && ports.indexOf(e.port.slice(0, -1)) < 0) ports.push(e.port.slice(0, -1)); });
+    cableMap(host, { map: map, ports: ports.sort(function (a, b) { return a - b; }), saved: T.net.some(function (a) { return a.t === "cablemap"; }),
+      onSave: function (m) { ctx.act({ t: "cablemap", map: m }); renderRecords(); $("cmapSave").focus(); } });
+    return;
+  }
   const checked = ctx.sheetChecked || T.evidence.some(function (e) { return e.id === "sheet"; }) || T.net.some(function (a) { return a.t === "ipam"; });
   ipamSheet(host, { plan: T.sim.net.plan.ipam, saved: T.sim.net.ipam, checked: checked, note: "The office's address plan, as it's written in the records. Check it here, and correct and save it: the sheet says what's wrong, never what the right value is.",
     onCheck: function () { ctx.sheetChecked = true; ctx.act({ t: "ipamcheck" }); renderRecords(); $("ipamCheck").focus(); },

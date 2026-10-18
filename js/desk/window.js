@@ -238,7 +238,7 @@ function guestForm(g, ctx, rerender) {
 
 /* "Office PC" reads "office PC" mid-sentence; "IP camera" stays as it is */
 function lowerFirst(s) { return /^[A-Z][a-z]+(\s|$)/.test(s) ? s[0].toLowerCase() + s.slice(1) : s; }
-const ACT_TEXT = { look: "Look at the plug", reseat: "Reseat the plug", unplug: "Unplug it", test: "Test with the cable tester", replace: "Swap in a new cable", crossover: "Swap in a crossover cable", tighten: "Tighten the connector" };
+const ACT_TEXT = { look: "Look at the plug", reseat: "Reseat the plug", unplug: "Unplug it", test: "Test with the cable tester", replace: "Swap in a new cable", crossover: "Swap in a crossover cable", tighten: "Tighten the connector", tone: "Put the tone generator on it" };
 function physicalPane(id, P, ctx, rerender) {
   const wrap = el("div", { class: "phys" });
   const S = physicalState(ctx.T.sim, id);
@@ -250,15 +250,27 @@ function physicalPane(id, P, ctx, rerender) {
     const res = el("p", { class: "res", role: "status" }); if (physLog[id][key]) res.textContent = physLog[id][key]; else res.hidden = true;
     const acts = el("div", { class: "acts" });
     c.acts.forEach(function (a) {
-      const label = c.cable === "c-coax" && a === "look" ? "Look at the connector" : ACT_TEXT[a];
+      if (a === "repatch") {   /* a patch cord in the panel's front: moved to another port */
+        const sel = el("select", { id: "rp-" + c.cable, "aria-label": "Port to move this cord to" }); (P.freePorts || []).forEach(function (p) { sel.appendChild(el("option", { value: p }, "Port " + p)); });
+        acts.appendChild(el("span", { class: "repatch" }, el("label", { for: "rp-" + c.cable }, "Move this cord to "), sel, el("button", { type: "button", class: "btn ghost small", onclick: function () {
+          const r = ctx.act({ t: "repatch", cable: c.cable, port: sel.value }); physLog[id][key] = "Move the cord: " + (r ? r.text : ""); rerender();
+        } }, "Move the cord")));
+        return;
+      }
+      const label = (c.labels && c.labels[a]) || (c.cable === "c-coax" && a === "look" ? "Look at the connector" : ACT_TEXT[a]);
       acts.appendChild(el("button", { type: "button", class: "btn ghost small", onclick: function () {
-        const r = ctx.act(a === "test" || a === "replace" || a === "crossover" ? { t: a, cable: c.cable } : { t: a, cable: c.cable, end: c.end });
+        const r = ctx.act(a === "test" || a === "replace" || a === "crossover" || a === "tone" ? { t: a, cable: c.cable } : { t: a, cable: c.cable, end: c.end });
         physLog[id][key] = label + ": " + (r ? r.text : ""); rerender();
       } }, label));
     });
     ul.appendChild(el("li", null, el("p", { class: "nm" }, c.name), acts, res));
   });
   if (P.cables.length) wrap.appendChild(ul); else wrap.appendChild(el("p", { class: "note" }, "No cables: this device is on Wi-Fi."));
+  if (P.probe) {   /* the inductive probe, run along the back of the patch panel: it sounds where the toned run lands */
+    const pr = el("p", { class: "res", role: "status" }); if (physLog[id]["probe"]) pr.textContent = physLog[id]["probe"]; else pr.hidden = true;
+    wrap.appendChild(el("div", { class: "acts", style: "margin-top:10px" }, el("button", { type: "button", class: "btn ghost small", id: "probeBtn", onclick: function () { const r = ctx.act({ t: "probe", dev: id }); physLog[id]["probe"] = "The probe: " + (r ? r.text : ""); rerender(); } }, "Run the probe along the back of the panel")));
+    wrap.appendChild(pr);
+  }
   const rr = el("p", { class: "res", role: "status" }); if (physLog[id]["power"]) rr.textContent = physLog[id]["power"]; else rr.hidden = true;
   if (P.restart) wrap.appendChild(el("div", { class: "acts", style: "margin-top:10px" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "power", dev: id }); physLog[id]["power"] = r ? r.text : ""; rerender(); } }, "Restart (power off and on)")));
   if (P.injector) {   /* the injector's own power adapter, and swapping the injector itself */

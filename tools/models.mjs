@@ -339,6 +339,32 @@ CO.push(async () => {
   await led(p, "SO-04 back office switch port 1 after a crossover cable", "1", "link", "amber");
   await ctx.close();
 });
+/* SO-08 on the desk: the closet rack, its patch panel's cords in exactly the ports the sim has them in (the front desk's,
+   the printer's, and port 7, patched from the wrong map), the switch's light for the manager's port 4 dark; the cord moved
+   to the port the tone found, through the page, and the model follows: port 7 empty, the manager's port patched, 4 lit */
+CO.push(async () => {
+  const ctx = await GL.newContext({ viewport: { width: 900, height: 1000 }, reducedMotion: "reduce" });
+  await ctx.addInitScript(() => { try { sessionStorage.setItem("e4-instructor", "1"); } catch (e) { } });
+  const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push("desk SO-08: " + e.message));
+  await p.goto(base + "index.html"); await p.waitForFunction(() => window.__e4);
+  if (plant) await p.evaluate(plant);
+  await p.evaluate(() => window.__e4.go("SO-08"));
+  const P = await p.evaluate(() => window.__e4.T.v.ports), patched = [P.front, P.open, "7"];
+  await physical(p, "pp", "Ports 1 to 12");
+  for (let n = 1; n <= 12; n++) { const q = await plugAt(p, "P" + n), want = patched.indexOf(String(n)) >= 0; check(!q.missing && q.plug === want && (!want || q.off < 1), "SO-08 patch panel: port " + n + (want ? " has its cord" : " is empty") + " " + JSON.stringify(q)); }
+  const k = await fine(p); await p.click('.m3d-bar button:text-is("Switch ports close-up")'); await settled(p, k);
+  await led(p, "SO-08 rack: the switch's port 4 (patched to the meeting room's empty jack)", "4", "link", "off");
+  await led(p, "SO-08 rack: the switch's port 2 (the front desk)", "2", "link", "green");
+  await led(p, "SO-08 rack: the switch's port 3 (the printer)", "3", "link", "green");
+  /* the fix's first half, through the page: the cord moved to the manager's real port */
+  await p.selectOption("#rp-c-cord-mgr", P.manager); const n = await fine(p); await p.click('.cabs li:has-text("port 7") button:text-is("Move the cord")'); await settled(p, n);
+  const k7 = await fine(p); await p.click('.m3d-bar button:text-is("Ports 1 to 12")'); await settled(p, k7);
+  const e7 = await plugAt(p, "P7"), em = await plugAt(p, "P" + P.manager);
+  check(!e7.missing && e7.plug === false && !em.missing && em.plug && em.off < 1, "SO-08 patch panel after the move: port 7 empty, port " + P.manager + " patched " + JSON.stringify([e7, em]));
+  const k2 = await fine(p); await p.click('.m3d-bar button:text-is("Switch ports close-up")'); await settled(p, k2);
+  await led(p, "SO-08 rack after the move: the switch's port 4 (the manager's PC now)", "4", "link", "green");
+  await ctx.close();
+});
 const RUN = process.env.ONLY === "office" ? CO : C.concat(CO);
 for (const c of RUN) { try { await c(); } catch (e) { bad.push("crashed: " + e.message.split("\n")[0]); } }
 

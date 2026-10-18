@@ -21,6 +21,9 @@ const SAVE = [cli("copy running-config startup-config"), cli("")];
 const out = (T, acts) => acts.map((a) => (E.act(T, a) || {}).out || "").join("");
 /* SO-09: the sheet with the misplaced block put back, and the first address after that block's gateway */
 const sheetFixed = (T) => { const rows = T.sim.net.ipam.map((r) => Object.assign({}, r)); rows[T.v.moved] = T.v.orig; return rows; };
+/* SO-08: the cable map as it really is */
+const rightMap = (T) => { const P = T.v.ports, m = { 7: "meeting" }; m[P.front] = "front"; m[P.open] = "open"; m[P.manager] = "manager"; return m; };
+const mgr = (line) => ({ t: "cmd", dev: "mgr", line });
 const homeAddr = (T) => n2ip(ip2n(T.v.orig.net) + 2);
 const moveDevice = (T, ip, save) => T.v.kind === "gear" ? conf(T, ["interface vlan 1", "ip address " + ip + " " + T.v.plan.mask]).concat(save === false ? [] : SAVE) : [{ t: "client", dev: "printer", values: { mode: "static", ip, mask: T.v.plan.mask, gw: T.v.plan.gw } }].concat(save === false ? [] : [{ t: "pcprinter", ip }]);
 
@@ -33,7 +36,8 @@ const FIX = {
   "SO-05": (T) => conf(T, T.v.kind === "nokeys" ? ["crypto key generate rsa modulus 2048"] : T.v.kind === "telnet" ? ["line vty 0 15", "transport input ssh"] : ["line vty 0 15", "login local"]).concat(SAVE),
   "SO-06": (T) => conf(T, ["interface vlan 1", "ip address " + T.v.plan.ip + " " + T.v.plan.mask]).concat(SAVE),
   "SO-07": (T) => conf(T, ["interface gi0/2", T.seed % 2 ? "speed auto" : "speed 100"]).concat(SAVE),
-  "SO-09": (T) => [{ t: "ipam", rows: sheetFixed(T) }].concat(moveDevice(T, homeAddr(T)))
+  "SO-09": (T) => [{ t: "ipam", rows: sheetFixed(T) }].concat(moveDevice(T, homeAddr(T))),
+  "SO-08": (T) => [{ t: "tone", cable: "c-run-mgr" }, { t: "probe", dev: "pp" }, { t: "repatch", cable: "c-cord-mgr", port: T.v.ports.manager }, { t: "cablemap", map: rightMap(T) }]
 };
 /* what proves it, run from the front desk PC */
 const PROOF = {
@@ -44,10 +48,11 @@ const PROOF = {
   "SO-05": (T) => [pc("ssh " + T.v.plan.user + "@" + T.v.plan.ip), pc(T.v.plan.userPw)],
   "SO-06": (T) => [pc("ping " + T.v.plan.ip)],
   "SO-07": (T) => [pc("ping " + T.v.plan.gw)],
-  "SO-09": () => [{ t: "print" }]
+  "SO-09": () => [{ t: "print" }],
+  "SO-08": () => [mgr("ping 203.0.113.80")]
 };
 /* the real fix without saving it: it works, it isn't the fix */
-const UNSAVED = (def, T) => def.id === "SO-09" ? FIX[def.id](T).slice(1) : def.id === "SO-04" ? conf(T, ["interface gi0/5", "mdix auto"]).concat([{ t: "cmd", dev: "mpc", line: "ipconfig /renew" }]) : FIX[def.id](T).slice(0, -2);
+const UNSAVED = (def, T) => def.id === "SO-08" ? FIX[def.id](T).slice(0, -1) : def.id === "SO-09" ? FIX[def.id](T).slice(1) : def.id === "SO-04" ? conf(T, ["interface gi0/5", "mdix auto"]).concat([{ t: "cmd", dev: "mpc", line: "ipconfig /renew" }]) : FIX[def.id](T).slice(0, -2);
 /* tempting fixes that treat a symptom, or the wrong part: none may fix it */
 const WRONG = {
   "SO-01": (T) => [[{ t: "power", dev: "printer" }], [{ t: "power", dev: "msw" }], conf(T, ["interface gi0/3", "duplex half"]).concat(SAVE), conf(T, ["interface gi0/3", "shutdown", "no shutdown"]).concat(SAVE)],
@@ -65,7 +70,11 @@ const WRONG = {
     [{ t: "ipam", rows }].concat(moveDevice(T, homeAddr(T), false)),
     [{ t: "ipam", rows }].concat(conf(T, ["interface vlan 1", "ip address " + (T.v.kind === "gear" ? homeAddr(T) : T.v.addr) + " 255.255.255.248"]), SAVE),
     /* the clash ended by moving the printer to the end of its block as written, the sheet left overlapping */
-    (() => { const P = T.sim.net.ipam[T.v.P], last = P.last; return [{ t: "client", dev: "printer", values: { mode: "static", ip: last, mask: T.v.plan.mask, gw: T.v.plan.gw } }, { t: "pcprinter", ip: last }]; })()]; }
+    (() => { const P = T.sim.net.ipam[T.v.P], last = P.last; return [{ t: "client", dev: "printer", values: { mode: "static", ip: last, mask: T.v.plan.mask, gw: T.v.plan.gw } }, { t: "pcprinter", ip: last }]; })()]; },
+  /* a new cord in port 7; the map put right with the cord left where it is; the front desk's cord moved to the manager's run;
+     restarts; the manager's port bounced */
+  "SO-08": (T) => [[{ t: "replace", cable: "c-cord-mgr" }, mgr("ipconfig /renew")], [{ t: "cablemap", map: rightMap(T) }], [{ t: "repatch", cable: "c-cord-pc", port: T.v.ports.manager }, { t: "cablemap", map: rightMap(T) }],
+    [{ t: "power", dev: "mgr" }], [{ t: "power", dev: "msw" }], conf(T, ["interface gi0/4", "shutdown", "no shutdown"]).concat(SAVE)]
 };
 /* the fault, in real output */
 const SYMPTOM = {
@@ -115,6 +124,21 @@ const SYMPTOM = {
     assert.match(out(T, [cli("show running-config")]), /interface GigabitEthernet0\/2\n description FRONT-DESK-PC\n speed 1000\n/);
     assert.match(E.act(T, { t: "test", cable: T.v.pcCable }).text, /all pass/);
     assert.match(JSON.stringify(E.act(T, { t: "view", dev: "pc", key: "settings" }).rows), /a 10\/100 Mbps adapter/);
+  },
+  "SO-08": (T) => {
+    const P = T.v.ports;
+    assert.match(E.act(T, mgr("ipconfig")).out, /Media disconnected/);
+    assert.match(out(T, login(T).concat([cli("show interfaces status")])), /Gi0\/4\s+MANAGER-PC\s+notconnect/);
+    assert.match(E.act(T, { t: "test", cable: "c-run-mgr" }).text, /all pass/);
+    assert.match(E.act(T, { t: "probe", dev: "pp" }).text, /isn't on any run yet/, "no tone, nothing to hear");
+    E.act(T, { t: "tone", cable: "c-run-mgr" }); const pr = E.act(T, { t: "probe", dev: "pp" });
+    assert.equal(pr.facts.port, P.manager); assert.notEqual(P.manager, "7");
+    E.act(T, { t: "tone", cable: "c-run-meet" }); assert.equal(E.act(T, { t: "probe", dev: "pp" }).facts.port, "7", "the meeting room's run is the one on 7");
+    assert.equal(T.sim.net.cablemap["7"], "manager", "the map says 7 is the manager's");
+    const pg = E.act(T, { t: "view", dev: "pp", key: "physical" });
+    assert.ok(pg.cables.some((c) => /^Patch cord in port 7, down to the managed switch \(port 4\)/.test(c.name)) && pg.cables.filter((c) => /^Run punched down/.test(c.name)).length === 4 && pg.probe, "the panel lists its cords, its four runs (unlabelled) and the probe");
+    assert.ok(!pg.cables.some((c) => /manager|meeting/i.test(c.name)), "nothing at the back says where a run goes");
+    assert.ok(E.act(T, { t: "view", dev: "mgr", key: "physical" }).cables[0].acts.indexOf("tone") >= 0, "the manager's desk end takes the tone");
   },
   "SO-09": (T) => {
     const v = T.v, prints = [], seen = new Set();

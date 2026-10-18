@@ -38,15 +38,19 @@ export const POE_PAIR = { "PoE OUT": "DATA IN", "DATA IN": "PoE OUT", "PoE OUT 2
 export const DUAL_PORTS = ["DATA IN", "DATA IN 2", "PoE OUT", "PoE OUT 2"];
 const DUAL_NAME = { "DATA IN": "DATA IN 1", "DATA IN 2": "DATA IN 2", "PoE OUT": "DATA + POWER OUT 1", "PoE OUT 2": "DATA + POWER OUT 2" };
 /* the name printed by a port on the device itself: what the student reads on the model and in every list */
-export function portName(x, port) { return (x && x.dual && DUAL_NAME[port]) || (x && x.kind === "techlaptop" && port === "USB-C" ? "USB-C (its USB serial adapter)" : null) || PORT_NAME[port] || port; }
+export function portName(x, port) { if (x && x.kind === "patchpanel") return /R$/.test(port) ? "port " + port.slice(0, -1) + " (punched down at the back)" : "port " + port; return (x && x.dual && DUAL_NAME[port]) || (x && x.kind === "techlaptop" && port === "USB-C" ? "USB-C (its USB serial adapter)" : null) || PORT_NAME[port] || port; }
 /* the managed switch's copper ports and its console port (its SFP slots take a fibre module: level 2's later jobs) */
 export const MSW_PORTS = Array.from({ length: 24 }, function (_, i) { return String(i + 1); }).concat(["CONSOLE"]);
+/* a patch panel's 24 ports: the jack at the front ("7") and the run punched down behind it ("7R") */
+export const PANEL_PORTS = Array.from({ length: 24 }, function (_, i) { return String(i + 1); }).concat(Array.from({ length: 24 }, function (_, i) { return (i + 1) + "R"; }));
 export function portsOf(x) {
   if (!x) return [];
+  if (x.kind === "patchpanel") return PANEL_PORTS;
   if (x.dual) return DUAL_PORTS;
   if (x.kind === "switch" && x.ports) return Array.from({ length: x.ports }, function (_, i) { return String(i + 1); });   /* the office's old switch has 8 */
   if (x.kind === "mswitch") return MSW_PORTS;
-  if (x.kind === "techlaptop") return ["USB-C", "ETH"];   /* the USB serial adapter for the console cable, and its own Ethernet port */
+  if (x.kind === "techlaptop") return ["USB-C", "ETH"];
+  if (x.kind === "jack") return ["JACK"];   /* the USB serial adapter for the console cable, and its own Ethernet port */
   return PORTS[x.kind] || [];
 }
 /* a console cable: your laptop's USB serial adapter to a switch's CONSOLE port */
@@ -79,8 +83,22 @@ export class Sim {
   poePowered(id) { const inj = this.poeSource(id); return !!inj && !!inj.power && !!POE[inj.std]; }
   /* powered, but by less than it can draw: it starts, in a reduced mode (an 802.3at camera on 802.3af: no heater, no night vision) */
   poeShort(id) { const inj = this.poeSource(id); return this.poePowered(id) && POE[inj.std].pd < (this.d[id].draw || 6.5); }
+  /* a patch panel joins the jack at each front port to the run punched down behind it: a cable into either is, for the
+     link, one path from the device at one end to the device at the other (the lengths added, the worse condition, a
+     crossover only if just one of the two crosses). null: nothing on the other side, or a plug out at the panel */
+  panelEnd(c) { return [c.a, c.b].find(function (e) { return this.d[e.dev] && this.d[e.dev].kind === "patchpanel"; }, this) || null; }
+  viaPanel(c) {
+    const pe = this.panelEnd(c); if (!pe) return c;
+    const pair = /R$/.test(pe.port) ? pe.port.slice(0, -1) : pe.port + "R", o = this.cableAt(pe.dev, pair); if (!o) return null;
+    const oe = o.a.dev === pe.dev && o.a.port === pair ? o.a : o.b, near = pe === c.a ? c.b : c.a, far = oe === o.a ? o.b : o.a;
+    if (!pe.seated || !oe.seated) return null;
+    const worst = [c.cond, o.cond].indexOf("crushed") >= 0 ? "crushed" : [c.cond, o.cond].indexOf("damaged") >= 0 ? "damaged" : "good";
+    return { id: c.id, kind: "cat6", a: near, b: far, cond: worst, length: (c.length || 0) + (o.length || 0), wiring: (c.wiring === "crossover") !== (o.wiring === "crossover") ? "crossover" : "straight", via: [c.id, o.id] };
+  }
   cableUp(c) {
     if (!c) return false;
+    if (c.kind === "cat6" && this.panelEnd(c)) { const v = this.viaPanel(c); return !!v && this.cableUp(v); }
+    if ([c.a, c.b].some(function (e) { return this.d[e.dev] && this.d[e.dev].kind === "jack"; }, this)) return false;   /* a run to a wall jack with nothing plugged into it */
     if (c.kind === "coax") return c.a.tight && c.b.tight && c.cond === "good";
     if (c.kind === "console") return c.a.seated && c.b.seated && this.on(c.a.dev) && this.on(c.b.dev);   /* serial, not Ethernet: "up" means the console answers */
     if (c.length > COPPER_MAX) return false;                /* past 100 m the signal has faded too far for Ethernet to hold a link */
@@ -113,6 +131,7 @@ export class Sim {
   }
   speed(c) {   /* gigabit needs all four pairs; 100 Mb/s needs only 1-2 and 3-6; a speed fixed at either end is what the link runs at */
     if (!this.cableUp(c)) return 0;
+    if (this.panelEnd(c)) c = this.viaPanel(c);   /* through a patch panel: the whole path */
     let sp = c.cond === "damaged" ? 100 : 1000;
     [c.a, c.b].forEach(function (e) { const x = this.d[e.dev]; if (x && x.maxMbps) sp = Math.min(sp, x.maxMbps); }, this);   /* an old 10/100 device */
     if (c.kind === "cat6") [c.a, c.b].forEach(function (e) { const f = this.speedSetting(e); if (f !== "auto") sp = Math.min(sp, +f); }, this);
@@ -135,10 +154,11 @@ export class Sim {
   switchLinks(id) {
     const x = this.d[id]; if (!x || x.kind !== "mswitch") return {};
     const L = {};
-    for (const c of this.cablesOf(id)) {
-      if (c.kind !== "cat6") continue;
+    for (const c0 of this.cablesOf(id)) {
+      if (c0.kind !== "cat6") continue;
+      const c = this.panelEnd(c0) ? this.viaPanel(c0) : c0; if (!c) continue;   /* patched through a panel: the device beyond it */
       const me = c.a.dev === id ? c.a : c.b, far = c.a.dev === id ? c.b : c.a, fd = this.d[far.dev];
-      if (!/^\d+$/.test(me.port) || !me.seated || !far.seated || c.cond === "crushed" || (c.length || 0) > COPPER_MAX || !this.on(far.dev) || !this.pairsMeet(c)) continue;
+      if (!/^\d+$/.test(me.port) || !me.seated || !far.seated || fd.kind === "jack" || c.cond === "crushed" || (c.length || 0) > COPPER_MAX || !this.on(far.dev) || !this.pairsMeet(c)) continue;
       const m = (fd.kind === "router" || fd.kind === "rogue" ? fd.mac : fd.ifaces ? fd.ifaces[0].mac : "02-00-5e-" + (hash(far.dev) >>> 0).toString(16).padStart(8, "0").slice(0, 6).replace(/(..)(..)(..)/, "$1-$2-$3")).replace(/-/g, "");
       L["GigabitEthernet0/" + me.port] = { mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n };
       if (fd.maxMbps) L["GigabitEthernet0/" + me.port].max = Math.min(L["GigabitEthernet0/" + me.port].max, fd.maxMbps);
@@ -262,6 +282,7 @@ export class Sim {
     const k = this.d[dev] && this.d[dev].kind;
     if (k === "router" || k === "rogue") return port === "WAN" ? dev + ":wan" : dev + ":lan";
     if (k === "injector" && / 2$/.test(port)) return dev + ":2";   /* a dual injector's second pair: a path of its own, never bridged to the first */
+    if (k === "patchpanel") return dev + ":" + String(port).replace(/R$/, "");   /* each port joins only its own front jack and its own run */
     return dev;
   }
   /* bridging devices pass frames between everything joined to them */
@@ -454,7 +475,7 @@ export class Sim {
   }
   /* is this device on a managed switch port whose duplex disagrees with its own (the link up, the two ends running differently)? */
   mismatched(id) {
-    const c = this.cablesOf(id).find(function (k) { return k.kind === "cat6" && (k.a.dev === "msw" || k.b.dev === "msw"); }); if (!c || !this.cableUp(c)) return false;
+    const c = this.cablesOf(id).map(function (k) { return k.kind === "cat6" && this.panelEnd(k) ? this.viaPanel(k) : k; }, this).find(function (k) { return k && k.kind === "cat6" && (k.a.dev === "msw" || k.b.dev === "msw"); }); if (!c || !this.cableUp(c)) return false;
     const e = c.a.dev === "msw" ? c.a : c.b; if (!/^\d+$/.test(e.port)) return false;
     const n = "GigabitEthernet0/" + e.port, p = this.d.msw.sw.ports[n], lk = this.switchLinks("msw")[n];
     return !!(p && lk && duplexEnds(p, lk).mismatch);
@@ -522,6 +543,18 @@ export class Sim {
       case "client": res = this.setClient(act.dev, act.values); break;
       case "cmd": res = { ok: true }; break;                    /* commands are replayed by the command runner */
       case "tftp": { const s = this.d[act.dev || "tech"].tftp; if (s) s.on = !!act.on; res = { ok: !!s, on: !!(s && s.on) }; break; }   /* your laptop's TFTP server, started or stopped */
+      case "tone": { const c = this.cable(act.cable); this.net.extra.tone = c ? c.id : null; res = { ok: !!c }; break; }   /* the tone generator clipped onto a run at the desk end */
+      case "repatch": {                                         /* a patch cord moved to another front port of the panel */
+        const c = this.cable(act.cable), pe = c && this.panelEnd(c), to = String(act.port || "");
+        if (!pe || /R$/.test(pe.port) || !/^\d+$/.test(to) || +to < 1 || +to > 24) { res = { ok: false, err: "That cord isn't in the panel's front" }; break; }
+        if (to === pe.port) { res = { ok: true, same: true }; break; }
+        if (this.cableAt(pe.dev, to)) { res = { ok: false, err: "Port " + to + " already has a cord in it" }; break; }
+        pe.port = to; pe.seated = true; res = { ok: true, port: to }; break;
+      }
+      case "cablemap": {                                        /* the office's cable map as saved: a room (or nothing) for each panel port */
+        const m = {}; Object.keys(act.map || {}).forEach(function (p) { if (/^\d+$/.test(p) && +p >= 1 && +p <= 24) m[p] = String(act.map[p] || "").slice(0, 20); });
+        this.net.cablemap = m; res = { ok: true }; break;
+      }
       case "ipam": {                                            /* the IPAM sheet as saved: the strings as typed, trimmed */
         this.net.ipam = (act.rows || []).slice(0, 8).map(function (r) { const o = {}; ["net", "mask", "first", "last", "bc", "gw"].forEach(function (k) { o[k] = String(r && r[k] != null ? r[k] : "").trim().slice(0, 40); }); return o; });
         res = { ok: true }; break;

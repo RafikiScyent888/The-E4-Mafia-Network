@@ -141,7 +141,7 @@ function pagePane(id, key, ctx, rerender) {
 const tftpView = {};         /* device id -> the name of the file open for reading */
 function tftpPane(id, P, ctx, rerender) {
   const wrap = el("div", { class: "tftp" });
-  const where = !P.on ? "Nothing: the server is stopped" : P.addr ? P.addr + ", UDP port 69 (Ethernet)" : !P.linked ? "No network: nothing is plugged into Ethernet" : P.apipa ? "No address from the network (Ethernet gave itself a 169.254 address)" : "No address yet";
+  const where = !P.on ? "Nothing: the server is stopped" : P.addr ? P.addr + ", UDP port 69 (Ethernet)" : !P.linked ? "No network: Ethernet has no link" : P.apipa ? "No address from the network (Ethernet gave itself a 169.254 address)" : "No address yet";
   wrap.appendChild(el("table", { class: "kv" }, el("tbody", null,
     el("tr", null, el("th", { scope: "row" }, "Server"), el("td", null, P.on ? "Running" : "Stopped")),
     el("tr", null, el("th", { scope: "row" }, "Listening on"), el("td", null, where)),

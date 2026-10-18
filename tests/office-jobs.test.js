@@ -388,6 +388,12 @@ test("SO-J5: the banner on every login, the copy's real prompts and errors, the 
   run(J, sol.slice(lay + 1)); B.act(J, cli("exit")); r = B.act(J, cli(""));
   assert.ok(r.out.indexOf(p.banner) >= 0 && r.out.indexOf(p.banner) < r.out.indexOf("User Access Verification"), "the banner, then the password prompt");
   S = physicalState(J.sim, "tech"); assert.equal(S.ports[0].plug, "none"); assert.ok(S.says.includes("ETHERNET: empty."));
+  /* cabled first into a port still shut: no address; the port opened from the console brings the link and an address */
+  const L = B.open(def, 5033), openAt = sol.findIndex((a) => a.line === "no shutdown") - 2;
+  run(L, sol.slice(0, openAt).concat([sol[lay]]));
+  assert.equal(L.sim.addr("tech"), null, "on a port still shut: no link, no address");
+  run(L, sol.slice(openAt, openAt + 4));
+  assert.equal(L.sim.addr("tech").ip, ip, "the port opened: the laptop asks for an address and gets it");
   /* a laptop's cable in a console port is refused; its USB-C still takes only the console cable */
   const K = B.open(def, 5033);
   assert.equal(B.act(K, { t: "lay", a: E("tech", "ETH"), b: E("msw", "CONSOLE") }).result.ok, false);

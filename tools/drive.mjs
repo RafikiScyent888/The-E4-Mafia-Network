@@ -579,12 +579,17 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
         for (const l of [plan.console, "enable", plan.secret, "configure terminal", "banner motd #" + plan.banner + "#", "end", "copy running-config startup-config", "", "exit", ""]) await ser(p, l);
         const wake = await term(p);
         check(wake.lastIndexOf(plan.banner) > wake.lastIndexOf("con0 is now available") && wake.lastIndexOf(plan.banner) < wake.lastIndexOf("User Access Verification"), tag + "the console wakes with the banner, then asks for the password");
-        for (const l of [plan.console, "enable", plan.secret, "configure terminal", "interface gi0/4", "no shutdown", "end"]) await ser(p, l);
+        /* cabled first, into a port still shut: no link, no address; then the port opened from the console brings both */
         await lay(p, "tech", "ETH", "msw", "4");
-        check(/Your laptop, ETHERNET[^]*?Link, 1 Gb\/s/.test(await p.$eval("#runs", (n) => n.textContent)), tag + "your laptop's Ethernet in port 4: in the runs table, with a link");
+        check(/Your laptop, ETHERNET[^]*?No link/.test(await p.$eval("#runs", (n) => n.textContent)), tag + "your laptop's Ethernet in port 4, still shut: in the runs table, no link");
         await dev(p, "tech"); await tab(p, "TFTP server");
         check(/Stopped/.test(await p.$eval(".tftp", (n) => n.textContent)), tag + "the TFTP server tab: stopped at first");
         await p.click('.tftp button:text-is("Start the TFTP server")'); await p.waitForTimeout(40);
+        check(/Running[^]*No network: Ethernet has no link/.test(await p.$eval(".tftp", (n) => n.textContent)), tag + "started on a port still shut: no link, nothing to listen on");
+        await tab(p, "Serial terminal");
+        for (const l of [plan.console, "enable", plan.secret, "configure terminal", "interface gi0/4", "no shutdown", "end"]) await ser(p, l);
+        check(/Your laptop, ETHERNET[^]*?Link, 1 Gb\/s/.test(await p.$eval("#runs", (n) => n.textContent)), tag + "port 4 opened: the laptop's run has a link");
+        await tab(p, "TFTP server");
         check(new RegExp("Running[^]*" + esc(lapIp) + ", UDP port 69").test(await p.$eval(".tftp", (n) => n.textContent)), tag + "started: it listens on the address the office's router gave the laptop");
         await tab(p, "Serial terminal"); await ser(p, "copy running-config tftp:");
         check((await promptNow(p)) === "Address or name of remote host []? ", tag + "copy asks for the server's address");

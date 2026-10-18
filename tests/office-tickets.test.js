@@ -139,6 +139,9 @@ const SYMPTOM = {
     assert.ok(pg.cables.some((c) => /^Patch cord in port 7, down to the managed switch \(port 4\)/.test(c.name)) && pg.cables.filter((c) => /^Run punched down/.test(c.name)).length === 4 && pg.probe, "the panel lists its cords, its four runs (unlabelled) and the probe");
     assert.ok(!pg.cables.some((c) => /manager|meeting/i.test(c.name)), "nothing at the back says where a run goes");
     assert.ok(E.act(T, { t: "view", dev: "mgr", key: "physical" }).cables[0].acts.indexOf("tone") >= 0, "the manager's desk end takes the tone");
+    assert.equal(E.act(T, { t: "view", dev: "msw", key: "lights" }).ports.find((x) => x.port === 4).up, false, "the switch's light for port 4 is dark: an empty jack lights nothing");
+    assert.equal(E.act(T, { t: "repatch", cable: "c-cord-mgr", port: P.front }).facts.ok, false, "a cord can't go into a port that has one");
+    assert.equal(T.sim.cable("c-cord-mgr").b.port, "7");
   },
   "SO-09": (T) => {
     const v = T.v, prints = [], seen = new Set();

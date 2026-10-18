@@ -1289,9 +1289,80 @@ and SO-10 with the rack and patch panel in the Physical tab.
   - Page plants: 4 new, all caught by named checks. The drive now names a
     ticket that isn't built instead of crashing on it.
 
-Next: SO-08 and SO-10 with the rack, the patch panel and the SFP in the
-Physical tab; then five extra jobs (SO-J6 to J10) and five extra tickets
-(SO-11 to 15); then `planned` set to the real total.
+### Level 2, ticket SO-08: live 18 October 2026
+
+- **SO-08, "The cable map says port 7; the cable isn't in port 7"** (the
+  preview's title, word for word: the map always claims port 7, and the
+  manager's real port changes from office to office).
+  - **The office:** last week's new cabling runs every desk's wall jack back
+    to a 24-port patch panel in the closet rack. Each run is punched down
+    behind a port, and a short blue cord joins that port's front to the
+    switch. The front desk and the printer are re-cabled through the panel
+    onto the switch ports they had.
+    - The installer took the old 8-port switch away: the panel stands where
+      it was.
+    - The manager's new PC is in the manager's office (`mgr`).
+    - The meeting room has an empty wall jack (`mjack`).
+  - **The fault:** the installer's cable map has the manager's run and the
+    meeting room's the wrong way round, and he patched from the map. Port 7
+    goes to the meeting room's empty jack, so gi0/4 (MANAGER-PC, opened and
+    saved for it) is notconnect, and the manager's PC has no link.
+  - **The way through:**
+    - put the tone generator on the manager's cable at the desk;
+    - run the probe along the back of the panel, which sounds at the real
+      port;
+    - move the cord ("Move this cord to port ...");
+    - put the cable map right.
+  - **Fixed** when the manager's PC is online, the map names the right room
+    for every port with a run (and nothing for a port without one), and the
+    front desk and the printer still work.
+    - The cord moved but the map left wrong isn't the fix, and Mason says so.
+    - So is the front desk's cord moved onto the manager's run.
+- **The patch panel in the simulation** (`kind: "patchpanel"`, `PANEL_PORTS`):
+  ports "1" to "24" at the front and "1R" to "24R" punched down at the back.
+  - `viaPanel(c)` turns a cable into either side into one path, from the
+    device at one end to the device at the other. The lengths are added, the
+    worse condition wins, and it's a crossover only if just one of the two
+    crosses. It's null with nothing on the other side, or a plug out at the
+    panel.
+  - `cableUp`, `speed`, `switchLinks` and `mismatched` all go through it.
+    `nodeOf` keeps each port its own node.
+  - A wall jack (`kind: "jack"`) has a run behind it and nothing plugged in,
+    so it carries no link. Both `cableUp` and the switch's own view say so.
+  - New actions:
+    - `tone` (the tone generator on a run, kept in `net.extra.tone`);
+    - `probe` (it sounds at the back of the port the toned run lands on);
+    - `repatch` (a cord moved to a free front port; an occupied one is
+      refused);
+    - `cablemap` (the office's map as records).
+- **On the page:**
+  - The cable map sits under the ticket (`js/desk/cablemapui.js`), a room
+    for each panel port.
+  - The panel's Physical tab:
+    - its cords, with "Move this cord to port ...";
+    - its runs at the back, unlabelled ("Look at the punch-down", the
+      tester);
+    - "Run the probe along the back of the panel".
+  - A desk's cable whose run goes to the panel, and the wall jack, take
+    "Put the tone generator on it".
+  - The logical diagram leaves the panel out: a patched path is one link from
+    the switch to the device.
+  - The floor plan shows the panel in the closet and its runs out to the
+    rooms. The cords stay inside the rack: drawn, they put a red diamond on
+    the switch's label.
+- **3D:** the patch panel's Physical tab is the photographed 6U wall rack.
+  - `wallRack6U({ managed: true })` now takes `patches`, `tabs` and
+    `swLights`. With none of them it draws exactly as previewed.
+  - The tabs carry what the installer wrote from his map.
+  - Views: Patch panel close-up, Ports 1 to 12, Panel and switch, Switch
+    ports close-up.
+  - The bottom-row ports' lights are sampled from below, the top row's from
+    above: the cords hang in front of the others.
+  - The wall jack is the photographed data/voice plate, empty.
+- **Checks:** filled in below at go-live.
+
+Next: SO-10 with the SFP modules and fibre; then five extra jobs (SO-J6 to
+J10) and five extra tickets (SO-11 to 15); then `planned` set to the real total.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

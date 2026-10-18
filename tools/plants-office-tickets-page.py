@@ -12,13 +12,16 @@ PLANTS = [
  ("show version never says it came back from a power cut", "js/net/swcli.js", '"System returned to ROM by " + (sw.restart || "power-on"), "",', ''),
  ("a duplex mismatch shows no late collisions", "js/net/swcli.js", "const d = duplexEnds(p, l); if (!d.mismatch) return null;", "return null;"),
  ("a switch command's output never reaches the notebook", "js/net/cmd.js", 'line: raw.trim(), out: r.out.join("\\n") }, secret: !!r.secret, cli: true, keep: r.keep };\n}\nfunction remote', 'line: raw.trim(), out: "" }, secret: !!r.secret, cli: true, keep: r.keep };\n}\nfunction remote'),
- ("the back office switch has no device button", "js/desk/app.js", '"msw", "meet", "mpc"', '"msw", "mpc"'),
+ ("the back office switch has no device button", "js/desk/app.js", '"meet", "mpc", "router"', '"mpc", "router"'),
  ("no crossover cable in the van", "js/net/pages.js", '.concat(sim.net.site === "office" ? ["crossover"] : [])', ''),
- ("SO-06, SO-07 and SO-09 left off the desk", "js/tickets/office.js", "SO05, SO06, SO07, SO09];", "SO05];"),
+ ("SO-06 to SO-09 left off the desk", "js/tickets/office.js", "SO05, SO06, SO07, SO08, SO09];", "SO05];"),
  ("Mason never says a fixed duplex leaves the spare PC on half", "js/tickets/office.js", "return sim.mismatched(\"pc\") ? \"It links now", "return false ? \"It links now"),
- ("SO-09's IPAM sheet missing from the desk", "js/desk/app.js", "  if (!T.def.ipam) { if (host) host.remove(); return; }", "  if (true) { if (host) host.remove(); return; }"),
+ ("SO-09's IPAM sheet missing from the desk", "js/desk/app.js", "  ipamSheet(host, { plan: T.sim.net.plan.ipam,", "  if (false) ipamSheet(host, { plan: T.sim.net.plan.ipam,"),
  ("SO-09's sheet says what's wrong before it's checked", "js/desk/app.js", "const checked = ctx.sheetChecked ||", "const checked = true ||"),
  ("the old switch's label never says what its ports can do", "js/net/pages.js", ' + (x.labelText ? " Its label: " + x.labelText + "." : "")', ''),
+ ("SO-08's cable map missing from the desk", "js/desk/app.js", "  if (T.def.cablemap) {", "  if (false) {"),
+ ("no probe on the patch panel's Physical tab", "js/net/pages.js", 'probe: x.kind === "patchpanel",', "probe: false,"),
+ ("no way to move a patch cord", "js/net/pages.js", '      else if (pp) acts = acts.concat(["repatch"]);', ""),
 ]
 only = sys.argv[1:]
 bad = 0

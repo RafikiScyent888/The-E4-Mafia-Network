@@ -10,9 +10,11 @@ PLANTS = [
  ("the laptop's serial adapter never drawn", "js/desk/model3d.js", "OFF.techLaptop({ screen: o.screen, title: o.title, console: o.console })", "OFF.techLaptop({ screen: o.screen, title: o.title, console: false })"),
  ("the laptop's Ethernet port read from the wrong port", "js/net/physical.js", 'techlaptop: [["ETHERNET", "ETH"], ["USB-C", "USB-C"]]', 'techlaptop: [["ETHERNET", "NIC"], ["USB-C", "USB-C"]]'),
  ("the laptop's Ethernet light lit with no link", "js/net/physical.js", '    ports[1].lights = null;', '    ports[1].lights = null; ports[0].lights = "green";'),
- ("the back office switch drawn with no model", "js/net/physical.js", 'injector: "injector", meet: "switch", mpc: "pc" };', 'injector: "injector", mpc: "pc" };'),
+ ("the back office switch drawn with no model", "js/net/physical.js", 'injector: "injector", meet: "switch", mpc: "pc", mgr: "pc" };', 'injector: "injector", mpc: "pc", mgr: "pc" };'),
  ("a crossover cable never lights the uplink", "js/net/sim.js", 'return (mdix(c.a) !== mdix(c.b)) === (c.wiring !== "crossover");', "return mdix(c.a) !== mdix(c.b);"),
  ("old switch keeps its cords", "js/desk/model3d.js", "OFF.desktopSwitch8({ plugged: o.plugged, cords: true })", "OFF.desktopSwitch8({ cords: true })"),
+ ("the rack draws the preview's cords, not the sim's", "js/desk/model3d.js", "OFF.wallRack6U({ managed: true, patches: o.patches,", "OFF.wallRack6U({ managed: true,"),
+ ("the rack's switch lights ignore the sim", "js/desk/model3d.js", "tabs: o.tabs, swLights: o.swLights });", "tabs: o.tabs });"),
 ]
 only = sys.argv[1:]
 bad = 0

@@ -698,5 +698,32 @@
   "name": "office tickets: SO-09 the sheet put right and saved, every block checks out",
   "page": "index.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-09'); const v=c.T.v; ['net','mask','first','last','bc','gw'].forEach(f=>{document.getElementById('ipam'+v.moved+f).value=v.orig[f];}); document.getElementById('ipamSave').click(); document.getElementById('records').scrollIntoView();"
+ },
+ {
+  "name": "office tickets: SO-08 the cable map under the ticket",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-08'); document.getElementById('records').scrollIntoView();"
+ },
+ {
+  "name": "office tickets: SO-08 the floor plan, the panel's runs out to the rooms",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-08'); document.getElementById('vPhy').click();"
+ },
+ {
+  "name": "office tickets: SO-08 the patch panel's Physical tab, the rack and the probe",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-08'); const T=c.T; c.act({t:'tone',cable:'c-run-mgr'}); document.querySelector('#devtabs [data-d=pp]').click(); document.getElementById('probeBtn').click();",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "office tickets: SO-08 the meeting room's wall jack, its 3D model",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-08'); document.querySelector('#devtabs [data-d=mjack]').click();",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "office tickets: SO-08 the cord moved, the map left wrong: Mason's word",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-08'); const T=c.T, v=T.v; c.guess('right'); c.act({t:'repatch',cable:'c-cord-mgr',port:v.ports.manager}); c.act({t:'cmd',dev:'mgr',line:'ping 203.0.113.80'}); document.getElementById('board').scrollIntoView();"
  }
 ]

@@ -29,7 +29,7 @@ PLANTS = [
  ("SO-05: Telnet left on, accepted", "js/tickets/office.js", 'c.vty.transport === "ssh" &&', '/^(ssh|all)$/.test(c.vty.transport) &&'),
  ("a duplex mismatch loses nothing", "js/net/sim.js", "return this.mismatched(id) ? { loss: 0.3, base: 1 } : { loss: 0, base: 0 };", "return { loss: 0, base: 0 };"),
  ("show version never says it came back from a power cut", "js/net/swcli.js", '"System returned to ROM by " + (sw.restart || "power-on"), "",', ''),
- ("SO-02: any ping from the PC proves it, even to itself", "js/tickets/office.js", 'proves(f) { return f.cmd === "ping" && f.dev === "pc" && f.beyond; },', 'proves(f) { return f.cmd === "ping" && f.dev === "pc" && f.ok; },'),
+ ("SO-02: any ping from the PC proves it, even to itself", "js/tickets/office.js", 'the next power cut shuts the desk\'s port again."; },\n  proves(f) { return f.cmd === "ping" && f.dev === "pc" && f.beyond; },', 'the next power cut shuts the desk\'s port again."; },\n  proves(f) { return f.cmd === "ping" && f.dev === "pc" && f.ok; },'),
  ("TX facing TX links anyway", "js/net/sim.js", "    if (auto(c.a) || auto(c.b)) return true;\n    const mdix", "    return true;\n    const mdix"),
  ("a crossover cable crosses nothing", "js/net/sim.js", 'return (mdix(c.a) !== mdix(c.b)) === (c.wiring !== "crossover");', "return mdix(c.a) !== mdix(c.b);"),
  ("no mdix auto never shown in the running configuration", "js/net/swcli.js", ' if (p.mdix === false) L.push(" no mdix auto");', ""),
@@ -50,6 +50,14 @@ PLANTS = [
  ("two devices on one address: the first always answers", "js/net/sim.js", "    if (owners.length < 2) return owners[0];\n    const t = this.turns", "    return owners[0];\n    const t = this.turns"),
  ("checking the IPAM sheet finds nothing", "js/tickets/engine.js", "sheet: checkSheet(T.sim.net.plan.ipam.block, sheetRows(T.sim.net))", "sheet: []"),
  ("reload keeps unsaved changes", "js/net/swcli.js", "  const base = sw.startup ? clone(sw.startup) : snapshot(newSwitch());\n  CONFIG_KEYS.forEach(function (k) { sw[k] = base[k]; });", "  const base = sw.startup ? clone(sw.startup) : snapshot(newSwitch());"),
+ ("a patch panel passes no link", "js/net/sim.js", "    if (!pe.seated || !oe.seated) return null;\n", "    return null;\n"),
+ ("a run to an empty wall jack lights the switch's port", "js/net/sim.js", '    if ([c.a, c.b].some(function (e) { return this.d[e.dev] && this.d[e.dev].kind === "jack"; }, this)) return false;', ""),
+ ("the switch sees a link to an empty wall jack", "js/net/sim.js", ' fd.kind === "jack" ||', ""),
+ ("the probe sounds at port 7 whatever is toned", "js/net/pages.js", 'port = pe && /R$/.test(pe.port) ? pe.port.slice(0, -1) : null;', 'port = "7";'),
+ ("SO-08: the map left wrong, accepted", "js/tickets/office.js", 'fixed(sim) { return online(sim, "mgr") && mapRight(sim) && ', 'fixed(sim) { return online(sim, "mgr") && '),
+ ("SO-08: the front desk patched away, accepted", "js/tickets/office.js", 'fixed(sim) { return online(sim, "mgr") && mapRight(sim) && online(sim, "pc") && printOk(sim); },', 'fixed(sim) { return online(sim, "mgr") && mapRight(sim); },'),
+ ("a cord moved onto a port that has one", "js/net/sim.js", '        if (this.cableAt(pe.dev, to)) { res = { ok: false, err: "Port " + to + " already has a cord in it" }; break; }\n', ""),
+ ("the panel names the room each run goes to", "js/net/pages.js", '"Run punched down at the back of port " + me.port.slice(0, -1) :', '"Run punched down at the back of port " + me.port.slice(0, -1) + " to the " + sim.d[other.dev].label :'),
 ]
 only = sys.argv[1:]
 for name, f, a, b in PLANTS:

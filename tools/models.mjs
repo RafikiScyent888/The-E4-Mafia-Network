@@ -344,17 +344,18 @@ CO.push(async () => {
    to the port the tone found, through the page, and the model follows: port 7 empty, the manager's port patched, 4 lit */
 CO.push(async () => {
   const ctx = await GL.newContext({ viewport: { width: 900, height: 1000 }, reducedMotion: "reduce" });
-  await ctx.addInitScript(() => { try { sessionStorage.setItem("e4-instructor", "1"); } catch (e) { } });
+  await ctx.addInitScript(() => { try { sessionStorage.setItem("e4-instructor", "1"); if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify({ current: "SO-08", t: { "SO-08": { seed: 11 } }, solved: {} })); sessionStorage.setItem("seeded", "1"); } } catch (e) { } });   /* one office every run, so the cords hang the same way */
   const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push("desk SO-08: " + e.message));
   await p.goto(base + "index.html"); await p.waitForFunction(() => window.__e4);
   if (plant) await p.evaluate(plant);
-  await p.evaluate(() => window.__e4.go("SO-08"));
+  check(await p.evaluate(() => window.__e4.T.def.id === "SO-08" && window.__e4.T.seed === 11), "SO-08 models: the desk opened SO-08 on office 11");
   const P = await p.evaluate(() => window.__e4.T.v.ports), patched = [P.front, P.open, "7"];
   await physical(p, "pp", "Ports 1 to 12");
   for (let n = 1; n <= 12; n++) { const q = await plugAt(p, "P" + n), want = patched.indexOf(String(n)) >= 0; check(!q.missing && q.plug === want && (!want || q.off < 1), "SO-08 patch panel: port " + n + (want ? " has its cord" : " is empty") + " " + JSON.stringify(q)); }
   const k = await fine(p); await p.click('.m3d-bar button:text-is("Switch ports close-up")'); await settled(p, k);
   await led(p, "SO-08 rack: the switch's port 4 (patched to the meeting room's empty jack)", "4", "link", "off");
   await led(p, "SO-08 rack: the switch's port 2 (the front desk)", "2", "link", "green");
+  const kp = await fine(p); await p.click('.m3d-bar button:text-is("Panel and switch")'); await settled(p, kp);   /* a top-row port's lights are on top of its jack: seen from above */
   await led(p, "SO-08 rack: the switch's port 3 (the printer)", "3", "link", "green");
   /* the fix's first half, through the page: the cord moved to the manager's real port */
   await p.selectOption("#rp-c-cord-mgr", P.manager); const n = await fine(p); await p.click('.cabs li:has-text("port 7") button:text-is("Move the cord")'); await settled(p, n);

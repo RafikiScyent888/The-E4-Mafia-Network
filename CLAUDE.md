@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (17 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1 to SO-J5, tickets SO-01, 02, 03 and 05, the managed switch, the IPAM sheet, your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5" and "Level 2, tickets SO-01 to 05" below.**
+**Status (17 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1 to SO-J5, tickets SO-01 to SO-05, the managed switch, the IPAM sheet, your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5" and "Level 2, tickets SO-01 to 05" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
 from the Under the Hood tile (decision 6). See "The real site" below. The owner, 11
 October 2026: **"Build it like the preview you gave me just keep the layout
@@ -1106,7 +1106,7 @@ work order at a time inside the stages.
   Keep scrolling text inside a scrolling box, as the terminals and the TFTP
   reader do. The checker isn't changed yet.
 
-### Level 2, tickets SO-01 to 05: live 18 October 2026 (SO-04 to follow)
+### Level 2, tickets SO-01 to 05: live 18 October 2026
 
 Objectives doc re-read 18 October 2026 (Network+ V9 unchanged) and the
 mapping shown to the owner before building: SO-01 and SO-02 under
@@ -1140,8 +1140,20 @@ transposed), SO-05 under "Access and management" (SSH, console). The owner:
     the backup (keys don't travel in a configuration file), the vty lines on
     Telnet only, or the vty lines on a line password instead of login local.
     Refused and denied are the evidence that tells them apart.
-  - **SO-04, TX/RX transposed:** shows as "Coming next". It needs auto-MDIX
-    in the simulation and a back-office switch that can't do it.
+  - **SO-04, the back office's new switch won't link (TX/RX transposed).**
+    The office has turned its meeting room into a back office: an old 10/100
+    switch (`meet`, the 5-port housing printed UNMANAGED 5-PORT FAST
+    ETHERNET SWITCH, "10/100 Mbps · MDI-X ports (no auto-MDIX)") with a desk
+    on it (`mpc`), on a 26 m straight-through run to the closet switch's
+    gi0/5. Auto-MDIX is off on gi0/5: one port's "lock-down", or a
+    contractor's template run on ports 1 to 24. Both ends are MDI-X, so each
+    transmits on the other's transmit pair: no link, notconnect, the desk on
+    169.254. Evidence: the tester passes every pin and says straight-through;
+    show running-config shows `no mdix auto`; the old switch's lights and
+    label. Two fixes count: `mdix auto` on the port (saved), or a crossover
+    cable from the van (the Physical tab). Then the desk asks for its address
+    again (`ipconfig /renew`; a ticket keeps its moment frozen, so nothing
+    asks for it). The drive does one fix on each variant.
 - **What the simulation gained:**
   - A duplex mismatch costs the device packets (`sim.mismatched`, `hop`):
     pings lose about a third; test pages crawl and every third one fails.
@@ -1153,6 +1165,17 @@ transposed), SO-05 under "Access and management" (SSH, console). The owner:
     (`facts.out`, `facts.dev`), so the notebook can read them. SSH reports
     each denied login.
   - The ticket engine takes the TFTP server action.
+  - **Cable wiring and auto-MDIX** (`sim.pairsMeet`, used by `cableUp` and the
+    switch's own view of its links): a cable is straight-through, or
+    crossover (`wiring`). A link comes up if either end swaps its pairs by
+    itself (auto-MDIX: every device unless `mdix: false`, a managed switch's
+    port unless `no mdix auto`), or if the cable crosses the pairs exactly
+    where both ends are the same kind (switch to switch). The managed
+    switch's ports take `mdix auto` / `no mdix auto`, on from the box, shown
+    in `show running-config`. An old 10/100 device caps its links at 100
+    (`maxMbps`). The office's Physical tabs offer "Swap in a crossover
+    cable" (`{ t: "crossover" }`); "Swap in a new cable" is straight-through.
+    The tester says how a cable is wired.
 - **The desk:** each level's tickets in the queue ("Tier 2 · Small office ·
   tickets"), on the shelves (Small office, locked until Home is done) and on
   the map (the small office's site lists them once the level is open). The
@@ -1178,8 +1201,8 @@ transposed), SO-05 under "Access and management" (SSH, console). The owner:
   - A ticket missing from the queue is now a named failure in the drive,
     not a crash.
 
-Next: SO-04 (auto-MDIX and the back-office switch); SO-06 to 10; five extra
-jobs and five extra tickets; the rack in the Physical tab.
+Next: SO-06 to 10; five extra jobs and five extra tickets; the rack in the
+Physical tab.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

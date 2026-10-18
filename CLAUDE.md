@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (17 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1 to SO-J5, the managed switch, the IPAM sheet, your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4" and "Level 2, SO-J5" below.**
+**Status (17 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1 to SO-J5, tickets SO-01, 02, 03 and 05, the managed switch, the IPAM sheet, your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5" and "Level 2, tickets SO-01 to 05" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
 from the Under the Hood tile (decision 6). See "The real site" below. The owner, 11
 October 2026: **"Build it like the preview you gave me just keep the layout
@@ -1106,8 +1106,80 @@ work order at a time inside the stages.
   Keep scrolling text inside a scrolling box, as the terminals and the TFTP
   reader do. The checker isn't changed yet.
 
-Next: tickets SO-01 to 05; SO-06 to 10; five extra jobs and five extra
-tickets; the rack in the Physical tab.
+### Level 2, tickets SO-01 to 05: live 18 October 2026 (SO-04 to follow)
+
+Objectives doc re-read 18 October 2026 (Network+ V9 unchanged) and the
+mapping shown to the owner before building: SO-01 and SO-02 under
+"Cabling and physical interface issues" (increasing counters, port
+status), SO-03 under "Configuration management" (production, backup,
+baseline configurations), SO-04 under the same troubleshooting item (TX/RX
+transposed), SO-05 under "Access and management" (SSH, console). The owner:
+"looks great." These are the tickets planned on the small-office preview.
+- **`js/tickets/office.js`.** Each ticket starts from the office as SO-J1 to
+  SO-J5 left it (`settled`: the managed switch named, locked, on the
+  office's address with SSH only, its ports described, the spares shut, the
+  banner, all saved). The fault is planted as it really got there: lines
+  typed at the switch's console (`onSwitch`) or a power cut. The board, the
+  ladder, the notebook and the proof are the home tickets' engine.
+  - **Saved, or it isn't fixed.** A fix that works but only lives in the
+    running configuration is proven by the student's own test, isn't the
+    fix, and Mason says so (`partial`). SO-02 also counts the whole range
+    reopened as not fixed ("spare ports are live again"); SO-05 counts
+    Telnet left on.
+  - **SO-01, printing slow and sometimes failing.** The printer's port back
+    on auto, or forced to half; the printer is fixed at 100 full. Fix: 100,
+    full, by hand, saved.
+  - **SO-02, one desk has no network.** The front desk PC's port shut, from
+    an insurer's list typed in wrong. Fix: that port alone, saved.
+  - **SO-03, Friday's changes gone.** Friday's change (a login for the new
+    office manager, or the switch's new management address from the address
+    plan) made and never saved; Sunday's power cut. The ticket gives
+    Friday's notes. `show version` says it came back by power-on, up 1 day 9
+    hours. Fix: the change again, saved.
+  - **SO-05, can't SSH.** Three variants: a replacement switch loaded from
+    the backup (keys don't travel in a configuration file), the vty lines on
+    Telnet only, or the vty lines on a line password instead of login local.
+    Refused and denied are the evidence that tells them apart.
+  - **SO-04, TX/RX transposed:** shows as "Coming next". It needs auto-MDIX
+    in the simulation and a back-office switch that can't do it.
+- **What the simulation gained:**
+  - A duplex mismatch costs the device packets (`sim.mismatched`, `hop`):
+    pings lose about a third; test pages crawl and every third one fails.
+    This is SO-J3's brief made real.
+  - The printer's control panel says its card is fixed at 100 Mb/s full.
+  - `show version` says what brought the switch back (`sw.restart`: power-on
+    or reload); a ticket can set how long it has been up (`uptimeFixed`).
+  - Switch commands report what they printed and which computer typed them
+    (`facts.out`, `facts.dev`), so the notebook can read them. SSH reports
+    each denied login.
+  - The ticket engine takes the TFTP server action.
+- **The desk:** each level's tickets in the queue ("Tier 2 · Small office ·
+  tickets"), on the shelves (Small office, locked until Home is done) and on
+  the map (the small office's site lists them once the level is open). The
+  title and the ticket card say which level and "office network". The
+  managed switch and your laptop have device buttons. A ticket on a locked
+  level doesn't open: the desk falls back to HOME-01.
+- **Checks:**
+  - `npm test`: 200. `tests/office-tickets.test.js` runs each ticket on 150
+    offices: the fault in real output (half duplex and climbing late
+    collisions, Media disconnected and a disabled port, power-on, refused or
+    denied), six options, the real fix and its proof, the tempting wrong
+    fixes, unsaved and Mason's word, a self-ping proving nothing, the
+    ladder, exact replay, and no hint naming a password or the fix's command.
+  - `ONLY=tickets-office node tools/drive.mjs`: 316 checks. Every variant
+    through the desk; a fresh student can't open them; the queue, card and
+    title.
+  - AAA on four desk states, all passing.
+  - Node plants: 6 new, all caught (`tools/plants-office-node.py`, which now
+    takes names).
+  - Page plants: 8 in `tools/plants-office-tickets-page.py`, run in a
+    throwaway worktree (`git worktree add --detach`) so the real one is never
+    left holding a planted defect.
+  - A ticket missing from the queue is now a named failure in the drive,
+    not a crash.
+
+Next: SO-04 (auto-MDIX and the back-office switch); SO-06 to 10; five extra
+jobs and five extra tickets; the rack in the Physical tab.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

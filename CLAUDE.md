@@ -1468,8 +1468,64 @@ and SO-10 with the rack and patch panel in the Physical tab.
   - The build page's "console drawn as patch cable" plant was put back on its
     line after the fibre run style joined it, and is caught.
 
-Next: five extra jobs (SO-J6 to J10) and five extra tickets (SO-11 to 15),
-then `planned` set to the real total.
+### Level 2: the office's records on office tickets; tickets SO-11 to SO-15: live 18 October 2026
+
+- **The office's records, on every office ticket** (found 18 October 2026,
+  writing SO-12). The office tickets never told students the switch's
+  passwords. Every office ticket from SO-01 to SO-10 starts at the console,
+  which asks for the console password, and each office has its own. So no
+  student could have logged in.
+  - The page drive never saw it, because it read the passwords from inside
+    the simulation: written and reachable are different claims.
+  - Every office ticket's card now carries "The office's records": the
+    switch, its management address, mask and gateway, the console password,
+    the enable secret, and the SSH login (`officeRecords` in
+    `js/desk/app.js`). A ticket can change a line where its story says the
+    records changed (`records(v)`): SO-03's new address from Friday's notes,
+    SO-09's address from the IPAM sheet.
+  - The drive now reads the passwords off the page (`rec()`), and a plant
+    hiding the records makes it fail.
+- **SO-11 to SO-15, "five more on the same skills"** (the preview's line).
+  - **SO-11, copying files to the front desk PC crawls.** The front desk's
+    port is fixed at 1000 or 100, full duplex; the PC negotiates and falls
+    back to half. The other way round from SO-01: the switch's end is the
+    full-duplex one, so it counts CRC errors and runts.
+    - Fix: speed and duplex back to automatic, saved.
+    - Both ends at half (no errors, half duplex) isn't the fix, and Mason
+      says so.
+  - **SO-12, anyone with a console cable gets straight in.** An insurer's
+    auditor found the console's login turned off, with its password still
+    in the configuration, or cleared too.
+    - Fix: the console password from the records, and `login`, saved.
+    - Proof: log out and wake the console again; it asks.
+  - **SO-13, SSH warns the switch's identity has changed.** The switch's
+    RSA keys were made again (a contractor, or a warranty replacement). The
+    front desk PC remembers the old key, and OpenSSH prints its real warning
+    and stops.
+    - Simulation: the switch's `keyGen`, saved with its keys; `hostKey(sw)`
+      gives the SHA256 fingerprint; `show crypto key mypubkey rsa` shows
+      it.
+    - The PC's `knownHosts` exists only in SO-13's office, so every other
+      ticket's SSH is unchanged.
+    - `ssh-keygen -R <address>` removes a host's line (it's in Help).
+    - The lesson: compare the warning's fingerprint with the switch's own
+      before trusting it. "A man in the middle" is the near miss.
+  - **SO-14, the printer moved desks and now the front desk is offline.**
+    SO-08's patch panel with its map right this time. The printer's cord was
+    moved across correctly; the front desk's was "tidied" into the printer's
+    old port (its run now to an empty jack) or a spare port.
+    - The map, the probe and the tone show it.
+    - Fix: put the front desk's cord back in its port.
+  - **SO-15, the fibre went dark after it was cleaned.** SO-10's fibre with
+    the right modules, its LC pair put back crossed. The installer's light
+    meter passed both strands, which rules out a break.
+    - Fix: swap the LC pair at one end, then renew.
+- The serial terminal's facts now say when the switch is asking for a
+  password (`asked`): its "Password:" is the prompt, not output.
+- **Checks:** filled in below at go-live.
+
+Next: five extra work orders (SO-J6 to J10), then `planned` set to the real
+total.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

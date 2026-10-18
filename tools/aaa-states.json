@@ -755,5 +755,43 @@
   "ticket": "SO-10",
   "seed": 11,
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-10'); const v=c.T.v; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; document.querySelector('#devtabs [data-d=tech]').click(); ['',v.plan.console,'enable',v.plan.secret,'show interfaces status'].forEach(k);"
+ },
+ {
+  "name": "office tickets: SO-11 the ticket card with the office's records, the console's show interfaces",
+  "page": "index.html",
+  "ticket": "SO-11",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-11'); const v=c.T.v; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; document.querySelector('#devtabs [data-d=tech]').click(); ['',v.plan.console,'enable',v.plan.secret,'show interfaces gi0/2'].forEach(k); document.getElementById('tk').scrollIntoView();"
+ },
+ {
+  "name": "office tickets: SO-12 the console woken straight to the prompt",
+  "page": "index.html",
+  "ticket": "SO-12",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-12'); const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; document.querySelector('#devtabs [data-d=tech]').click(); ['','',''].forEach(k);"
+ },
+ {
+  "name": "office tickets: SO-13 the host key warning at the front desk PC",
+  "page": "index.html",
+  "ticket": "SO-13",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-13'); const v=c.T.v; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=pc]').click(); tab('Command Prompt'); k('ssh '+v.plan.user+'@'+v.plan.ip);"
+ },
+ {
+  "name": "office tickets: SO-14 the patch panel's cords, the cable map",
+  "page": "index.html",
+  "ticket": "SO-14",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-14'); document.querySelector('#devtabs [data-d=pp]').click(); document.getElementById('records').scrollIntoView();",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "office tickets: SO-15 the closet switch's fibre cord and its LC pair",
+  "page": "index.html",
+  "ticket": "SO-15",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-15'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=msw]').click(); tab('Physical');",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))",
+  "after": "[...document.querySelectorAll('.m3d-bar button')].find(b=>b.textContent==='Fibre slots').click()"
  }
 ]

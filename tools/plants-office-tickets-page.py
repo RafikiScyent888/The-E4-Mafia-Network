@@ -11,10 +11,10 @@ PLANTS = [
  ("Mason never says SO-01's fix isn't saved", "js/tickets/office.js", "  partial() { return \"It runs right now, but the switch hasn't saved it: the next power cut or reload puts the printer's port back the way it was.\"; },", "  partial() { return \"\"; },"),
  ("show version never says it came back from a power cut", "js/net/swcli.js", '"System returned to ROM by " + (sw.restart || "power-on"), "",', ''),
  ("a duplex mismatch shows no late collisions", "js/net/swcli.js", "const d = duplexEnds(p, l); if (!d.mismatch) return null;", "return null;"),
- ("a switch command's output never reaches the notebook", "js/net/cmd.js", 'line: raw.trim(), out: r.out.join("\\n") }, secret: !!r.secret, cli: true, keep: r.keep };\n}\nfunction remote', 'line: raw.trim(), out: "" }, secret: !!r.secret, cli: true, keep: r.keep };\n}\nfunction remote'),
+ ("a switch command's output never reaches the notebook", "js/net/cmd.js", 'line: raw.trim(), out: r.out.join("\\n"), asked: !!r.secret }', 'line: raw.trim(), out: "", asked: !!r.secret }'),
  ("SO-04's back office switch has no device button", "js/desk/app.js", '"meet", "bsw", "mpc",', '"bsw", "mpc",'),
  ("no crossover cable in the van", "js/net/pages.js", '.concat(sim.net.site === "office" ? ["crossover"] : [])', ''),
- ("SO-06 to SO-10 left off the desk", "js/tickets/office.js", "SO05, SO06, SO07, SO08, SO09, SO10];", "SO05];"),
+ ("SO-06 to SO-10 left off the desk", "js/tickets/office.js", "SO05, SO06, SO07, SO08, SO09, SO10,", "SO05,"),
  ("Mason never says a fixed duplex leaves the spare PC on half", "js/tickets/office.js", "return sim.mismatched(\"pc\") ? \"It links now", "return false ? \"It links now"),
  ("SO-09's IPAM sheet missing from the desk", "js/desk/app.js", "  ipamSheet(host, { plan: T.sim.net.plan.ipam,", "  if (false) ipamSheet(host, { plan: T.sim.net.plan.ipam,"),
  ("SO-09's sheet says what's wrong before it's checked", "js/desk/app.js", "const checked = ctx.sheetChecked ||", "const checked = true ||"),
@@ -26,6 +26,7 @@ PLANTS = [
  ("no LC pair swap on the fibre cord", "js/net/pages.js", 'c.kind === "fibre" ? ["look", "polarity"] :', 'c.kind === "fibre" ? ["look"] :'),
  ("SO-10's back office switch has no device button", "js/desk/app.js", '"bsw", "mpc",', '"mpc",'),
  ("the office's records left off the ticket", "js/desk/app.js", '  if (net.site === "office" && T.v.plan) tk.appendChild(officeRecords(d, T));', ""),
+ ("SO-11 to SO-15 left off the desk", "js/tickets/office.js", "SO10, SO11, SO12, SO13, SO14, SO15];", "SO10];"),
 ]
 only = sys.argv[1:]
 bad = 0

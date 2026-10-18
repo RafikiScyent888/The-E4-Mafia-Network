@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { OFFICE_TICKETS } from "../js/tickets/office.js";
 import * as E from "../js/tickets/engine.js";
-import { exec } from "../js/net/cmd.js";
+import { exec, HELP } from "../js/net/cmd.js";
 import { ip2n, n2ip } from "../js/net/util.js";
 import { checkSheet, sheetRows } from "../js/net/ipam.js";
 
@@ -208,6 +208,7 @@ const SYMPTOM = {
     const fp = r.facts.fp; assert.match(out(T, login(T).concat([cli("show crypto key mypubkey rsa")])), new RegExp("Fingerprint \\(SHA256, as SSH clients show it\\): " + fp.replace(/[+/.]/g, "\\$&")));
     assert.notEqual(fp, T.v.oldKey); assert.ok(E.act(T, pc("ping " + T.v.plan.ip)).facts.replies > 0);
     assert.match(E.act(T, pc("ssh-keygen -R " + T.v.plan.gw)).out, /not found/);
+    assert.ok(HELP.some((h) => /^ssh-keygen -R/.test(h[0])), "Help lists ssh-keygen -R, as the fix hint says");
   },
   "SO-14": (T) => {
     const P = T.v.ports;

@@ -66,6 +66,15 @@ PLANTS = [
  ("an unsupported module isn't err-disabled", "js/net/swcli.js", 'p.shutdown ? "disabled" : l && l.unsupported ? "err-disabled" : up', 'p.shutdown ? "disabled" : up'),
  ("no console log for an unsupported module", "js/net/cmd.js", "const m = x.sfp[k] && SFP_MODULES[x.sfp[k]]; if (!m || m.rate === 1000) return;", "return;"),
  ("the module's label left off the look", "js/net/pages.js", '" The module\'s label: " + m.label + "; its bail latch is " + m.bail + "."', '""'),
+ ("SO-11: both ends at half duplex, accepted", "js/tickets/office.js", ' && sw.ports[PC_PORT].duplex === "auto" && !!sp && sp.duplex === "auto" && !sp.shutdown;', " && !!sp && !sp.shutdown;"),
+ ("a full-duplex end facing a negotiator counts no CRC errors", "js/net/swcli.js", "{ crc: 53 * t + 7, inErr: 61 * t + 9, runts: 8 * t + 2 }", "{ crc: 0, inErr: 0, runts: 0 }"),
+ ("SO-12: a console password with no login, accepted", "js/tickets/office.js", '(c.login === "password" && c.password === p.console) || c.login === "local"', 'c.password === p.console || c.login === "local"'),
+ ("the console asks for a password with its login off", "js/net/swcli.js", '  if (ln.login === "password" && ln.password) { S.mode = "login";', '  if (ln.password) { S.mode = "login";'),
+ ("SSH never checks a remembered host key", "js/net/cmd.js", "  if (kh && kh[host] && kh[host] !== fp) return {", "  if (false) return {"),
+ ("ssh-keygen -R forgets nothing", "js/net/cmd.js", "  delete kh[host];\n", ""),
+ ("making keys again keeps the same fingerprint", "js/net/swcli.js", " S.sw.keyGen = (S.sw.keyGen || 0) + 1;", ""),
+ ("Help doesn't list ssh-keygen", "js/net/cmd.js", '  ["ssh-keygen -R <address>", "forget a host\'s remembered SSH key (its line in known_hosts)"],\n', ""),
+ ("SO-14: the printer patched away, accepted", "js/tickets/office.js", "fixed(sim) { return online(sim, \"pc\") && printOk(sim) && mapRight(sim); },", "fixed(sim) { return online(sim, \"pc\") && mapRight(sim); },"),
 ]
 only = sys.argv[1:]
 for name, f, a, b in PLANTS:

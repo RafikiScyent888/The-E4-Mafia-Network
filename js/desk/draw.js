@@ -108,6 +108,21 @@ export function drawLogical(svg, sim, o) {
   svg.appendChild(gl); svg.appendChild(gn); svg.appendChild(gp);   /* port dots and labels sit above every line and device */
   const R = 34, links = linksOf(sim), pair = function (l) { return [l.a, l.b].sort().join("|"); }, many = {};
   const deg = {}; links.forEach(function (l) { many[pair(l)] = (many[pair(l)] || 0) + 1; deg[l.a] = (deg[l.a] || 0) + 1; deg[l.b] = (deg[l.b] || 0) + 1; });   /* two cables between the same two devices (your laptop's console and Ethernet to the switch) run side by side, fanning out from the busier device, where other ports' labels sit close */
+  for (const id of ids) {
+    const n = sim.d[id], p = P[id];
+    const g = mk("g", { class: "nd" + (o.open === id ? " open" : ""), tabindex: "0", role: "button", transform: "translate(" + p.x + " " + p.y + ")", "aria-label": n.label + (subOf(sim, id) ? ", " + subOf(sim, id) : "") + ". Open it in the terminal." });
+    g.dataset.d = id;
+    g.appendChild(mk("rect", { x: -R, y: -R, width: R * 2, height: R * 2, rx: 12, class: "tile" }));
+    g.appendChild(mk("use", { href: "#i-" + ICON_OF[id], x: -R * 0.8, y: -R * 0.8, width: R * 1.6, height: R * 1.6 }));
+    const ps = p.lab === "above" ? [0, -R - 30, 0, -R - 11, "middle"] : p.lab === "left" ? [-R - 12, -6, -R - 12, 13, "end"] : p.lab === "right" ? [R + 12, -6, R + 12, 13, "start"] : [0, R + 20, 0, R + 38, "middle"];
+    const t1 = mk("text", { x: ps[0], y: ps[1], "text-anchor": ps[4], class: "nl" }); t1.textContent = n.label; g.appendChild(t1);
+    const sub = subOf(sim, id); if (sub) { const t2 = mk("text", { x: ps[2], y: ps[3], "text-anchor": ps[4], class: "ns" }); t2.textContent = sub; g.appendChild(t2); }
+    gn.appendChild(g);
+  }
+  /* every device's label, measured as drawn (in the font in use): a port marker never sits on one */
+  const boxes = [];
+  gn.querySelectorAll(".nd").forEach(function (g) { const p = P[g.dataset.d]; g.querySelectorAll(".nl, .ns").forEach(function (t) { let b; try { b = t.getBBox(); } catch (e) { return; } if (b.width) boxes.push({ x: p.x + b.x, y: p.y + b.y, w: b.width, h: b.height }); }); });
+  const onLabel = function (x, y) { return boxes.some(function (b) { return x + 9 > b.x - 3 && x - 9 < b.x + b.w + 3 && y + 9 > b.y - 3 && y - 9 < b.y + b.h + 3; }); };
   const seen = {};
   for (const l of links) {
     const A0 = P[l.a], B0 = P[l.b]; if (!A0 || !B0) continue;
@@ -120,8 +135,9 @@ export function drawLogical(svg, sim, o) {
     if (l.kind === "wifi") continue;
     [[l.a, 1, l.pa, A], [l.b, -1, l.pb, B]].forEach(function (e) {
       const D = e[3], dx2 = ux * e[1], dy2 = uy * e[1];
-      const off = (dy2 > 0.5 ? (below(e[0]) ? R + 56 : R + 24) : R + 12) + (k && deg[e[0]] > 2 ? 22 : 0);   /* the second cable's port on a busy device: further along, clear of the first's */
-      const px = D.x + dx2 * off, py = D.y + dy2 * off;
+      let off = (dy2 > 0.5 ? (below(e[0]) ? R + 56 : R + 24) : R + 12) + (k && deg[e[0]] > 2 ? 22 : 0);   /* the second cable's port on a busy device: further along, clear of the first's */
+      let px = D.x + dx2 * off, py = D.y + dy2 * off;
+      for (let g = 0; onLabel(px, py) && g < 30 && off + 4 < L / 2; g++) { off += 4; px = D.x + dx2 * off; py = D.y + dy2 * off; }   /* slide along its line until it's clear of every label */
       if (l.up) gp.appendChild(mk("circle", { cx: px, cy: py, r: 6, class: "pd pd-up" }));
       else gp.appendChild(mk("rect", { x: px - 6, y: py - 6, width: 12, height: 12, transform: "rotate(45 " + px + " " + py + ")", class: "pd pd-down" }));
       if (e[2]) {
@@ -131,17 +147,6 @@ export function drawLogical(svg, sim, o) {
         const t = mk("text", { x: tx, y: ty, "text-anchor": anc, class: "pl" }); t.textContent = e[2]; gp.appendChild(t);
       }
     });
-  }
-  for (const id of ids) {
-    const n = sim.d[id], p = P[id];
-    const g = mk("g", { class: "nd" + (o.open === id ? " open" : ""), tabindex: "0", role: "button", transform: "translate(" + p.x + " " + p.y + ")", "aria-label": n.label + (subOf(sim, id) ? ", " + subOf(sim, id) : "") + ". Open it in the terminal." });
-    g.dataset.d = id;
-    g.appendChild(mk("rect", { x: -R, y: -R, width: R * 2, height: R * 2, rx: 12, class: "tile" }));
-    g.appendChild(mk("use", { href: "#i-" + ICON_OF[id], x: -R * 0.8, y: -R * 0.8, width: R * 1.6, height: R * 1.6 }));
-    const ps = p.lab === "above" ? [0, -R - 30, 0, -R - 11, "middle"] : p.lab === "left" ? [-R - 12, -6, -R - 12, 13, "end"] : p.lab === "right" ? [R + 12, -6, R + 12, 13, "start"] : [0, R + 20, 0, R + 38, "middle"];
-    const t1 = mk("text", { x: ps[0], y: ps[1], "text-anchor": ps[4], class: "nl" }); t1.textContent = n.label; g.appendChild(t1);
-    const sub = subOf(sim, id); if (sub) { const t2 = mk("text", { x: ps[2], y: ps[3], "text-anchor": ps[4], class: "ns" }); t2.textContent = sub; g.appendChild(t2); }
-    gn.appendChild(g);
   }
   plates(svg, ".nl, .ns, .pl");
 }

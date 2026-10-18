@@ -306,7 +306,8 @@ function helpDialog() {
   d.querySelector(".x").addEventListener("click", function () { d.close(); });
 }
 
-dyslexia($("dys"), replateAll);
+dyslexia($("dys"), function () { if (ctx.T) renderDiagram(); replateAll(); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (ctx.T) { renderDiagram(); replateAll(); } });   /* once the fonts are in, measure the labels again */
 $("vLog").addEventListener("click", function () { setView(false); });
 $("vPhy").addEventListener("click", function () { setView(true); });
 $("mJob").addEventListener("click", function () { $("order").scrollIntoView({ block: "start" }); const h = $("tkh"); if (h) h.focus({ preventScroll: true }); });

@@ -184,6 +184,7 @@ Object.assign(PLAN, {
 
 for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY || k === process.env.ONLY || (process.env.ONLY === "tickets-office" && /^SO-/.test(k)))) for (const seed of seedsFor(id)) {
   let { p, ctx } = await page(id, seed);
+  try {   /* a ticket that stops part way (a button missing, a click that times out) is a named failure, and the next ticket still runs */
   const v = await T(p, () => window.__e4.T.v), gw = await T(p, () => window.__e4.T.sim.d.router.lan.ip);
   check(await T(p, () => window.__e4.T.def.exhibits(window.__e4.T.sim, window.__e4.T.v)), id + " " + seed + ": fault present at load");
   await plan.look(p, v);
@@ -224,6 +225,7 @@ for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY 
   const s1 = await T(p, () => window.__e4.T.seed);
   await p.click('#board button:text-is("Try another one like this")'); await p.waitForTimeout(80);
   check((await T(p, () => window.__e4.T.seed)) !== s1 && !(await T(p, () => window.__e4.T.solved)), id + ": a fresh house, unsolved");
+  } catch (e) { check(false, id + " " + seed + ": stopped: " + String(e.message).split("\n")[0]); }
   await ctx.close();
 }
 

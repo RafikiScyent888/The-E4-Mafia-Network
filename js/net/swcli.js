@@ -71,7 +71,7 @@ function status(sw, n) {
   return ["up", "up"];
 }
 /* a link comes up only if both ends can agree: a fixed speed must match the far end's; on fibre the module must suit the far end */
-function linkFails(p, l) { if (l.sfpMismatch) return true; const far = l.speed || "auto"; if (p.speed !== "auto" && far !== "auto" && p.speed !== far) return true; return false; }
+function linkFails(p, l) { if (l.sfpMismatch) return true; const far = l.speed || "auto"; if (p.speed !== "auto" && far !== "auto" && p.speed !== far) return true; if (p.speed !== "auto" && l.max && +p.speed > l.max) return true; return false; }
 /* what the port negotiated: speed, and duplex (a fixed end facing auto falls back to half duplex, the classic mismatch) */
 function negotiated(p, l) {
   const sp = p.speed !== "auto" ? p.speed : l.speed && l.speed !== "auto" ? l.speed : String(l.max || 1000);

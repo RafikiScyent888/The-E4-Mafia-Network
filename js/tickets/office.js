@@ -11,7 +11,8 @@ import { OFFICE_JOBS } from "../build/office.js";
 import { online } from "../build/jobs.js";
 import { exec } from "../net/cmd.js";
 import * as SW from "../net/swcli.js";
-import { rng, hash, mac } from "../net/util.js";
+import { rng, hash, mac, ip2n, n2ip } from "../net/util.js";
+import { checkSheet, sheetRows, usableIn, prefixOf } from "../net/ipam.js";
 import { OFFICE_RUN } from "../net/office.js";
 
 const SO5 = OFFICE_JOBS.find(function (d) { return d.id === "SO-J5"; });
@@ -304,5 +305,198 @@ const SO04 = {
   }
 };
 
-export const OFFICE_TICKETS = [SO01, SO02, SO03, SO04, SO05];
+/* ---------------------------------------------------------------- SO-06 */
+/* the switch's own address typed in again by hand: the mask too small (the front desk PC and the gateway both off its
+   network, so it hears the ping and its reply goes nowhere), or the address with a digit slipped (another network) */
+const SLIP = { "192.168.40": "192.168.4", "192.168.20": "192.168.2", "10.10.30": "10.10.3", "172.16.12": "172.16.21" };
+const SO06 = {
+  id: "SO-06", n: "06", level: 2, tier: "common", title: "The switch answers nothing from the office PC", priority: 3, due: "4 h",
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, host = +p.ip.split(".")[3], r = rng(hash("SO-06:" + seed));
+    const kind = r.pick(host >= 5 ? ["mask", "addr"] : ["addr"]);   /* a mask small enough to leave the gateway out needs the switch away from it */
+    const badMask = host >= 240 ? "255.255.255.240" : "255.255.255.252", badIp = SLIP[sim.net.prefix] + "." + host;
+    const ip = kind === "addr" ? badIp : p.ip, mask = kind === "mask" ? badMask : p.mask;
+    onSwitch(sim, ["configure terminal", "interface vlan 1", "ip address " + ip + " " + mask, "end"].concat(SAVE));
+    return { sim: sim, v: { kind: kind, plan: p, ip: ip, mask: mask, story: r.pick(["firmware", "monitor"]) } };
+  },
+  brief(v) {
+    return { quote: "Since Friday nothing reaches the closet switch over the network: SSH from the front desk just times out, and the new monitoring says it's down. Everything else in the office works, through that same switch. " +
+      (v.story === "firmware" ? "Its firmware was updated on Friday, and its management address typed in again by hand afterwards." : "A contractor set up the monitoring on Friday and \"checked the switch's management settings\" while he was in.") +
+      " The office's records: switch management address " + v.plan.ip + ", mask " + v.plan.mask + ", gateway " + v.plan.gw + "." };
+  },
+  mason: "Something answering and something replying are two different things. Find out which one you've got.",
+  affected: "pc",
+  options(v) {
+    return [
+      { id: "right", right: true, text: "The switch's own management address or mask doesn't fit the office network, so it can't answer the front desk PC" },
+      { id: "ssh", text: "SSH has been turned off on the switch", why: "Ping gets no answer either, and SSH has nothing to do with ping. show running-config still has transport input ssh on the vty lines." },
+      { id: "vlan", text: "The switch's VLAN 1 interface is shut down", why: "show ip interface brief says Vlan1 is up, and its line protocol is up." },
+      { id: "fw", text: "The front desk PC's firewall is blocking it", why: "Windows Firewall stops pings coming in to a PC, not the PC's own going out, and the front desk PC reaches the router and the printer." },
+      { id: "gw", text: "The switch has no default gateway", why: "show running-config has ip default-gateway " + v.plan.gw + ". And with an address and mask that fitted the office, the front desk PC would be on the switch's own network: a reply to it wouldn't need a gateway at all." },
+      { id: "port", text: "The front desk PC's switch port is shut down", why: "The front desk PC reaches the router and the printer through the switch, and show interfaces status says its port is connected." }
+    ];
+  },
+  rung1() { return "From the front desk PC: ping the switch, then arp -a. Then on your laptop's console: show ip interface brief and show running-config, and hold the switch's own address and mask up against the office's records."; },
+  rung2() { return "A device works out who is on its own network from its address and its mask. Anything it thinks is elsewhere, it sends to its gateway, and if the gateway isn't on its network either, the reply goes nowhere. An address on another network isn't reached at all without a router in between."; },
+  fixHints() { return ["Work on the switch from your laptop's console: the console doesn't need the network.", "Put the switch's management address back as the office's records have it, address and mask both, on its VLAN 1 interface.", "Save it, then try the switch again from the front desk PC."]; },
+  exhibits(sim, v) { const r = sim.route("pc", v.plan.ip); return !!r.fail && online(sim, "pc") && SW_(sim).vlan1.ip === v.ip; },
+  fixed(sim, v) {
+    const sw = SW_(sim), st = sw.startup, p = v.plan, r = sim.route("pc", p.ip), ok = function (c) { return c.vlan1.ip === p.ip && c.vlan1.mask === p.mask && !c.vlan1.shutdown; };
+    return ok(sw) && !!st && ok(st) && !!(r.local && r.owner.indexOf("msw") >= 0);
+  },
+  partial(v, sim) { const s = SW_(sim).vlan1; return s.ip !== v.plan.ip || s.mask !== v.plan.mask ? "It answers now, but not on the address and mask in the office's records: the monitoring, the backups and the next technician all go by those." : "It answers now, but the switch hasn't saved it: the next power cut or reload brings back the address it had, and the switch disappears again."; },
+  proves(f, sim, v) { return (f.cmd === "ping" && f.dev === "pc" && f.ip === v.plan.ip && f.replies > 0) || (f.cmd === "ssh" && f.dev === "pc" && f.login && f.host === v.plan.ip); },
+  proofText: "a ping or an SSH login from the front desk PC to the switch's address in the office's records",
+  evidence: [
+    { id: "ping", test: function (f, v) { return f.cmd === "ping" && f.dev === "pc" && f.ip === v.plan.ip && !f.replies; }, text: function (f) { return "Ping from the front desk PC to the switch's address: " + (f.kind === "no-reply" ? "Request timed out, every one" : "Destination host unreachable (nothing on the office's network has that address)"); } },
+    { id: "arp", test: function (f, v) { return f.cmd === "arp" && f.dev === "pc" && (f.entries || []).some(function (e) { return e[0] === v.plan.ip && e[1]; }); }, text: function () { return "arp -a on the front desk PC: the switch's address has a hardware address, so the switch heard the question and answered it"; } },
+    { id: "ssh", test: function (f, v) { return f.cmd === "ssh" && f.dev === "pc" && f.why === "timeout"; }, text: function () { return "ssh from the front desk PC: Connection timed out"; } },
+    { id: "brief", test: function (f, v) { return new RegExp("Vlan1\\s+" + v.ip.replace(/\./g, "\\.") + "\\s").test(swOut(f)); }, text: function (f, v) { return "show ip interface brief: Vlan1 is up, on " + v.ip; } },
+    { id: "run", test: function (f, v) { return swOut(f).indexOf("interface Vlan1\n ip address " + v.ip + " " + v.mask + "\n") >= 0; }, text: function (f, v) { return "show running-config: interface Vlan1 has ip address " + v.ip + " " + v.mask; } },
+    { id: "vlan", test: function (f, v) { return /Internet address is /.test(swOut(f)) && swOut(f).indexOf(v.ip + "/") >= 0; }, text: function (f, v) { return "show interfaces vlan 1: Internet address is " + v.ip + "/" + v.mask.split(".").map(function (x) { return (+x).toString(2); }).join("").replace(/0/g, "").length; } }
+  ],
+  summary(v) {
+    return { cause: v.kind === "mask" ? "The switch's mask had been typed as " + v.mask + " instead of " + v.plan.mask + ". To the switch, the front desk PC and the gateway were both on other networks: it heard the ping (arp -a had its hardware address) and sent the reply towards a gateway it couldn't reach, so nothing came back."
+      : "The switch's address had been typed as " + v.ip + ", a digit slipped: another network altogether. Nothing on the office's network had the address the records give, and with no router between, nothing could reach the one it had.",
+      fix: "Set interface vlan 1 back to " + v.plan.ip + " " + v.plan.mask + " from the console, checked it from the front desk PC, and saved." };
+  }
+};
+
+/* ---------------------------------------------------------------- SO-07 */
+/* the front desk's port fixed at 1000 Mb/s a year ago for the PC it had then; the spare PC from the storeroom has a
+   10/100 card, so there is no speed both ends can run and no link at all */
+const SO07 = {
+  id: "SO-07", n: "07", level: 2, tier: "common", title: "The spare PC on the front desk won't connect", priority: 2, due: "2 h",
+  build(seed) {
+    const B = settled(seed), sim = B.sim, r = rng(hash("SO-07:" + seed)), kind = r.pick(["contractor", "notes"]);
+    sim.d.pc.maxMbps = 100; sim.d.pc.ifaces[0].desc = "Fast Ethernet Adapter (10/100)";   /* the spare from the storeroom */
+    onSwitch(sim, ["configure terminal", "interface gi0/2", "speed 1000", "end"].concat(SAVE));   /* a year ago, for the PC it had then */
+    const c = sim.cablesOf("pc")[0];
+    return { sim: sim, v: { kind: kind, plan: B.plan, pcCable: c.id, run: c.length } };
+  },
+  brief(v) {
+    return { quote: "The front desk computer died on Monday, so we've put the old spare from the storeroom on the desk, on the same cable. Windows says the network cable is unplugged, but it's clicked in at both ends. " +
+      (v.kind === "contractor" ? "Last year the IT contractor set the front desk's switch port \"to run at full speed\" for the computer we had then." : "The switch's notes from last year say the front desk's port was \"set by hand to match the new PC\".") };
+  },
+  mason: "Two ends have to agree before anything flows. Ask each end what it can do.",
+  affected: "pc",
+  options(v) {
+    return [
+      { id: "right", right: true, text: "The front desk's switch port is fixed at 1000 Mb/s, and the spare PC's network card only runs 10/100" },
+      { id: "cable", text: "The front desk PC's cable is damaged", why: "The cable tester passes every pin. And a damaged pair still gives a link, at 100 Mb/s: this one has no link at all." },
+      { id: "shut", text: "The front desk PC's switch port is shut down", why: "show interfaces status says notconnect, not disabled: the port is on, but sees no link." },
+      { id: "duplex", text: "The port and the PC disagree on duplex", why: "A duplex mismatch keeps the link up and loses packets. This port has no link at all: notconnect." },
+      { id: "static", text: "The spare PC still has a fixed address from another network", why: "ipconfig says Media disconnected: there's no link yet, so no address of any kind is in play. An address only matters once there's a link." },
+      { id: "long", text: "The run to the front desk is too long for Ethernet", why: "It's " + v.run + " m, far inside the 100 m limit, and the old PC worked on the same cable." }
+    ];
+  },
+  rung1() { return "On the front desk PC: ipconfig /all, and what its network adapter is (its Network settings page says too). Then on the switch: show interfaces status and show running-config for the front desk's port."; },
+  rung2() { return "Both ends of a link must run at the same speed. A port left to negotiate settles on the fastest speed both ends share; a port fixed at a speed the other end can't reach has nothing to agree on, and the link stays down."; },
+  fixHints() { return ["The PC's card can't go faster than it was made to: the switch's end is the one to change.", "Let the front desk's port negotiate its speed again, or set it to one the card can run. Leave its duplex alone unless the PC's is fixed too.", "Save it, then check the PC has an address and reaches beyond the office."]; },
+  exhibits(sim, v) { const c = sim.cable(v.pcCable), p = SW_(sim).ports[PC_PORT]; return !sim.hasLink("pc") && !!c && c.a.seated && c.b.seated && c.cond === "good" && !p.shutdown && p.speed === "1000" && sim.hasLink("printer"); },
+  fixed(sim) {
+    const sw = SW_(sim), sp = sw.startup && sw.startup.ports[PC_PORT], l = sim.switchLinks("msw")[PC_PORT];
+    return online(sim, "pc") && !sim.mismatched("pc") && !!sp && !!l && !sp.shutdown && (sp.speed === "auto" || +sp.speed <= 100) && !SW.duplexEnds(sp, l).mismatch;
+  },
+  partial(v, sim) { return sim.mismatched("pc") ? "It links now, but the port's duplex is fixed while the PC negotiates: the PC falls back to half duplex, and packets are lost. Fix both ends, or neither." : "The desk's back, but the switch hasn't saved it: the next power cut puts the port back at 1000, and the desk goes dark again."; },
+  proves(f) { return f.cmd === "ping" && f.dev === "pc" && f.beyond; },
+  proofText: "a ping from the front desk PC that gets replies from something else",
+  evidence: [
+    { id: "ipc", test: function (f) { return f.cmd === "ipconfig" && f.dev === "pc" && f.media === "disconnected"; }, text: function () { return "ipconfig on the front desk PC: Media disconnected (no link)"; } },
+    { id: "settings", test: function (f) { return f.page === "pc-settings" && !f.connected; }, text: function () { return "The front desk PC's network settings: a 10/100 adapter, set to negotiate, not connected"; } },
+    { id: "status", test: function (f) { return /^Gi0\/2\s.*\bnotconnect\s+1\s+\S+\s+1000\b/m.test(swOut(f)); }, text: function () { return "show interfaces status: Gi0/2, the front desk's port, notconnect, its speed fixed at 1000"; } },
+    { id: "run", test: function (f) { const o = swOut(f), i = o.indexOf("interface GigabitEthernet0/2\n"); return i >= 0 && /^[^!]* speed 1000\n/.test(o.slice(i)); }, text: function () { return "show running-config: the front desk's port, gi0/2, has speed 1000"; } },
+    { id: "test", test: function (f, v) { return f.phys === "test" && f.cable === v.pcCable; }, text: function () { return "Cable tester on the front desk PC's cable: all eight pins pass"; } },
+    { id: "lights", test: function (f) { return f.page === "msw-lights" && f.ports.some(function (p) { return p.port === 2 && !p.up; }); }, text: function () { return "The switch's lights: port 2 (the front desk PC) dark"; } }
+  ],
+  summary() {
+    return { cause: "The front desk's switch port had been fixed at 1000 Mb/s for the PC it had a year ago. The spare PC's card runs only 10 or 100 Mb/s, so the two ends had no speed in common, and no link came up.",
+      fix: "Let the port negotiate again (or set it to 100), saved it, and the PC got its address as soon as the link came up." };
+  }
+};
+
+/* ---------------------------------------------------------------- SO-09 */
+/* the office has started using SO-J4's address plan, ready for next year's VLANs: the router hands out only the Staff
+   block, and each fixed device takes the first address after its block's gateway, keeping the office's mask and
+   gateway for now. One block was written on top of another on the sheet, so the printer and the switch were both
+   given the same address: whichever answers the ARP question gets the traffic */
+const groupAt = function (net, name) { return net.plan.ipam.groups.findIndex(function (g) { return g[0] === name; }); };
+const blockRow = function (n, p, mask) { const sz = Math.pow(2, 32 - p); return { net: n2ip(n), mask: mask, first: n2ip(n + 1), last: n2ip(n + sz - 2), bc: n2ip(n + sz - 1), gw: n2ip(n + 1) }; };
+const owners = function (sim, ip) { const r = sim.route("pc", ip); return r.local ? r.owner : []; };
+const clash = function (sim) { const o = owners(sim, sim.d.printer.ifaces[0].cfg.ip); return o.length > 1; };
+const sheetOk = function (sim) { return checkSheet(sim.net.plan.ipam.block, sheetRows(sim.net)).every(function (r) { return r.ok; }); };
+const dotted = function (m) { m = m.replace(/[^0-9a-f]/gi, "").toLowerCase(); return m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12); };
+const SO09 = {
+  id: "SO-09", n: "09", level: 2, tier: "harder", title: "Two groups fighting over addresses", priority: 2, due: "2 h", ipam: true,
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, net = sim.net, r = rng(hash("SO-09:" + seed));
+    const P = groupAt(net, "Printers and servers"), G = groupAt(net, "Network gear"), S = groupAt(net, "Staff");
+    const kind = r.pick(["gear", "printers"]), moved = kind === "gear" ? G : P, onto = kind === "gear" ? P : G;
+    const rows = net.ipam.map(function (o) { return Object.assign({}, o); }), orig = Object.assign({}, rows[moved]);
+    rows[moved] = blockRow(ip2n(rows[onto].net), prefixOf(orig.mask), orig.mask);   /* written on top of the other group's block: same start */
+    net.ipam = rows;
+    const addr = n2ip(ip2n(rows[onto].net) + 2);   /* the first address after the gateway, in both blocks */
+    /* DHCP now hands out only the Staff block (its gateway, the router, kept out); the front desk PC has renewed into it */
+    sim.d.router.dhcp.start = n2ip(ip2n(rows[S].first) + 1); sim.d.router.dhcp.end = rows[S].last; sim.dhcp("pc", "boot");
+    const pr = sim.d.printer; pr.ifaces[0].cfg.ip = addr; pr.sub = addr; sim.d.pc.printer.port = addr;
+    onSwitch(sim, ["configure terminal", "interface vlan 1", "ip address " + addr + " " + p.mask, "end"].concat(SAVE));
+    return { sim: sim, v: { kind: kind, plan: p, addr: addr, P: P, G: G, moved: moved, onto: onto, orig: orig, story: r.pick(["friday", "parttime"]) } };
+  },
+  brief(v) {
+    return { quote: "Since last week the printer works every other page, and SSH to the switch from the front desk is just as random: one try asks for the password, the next is refused. Last week we started using the address plan on our IPAM sheet, ready for next year's VLANs: the router now hands out only the Staff block, and each fixed device took the first address after its own block's gateway, keeping the office's mask and gateway for now. " +
+      (v.story === "friday" ? "The printer and the switch were both renumbered on Friday, from the sheet." : "Our part-time IT person renumbered the printer on Wednesday and the switch on Friday, both from the sheet.") };
+  },
+  mason: "When something works every other time, ask who's answering.",
+  affected: "pc",
+  options(v) {
+    return [
+      { id: "right", right: true, text: "Two blocks on the IPAM sheet overlap, so the printer and the switch were both given the same address" },
+      { id: "dhcp", text: "The router's DHCP has handed the printer's address to a computer", why: "DHCP hands out only the Staff block now, and its clients list has nothing at that address. The two hardware addresses taking turns there are the printer's and the switch's." },
+      { id: "nic", text: "The printer's network card is failing", why: "Each page that never came out went to the switch: arp -a showed the switch's hardware address at the printer's address just then. The printer prints every page that reaches it." },
+      { id: "duplex", text: "The printer's switch port and the printer disagree on duplex", why: "Pings to the printer's address lose nothing, and the printer's port is still set by hand to match it. A duplex mismatch slows every page; this fails every other one." },
+      { id: "keys", text: "The switch's SSH keys are damaged", why: "When SSH is refused it's the printer that answered (arp -a has the printer's hardware address then); the next try reaches the switch, which asks for the password." },
+      { id: "port", text: "The front desk PC's printer is set up with the wrong address", why: "It points at the address on the printer's own control panel. The trouble is that something else answers at that address too." }
+    ];
+  },
+  rung1() { return "On the front desk PC: print a test page twice, with arp -a after each. On your laptop's console: what does the switch say by itself? Then check the office's IPAM sheet."; },
+  rung2() { return "Two devices can't share an address: whichever answers the ARP question gets the traffic, so things work every other time. Blocks on an address plan mustn't share addresses either, or the devices numbered from them can land on the same one."; },
+  fixHints() { return ["Start with the records: the sheet has to be right before anything is numbered from it.", "Write the block that sits on top of another where it belongs, then give its device a free address inside it. The office's mask and gateway stay as they are.", "Save the switch if you changed it, point the front desk PC at the printer if the printer moved, and print a test page."]; },
+  exhibits(sim, v) { return SW_(sim).vlan1.ip === v.addr && sim.d.printer.ifaces[0].cfg.ip === v.addr && clash(sim) && !sheetOk(sim); },
+  fixed(sim, v) {
+    if (!sheetOk(sim)) return false;
+    const rows = sheetRows(sim.net), sw = SW_(sim), st = sw.startup, pr = sim.d.printer.ifaces[0].cfg, p = v.plan;
+    const ok = function (c) { return usableIn(c.vlan1.ip, rows[v.G]) && c.vlan1.mask === p.mask && !c.vlan1.shutdown; };
+    if (!ok(sw) || !st || !ok(st) || st.vlan1.ip !== sw.vlan1.ip) return false;
+    if (pr.mode !== "static" || !usableIn(pr.ip, rows[v.P]) || pr.mask !== p.mask || pr.gw !== p.gw) return false;
+    const a = owners(sim, sw.vlan1.ip), b = owners(sim, pr.ip);
+    return a.length === 1 && a[0] === "msw" && b.length === 1 && b[0] === "printer" && sim.d.pc.printer.port === pr.ip;
+  },
+  partial(v, sim) {
+    if (clash(sim)) return "That one came out, but will the next? The printer and the switch still answer at the same address.";
+    if (!sheetOk(sim)) return "It works now, but the IPAM sheet still has two blocks sharing addresses: the next device numbered from it lands on somebody else's address.";
+    const sw = SW_(sim); if (sw.startup && sw.startup.vlan1.ip !== sw.vlan1.ip) return "It works now, but the switch hasn't saved its new address: the next power cut puts it back on the printer's.";
+    return "It works now, but the records and the network disagree: each device belongs inside its own group's block on the sheet.";
+  },
+  proves(f, sim) { return (f.print === "ok" && !f.slow) || (f.cmd === "ssh" && f.dev === "pc" && f.login && f.host === SW_(sim).vlan1.ip); },
+  proofText: "a test page from the front desk PC, or an SSH login to the switch",
+  evidence: [
+    { id: "printfail", test: function (f, v, sim) { return f.print === "fail" && clash(sim); }, text: function () { return "Test page from the front desk PC: nothing came out"; } },
+    { id: "printok", test: function (f, v, sim) { return f.print === "ok" && clash(sim); }, text: function () { return "Test page from the front desk PC: this one printed"; } },
+    { id: "refused", test: function (f, v, sim) { return f.cmd === "ssh" && f.dev === "pc" && f.why === "no-ssh" && clash(sim); }, text: function (f) { return "ssh from the front desk PC to " + f.host + ": Connection refused"; } },
+    { id: "asked", test: function (f, v, sim) { return f.cmd === "ssh" && f.dev === "pc" && f.asked && clash(sim); }, text: function (f) { return "ssh from the front desk PC to " + f.host + ": this time it asked for a password"; } },
+    { id: "arpsw", test: function (f, v, sim) { return f.cmd === "arp" && f.dev === "pc" && clash(sim) && (f.entries || []).some(function (e) { return e[0] === v.addr && e[1] === sim.macOf("msw"); }); }, text: function (f, v, sim) { return "arp -a on the front desk PC: " + v.addr + " at " + sim.macOf("msw"); } },
+    { id: "arppr", test: function (f, v, sim) { return f.cmd === "arp" && f.dev === "pc" && clash(sim) && (f.entries || []).some(function (e) { return e[0] === v.addr && e[1] === sim.macOf("printer"); }); }, text: function (f, v, sim) { return "arp -a on the front desk PC: " + v.addr + " at " + sim.macOf("printer"); } },
+    { id: "dup", test: function (f) { return /%IP-4-DUPADDR/.test(swOut(f)); }, text: function (f, v, sim) { return "The switch's console: %IP-4-DUPADDR, its own address " + v.addr + " answered by another device too (" + dotted(sim.macOf("printer")) + ")"; } },
+    { id: "panel", test: function (f, v, sim) { return f.page === "printer-panel" && clash(sim); }, text: function (f, v) { return "The printer's control panel: its address is " + v.addr; } },
+    { id: "brief", test: function (f, v) { return new RegExp("Vlan1\\s+" + v.addr.replace(/\./g, "\\.") + "\\s").test(swOut(f)); }, text: function (f, v) { return "show ip interface brief: Vlan1 on " + v.addr; } },
+    { id: "sheet", test: function (f) { return !!f.ipam && f.sheet.some(function (r) { return r.issues.some(function (x) { return /^Overlap/.test(x.text); }); }); }, text: function (f, v, sim) { const g = sim.net.plan.ipam.groups, n = f.sheet.map(function (r, i) { return r.issues.some(function (x) { return /^Overlap/.test(x.text); }) ? g[i][0] : null; }).filter(Boolean); return "The IPAM sheet, checked: " + n.join(" and ") + " share addresses"; } }
+  ],
+  summary(v) {
+    const g = ["Staff", "Guests", "Printers and servers", "Network gear"], mv = v.kind === "gear" ? "Network gear" : "Printers and servers", on = v.kind === "gear" ? "Printers and servers" : "Network gear";
+    return { cause: "On the IPAM sheet the " + mv + " block had been written on top of the " + on + " block, starting at the same address. Each group's first device takes the address after its block's gateway, so the printer and the switch were both given " + v.addr + ". Whichever answered the ARP question got the traffic: every other page and every other SSH went to the wrong device, and the switch logged the duplicate.",
+      fix: "Wrote the block where it belongs, so no two blocks share an address; gave its device a free address inside it (" + (v.kind === "gear" ? "the switch, saved" : "the printer, with the front desk PC pointed at it") + "); then printed a test page." };
+  }
+};
+
+export const OFFICE_TICKETS = [SO01, SO02, SO03, SO04, SO05, SO06, SO07, SO09];
 export const OFFICE_COMING = [];

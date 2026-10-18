@@ -12,7 +12,8 @@ const { HOME_TICKETS } = await import("../js/tickets/home.js"); const { OFFICE_T
 const { JOBS } = await import("../js/build/jobs.js");
 /* three houses each, plus more until every variant of the fault (which end, which kind) has been driven through the page */
 function seedsFor(id) {
-  const def = HOME_TICKETS.concat(OFFICE_TICKETS).find((d) => d.id === id), key = (T) => JSON.stringify([T.v.kind, T.v.end, T.v.kink]), out = [11, 2025, 777777], seen = new Set(out.map((s) => key(EN.open(def, s))));
+  const def = HOME_TICKETS.concat(OFFICE_TICKETS).find((d) => d.id === id); if (!def) return [11];   /* not built: the loop names it */
+  const key = (T) => JSON.stringify([T.v.kind, T.v.end, T.v.kink]), out = [11, 2025, 777777], seen = new Set(out.map((s) => key(EN.open(def, s))));
   for (let s = 1; s < (def.level === 2 ? 40 : 400); s++) {   /* an office takes longer to build: every variant shows within the first forty */ const k = key(EN.open(def, s)); if (!seen.has(k)) { seen.add(k); out.push(s); } }
   return out;
 }
@@ -195,10 +196,55 @@ Object.assign(PLAN, {
     afterWrong: async (p) => { check(/still take Telnet|hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SO-05: SSH working but Telnet open, or not saved: Mason says so"); },
     fix: async (p, v) => { await swConf(p, v, v.kind === "nokeys" ? ["crypto key generate rsa modulus 2048"] : v.kind === "telnet" ? ["line vty 0 15", "transport input ssh"] : ["line vty 0 15", "login local"]); },
     proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await sshFromPc(p, v.plan.user, v.plan.ip, v.plan.userPw); }
+  },
+  "SO-06": {
+    look: async (p, v) => {
+      await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping " + v.plan.ip);
+      check((v.kind === "mask" ? /Request timed out\./ : /Destination host unreachable/).test(await term(p)), "SO-06 (" + v.kind + "): ping from the front desk PC to the switch: " + (v.kind === "mask" ? "timed out" : "host unreachable"));
+      await swLogin(p, v); await type(p, "show running-config"); check(new RegExp("interface Vlan1\\s+ip address " + v.ip.replace(/\./g, "\\.") + " " + v.mask.replace(/\./g, "\\.")).test(await term(p)), "SO-06: show running-config shows VLAN 1's address and mask as found");
+    },
+    wrong: async (p, v) => { await swConf(p, v, ["interface vlan 1", "ip address " + v.plan.ip + " " + v.plan.mask], false); },
+    afterWrong: async (p) => { check(/hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SO-06: the address put back but not saved: Mason says so"); },
+    fix: async (p, v) => { await swConf(p, v, ["interface vlan 1", "ip address " + v.plan.ip + " " + v.plan.mask]); },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping " + v.plan.ip); }
+  },
+  "SO-07": {
+    look: async (p, v) => {
+      await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ipconfig /all"); check(/Media disconnected/.test(await term(p)) && /Fast Ethernet Adapter \(10\/100\)/.test(await term(p)), "SO-07: ipconfig /all on the front desk PC: no link, a 10/100 adapter");
+      await swLogin(p, v); await type(p, "show interfaces status"); check(/Gi0\/2\s+FRONT-DESK-PC\s+notconnect\s+1\s+auto\s+1000/.test(await term(p)), "SO-07: show interfaces status: Gi0/2 notconnect, fixed at 1000");
+    },
+    wrong: async (p, v) => { await swConf(p, v, ["interface gi0/2", "speed 100", "duplex full"]); },
+    afterWrong: async (p) => { check(/falls back to half duplex/.test(await p.$eval("#board", (n) => n.textContent)), "SO-07: speed and duplex both fixed: Mason says the PC falls back to half duplex"); },
+    fix: async (p, v) => { await swConf(p, v, ["interface gi0/2", v.kind === "contractor" ? "speed auto" : "speed 100"]); },
+    proof: async (p, gw) => { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping " + gw); }
+  },
+  "SO-09": {
+    look: async (p, v) => {
+      await dev(p, "pc"); await tab(p, "Printers"); for (let k = 0; k < 2; k++) { await p.click('.pane button:text-is("Print a test page")'); await p.waitForTimeout(40); }
+      const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(ev.indexOf("printfail") >= 0 && ev.indexOf("printok") >= 0, "SO-09: two test pages, one printed and one didn't (" + ev + ")");
+      await tab(p, "Command Prompt"); await type(p, "arp -a"); check((await term(p)).indexOf(v.addr) >= 0, "SO-09: arp -a on the front desk PC lists the shared address");
+      await swLogin(p, v); check(/%IP-4-DUPADDR: Duplicate address/.test(await term(p)), "SO-09: the switch's console logs the duplicate address");
+      check(!(await p.$("#ipam .res")), "SO-09: the sheet says nothing until it's checked");
+      await p.click("#ipamCheck"); await p.waitForTimeout(40);
+      const rows = await p.$$eval("#ipam fieldset", (l) => l.map((x) => (x.classList.contains("badrow") ? "bad" : x.classList.contains("goodrow") ? "good" : "-") + (/Overlap/.test(x.textContent) ? ":overlap" : "")));
+      check(rows.join(",") === "good,good,bad:overlap,bad:overlap", "SO-09: checked, the sheet marks the two overlapping blocks and passes the rest (" + rows + ")");
+      check(await p.$eval("#ipamCheck", (n) => document.activeElement === n), "SO-09: focus stays on Check the sheet");
+    },
+    wrong: async (p, v) => { for (const f of ["net", "mask", "first", "last", "bc", "gw"]) await p.fill("#ipam" + v.moved + f, v.orig[f]); await p.click("#ipamSave"); },
+    afterWrong: async (p) => { check(/still answer at the same address/.test(await p.$eval("#board", (n) => n.textContent)), "SO-09: the records put right, the devices still clashing: Mason says so"); },
+    fix: async (p, v) => {
+      for (const f of ["net", "mask", "first", "last", "bc", "gw"]) await p.fill("#ipam" + v.moved + f, v.orig[f]); await p.click("#ipamSave"); await p.waitForTimeout(40);
+      check((await p.$$("#ipam fieldset.goodrow")).length === 4, "SO-09: the sheet put right, every block checks out");
+      const o = v.orig.net.split(".").map(Number); o[3] += 2; const home = o.join(".");
+      if (v.kind === "gear") await swConf(p, v, ["interface vlan 1", "ip address " + home + " " + v.plan.mask]);
+      else { await dev(p, "printer"); await p.fill('.devform input[name="ip"]', home); await p.click('.devform button:text-is("Save")'); await dev(p, "pc"); await tab(p, "Printers"); await p.fill('.devform input[name="port"]', home); await p.click('.devform button:text-is("Save")'); }
+    },
+    proof: async (p) => { await dev(p, "pc"); await tab(p, "Printers"); for (let k = 0; k < 2; k++) await p.click('.pane button:text-is("Print a test page")'); }
   }
 });
 
 for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY || k === process.env.ONLY || (process.env.ONLY === "tickets-office" && /^SO-/.test(k)))) for (const seed of seedsFor(id)) {
+  if (!HOME_TICKETS.concat(OFFICE_TICKETS).some((d) => d.id === id)) { check(false, id + ": isn't among the built tickets"); continue; }
   let { p, ctx } = await page(id, seed);
   try {   /* a ticket that stops part way (a button missing, a click that times out) is a named failure, and the next ticket still runs */
   const v = await T(p, () => window.__e4.T.v), gw = await T(p, () => window.__e4.T.sim.d.router.lan.ip);
@@ -246,7 +292,7 @@ for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY 
 }
 
 /* the small office's tickets on the desk: locked for a fresh student (an office ticket left as current opens HOME-01 instead),
-   listed for one who has finished Home, with SO-04 still coming; the card and the title say it's the office */
+   listed for one who has finished Home; the card and the title say it's the office */
 if (!process.env.ONLY || process.env.ONLY === "tickets-office") {
   {
     const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
@@ -261,7 +307,7 @@ if (!process.env.ONLY || process.env.ONLY === "tickets-office") {
   {
     const { p, ctx } = await page("SO-02", 2025);
     const q = await p.$$eval('#queue [data-t^="SO-"]', (l) => l.map((b) => b.dataset.t + ":" + (b.getAttribute("aria-disabled") === "true" ? "off" : "on")));
-    check(q.join(",") === "SO-01:on,SO-02:on,SO-03:on,SO-04:on,SO-05:on", "office tickets: the level 2 queue lists SO-01 to SO-05 (" + q.join(",") + ")");
+    check(q.join(",") === "SO-01:on,SO-02:on,SO-03:on,SO-04:on,SO-05:on,SO-06:on,SO-07:on,SO-09:on", "office tickets: the level 2 queue lists SO-01 to SO-07 and SO-09 (" + q.join(",") + ")");
     check(/office network/.test(await p.$eval("#tk .from", (n) => n.textContent)) && /Tier 2 · Small office/.test(await p.$eval("#labtitle", (n) => n.textContent)), "office tickets: the card says office network, the title Tier 2 · Small office");
     check(!!(await p.$('#devtabs [data-d="msw"]')) && !!(await p.$('#devtabs [data-d="tech"]')), "office tickets: the managed switch and your laptop have device buttons");
     await ctx.close();

@@ -90,6 +90,8 @@ export class Sim {
       const x = this.d[e.dev]; if (!x || x.kind !== "mswitch") continue;
       const p = x.sw.ports["GigabitEthernet0/" + e.port]; if (!p || p.shutdown) return false;
       const fs = this.speedSetting(e === c.a ? c.b : c.a); if (p.speed !== "auto" && fs !== "auto" && p.speed !== fs) return false;
+      const fx = this.d[(e === c.a ? c.b : c.a).dev], top = Math.min((fx && fx.maxMbps) || 1000, c.cond === "damaged" ? 100 : 1000);
+      if (p.speed !== "auto" && +p.speed > top) return false;   /* a speed forced above what the far end (or the cable) can run: no link */
     }
     if (!this.pairsMeet(c)) return false;                   /* both ends transmitting on the same pair (TX/RX transposed): no link */
     const ij = [c.a, c.b].find(function (e) { return this.d[e.dev] && this.d[e.dev].kind === "injector"; }, this);
@@ -677,12 +679,19 @@ export class Sim {
   printTest() {
     const ip = this.d.pc.printer.port, r = this.route("pc", ip);
     if (!r.local) return { ok: false, why: r.fail || "beyond", port: ip };
-    const who = r.owner[this.n % r.owner.length];
+    const who = this.turn("pc", ip, r.owner);
     this.arp.pc[ip] = this.macOf(who);
     if (who === "printer" && this.mismatched("printer")) return this.n % 3 === 0 ? { ok: false, why: "timeout", port: ip, slow: true } : { ok: true, port: ip, slow: true };   /* a duplex mismatch: pages crawl, and every so often one never arrives */
     return who === "printer" ? { ok: true, port: ip } : { ok: false, why: "wrong-device", who: who, port: ip, conflict: r.owner.length > 1 };
   }
 
+  /* two devices on one address: whichever answers the ARP question gets the traffic, so tries take turns (per computer
+     and address, whatever is being sent), and the computer's ARP table holds whoever answered last */
+  turn(id, ip, owners) {
+    if (owners.length < 2) return owners[0];
+    const t = this.turns = this.turns || {}, k = id + ">" + ip; t[k] = (t[k] || 0) + 1;
+    const who = owners[(t[k] - 1) % owners.length]; this.arp[id][ip] = this.macOf(who); return who;
+  }
   /* a per-action random source, so replays give the same pings */
   r(tag) { return rng(hash(this.net.seed + ":" + this.n + ":" + tag)); }
 }

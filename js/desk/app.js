@@ -13,6 +13,7 @@ import { renderWindow, forgetTerminals, focusCmd } from "./window.js";
 import { renderBoard } from "./board.js";
 import { renderQueue, renderShelves, renderMap } from "./left.js";
 import { setupInstructor } from "./instructor.js";
+import { ipamSheet } from "./ipamui.js";
 
 const PAGE = document.body.dataset.page;
 const S = load();
@@ -65,12 +66,12 @@ function openTicket(id, fresh, seed) {
   let T = null;
   if (!fresh && S.t[def.id]) { try { T = E.restore(def, S.t[def.id]); } catch (e) { T = null; } }
   if (!T) T = E.open(def, seed == null ? newSeed() : seed);
-  ctx.T = T; ctx.open = def.affected; ctx.tab = null; ctx.level = def.level || 1; ctx.fixHint = T.fixHint ? def.fixHints(T.v, T.sim)[Math.min(T.fixHint, 3) - 1] : null;
+  ctx.T = T; ctx.open = def.affected; ctx.tab = null; ctx.sheetChecked = false; ctx.level = def.level || 1; ctx.fixHint = T.fixHint ? def.fixHints(T.v, T.sim)[Math.min(T.fixHint, 3) - 1] : null;
   forgetTerminals(); persist(); renderAll();
 }
 
 /* ---------------------------------------------------------------- rendering */
-function renderAll() { renderLeft(); renderTitle(); renderTicketCard(); renderLive(); renderDevtabs(); renderWin(); }
+function renderAll() { renderLeft(); renderTitle(); renderTicketCard(); renderRecords(); renderLive(); renderDevtabs(); renderWin(); }
 function renderLive() { renderDiagram(); renderSteps(); renderBoardNow(); renderNotebook(); renderLeft(); renderDevtabs(); }
 function renderLeft() {
   const host = $("left");
@@ -94,6 +95,19 @@ function renderTicketCard() {
   tk.appendChild(el("p", { class: "from" }, net.client.name + " · " + net.client.street + " · " + (net.site === "office" ? "office network" : "home network")));
   tk.appendChild(el("p", { class: "q" }, "“" + b.quote + "”"));
   tk.appendChild(el("p", { class: "mason2" }, el("b", null, "Mason: "), d.mason));
+}
+/* a ticket that needs the office's records (SO-09) shows its IPAM sheet under the ticket. Checking it is evidence like
+   any other; saving it changes the records, and is replayed like the rest. Redrawn only by its own buttons and a new
+   ticket, so what's typed in it survives commands run meanwhile. */
+function renderRecords() {
+  let host = $("records"); const T = ctx.T;
+  if (!T.def.ipam) { if (host) host.remove(); return; }
+  if (!host) { host = el("section", { class: "box records", id: "records", "aria-label": "The office's records" }); $("ticket").after(host); }
+  host.innerHTML = "";
+  const checked = ctx.sheetChecked || T.evidence.some(function (e) { return e.id === "sheet"; }) || T.net.some(function (a) { return a.t === "ipam"; });
+  ipamSheet(host, { plan: T.sim.net.plan.ipam, saved: T.sim.net.ipam, checked: checked, note: "The office's address plan, as it's written in the records. Check it here, and correct and save it: the sheet says what's wrong, never what the right value is.",
+    onCheck: function () { ctx.sheetChecked = true; ctx.act({ t: "ipamcheck" }); renderRecords(); $("ipamCheck").focus(); },
+    onSave: function (rows) { ctx.sheetChecked = true; ctx.act({ t: "ipam", rows: rows }); renderRecords(); $("ipamSave").focus(); } });
 }
 function renderDiagram() {
   drawLogical($("net"), ctx.T.sim, { open: ctx.open });

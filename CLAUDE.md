@@ -1201,8 +1201,80 @@ transposed), SO-05 under "Access and management" (SSH, console). The owner:
   - A ticket missing from the queue is now a named failure in the drive,
     not a crash.
 
-Next: SO-06 to 10; five extra jobs and five extra tickets; the rack in the
-Physical tab.
+### Level 2, tickets SO-06, SO-07 and SO-09: live 18 October 2026
+
+The order agreed with the owner: SO-04 live, then SO-06, 07 and 09, then SO-08
+and SO-10 with the rack and patch panel in the Physical tab.
+- **SO-06, the switch answers nothing from the office PC** (the preview's
+  title). The preview said "its management mask or gateway wrong". It's built
+  as the mask or the address wrong, because a wrong gateway can't stop the PC
+  reaching the switch on its own network. That's one of the near misses, with
+  its reason.
+  - **Mask variant** (only when the switch's host number is 5 or more): /28 or
+    /30, chosen so the PC and the gateway are both off the switch's network.
+    The switch answers the ARP (`arp -a` has its hardware address), but its
+    reply goes nowhere: Request timed out.
+  - **Address variant:** a digit slipped in the third octet (40 becomes 4, 12
+    becomes 21), so the switch is on another network: Destination host
+    unreachable.
+  - The brief gives the office's records. Fix: VLAN 1 back to the records,
+    saved. A mask that happens to work but isn't the records' isn't the fix,
+    and Mason says so.
+- **SO-07, the spare PC on the front desk won't connect.** The preview's title
+  was "A desk links, then nothing"; it's renamed because there's no link at
+  all.
+  - The front desk's port was fixed at 1000 a year ago, for the PC it had then.
+    The spare from the storeroom has a 10/100 card: `maxMbps` 100, "Fast
+    Ethernet Adapter (10/100)" in `ipconfig /all`, and its Network settings say
+    "a 10/100 Mbps adapter".
+  - **New rule in the simulation:** a speed forced above what the far end (or
+    the cable) can run gives no link. `cableUp` applies it, and so does the
+    switch's own `linkFails`, so `show interfaces status` says notconnect.
+  - Fix: `speed auto` (or 100 or 10), saved. Fixing the duplex as well, while
+    the PC negotiates, is a mismatch, and Mason says so.
+- **SO-09, two groups fighting over addresses** (two IPAM blocks overlap).
+  - **The story:** ready for next year's VLANs, the office has started using
+    SO-J4's sheet. The router now hands out only the Staff block (its
+    gateway, the router, kept out), and each fixed device took the first
+    address after its block's gateway, keeping the office's mask and gateway.
+  - **The fault:** one block was written on top of another: Network gear over
+    Printers and servers, or the other way round, starting at the same
+    address. So the printer and the switch both got the same address.
+    Checked, the sheet flags only the two blocks' overlap.
+  - **What the student sees:**
+    - test pages print every other time;
+    - SSH from the front desk takes turns between asking for a password and
+      Connection refused;
+    - `arp -a` shows the two hardware addresses in turn;
+    - the switch's console logs `%IP-4-DUPADDR: Duplicate address ... on
+      Vlan1, sourced by xxxx.xxxx.xxxx` once a session.
+  - **Fixed** when every row of the sheet checks out, the switch and the
+    printer are each inside their own group's block (usable, not the block's
+    gateway), on the office's mask and gateway, with no clash, the switch
+    saved, and the PC printing to the printer's address.
+    - Either block may be the one moved.
+    - Any plan the sheet accepts passes.
+    - Ending the clash while the sheet still overlaps isn't the fix, and Mason
+      says so.
+  - **The sheet on the Ticket Desk:** under the ticket, for a ticket with
+    `ipam: true`. The form is now `js/desk/ipamui.js`, shared with build mode.
+    - **Check the sheet** (`ipamcheck`) is evidence and changes nothing.
+    - **Save the sheet** (`ipam`, in the engine's `STATE_CHANGING`) is
+      replayed like the rest.
+    - What's wrong shows only once the sheet has been checked or saved.
+    - The sheet is redrawn only by its own buttons and a new ticket, so what's
+      typed survives commands run meanwhile.
+- **Two devices on one address** (`sim.turn`): tries take turns per computer
+  and address, whatever is sent (test pages, SSH), and the ARP table holds
+  whoever answered last.
+  - Before this, printing alternated on the simulation's action counter, so a
+    command typed between two prints kept the same device answering.
+  - HOME-06 passes unchanged.
+- **Checks:** filled in below at go-live.
+
+Next: SO-08 and SO-10 with the rack, the patch panel and the SFP in the
+Physical tab; then five extra jobs (SO-J6 to J10) and five extra tickets
+(SO-11 to 15); then `planned` set to the real total.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

@@ -53,3 +53,13 @@ export function checkSheet(block, rows) {
     return out;
   });
 }
+
+/* the office's sheet as saved, each row with its group's name and head count */
+export function sheetRows(net) { const rows = net.ipam || []; return net.plan.ipam.groups.map(function (g, i) { return Object.assign({ name: g[0], hosts: g[1] }, rows[i] || {}); }); }
+/* is this a device's address in the row's block as written: usable (not the network or broadcast address), and not the gateway the row names? */
+export function usableIn(ip, row) {
+  const n = ip2n(ip), net = ip2n(row && row.net), p = prefixOf(row && row.mask);
+  if (n == null || net == null || p == null || p >= 31) return false;
+  const b = blockOf(net, p);
+  return b.net === net && n > b.net && n < b.bc && n !== ip2n(row.gw);
+}

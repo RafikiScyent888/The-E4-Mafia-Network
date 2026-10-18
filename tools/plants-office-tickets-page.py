@@ -14,6 +14,10 @@ PLANTS = [
  ("a switch command's output never reaches the notebook", "js/net/cmd.js", 'line: raw.trim(), out: r.out.join("\\n") }, secret: !!r.secret, cli: true, keep: r.keep };\n}\nfunction remote', 'line: raw.trim(), out: "" }, secret: !!r.secret, cli: true, keep: r.keep };\n}\nfunction remote'),
  ("the back office switch has no device button", "js/desk/app.js", '"msw", "meet", "mpc"', '"msw", "mpc"'),
  ("no crossover cable in the van", "js/net/pages.js", '.concat(sim.net.site === "office" ? ["crossover"] : [])', ''),
+ ("SO-06, SO-07 and SO-09 left off the desk", "js/tickets/office.js", "SO05, SO06, SO07, SO09];", "SO05];"),
+ ("Mason never says a fixed duplex leaves the spare PC on half", "js/tickets/office.js", "return sim.mismatched(\"pc\") ? \"It links now", "return false ? \"It links now"),
+ ("SO-09's IPAM sheet missing from the desk", "js/desk/app.js", "  if (!T.def.ipam) { if (host) host.remove(); return; }", "  if (true) { if (host) host.remove(); return; }"),
+ ("SO-09's sheet says what's wrong before it's checked", "js/desk/app.js", "const checked = ctx.sheetChecked ||", "const checked = true ||"),
  ("the old switch's label never says what its ports can do", "js/net/pages.js", ' + (x.labelText ? " Its label: " + x.labelText + "." : "")', ''),
 ]
 only = sys.argv[1:]

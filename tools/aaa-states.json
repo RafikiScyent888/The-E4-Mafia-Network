@@ -663,5 +663,40 @@
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-04'); const T=c.T, v=T.v; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=meet]').click(); tab('Physical');",
   "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))",
   "after": "[...document.querySelectorAll('.m3d-bar button')].find(b=>b.textContent==='Ports close-up').click()"
+ },
+ {
+  "name": "office tickets: SO-06 the front desk PC's ping to the switch, and arp -a",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-06'); const T=c.T, v=T.v; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=pc]').click(); tab('Command Prompt'); k('ping '+v.plan.ip); k('arp -a');"
+ },
+ {
+  "name": "office tickets: SO-06 VLAN 1 at the switch's console, the notebook",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-06'); const T=c.T, v=T.v; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=tech]').click(); ['',v.plan.console,'enable',v.plan.secret,'show ip interface brief','show interfaces vlan 1'].forEach(k);"
+ },
+ {
+  "name": "office tickets: SO-07 the spare PC's network settings, a 10/100 adapter",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-07'); const T=c.T, v=T.v; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=pc]').click(); tab('Network settings');"
+ },
+ {
+  "name": "office tickets: SO-07 speed and duplex both fixed, Mason says the PC falls back to half",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-07'); const T=c.T, v=T.v; c.guess('right'); ['',v.plan.console,'enable',v.plan.secret,'configure terminal','interface gi0/2','speed 100','duplex full','end','copy running-config startup-config',''].forEach(l=>c.act({t:'cmd',dev:'tech',line:l,cli:true})); c.act({t:'cmd',dev:'pc',line:'ping '+v.plan.gw}); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "office tickets: SO-09 the IPAM sheet under the ticket, checked: two blocks overlap",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-09'); document.getElementById('ipamCheck').click(); document.getElementById('records').scrollIntoView();"
+ },
+ {
+  "name": "office tickets: SO-09 the switch's console logs the duplicate address",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-09'); const v=c.T.v; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; document.querySelector('#devtabs [data-d=tech]').click(); ['',v.plan.console,'enable',v.plan.secret,'show ip interface brief'].forEach(k);"
+ },
+ {
+  "name": "office tickets: SO-09 the sheet put right and saved, every block checks out",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-09'); const v=c.T.v; ['net','mask','first','last','bc','gw'].forEach(f=>{document.getElementById('ipam'+v.moved+f).value=v.orig[f];}); document.getElementById('ipamSave').click(); document.getElementById('records').scrollIntoView();"
  }
 ]

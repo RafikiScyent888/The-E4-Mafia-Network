@@ -127,6 +127,7 @@ function serial(sim, id, raw) {
   sim.syncSwitch(tgt);
   if (!st || st.sw !== tgt) st = sim.cli[id] = { S: SW.session(sim.d[tgt].sw, { via: "console", reach: reachFrom(sim, tgt), tftp: tftpFrom(sim, tgt) }), sw: tgt, via: "console" };
   const r = SW.exec(st.S, raw); st.prompt = r.prompt;
+  const dup = dupAddr(sim, tgt); if (dup && st.dup !== dup) { st.dup = dup; r.out = r.out.concat([dup]); }   /* once a session, as the console log shows it */
   return { out: lines(r.out), facts: { cmd: "serial", dev: id, connected: true, mode: st.S.mode, line: raw.trim(), out: r.out.join("\n") }, secret: !!r.secret, cli: true, keep: r.keep };
 }
 function remote(sim, id, raw, k) {
@@ -151,6 +152,13 @@ function remote(sim, id, raw, k) {
   st.prompt = r.prompt;
   return { out: lines(r.out), facts: { cmd: st.via, dev: id, line: raw.trim(), mode: st.S.mode, out: r.out.join("\n") }, secret: !!r.secret, cli: true, keep: r.keep };
 }
+/* a switch hears another device answer ARP for its own address, and logs it to the console */
+function dupAddr(sim, sw) {
+  const a = sim.addr(sw); if (!a) return null;
+  const o = sim.owners(a.ip, sim.domain(sim.homeNode(sw))).filter(function (d) { return d !== sw; }); if (!o.length) return null;
+  const m = sim.macOf(o[0]).replace(/[^0-9a-f]/gi, "").toLowerCase();
+  return "%IP-4-DUPADDR: Duplicate address " + a.ip + " on Vlan1, sourced by " + m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12);
+}
 /* ssh user@host, or ssh -l user host: Windows' own OpenSSH client */
 function ssh(sim, id, args, k) {
   let user = null, host = null;
@@ -163,7 +171,7 @@ function ssh(sim, id, args, k) {
   const rt = sim.route(id, host);
   if (rt.fail === "no-link" || rt.fail === "no-route") return { out: "ssh: connect to host " + host + " port 22: Network is unreachable\n", facts: Object.assign(facts, { ok: false, why: "unreachable" }) };
   if (rt.fail || !rt.local) return { out: "ssh: connect to host " + host + " port 22: Connection timed out\n", facts: Object.assign(facts, { ok: false, why: "timeout" }) };
-  const who = rt.owner[0], x = sim.d[who];
+  const who = sim.turn(id, host, rt.owner), x = sim.d[who];   /* two devices on one address take turns */
   if (x.kind !== "mswitch") return { out: x.kind === "pc" || x.kind === "laptop" ? "ssh: connect to host " + host + " port 22: Connection timed out\n" : "ssh: connect to host " + host + " port 22: Connection refused\n", facts: Object.assign(facts, { ok: false, why: "no-ssh" }) };
   const v = x.sw.vty;
   if (!x.sw.rsa || !/^(ssh|all)$/.test(v.transport)) return { out: "ssh: connect to host " + host + " port 22: Connection refused\n", facts: Object.assign(facts, { ok: false, why: "refused" }) };

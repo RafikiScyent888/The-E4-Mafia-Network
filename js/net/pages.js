@@ -151,7 +151,7 @@ export function page(sim, id, key) {
     const a = sim.addr("pc"), f = x.ifaces[0], c = sim.cableAt("pc", f.port), sp = sim.speed(c);
     const rows = [["Ethernet", a ? "Connected" : "Not connected (unplugged)"], ["IP assignment", f.cfg.mode === "dhcp" ? "Automatic (DHCP)" : "Manual"], ["DNS server assignment", f.cfg.dnsMode === "static" ? "Manual" : "Automatic (DHCP)"],
       ["Link speed (Receive/Transmit)", sp ? sp + "/" + sp + " (Mbps)" : "--"], ["IPv4 address", a ? a.ip : "--"], ["IPv4 DNS servers", a && a.dns.length ? a.dns.join(", ") : "--"], ["Physical address (MAC)", f.mac.toUpperCase()]];
-    rows.splice(4, 0, ["Speed & duplex", "Auto negotiation"]);
+    rows.splice(4, 0, ["Speed & duplex", "Auto negotiation" + (x.maxMbps ? " (a 10/" + x.maxMbps + " Mbps adapter)" : "")]);
     const st = f.cfg.mode === "static", dns = st ? (f.cfg.dns || []) : [];
     return { kind: "rows", title: "Network settings", rows: rows, speedTest: true, ipForm: { mode: f.cfg.mode, ip: st ? f.cfg.ip : "", mask: st ? f.cfg.mask : "", gw: st ? f.cfg.gw || "" : "", dns1: dns[0] || "", dns2: dns[1] || "" },
       facts: { page: "pc-settings", speed: sp, connected: !!a, mode: f.cfg.mode, ip: st ? f.cfg.ip : a && a.ip, mask: st ? f.cfg.mask : a && a.mask, gw: st ? f.cfg.gw : a && a.gw } };

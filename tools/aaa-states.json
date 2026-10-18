@@ -620,5 +620,25 @@
   "name": "office: SO-J5 done, the banner as the console wakes",
   "page": "build.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J5',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), mid=sol.findIndex(a=>a.t==='pull'); sol.forEach(a=>c.act(a)); document.getElementById('doCheck').click(); document.querySelector('#devtabs [data-d=tech]').click(); const k=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; k('exit'); k('');"
+ },
+ {
+  "name": "office tickets: SO-01 on the desk, the switch's console, show interfaces twice, the notebook",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-01'); const T=c.T, v=T.v; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; document.querySelector('#devtabs [data-d=tech]').click(); ['',v.plan.console,'enable',v.plan.secret,'show interfaces gi0/3','show interfaces gi0/3'].forEach(k);"
+ },
+ {
+  "name": "office tickets: SO-01 the printer's control panel, its card fixed at 100 full",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-01'); const T=c.T, v=T.v; document.querySelector('#devtabs [data-d=printer]').click();"
+ },
+ {
+  "name": "office tickets: SO-05 the board at Mason's third rung",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-05'); const T=c.T, v=T.v; T.opts.filter(o=>!o.right).forEach(o=>c.guess(o.id)); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "office tickets: SO-03 solved, the summary",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-03'); const T=c.T, v=T.v; const L=['',v.plan.console,'enable',v.plan.secret,'configure terminal'].concat(v.kind==='user'?['username '+v.user+' secret '+v.pw]:['interface vlan 1','ip address '+v.newIp+' '+v.plan.mask],['end','copy running-config startup-config','']); c.guess('right'); L.forEach(l=>c.act({t:'cmd',dev:'tech',line:l,cli:true})); if(v.kind==='user'){c.act({t:'cmd',dev:'pc',line:'ssh '+v.user+'@'+v.plan.ip}); c.act({t:'cmd',dev:'pc',line:v.pw,cli:true});} else c.act({t:'cmd',dev:'pc',line:'ping '+v.newIp}); document.getElementById('board').scrollIntoView();"
  }
 ]

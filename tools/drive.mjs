@@ -8,11 +8,12 @@
    Optional plant: node tools/drive.mjs "<js run in the page after load>" */
 import http from "node:http"; import fs from "node:fs"; import path from "node:path"; import url from "node:url";
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "..");
-const { HOME_TICKETS } = await import("../js/tickets/home.js"); const EN = await import("../js/tickets/engine.js");
+const { HOME_TICKETS } = await import("../js/tickets/home.js"); const { OFFICE_TICKETS } = await import("../js/tickets/office.js"); const EN = await import("../js/tickets/engine.js");
+const { JOBS } = await import("../js/build/jobs.js");
 /* three houses each, plus more until every variant of the fault (which end, which kind) has been driven through the page */
 function seedsFor(id) {
-  const def = HOME_TICKETS.find((d) => d.id === id), key = (T) => JSON.stringify([T.v.kind, T.v.end, T.v.kink]), out = [11, 2025, 777777], seen = new Set(out.map((s) => key(EN.open(def, s))));
-  for (let s = 1; s < 400; s++) { const k = key(EN.open(def, s)); if (!seen.has(k)) { seen.add(k); out.push(s); } }
+  const def = HOME_TICKETS.concat(OFFICE_TICKETS).find((d) => d.id === id), key = (T) => JSON.stringify([T.v.kind, T.v.end, T.v.kink]), out = [11, 2025, 777777], seen = new Set(out.map((s) => key(EN.open(def, s))));
+  for (let s = 1; s < (def.level === 2 ? 40 : 400); s++) {   /* an office takes longer to build: every variant shows within the first forty */ const k = key(EN.open(def, s)); if (!seen.has(k)) { seen.add(k); out.push(s); } }
   return out;
 }
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".jpg": "image/jpeg" };
@@ -26,7 +27,9 @@ const check = (ok, what) => { steps++; if (!ok) bad.push(what); };
 
 async function page(ticket, seed, file) {
   const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
-  await ctx.addInitScript(([t, s]) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify({ current: t, t: { [t]: { seed: s } }, solved: {} })); sessionStorage.setItem("seeded", "1"); } }, [ticket, seed]);
+  /* a small-office ticket opens for a student who has finished Home: every home ticket solved, every home work order done */
+  const homeT = /^SO-/.test(ticket) ? HOME_TICKETS.map((d) => d.id) : [], homeJ = /^SO-/.test(ticket) ? JOBS.filter((d) => !d.free).map((d) => d.id) : [];
+  await ctx.addInitScript(([t, s, hT, hJ]) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify({ current: t, t: { [t]: { seed: s } }, solved: Object.fromEntries(hT.map((id) => [id, 1])) })); if (hJ.length) localStorage.setItem("e4-build-v1", JSON.stringify({ j: {}, done: Object.fromEntries(hJ.map((id) => [id, 1])) })); sessionStorage.setItem("seeded", "1"); } }, [ticket, seed, homeT, homeJ]);
   const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push(ticket + ": " + e.message));
   await p.goto(base + (file || "index.html")); await p.waitForTimeout(350);
   if (plant) await p.evaluate(plant);
@@ -144,7 +147,42 @@ const PLAN = {
   }
 };
 
-for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY || k === process.env.ONLY)) for (const seed of seedsFor(id)) {
+/* the small office's tickets: the switch's console from your laptop, ssh and ping from the front desk PC */
+const swLogin = async (p, v) => { await dev(p, "tech"); await tab(p, "Serial terminal"); for (const l of ["", v.plan.console, "enable", v.plan.secret]) await type(p, l); };
+const swConf = async (p, v, lines, save) => { await swLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end"], save === false ? [] : ["copy running-config startup-config", ""])) await type(p, l); };
+const sshFromPc = async (p, user, host, pw, tries) => { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ssh " + user + "@" + host); for (let k = 0; k < (tries || 1); k++) await type(p, pw); };
+Object.assign(PLAN, {
+  "SO-01": {
+    look: async (p, v) => { await swLogin(p, v); await type(p, "show interfaces gi0/3"); await type(p, "show interfaces gi0/3"); const lc = [...(await term(p)).matchAll(/(\d+) late collision/g)].map((m) => +m[1]); check(/Half-duplex, 100Mb\/s/.test(await term(p)) && lc.length >= 2 && lc[lc.length - 1] > lc[lc.length - 2], "SO-01: show interfaces gi0/3 twice: half duplex, late collisions climbing"); },
+    wrong: async (p, v) => { await swConf(p, v, ["interface gi0/3", "speed 100", "duplex full"], false); },
+    afterWrong: async (p) => { check(/hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SO-01: fixed but not saved: Mason says it isn't saved"); },
+    fix: async (p, v) => { await swConf(p, v, ["interface gi0/3", "speed 100", "duplex full"]); },
+    proof: async (p) => { await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); }
+  },
+  "SO-02": {
+    look: async (p, v) => { await dev(p, "pc"); await type(p, "ipconfig"); check(/Media disconnected/.test(await term(p)), "SO-02: ipconfig on the front desk PC: Media disconnected"); await swLogin(p, v); await type(p, "show interfaces status"); check(/Gi0\/2\s+FRONT-DESK-PC\s+disabled/.test(await term(p)), "SO-02: show interfaces status: the front desk PC's port is disabled"); },
+    wrong: async (p, v) => { await swConf(p, v, ["interface range gi0/2 - 28", "no shutdown"]); },
+    afterWrong: async (p) => { check(/spare ports are live again/.test(await p.$eval("#board", (n) => n.textContent)), "SO-02: the whole range opened: Mason says the spares are live again"); },
+    fix: async (p, v) => { await swConf(p, v, ["interface gi0/2", "no shutdown"]); },
+    proof: async (p, gw) => { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping " + gw); }
+  },
+  "SO-03": {
+    look: async (p, v) => { await swLogin(p, v); await type(p, "show version"); check(/System returned to ROM by power-on/.test(await term(p)), "SO-03: show version: it came back from a power cut"); },
+    wrong: async (p, v) => { await swConf(p, v, v.kind === "user" ? ["username " + v.user + " secret " + v.pw] : ["interface vlan 1", "ip address " + v.newIp + " " + v.plan.mask], false); },
+    afterWrong: async (p) => { check(/isn't saved: the next power cut/.test(await p.$eval("#board", (n) => n.textContent)), "SO-03: Friday's change made again but not saved: Mason says so"); },
+    fix: async (p, v) => { await swConf(p, v, v.kind === "user" ? ["username " + v.user + " secret " + v.pw] : ["interface vlan 1", "ip address " + v.newIp + " " + v.plan.mask]); },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "user") await sshFromPc(p, v.user, v.plan.ip, v.pw); else { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping " + v.newIp); } }
+  },
+  "SO-05": {
+    look: async (p, v) => { await sshFromPc(p, v.plan.user, v.plan.ip, v.plan.userPw, v.kind === "lines" ? 3 : 0); check(v.kind === "lines" ? /Permission denied \(password\)/.test(await term(p)) : /Connection refused/.test(await term(p)), "SO-05 (" + v.kind + "): ssh from the front desk PC is " + (v.kind === "lines" ? "denied" : "refused")); },
+    wrong: async (p, v) => { await swConf(p, v, v.kind === "nokeys" ? ["crypto key generate rsa modulus 2048"] : v.kind === "telnet" ? ["line vty 0 15", "transport input all"] : ["line vty 0 15", "login local"], v.kind === "telnet"); },
+    afterWrong: async (p) => { check(/still take Telnet|hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SO-05: SSH working but Telnet open, or not saved: Mason says so"); },
+    fix: async (p, v) => { await swConf(p, v, v.kind === "nokeys" ? ["crypto key generate rsa modulus 2048"] : v.kind === "telnet" ? ["line vty 0 15", "transport input ssh"] : ["line vty 0 15", "login local"]); },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await sshFromPc(p, v.plan.user, v.plan.ip, v.plan.userPw); }
+  }
+});
+
+for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY || k === process.env.ONLY || (process.env.ONLY === "tickets-office" && /^SO-/.test(k)))) for (const seed of seedsFor(id)) {
   let { p, ctx } = await page(id, seed);
   const v = await T(p, () => window.__e4.T.v), gw = await T(p, () => window.__e4.T.sim.d.router.lan.ip);
   check(await T(p, () => window.__e4.T.def.exhibits(window.__e4.T.sim, window.__e4.T.v)), id + " " + seed + ": fault present at load");
@@ -187,6 +225,29 @@ for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY 
   await p.click('#board button:text-is("Try another one like this")'); await p.waitForTimeout(80);
   check((await T(p, () => window.__e4.T.seed)) !== s1 && !(await T(p, () => window.__e4.T.solved)), id + ": a fresh house, unsolved");
   await ctx.close();
+}
+
+/* the small office's tickets on the desk: locked for a fresh student (an office ticket left as current opens HOME-01 instead),
+   listed for one who has finished Home, with SO-04 still coming; the card and the title say it's the office */
+if (!process.env.ONLY || process.env.ONLY === "tickets-office") {
+  {
+    const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
+    await ctx.addInitScript(() => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify({ current: "SO-01", t: { "SO-01": { seed: 11 } }, solved: {} })); sessionStorage.setItem("seeded", "1"); } });
+    const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push("office tickets locked: " + e.message)); await p.goto(base + "index.html"); await p.waitForTimeout(350);
+    if (plant) await p.evaluate(plant);
+    check((await T(p, () => window.__e4.T.def.id)) === "HOME-01", "office tickets: a fresh student with SO-01 left as current lands on HOME-01 (the level is locked)");
+    await p.click('#left [data-level="2"]'); await p.waitForTimeout(60);
+    check(!!(await p.$("#lockpanel")) && (await p.$$('#queue [data-t^="SO-"]')).length === 0, "office tickets: for a fresh student the small office's queue is the lock panel, no tickets");
+    await ctx.close();
+  }
+  {
+    const { p, ctx } = await page("SO-02", 2025);
+    const q = await p.$$eval('#queue [data-t^="SO-"]', (l) => l.map((b) => b.dataset.t + ":" + (b.getAttribute("aria-disabled") === "true" ? "off" : "on")));
+    check(q.join(",") === "SO-01:on,SO-02:on,SO-03:on,SO-05:on,SO-04:off", "office tickets: the level 2 queue lists SO-01, 02, 03 and 05, and SO-04 coming next (" + q.join(",") + ")");
+    check(/office network/.test(await p.$eval("#tk .from", (n) => n.textContent)) && /Tier 2 · Small office/.test(await p.$eval("#labtitle", (n) => n.textContent)), "office tickets: the card says office network, the title Tier 2 · Small office");
+    check(!!(await p.$('#devtabs [data-d="msw"]')) && !!(await p.$('#devtabs [data-d="tech"]')), "office tickets: the managed switch and your laptop have device buttons");
+    await ctx.close();
+  }
 }
 
 /* the three views share the ticket; each left column opens tickets; the map and the plan open devices */

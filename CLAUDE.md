@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (18 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1 to SO-J5, tickets SO-01 to SO-07 and SO-09, the managed switch, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05" and "Level 2, tickets SO-06, SO-07 and SO-09" below.**
+**Status (18 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1 to SO-J5, tickets SO-01 to SO-09, the managed switch, the closet rack and patch panel, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05", "Level 2, tickets SO-06, SO-07 and SO-09" and "Level 2, ticket SO-08" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
 from the Under the Hood tile (decision 6). See "The real site" below. The owner, 11
 October 2026: **"Build it like the preview you gave me just keep the layout
@@ -1359,7 +1359,32 @@ and SO-10 with the rack and patch panel in the Physical tab.
   - The bottom-row ports' lights are sampled from below, the top row's from
     above: the cords hang in front of the others.
   - The wall jack is the photographed data/voice plate, empty.
-- **Checks:** filled in below at go-live.
+- **Checks:**
+  - `npm test`: 236. SO-08 is tested on 150 offices: the fault in what a
+    student sees (ipconfig, show interfaces status, the switch's lights
+    page, the tester, the probe with and without a tone, the panel's list
+    naming no rooms), the real fix, the tempting wrong ones, the ladder and
+    replay. A cord onto a port that has one is refused.
+  - The full drive: 2582 checks. SO-08 alone is 81, through the page on every
+    variant: tone, probe, the cord moved, the map saved.
+  - AAA: 5 new states, 9,805 text runs, all passing.
+  - `node tools/models.mjs`: 126 checks. The rack case (office 11, so the
+    cords hang the same every run) checks the cords in exactly the patched
+    ports and the switch's lights, then moves the cord through the page and
+    checks again.
+  - Plants, all caught:
+    - Node: 8 new.
+    - Ticket Desk page: 3 new.
+    - Models: 2 new.
+  - **Six older plants had drifted** off their code. Each is fixed and was
+    shown to fail again:
+    - SO-02's proof line, which has matched SO-07's too since SO-07 went
+      live;
+    - the back office switch's button and its model;
+    - the IPAM sheet's move to `ipamui.js`;
+    - the build engine's state list (since SO-J5).
+
+    Before a plant run, check each anchor matches its file exactly once.
 
 Next: SO-10 with the SFP modules and fibre; then five extra jobs (SO-J6 to
 J10) and five extra tickets (SO-11 to 15); then `planned` set to the real total.

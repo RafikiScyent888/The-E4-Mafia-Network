@@ -12,6 +12,9 @@ PLANTS = [
  ("show version never says it came back from a power cut", "js/net/swcli.js", '"System returned to ROM by " + (sw.restart || "power-on"), "",', ''),
  ("a duplex mismatch shows no late collisions", "js/net/swcli.js", "const d = duplexEnds(p, l); if (!d.mismatch) return null;", "return null;"),
  ("a switch command's output never reaches the notebook", "js/net/cmd.js", 'line: raw.trim(), out: r.out.join("\\n") }, secret: !!r.secret, cli: true, keep: r.keep };\n}\nfunction remote', 'line: raw.trim(), out: "" }, secret: !!r.secret, cli: true, keep: r.keep };\n}\nfunction remote'),
+ ("the back office switch has no device button", "js/desk/app.js", '"msw", "meet", "mpc"', '"msw", "mpc"'),
+ ("no crossover cable in the van", "js/net/pages.js", '.concat(sim.net.site === "office" ? ["crossover"] : [])', ''),
+ ("the old switch's label never says what its ports can do", "js/net/pages.js", ' + (x.labelText ? " Its label: " + x.labelText + "." : "")', ''),
 ]
 only = sys.argv[1:]
 bad = 0

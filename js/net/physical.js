@@ -9,7 +9,7 @@ import { prompt } from "./cmd.js";
 import { POE } from "./sim.js";
 
 /* the model each device is drawn with (the old router in HOME-10 is a home router too) */
-export const MODEL_OF = { modem: "modem", router: "router", rogue: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", injector: "injector" };
+export const MODEL_OF = { modem: "modem", router: "router", rogue: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", injector: "injector", meet: "switch", mpc: "pc" };   /* the office's meeting room (SO-04): an old 5-port switch in the same housing, and a desktop */
 
 /* each model's network ports: the name printed on the model, and the sim's port at that device */
 const PORTS = {
@@ -63,6 +63,7 @@ export function physicalState(sim, id) {
     opts.wan = ports[0].plug !== "none"; opts.lans = ports.slice(1).map(function (p) { return p.plug !== "none"; });
   } else if (model === "switch" || model === "switch8") {
     L("POWER", "Power", on ? "on" : "off");
+    if (x.print) { opts.title = x.print[0]; opts.under = x.print.slice(1); }
     opts.plugged = ports.map(function (p) { return p.plug !== "none"; });
   } else if (model === "msw") {
     L("SYSTEM", "SYSTEM", on ? "on" : "off"); L("POWER", "POWER", on ? "on" : "off"); L("PSU", "Power supply", on ? "on" : "off"); L("FAN", "Fan", on ? "on" : "off");
@@ -121,6 +122,7 @@ export function physicalState(sim, id) {
   if (model === "techlaptop") { if (ports[0].plug === "none") says.push("ETHERNET: empty."); if (ports[1].plug === "none") says.push("USB-C: empty (the console cable isn't plugged in)."); says.push("On screen: " + opts.title.replace(/\s+\u00b7\s+/g, ", ") + (x.tftp.on ? ". " + opts.screen.filter(Boolean).join(". ") + "." : ".")); }
   if (model === "mesh") says.push("No network cables: it reaches the router over Wi-Fi.");
   if (model === "msw") { if (!ports.some(function (p) { return p.plug !== "none"; })) says.push("Nothing plugged into it yet."); says.push("Printed on the front: MANAGED SWITCH 24-PORT + 4 SFP, MODEL: MSW-2800G. Its settings are on its command line, not on lights or buttons."); }
+  if (x.labelText) says.push("Its label: " + x.labelText + ".");
   if (model === "printer") says.push("Control panel screen: " + opts.screen.status + ", IP address " + opts.screen.ip + ".");
   if (model === "tv") says.push("Screen: Network Status, wired (LAN) " + (opts.screen.connected ? "connected" : "not connected") + "; " + opts.screen.rows.slice(0, 3).map(function (r) { return r[0] + " " + r[1]; }).join("; ") + ".");
   if (model === "camera") { says.push("Printed beside its port: " + (x.draw > POE.af.pd ? "PoE+ 802.3at, up to " + x.draw + " W (heater on)" : "PoE 802.3af") + " (it takes its power down the cable). Its label gives the model and says the address is set by DHCP; the hardware address is covered."); if (!on) says.push("No power: the camera is dark."); else if (sim.poeShort(id)) says.push("Its status light blinks amber: running on limited power."); }

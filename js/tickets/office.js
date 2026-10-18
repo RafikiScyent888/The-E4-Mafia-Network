@@ -11,7 +11,8 @@ import { OFFICE_JOBS } from "../build/office.js";
 import { online } from "../build/jobs.js";
 import { exec } from "../net/cmd.js";
 import * as SW from "../net/swcli.js";
-import { rng, hash } from "../net/util.js";
+import { rng, hash, mac } from "../net/util.js";
+import { OFFICE_RUN } from "../net/office.js";
 
 const SO5 = OFFICE_JOBS.find(function (d) { return d.id === "SO-J5"; });
 const PC_PORT = "GigabitEthernet0/2", PR_PORT = "GigabitEthernet0/3";
@@ -241,5 +242,67 @@ const SO05 = {
   }
 };
 
-export const OFFICE_TICKETS = [SO01, SO02, SO03, SO05];
-export const OFFICE_COMING = [{ id: "SO-04", n: "04", level: 2, tier: "common", title: "The back office's new switch won't link" }];
+/* ---------------------------------------------------------------- SO-04 */
+/* the back office (what was the meeting room): an old 10/100 switch whose ports are fixed MDI-X (no auto-MDIX), cabled back
+   to the closet switch's port 5 with a straight-through patch run, and a desk on it */
+function backOffice(sim, r) {
+  const d = sim.d, net = sim.net;
+  d.meet = { id: "meet", kind: "switch", label: "Back office switch", sub: "unmanaged, 10/100", on: true, ports: 5, mdix: false, maxMbps: 100,
+    print: ["UNMANAGED 5-PORT FAST ETHERNET SWITCH", "UNMANAGED 5-PORT FAST ETHERNET SWITCH · MODEL: FS-105", "10/100 Mbps · MDI-X ports (no auto-MDIX) · 5V ⎓ 1A"], labelText: "10/100 Mbps, MDI-X ports (no auto-MDIX)" };
+  d.mpc = { id: "mpc", kind: "pc", label: "Back office PC", sub: "DHCP", on: true, os: "windows", user: "backoffice", host: "BACKOFFICE-PC", printer: { name: "Office printer", port: d.pc.printer.port },
+    ifaces: [{ name: "Ethernet", type: "eth", port: "NIC", mac: mac(r), desc: "Gigabit Network Connection", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] };
+  net.rooms.meet = "meeting"; net.rooms.mpc = "meeting"; sim.arp.meet = {}; sim.arp.mpc = {};
+  net.cables.push({ id: "c-back-up", kind: "cat6", a: { dev: "msw", port: "5", seated: true }, b: { dev: "meet", port: "1", seated: true }, cond: "good", length: OFFICE_RUN.closet.meeting });
+  net.cables.push({ id: "c-back-pc", kind: "cat6", a: { dev: "meet", port: "2", seated: true }, b: { dev: "mpc", port: "NIC", seated: true }, cond: "good", length: 3 });
+}
+const SO04 = {
+  id: "SO-04", n: "04", level: 2, tier: "common", title: "The back office's new switch won't link", priority: 3, due: "4 h",
+  build(seed) {
+    const B = settled(seed), r = rng(hash("SO-04:" + seed)), kind = r.pick(["port", "template"]), sim = B.sim;
+    backOffice(sim, r);
+    onSwitch(sim, ["configure terminal"].concat(kind === "template" ? ["interface range gi0/1 - 24", "no mdix auto"] : [], ["interface gi0/5", "description BACK-OFFICE", "no shutdown"], kind === "port" ? ["no mdix auto"] : [], ["end"], SAVE));
+    sim.dhcp("mpc", "boot");   /* it asks, and nothing answers: 169.254 */
+    return { sim: sim, v: { kind: kind, plan: B.plan } };
+  },
+  brief(v) {
+    return { quote: "We've turned the meeting room into a back office: a little switch in there for a desk and the conference phone, cabled back to the closet. The installer's cable tester passes the run, but nothing in the back office connects. " + (v.kind === "template" ? "Last month a contractor ran his \"security template\" on the closet switch." : "The contractor who set up the closet switch's port for it said he'd \"locked the port down properly\".") };
+  },
+  mason: "Read both switches' lights, then ask each end of that run what it is.",
+  affected: "mpc",
+  options() {
+    return [
+      { id: "right", right: true, text: "Both ends transmit on the same pair: a straight-through run between two switch ports, with auto-MDIX turned off on the closet's port (TX/RX transposed)" },
+      { id: "long", text: "The run to the back office is too long for Ethernet", why: "It's 26 m, far inside the 100 m limit, and the tester passes every pin." },
+      { id: "cable", text: "The run's cable is damaged", why: "The cable tester passes all eight pins: the wiring is intact. It also says how it's wired: straight-through." },
+      { id: "shut", text: "The closet switch's port 5 is shut down", why: "show interfaces status says notconnect, not disabled: the port is on, but sees no link." },
+      { id: "speed", text: "The closet port's speed is forced to something the old switch can't run", why: "show running-config has no speed line on gi0/5: it negotiates. What it does have is no mdix auto." },
+      { id: "faulty", text: "The back office switch is faulty", why: "Its lights show the back office PC's link on port 2: the switch works. Only its uplink, port 1, is dark." }
+    ];
+  },
+  rung1() { return "On the closet switch: show interfaces status, then show running-config for the back office's port. Then the cable tester on the run, and the back office switch's label."; },
+  rung2() { return "A link needs each end's transmit pair to reach the other end's receive pair. A switch port's pairs are the reverse of a computer's, so two switches need a crossover between them, unless one end can swap its pairs by itself (auto-MDIX)."; },
+  fixHints() { return ["The tester says how the run is wired; the old switch's label says what its ports can do.", "Either end can be the fix: a port that swaps its pairs by itself, or a cable that crosses them.", "If you change the closet switch, save it. Then have the back office PC ask for its address again."]; },
+  exhibits(sim) { const c = sim.cable("c-back-up"); return !!c && !sim.cableUp(c) && c.a.seated && c.b.seated && c.cond === "good" && !SW_(sim).ports["GigabitEthernet0/5"].shutdown && sim.hasLink("mpc"); },
+  fixed(sim) {
+    const c = sim.cable("c-back-up"), sw = SW_(sim), sp = sw.startup && sw.startup.ports["GigabitEthernet0/5"];
+    return sim.cableUp(c) && (c.wiring === "crossover" || (!!sp && sp.mdix !== false && !sp.shutdown)) && online(sim, "mpc");
+  },
+  partial() { return "The link's up, but the closet switch hasn't saved the change: the next power cut turns auto-MDIX off on that port again, and the back office goes dark."; },
+  proves(f) { return f.cmd === "ping" && f.dev === "mpc" && f.beyond; },
+  proofText: "a ping from the back office PC that gets replies from beyond it",
+  evidence: [
+    { id: "ipc", test: function (f) { return f.cmd === "ipconfig" && f.dev === "mpc" && f.apipa; }, text: function () { return "ipconfig on the back office PC: a 169.254 address (no DHCP server reached)"; } },
+    { id: "status", test: function (f) { return /^Gi0\/5\s.*\bnotconnect\b/m.test(swOut(f)); }, text: function () { return "show interfaces status: Gi0/5, the back office's port, is notconnect (on, but no link)"; } },
+    { id: "run", test: function (f) { const o = swOut(f), i = o.indexOf("interface GigabitEthernet0/5\n"); return i >= 0 && /^[^!]* no mdix auto/.test(o.slice(i)); }, text: function () { return "show running-config: the back office's port, gi0/5, has no mdix auto"; } },
+    { id: "test", test: function (f) { return f.phys === "test" && f.cable === "c-back-up"; }, text: function () { return "Cable tester on the run to the back office: all pins pass, wired straight-through"; } },
+    { id: "lights", test: function (f) { return f.page === "meet-lights"; }, text: function () { return "The back office switch's lights: port 2 (its PC) on, amber; port 1 (the run to the closet) off. Its label: 10/100, MDI-X ports, no auto-MDIX"; } },
+    { id: "closet", test: function (f) { return f.page === "msw-lights" && f.ports.some(function (p) { return p.port === 5 && !p.up; }); }, text: function () { return "The closet switch's lights: port 5 (the back office) off"; } }
+  ],
+  summary(v) {
+    return { cause: "Two switch ports faced each other over a straight-through run, so both transmitted on the same pair (TX/RX transposed). The back office's old 10/100 switch can't swap its pairs, and auto-MDIX had been turned off on the closet's port " + (v.kind === "template" ? "(the contractor's template turned it off on every port)." : "(the contractor's \"lock-down\")."),
+      fix: "Turned auto-MDIX back on for that port and saved it (or swapped in a crossover cable), then had the back office PC ask for its address again." };
+  }
+};
+
+export const OFFICE_TICKETS = [SO01, SO02, SO03, SO04, SO05];
+export const OFFICE_COMING = [];

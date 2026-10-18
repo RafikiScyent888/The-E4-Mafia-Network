@@ -5,7 +5,7 @@
 import { isIp } from "./util.js";
 import { portName as printedPort } from "./sim.js";
 
-const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh" };
+const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", meet: "switch", mpc: "pc" };   /* the office's back office (SO-04): the same housings */
 
 export function tabsFor(sim, id) {
   const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" || k === "techlaptop" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
@@ -33,7 +33,7 @@ export function tester(c) {
   if (c.kind === "coax") return { text: "This tester is for twisted-pair cable; coax isn't tested this way. Look at the connector instead.", pins: null };
   const open = c.cond === "crushed" ? [1, 2, 3, 6] : c.cond === "damaged" ? [4, 5, 7, 8] : [];
   const pass = [1, 2, 3, 4, 5, 6, 7, 8].filter(function (p) { return open.indexOf(p) < 0; });
-  const text = open.length ? "Pins " + open.join(", ") + ": OPEN (the remote's lights for those pins stay dark).\nPins " + pass.join(", ") + " and G (shield): pass, in order." : "Pins 1 2 3 4 5 6 7 8 and G (shield): all pass, in order. Wired straight-through (T568B at both ends).";
+  const text = open.length ? "Pins " + open.join(", ") + ": OPEN (the remote's lights for those pins stay dark).\nPins " + pass.join(", ") + " and G (shield): pass, in order." : c.wiring === "crossover" ? "Pins 1 2 3 4 5 6 7 8 and G (shield): all pass. Wired crossover (T568A at one end, T568B at the other): pairs 1-2 and 3-6 swapped." : "Pins 1 2 3 4 5 6 7 8 and G (shield): all pass, in order. Wired straight-through (T568B at both ends).";
   return { text: text, open: open };
 }
 
@@ -75,7 +75,7 @@ export function page(sim, id, key) {
   if (key === "physical") {
     const cables = sim.cablesOf(id).map(function (c) {
       const end = c.a.dev === id ? "a" : "b";
-      const acts = c.kind === "coax" ? ["look", "tighten"] : c.kind === "console" ? ["look", "reseat", "unplug"] : ["look", "reseat", "unplug", "test", "replace"];
+      const acts = c.kind === "coax" ? ["look", "tighten"] : c.kind === "console" ? ["look", "reseat", "unplug"] : ["look", "reseat", "unplug", "test", "replace"].concat(sim.net.site === "office" ? ["crossover"] : []);   /* the office's van carries crossover cables too */
       return { cable: c.id, end: end, name: cableName(sim, c, id), acts: acts };
     });
     if (id === "modem") { /* the coax's wall end is reached from the modem too: it's behind the TV stand */
@@ -145,7 +145,7 @@ export function page(sim, id, key) {
       return { kind: "lights-ports", title: "Lights", ports: rows, lights: [{ name: "SYSTEM", state: on ? "on" : "off", text: on ? "on, green" : "off", mean: "the switch has started" }, { name: "POWER", state: on ? "on" : "off", text: on ? "on, green" : "off", mean: "power is on" }],
         note: "Managed: every port's settings, and the switch's own address, are on its command line. Reach it from your laptop's serial terminal on the console cable" + (con ? " (plugged into its CONSOLE port now)" : "") + ", or over the network once it has an address. Its port lights are green when a port has a link, whatever the speed: ask the switch (show interfaces status) for the speed and duplex.", facts: { page: "msw-lights", ports: rows } };
     }
-    return { kind: "lights-ports", title: "Lights", ports: rows, note: "Unmanaged: no console and no settings. Read the lights: green is 1 Gb/s, amber is 10/100 Mb/s.", facts: { page: "switch-lights", ports: rows } };
+    return { kind: "lights-ports", title: "Lights", ports: rows, note: "Unmanaged: no console and no settings. Read the lights: green is 1 Gb/s, amber is 10/100 Mb/s." + (x.labelText ? " Its label: " + x.labelText + "." : ""), facts: { page: id + "-lights", ports: rows } };
   }
   if (id === "pc" && key === "settings") {
     const a = sim.addr("pc"), f = x.ifaces[0], c = sim.cableAt("pc", f.port), sp = sim.speed(c);
@@ -221,7 +221,8 @@ export function physical(sim, act) {
   const before = c ? JSON.stringify([c.a, c.b, c.cond]) : null;
   sim.apply(act);
   if (act.t === "reseat") return { text: c[act.end].seated && before === JSON.stringify([c.a, c.b, c.cond]) ? "Pushed it home: it was already clicked in." : "Plugged it back in until it clicked.", facts: { phys: "reseat", cable: act.cable, end: act.end } };
-  if (act.t === "replace") return { text: "Swapped in a new, tested patch cable.", facts: { phys: "replace", cable: act.cable } };
+  if (act.t === "replace") return { text: "Swapped in a new, tested patch cable (straight-through).", facts: { phys: "replace", cable: act.cable } };
+  if (act.t === "crossover") return { text: "Swapped in a crossover patch cable (T568A at one end, T568B at the other).", facts: { phys: "crossover", cable: act.cable } };
   if (act.t === "unplug") return { text: "Unplugged it.", facts: { phys: "unplug", cable: act.cable, end: act.end } };
   if (act.t === "tighten") return { text: before === JSON.stringify([c.a, c.b, c.cond]) ? "Already snug: no change." : "Screwed the connector on finger-tight.", facts: { phys: "tighten", cable: act.cable, end: act.end } };
   if (act.t === "power") return { text: "Restarted the " + (/^[A-Z][a-z]+(\s|$)/.test(sim.d[act.dev].label) ? sim.d[act.dev].label[0].toLowerCase() + sim.d[act.dev].label.slice(1) : sim.d[act.dev].label) + ". It's back up a minute later.", facts: { phys: "power", dev: act.dev } };

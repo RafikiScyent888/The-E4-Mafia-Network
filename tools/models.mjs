@@ -317,6 +317,28 @@ CO.push(async () => {
   const u = await plugAt(p, "USB-C"); check(!u.missing && u.plug && u.off > 10, "SO-J5 your laptop: the adapter unplugged from the laptop hangs out of its port " + JSON.stringify(u));
   await ctx.close();
 });
+/* SO-04 on the desk: the back office's old 10/100 switch, its uplink in port 1 dark (TX facing TX), its PC on port 2 amber;
+   a crossover cable swapped in and port 1 lights amber too */
+CO.push(async () => {
+  const ctx = await GL.newContext({ viewport: { width: 900, height: 1000 }, reducedMotion: "reduce" });
+  await ctx.addInitScript(() => { try { sessionStorage.setItem("e4-instructor", "1"); } catch (e) { } });
+  const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push("desk SO-04: " + e.message));
+  await p.goto(base + "index.html"); await p.waitForFunction(() => window.__e4);
+  if (plant) await p.evaluate(plant);
+  await p.evaluate(() => window.__e4.go("SO-04"));
+  await physical(p, "meet", "Ports close-up");
+  for (const port of ["1", "2"]) { const q = await plugAt(p, port); check(!q.missing && q.plug && q.off < 1, "SO-04 back office switch: a cable is in port " + port + " " + JSON.stringify(q)); }
+  const e = await plugAt(p, "3"); check(!e.missing && e.plug === false, "SO-04 back office switch: port 3 is empty " + JSON.stringify(e));
+  await led(p, "SO-04 back office switch port 1 (TX facing TX) link", "1", "link", "off");
+  await led(p, "SO-04 back office switch port 2 (its PC, 10/100) link", "2", "link", "amber");
+  await led(p, "SO-04 back office switch power", null, "POWER", "green");
+  /* the student swaps in a crossover cable from the closet switch's Physical tab, then looks at the back office switch again */
+  await physical(p, "msw", "Front close-up");
+  await p.click('.cabs li:has-text("back office") button:text-is("Swap in a crossover cable")'); await p.waitForTimeout(100);
+  await physical(p, "meet", "Ports close-up");
+  await led(p, "SO-04 back office switch port 1 after a crossover cable", "1", "link", "amber");
+  await ctx.close();
+});
 const RUN = process.env.ONLY === "office" ? CO : C.concat(CO);
 for (const c of RUN) { try { await c(); } catch (e) { bad.push("crashed: " + e.message.split("\n")[0]); } }
 

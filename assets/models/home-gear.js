@@ -205,7 +205,7 @@ export function unmanagedSwitch(o = {}) {
   const pw = led(COL.ledGreen, true, 1.5); pw.userData.role = "POWER"; front.add(at(pw, -50, Y0 + 15.5, 0.3));
   const bez = rrShape(88, 18.5, 1.6, 6, 0); bez.holes.push(rrPath(85, 15.5, 1, 6, 0));
   front.add(at(new THREE.Mesh(new THREE.ExtrudeGeometry(bez, { depth: 1.2, bevelEnabled: false }), brushed(0xc5c8cc, "x")), 0, Y0 + 15, 0));
-  front.add(at(ink("UNMANAGED 5-PORT GIGABIT SWITCH", 70, 3, { weight: "700", spacing: 0.06 }), 12, Y0 + 26.6, 0.05));
+  front.add(at(ink(o.title || "UNMANAGED 5-PORT GIGABIT SWITCH", 70, 3, { weight: "700", spacing: 0.06 }), 12, Y0 + 26.6, 0.05));   /* o.title, o.under: another model in the same housing (an old 10/100 switch), only its print differs */
   const jacks = [], on = o.cables === false ? [false, false, false, false, false] : o.plugged || [true, true, true, true, false];   /* o.plugged: which of ports 1-5 have a cable */
   for (let i = 0; i < 5; i++) {
     const x = -26 + i * 16.4, j = rj45Jack({ name: String(i + 1), metal: true, on: [on[i], on[i]], actColor: COL.ledGreen });   /* both lights green, as photographed */
@@ -215,7 +215,7 @@ export function unmanagedSwitch(o = {}) {
   const rs = new THREE.Group(); at(rs, W / 2 + 0.02, Y0 + H / 2, -24, 0, Math.PI / 2); g.add(rs);
   rs.add(at(rbox(14, 14, 1, 2, plastic(0x0b0b0c)), 0, 1, 0.1));
   const dj = dcJack("POWER"); at(dj, 0, 1, 0.6); rs.add(dj); rs.add(at(up(ink("POWER DC 5V", 20, 2.8)), 11, 1, 0.05));
-  const under = label(["UNMANAGED 5-PORT GIGABIT SWITCH · MODEL: US-1005", "10/100/1000 Mbps · Auto-MDI/MDIX · 5V ⎓ 1A", "S/N: " + COVERED], { w: 70, h: 18, marks: true });
+  const under = label((o.under || ["UNMANAGED 5-PORT GIGABIT SWITCH · MODEL: US-1005", "10/100/1000 Mbps · Auto-MDI/MDIX · 5V ⎓ 1A"]).concat(["S/N: " + COVERED]), { w: 70, h: 18, marks: true });
   at(under, 0, Y0 - 0.05, 0, Math.PI / 2, 0, 0); g.add(under);
   if (o.cables !== false) {
     const cols = [[0xf2c200], [0x9fa3a8], [0xb9bcc0], [0x4a4d52], [0x2f5fc4]];

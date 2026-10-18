@@ -17,7 +17,7 @@ const short = function (n) { return n.replace("GigabitEthernet", "Gi"); };
 /* a switch fresh from its box: no passwords, no address, every port on, speed and duplex negotiated */
 export function newSwitch(o = {}) {
   const ports = {};
-  PORT_NAMES.forEach(function (n, i) { ports[n] = { desc: "", speed: "auto", duplex: "auto", shutdown: false, sfp: i >= COPPER }; });
+  PORT_NAMES.forEach(function (n, i) { ports[n] = { desc: "", speed: "auto", duplex: "auto", shutdown: false, sfp: i >= COPPER, mdix: true }; });   /* mdix: the port swaps its pairs by itself to suit the far end (auto-MDIX), on from the box */
   const sw = { model: "MSW-2800G", hostname: "Switch", enableSecret: null, enablePassword: null, encrypt: false,
     con: { password: null, login: null }, vty: { password: null, login: null, transport: "telnet" },
     users: {}, domain: null, rsa: 0, banner: null, vlan1: { ip: null, mask: null, shutdown: true }, gateway: null, ports: ports,
@@ -189,6 +189,7 @@ const IFACE = [
   ["description", "Interface specific description", function (S, a, raw) { const d = raw.replace(/^\s*\S+\s*/, ""); if (!d) return ["% Incomplete command."]; S.ifs.forEach(function (n) { if (n !== "Vlan1") S.sw.ports[n].desc = d.slice(0, 240); }); return []; }],
   ["speed", "Configure speed operation.", [["10", "Force 10 Mbps operation", function (S) { return setPort(S, "speed", "10"); }], ["100", "Force 100 Mbps operation", function (S) { return setPort(S, "speed", "100"); }], ["1000", "Force 1000 Mbps operation", function (S) { return setPort(S, "speed", "1000"); }], ["auto", "Enable AUTO speed configuration", function (S) { return setPort(S, "speed", "auto"); }]]],
   ["duplex", "Configure duplex operation.", [["full", "Force full duplex operation", function (S) { return setPort(S, "duplex", "full"); }], ["half", "Force half-duplex operation", function (S) { return setPort(S, "duplex", "half"); }], ["auto", "Enable AUTO duplex configuration", function (S) { return setPort(S, "duplex", "auto"); }]]],
+  ["mdix", "Set Media Dependent Interface with Crossover", [["auto", "Enable automatic MDI crossover detection on this interface", function (S) { return setPort(S, "mdix", true); }]]],
   ["shutdown", "Shutdown the selected interface", function (S) { S.ifs.forEach(function (n) { if (n === "Vlan1") S.sw.vlan1.shutdown = true; else S.sw.ports[n].shutdown = true; }); return S.ifs.map(function (n) { return "%LINK-5-CHANGED: Interface " + n + ", changed state to administratively down"; }); }],
   ["ip", "Interface Internet Protocol config commands", [["address", "Set the IP address of an interface", function (S, a) {
     if (S.ifs[0] !== "Vlan1") return ["% Invalid input detected at '^' marker.", "  (a switch port is layer 2: the switch's own address goes on interface vlan 1)"];
@@ -201,6 +202,7 @@ const IFACE = [
     ["description", "Interface specific description", function (S) { S.ifs.forEach(function (n) { if (n !== "Vlan1") S.sw.ports[n].desc = ""; }); return []; }],
     ["speed", "Configure speed operation.", function (S) { return setPort(S, "speed", "auto"); }],
     ["duplex", "Configure duplex operation.", function (S) { return setPort(S, "duplex", "auto"); }],
+    ["mdix", "Set Media Dependent Interface with Crossover", [["auto", "Enable automatic MDI crossover detection on this interface", function (S) { return setPort(S, "mdix", false); }]]],
     ["ip", "Interface Internet Protocol config commands", [["address", "Set the IP address of an interface", function (S) { if (S.ifs[0] === "Vlan1") { S.sw.vlan1.ip = null; S.sw.vlan1.mask = null; } return []; }]]]
   ]],
   ["interface", "Select an interface to configure", null],
@@ -281,7 +283,7 @@ function runningConfig(sw, startup) {
   Object.keys(sw.users).forEach(function (u) { L.push("username " + u + " secret " + pw(sw.users[u], "secret")); });
   if (sw.enableSecret || sw.enablePassword || Object.keys(sw.users).length) L.push("!");
   if (sw.domain) L.push("ip domain-name " + sw.domain, "!");
-  PORT_NAMES.forEach(function (n) { const p = sw.ports[n]; L.push("interface " + n); if (p.desc) L.push(" description " + p.desc); if (p.speed !== "auto") L.push(" speed " + p.speed); if (p.duplex !== "auto") L.push(" duplex " + p.duplex); if (p.shutdown) L.push(" shutdown"); L.push("!"); });
+  PORT_NAMES.forEach(function (n) { const p = sw.ports[n]; L.push("interface " + n); if (p.desc) L.push(" description " + p.desc); if (p.speed !== "auto") L.push(" speed " + p.speed); if (p.duplex !== "auto") L.push(" duplex " + p.duplex); if (p.mdix === false) L.push(" no mdix auto"); if (p.shutdown) L.push(" shutdown"); L.push("!"); });
   L.push("interface Vlan1"); L.push(sw.vlan1.ip ? " ip address " + sw.vlan1.ip + " " + sw.vlan1.mask : " no ip address"); if (sw.vlan1.shutdown) L.push(" shutdown"); L.push("!");
   if (sw.gateway) L.push("ip default-gateway " + sw.gateway, "!");
   if (sw.banner != null) L.push("banner motd ^C" + sw.banner + "^C", "!");   /* shown with ^C as its delimiter, whatever was typed */

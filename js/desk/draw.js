@@ -24,7 +24,7 @@ export const ICONS = {
   mswitch: '<rect x="4" y="22" width="56" height="20" rx="3" class="ib"/><rect x="9" y="27" width="4" height="3" class="ip"/><rect x="15" y="27" width="4" height="3" class="ip"/><rect x="21" y="27" width="4" height="3" class="ip"/><rect x="27" y="27" width="4" height="3" class="ip"/><rect x="33" y="27" width="4" height="3" class="ip"/><rect x="9" y="34" width="4" height="3" class="ip"/><rect x="15" y="34" width="4" height="3" class="ip"/><rect x="21" y="34" width="4" height="3" class="ip"/><rect x="27" y="34" width="4" height="3" class="ip"/><rect x="33" y="34" width="4" height="3" class="ip"/><rect x="44" y="28" width="10" height="8" rx="1" class="is"/><circle cx="49" cy="18" r="2" class="ok"/><path d="M44 18h-6" class="il"/>',
   ap: '<ellipse cx="32" cy="38" rx="20" ry="8" class="ib"/><path d="M22 26q10-8 20 0M26 20q6-5 12 0" class="il"/>'
 };
-const ICON_OF = { isp: "cloud", modem: "modem", router: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", tv: "tv", camera: "camera", mesh: "mesh", phone: "phone", guest: "phone", rogue: "router", injector: "injector", injector2: "injector", msw: "mswitch", tech: "laptop" };
+const ICON_OF = { isp: "cloud", modem: "modem", router: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", tv: "tv", camera: "camera", mesh: "mesh", phone: "phone", guest: "phone", rogue: "router", injector: "injector", injector2: "injector", msw: "mswitch", tech: "laptop", meet: "switch", mpc: "pc" };
 function defs(svg, prefix) {
   const d = document.createElementNS(NS, "defs");
   d.innerHTML = Object.keys(ICONS).map(function (k) { return '<symbol id="' + prefix + k + '" viewBox="0 0 64 64">' + ICONS[k] + "</symbol>"; }).join("");
@@ -93,7 +93,7 @@ export function linksOf(sim) {
 
 export function drawLogical(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "i-");
-  const ids = ["isp", "modem", "router", "tv", "switch", "msw", "tech", "pc", "printer", "injector", "injector2", "camera", "mesh", "phone", "laptop", "guest"].filter(function (id) { return shown(sim, id) && !sim.d[id].undocumented; });
+  const ids = ["isp", "modem", "router", "tv", "switch", "msw", "meet", "mpc", "tech", "pc", "printer", "injector", "injector2", "camera", "mesh", "phone", "laptop", "guest"].filter(function (id) { return shown(sim, id) && !sim.d[id].undocumented; });
   const P = {}; ids.forEach(function (id) { P[id] = pos(sim, id); });
   if (P.injector && P.injector2) Object.assign(P.injector2, { x: 520, y: 190 });   /* both injectors out of the van: the second one moves up out of the way */
   const below = function (id) { return !P[id].lab || P[id].lab === "below"; };
@@ -152,8 +152,8 @@ const RUNS = {
   "c-rogue": ["M250 200 L 330 235"]
 };
 const RUNS_OFFICE = { "c-coax": ["M40 120 L 96 120"] };   /* the provider's line comes in on the closet wall, beside the modem */
-const PLAN_NAME_OFFICE = { switch: "Old 8-port switch", pc: "Front desk PC", printer: "Printer", tech: "Your laptop" };
-const PLAN_NAME = { msw: "Managed switch", tech: "Your laptop", injector: "PoE injector", injector2: "PoE+ injector", modem: "Modem", router: "Router", tv: "Smart TV", switch: "Switch", pc: "Office PC", printer: "Printer", camera: "Camera", mesh: "Mesh node", laptop: "Laptop", phone: "Phone", guest: "Guest's phone", rogue: "Old router" };
+const PLAN_NAME_OFFICE = { switch: "Old 8-port switch", pc: "Front desk PC", printer: "Printer", tech: "Your laptop", meet: "Back office switch", mpc: "Back office PC" };
+const PLAN_NAME = { msw: "Managed switch", meet: "Back office switch", mpc: "Back office PC", tech: "Your laptop", injector: "PoE injector", injector2: "PoE+ injector", modem: "Modem", router: "Router", tv: "Smart TV", switch: "Switch", pc: "Office PC", printer: "Printer", camera: "Camera", mesh: "Mesh node", laptop: "Laptop", phone: "Phone", guest: "Guest's phone", rogue: "Old router" };
 export function drawPlan(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "p-");
   const build = sim.net.extra.build, off = office(sim);   /* a build house shows upstairs as the back bedroom and the landing; the office is its own plan */

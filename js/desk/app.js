@@ -20,7 +20,7 @@ const DEFS = {}; HOME_TICKETS.concat(OFFICE_TICKETS).forEach(function (d) { DEFS
 const item = function (d) { return { id: d.id, n: d.n, tier: d.tier, title: d.title, level: d.level || 1, built: true }; };
 const LIST = HOME_TICKETS.map(item).concat(HOME_COMING.map(function (c) { return Object.assign({ built: false, level: 1 }, c); }),
   OFFICE_TICKETS.map(item), OFFICE_COMING.map(function (c) { return Object.assign({ built: false }, c); }));   /* every level's tickets; the queue shows the chosen level's */
-const DEVICES = ["pc", "switch", "msw", "router", "modem", "printer", "tech", "injector", "camera", "tv", "mesh", "laptop", "phone", "guest"];   /* an undocumented box gets no button: find it on the floor plan */
+const DEVICES = ["pc", "switch", "msw", "meet", "mpc", "router", "modem", "printer", "tech", "injector", "camera", "tv", "mesh", "laptop", "phone", "guest"];   /* an undocumented box gets no button: find it on the floor plan */
 const $ = function (id) { return document.getElementById(id); };
 let replateMap = null;
 

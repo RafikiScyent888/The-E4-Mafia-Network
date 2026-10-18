@@ -23,6 +23,7 @@ const FIX = {
   "SO-01": (T) => conf(T, ["interface gi0/3", "speed 100", "duplex full"]).concat(SAVE),
   "SO-02": (T) => conf(T, ["interface gi0/2", "no shutdown"]).concat(SAVE),
   "SO-03": (T) => conf(T, T.v.kind === "user" ? ["username " + T.v.user + " secret " + T.v.pw] : ["interface vlan 1", "ip address " + T.v.newIp + " " + T.v.plan.mask]).concat(SAVE),
+  "SO-04": (T) => T.seed % 2 ? [{ t: "crossover", cable: "c-back-up" }, { t: "cmd", dev: "mpc", line: "ipconfig /renew" }] : conf(T, ["interface gi0/5", "mdix auto"]).concat(SAVE, [{ t: "cmd", dev: "mpc", line: "ipconfig /renew" }]),
   "SO-05": (T) => conf(T, T.v.kind === "nokeys" ? ["crypto key generate rsa modulus 2048"] : T.v.kind === "telnet" ? ["line vty 0 15", "transport input ssh"] : ["line vty 0 15", "login local"]).concat(SAVE)
 };
 /* what proves it, run from the front desk PC */
@@ -30,15 +31,17 @@ const PROOF = {
   "SO-01": (T) => [pc("ping " + T.v.printer)],
   "SO-02": (T) => [pc("ping " + T.v.plan.gw)],
   "SO-03": (T) => T.v.kind === "user" ? [pc("ssh " + T.v.user + "@" + T.v.plan.ip), pc(T.v.pw)] : [pc("ping " + T.v.newIp)],
+  "SO-04": () => [{ t: "cmd", dev: "mpc", line: "ping 203.0.113.80" }],
   "SO-05": (T) => [pc("ssh " + T.v.plan.user + "@" + T.v.plan.ip), pc(T.v.plan.userPw)]
 };
 /* the real fix without saving it: it works, it isn't the fix */
-const UNSAVED = (def, T) => FIX[def.id](T).slice(0, -2);
+const UNSAVED = (def, T) => def.id === "SO-04" ? conf(T, ["interface gi0/5", "mdix auto"]).concat([{ t: "cmd", dev: "mpc", line: "ipconfig /renew" }]) : FIX[def.id](T).slice(0, -2);
 /* tempting fixes that treat a symptom, or the wrong part: none may fix it */
 const WRONG = {
   "SO-01": (T) => [[{ t: "power", dev: "printer" }], [{ t: "power", dev: "msw" }], conf(T, ["interface gi0/3", "duplex half"]).concat(SAVE), conf(T, ["interface gi0/3", "shutdown", "no shutdown"]).concat(SAVE)],
   "SO-02": (T) => [conf(T, ["interface range gi0/2 - 28", "no shutdown"]).concat(SAVE), [{ t: "power", dev: "pc" }], [{ t: "power", dev: "msw" }], [{ t: "reseat", cable: T.v.pcCable, end: "b" }], [pc("ipconfig /renew")]],
   "SO-03": (T) => [[{ t: "power", dev: "msw" }], login(T).concat([cli("reload"), cli("")]), T.v.kind === "user" ? conf(T, ["username " + T.v.user + " secret wrong-one"]).concat(SAVE) : conf(T, ["interface vlan 1", "ip address " + T.v.plan.ip + " " + T.v.plan.mask]).concat(SAVE)],
+  "SO-04": (T) => [[{ t: "replace", cable: "c-back-up" }, { t: "cmd", dev: "mpc", line: "ipconfig /renew" }], [{ t: "power", dev: "meet" }, { t: "power", dev: "msw" }], conf(T, ["interface gi0/5", "speed 100"]).concat(SAVE), conf(T, ["interface gi0/5", "shutdown", "no shutdown"]).concat(SAVE), [{ t: "cmd", dev: "mpc", line: "ipconfig /renew" }]],
   "SO-05": (T) => [[{ t: "power", dev: "msw" }], T.v.kind === "telnet" ? conf(T, ["line vty 0 15", "transport input all"]).concat(SAVE) : T.v.kind === "nokeys" ? conf(T, ["crypto key generate rsa modulus 512"]).concat(SAVE) : conf(T, ["line vty 0 15", "no password"]).concat(SAVE), [pc("ipconfig /renew")]]
 };
 /* the fault, in real output */
@@ -57,6 +60,13 @@ const SYMPTOM = {
     assert.match(out(T, login(T).concat([cli("show version")])), /uptime is 1 day, 9 hours[^]*System returned to ROM by power-on/);
     if (T.v.kind === "user") { E.act(T, pc("ssh " + T.v.user + "@" + T.v.plan.ip)); assert.match(E.act(T, pc(T.v.pw)).out, /Permission denied/); }
     else { const p = E.act(T, pc("ping " + T.v.newIp)); assert.equal(p.facts.replies, 0); assert.ok(E.act(T, pc("ping " + T.v.plan.ip)).facts.replies > 0, "the old address answers"); }
+  },
+  "SO-04": (T) => {
+    assert.match(out(T, login(T).concat([cli("show interfaces status")])), /Gi0\/5\s+BACK-OFFICE\s+notconnect/);
+    assert.match(out(T, [cli("show running-config")]), /interface GigabitEthernet0\/5\n description BACK-OFFICE\n no mdix auto\n/);
+    assert.match(E.act(T, { t: "test", cable: "c-back-up" }).text, /all pass, in order\. Wired straight-through/);
+    assert.match(E.act(T, { t: "cmd", dev: "mpc", line: "ipconfig" }).out, /Autoconfiguration IPv4 Address[ .]*: 169\.254\./);
+    const L = E.act(T, { t: "view", dev: "meet", key: "lights" }); assert.deepEqual(L.ports.map((x) => x.port + ":" + x.up), ["1:false", "2:true", "3:false", "4:false", "5:false"]);
   },
   "SO-05": (T) => {
     assert.ok(E.act(T, pc("ping " + T.v.plan.ip)).facts.replies > 0, "the switch answers ping");
@@ -133,7 +143,7 @@ for (const def of OFFICE_TICKETS) {
       for (const x of texts) {
         assert.ok(x.indexOf(right) < 0, x);
         for (const bad of [p.secret, p.console, p.userPw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, def.id + " names a password: " + x);
-        for (const cmd of ["no shutdown", "duplex full", "speed 100", "transport input ssh", "login local", "crypto key", "copy running-config"]) assert.ok(x.indexOf(cmd) < 0, def.id + " names the fix's command (" + cmd + "): " + x);
+        for (const cmd of ["no shutdown", "duplex full", "speed 100", "transport input ssh", "login local", "crypto key", "copy running-config", "mdix auto"]) assert.ok(x.indexOf(cmd) < 0, def.id + " names the fix's command (" + cmd + "): " + x);
       }
     }
   });

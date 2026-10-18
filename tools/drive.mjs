@@ -173,6 +173,22 @@ Object.assign(PLAN, {
     fix: async (p, v) => { await swConf(p, v, v.kind === "user" ? ["username " + v.user + " secret " + v.pw] : ["interface vlan 1", "ip address " + v.newIp + " " + v.plan.mask]); },
     proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "user") await sshFromPc(p, v.user, v.plan.ip, v.pw); else { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping " + v.newIp); } }
   },
+  "SO-04": {
+    look: async (p, v) => {
+      await dev(p, "meet"); const L = await p.$eval(".pane", (n) => n.textContent);
+      check(/Port 1\s*off\b/.test(L) && /Port 2\s*on, amber/.test(L) && /no auto-MDIX/.test(L), "SO-04: the back office switch's lights: port 1 dark, port 2 amber; its label says no auto-MDIX");
+      await swLogin(p, v); await type(p, "show interfaces status"); check(/Gi0\/5\s+BACK-OFFICE\s+notconnect/.test(await term(p)), "SO-04: show interfaces status: Gi0/5 notconnect");
+      await dev(p, "msw"); await tab(p, "Physical"); await p.click('.cabs li:has-text("back office") button:text-is("Test with the cable tester")'); await p.waitForTimeout(40);
+      check(/Wired straight-through/.test(await p.$eval(".cabs", (n) => n.textContent)), "SO-04: the tester passes the run, wired straight-through");
+    },
+    wrong: async (p) => { await dev(p, "msw"); await tab(p, "Physical"); await p.click('.cabs li:has-text("back office") button:text-is("Swap in a new cable")'); await dev(p, "mpc"); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); },
+    fix: async (p, v) => {
+      if (v.kind === "template") { await dev(p, "msw");   /* both fixes through the page: a crossover for one variant, auto-MDIX back on for the other */ await tab(p, "Physical"); await p.click('.cabs li:has-text("back office") button:text-is("Swap in a crossover cable")'); }
+      else await swConf(p, v, ["interface gi0/5", "mdix auto"]);
+      await dev(p, "mpc"); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew");
+    },
+    proof: async (p) => { await dev(p, "mpc"); await tab(p, "Command Prompt"); await type(p, "ping 203.0.113.80"); }
+  },
   "SO-05": {
     look: async (p, v) => { await sshFromPc(p, v.plan.user, v.plan.ip, v.plan.userPw, v.kind === "lines" ? 3 : 0); check(v.kind === "lines" ? /Permission denied \(password\)/.test(await term(p)) : /Connection refused/.test(await term(p)), "SO-05 (" + v.kind + "): ssh from the front desk PC is " + (v.kind === "lines" ? "denied" : "refused")); },
     wrong: async (p, v) => { await swConf(p, v, v.kind === "nokeys" ? ["crypto key generate rsa modulus 2048"] : v.kind === "telnet" ? ["line vty 0 15", "transport input all"] : ["line vty 0 15", "login local"], v.kind === "telnet"); },
@@ -245,7 +261,7 @@ if (!process.env.ONLY || process.env.ONLY === "tickets-office") {
   {
     const { p, ctx } = await page("SO-02", 2025);
     const q = await p.$$eval('#queue [data-t^="SO-"]', (l) => l.map((b) => b.dataset.t + ":" + (b.getAttribute("aria-disabled") === "true" ? "off" : "on")));
-    check(q.join(",") === "SO-01:on,SO-02:on,SO-03:on,SO-05:on,SO-04:off", "office tickets: the level 2 queue lists SO-01, 02, 03 and 05, and SO-04 coming next (" + q.join(",") + ")");
+    check(q.join(",") === "SO-01:on,SO-02:on,SO-03:on,SO-04:on,SO-05:on", "office tickets: the level 2 queue lists SO-01 to SO-05 (" + q.join(",") + ")");
     check(/office network/.test(await p.$eval("#tk .from", (n) => n.textContent)) && /Tier 2 · Small office/.test(await p.$eval("#labtitle", (n) => n.textContent)), "office tickets: the card says office network, the title Tier 2 · Small office");
     check(!!(await p.$('#devtabs [data-d="msw"]')) && !!(await p.$('#devtabs [data-d="tech"]')), "office tickets: the managed switch and your laptop have device buttons");
     await ctx.close();

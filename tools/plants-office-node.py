@@ -30,6 +30,10 @@ PLANTS = [
  ("a duplex mismatch loses nothing", "js/net/sim.js", "return this.mismatched(id) ? { loss: 0.3, base: 1 } : { loss: 0, base: 0 };", "return { loss: 0, base: 0 };"),
  ("show version never says it came back from a power cut", "js/net/swcli.js", '"System returned to ROM by " + (sw.restart || "power-on"), "",', ''),
  ("SO-02: any ping from the PC proves it, even to itself", "js/tickets/office.js", 'proves(f) { return f.cmd === "ping" && f.dev === "pc" && f.beyond; },', 'proves(f) { return f.cmd === "ping" && f.dev === "pc" && f.ok; },'),
+ ("TX facing TX links anyway", "js/net/sim.js", "    if (auto(c.a) || auto(c.b)) return true;\n    const mdix", "    return true;\n    const mdix"),
+ ("a crossover cable crosses nothing", "js/net/sim.js", 'return (mdix(c.a) !== mdix(c.b)) === (c.wiring !== "crossover");', "return mdix(c.a) !== mdix(c.b);"),
+ ("no mdix auto never shown in the running configuration", "js/net/swcli.js", ' if (p.mdix === false) L.push(" no mdix auto");', ""),
+ ("SO-04: auto-MDIX on but not saved counts as fixed", "js/tickets/office.js", '(c.wiring === "crossover" || (!!sp && sp.mdix !== false && !sp.shutdown))', "true"),
  ("reload keeps unsaved changes", "js/net/swcli.js", "  const base = sw.startup ? clone(sw.startup) : snapshot(newSwitch());\n  CONFIG_KEYS.forEach(function (k) { sw[k] = base[k]; });", "  const base = sw.startup ? clone(sw.startup) : snapshot(newSwitch());"),
 ]
 only = sys.argv[1:]

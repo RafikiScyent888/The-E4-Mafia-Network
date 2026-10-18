@@ -640,5 +640,28 @@
   "name": "office tickets: SO-03 solved, the summary",
   "page": "index.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-03'); const T=c.T, v=T.v; const L=['',v.plan.console,'enable',v.plan.secret,'configure terminal'].concat(v.kind==='user'?['username '+v.user+' secret '+v.pw]:['interface vlan 1','ip address '+v.newIp+' '+v.plan.mask],['end','copy running-config startup-config','']); c.guess('right'); L.forEach(l=>c.act({t:'cmd',dev:'tech',line:l,cli:true})); if(v.kind==='user'){c.act({t:'cmd',dev:'pc',line:'ssh '+v.user+'@'+v.plan.ip}); c.act({t:'cmd',dev:'pc',line:v.pw,cli:true});} else c.act({t:'cmd',dev:'pc',line:'ping '+v.newIp}); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "office tickets: SO-04 the logical diagram with the back office, its switch's lights",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-04'); const T=c.T, v=T.v; document.querySelector('#devtabs [data-d=meet]').click();"
+ },
+ {
+  "name": "office tickets: SO-04 the floor plan, the dead run to the back office",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-04'); const T=c.T, v=T.v; document.getElementById('vPhy').click();"
+ },
+ {
+  "name": "office tickets: SO-04 the cable tester on the run, from the closet switch's Physical tab",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-04'); const T=c.T, v=T.v; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=msw]').click(); tab('Physical'); const li=[...document.querySelectorAll('.cabs li')].find(l=>/back office/i.test(l.textContent)); [...li.querySelectorAll('button')].find(b=>/cable tester/.test(b.textContent)).click();",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "office tickets: SO-04 the back office switch's 3D model, ports close-up",
+  "page": "index.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SO-04'); const T=c.T, v=T.v; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=meet]').click(); tab('Physical');",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))",
+  "after": "[...document.querySelectorAll('.m3d-bar button')].find(b=>b.textContent==='Ports close-up').click()"
  }
 ]

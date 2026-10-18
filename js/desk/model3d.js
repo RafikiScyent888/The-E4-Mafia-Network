@@ -28,7 +28,7 @@ const SETUP = {
     views: [["Back ports", { view: [0.95, 0.22, -0.75], frame: [-30, 28, -112, 30, 128, -70], light: [0.6, 1.2, -0.8] }], ["Front lights", { view: [0.25, 0.1, 1], frame: [-27, 68, 70, 27, 128, 82], light: [0.5, 1.2, 1.0] }]] },
   router: { build: function (o) { return GEAR.homeRouter({ wan: o.wan, lans: o.lans }); }, view: [0.3, 0.32, -1], light: [0.5, 1.3, -1.0], frame: [-150, 0, -200, 150, 230, 90],
     views: [["Back ports", { focus: "panel:Back ports", view: [0, 0.18, -1], light: [0.3, 1.2, -1.0] }], ["Top lights", { view: [0, 1, 0.55], frame: [-85, 40, 42, 85, 56, 82], light: [0.3, 1.3, 0.6] }]] },
-  switch: { build: function (o) { return GEAR.unmanagedSwitch({ plugged: o.plugged }); }, view: [0.6, 0.4, 1], light: [0.6, 1.3, 0.9], frame: [-90, 0, -55, 80, 40, 120],
+  switch: { build: function (o) { return GEAR.unmanagedSwitch({ plugged: o.plugged, title: o.title, under: o.under }); }, view: [0.6, 0.4, 1], light: [0.6, 1.3, 0.9], frame: [-90, 0, -55, 80, 40, 120],
     views: [["Ports close-up", { view: [0.12, 0.22, 1], frame: [-58, 2, 46, 62, 34, 58] }]] },
   switch8: { build: function (o) { return OFF.desktopSwitch8({ plugged: o.plugged, cords: true }); }, view: [0.55, 0.42, 1], light: [0.6, 1.3, 0.9], frame: [-130, 0, -80, 130, 40, 260],
     views: [["Ports close-up", { focus: "panel:Ports", view: [0.12, 0.22, 1] }]] },

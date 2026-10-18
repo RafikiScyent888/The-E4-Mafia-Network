@@ -238,7 +238,7 @@ function guestForm(g, ctx, rerender) {
 
 /* "Office PC" reads "office PC" mid-sentence; "IP camera" stays as it is */
 function lowerFirst(s) { return /^[A-Z][a-z]+(\s|$)/.test(s) ? s[0].toLowerCase() + s.slice(1) : s; }
-const ACT_TEXT = { look: "Look at the plug", reseat: "Reseat the plug", unplug: "Unplug it", test: "Test with the cable tester", replace: "Swap in a new cable", tighten: "Tighten the connector" };
+const ACT_TEXT = { look: "Look at the plug", reseat: "Reseat the plug", unplug: "Unplug it", test: "Test with the cable tester", replace: "Swap in a new cable", crossover: "Swap in a crossover cable", tighten: "Tighten the connector" };
 function physicalPane(id, P, ctx, rerender) {
   const wrap = el("div", { class: "phys" });
   const S = physicalState(ctx.T.sim, id);
@@ -252,7 +252,7 @@ function physicalPane(id, P, ctx, rerender) {
     c.acts.forEach(function (a) {
       const label = c.cable === "c-coax" && a === "look" ? "Look at the connector" : ACT_TEXT[a];
       acts.appendChild(el("button", { type: "button", class: "btn ghost small", onclick: function () {
-        const r = ctx.act(a === "test" || a === "replace" ? { t: a, cable: c.cable } : { t: a, cable: c.cable, end: c.end });
+        const r = ctx.act(a === "test" || a === "replace" || a === "crossover" ? { t: a, cable: c.cable } : { t: a, cable: c.cable, end: c.end });
         physLog[id][key] = label + ": " + (r ? r.text : ""); rerender();
       } }, label));
     });

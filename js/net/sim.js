@@ -91,6 +91,7 @@ export class Sim {
       const p = x.sw.ports["GigabitEthernet0/" + e.port]; if (!p || p.shutdown) return false;
       const fs = this.speedSetting(e === c.a ? c.b : c.a); if (p.speed !== "auto" && fs !== "auto" && p.speed !== fs) return false;
     }
+    if (!this.pairsMeet(c)) return false;                   /* both ends transmitting on the same pair (TX/RX transposed): no link */
     const ij = [c.a, c.b].find(function (e) { return this.d[e.dev] && this.d[e.dev].kind === "injector"; }, this);
     if (ij) {  /* an injector passes the data pairs straight through: the link is end to end */
       const o = this.cableAt(ij.dev, POE_PAIR[ij.port]);   /* the cable in the same pair's other port */
@@ -99,9 +100,19 @@ export class Sim {
     }
     return this.on(c.a.dev) && this.on(c.b.dev);
   }
+  /* do the two ends' transmit pairs reach each other's receive pairs? A switch port's pairs are the other way round from a
+     computer's (MDI-X against MDI), so like to like needs a crossover cable, unless either end swaps its pairs by itself
+     (auto-MDIX: every modern port, a managed switch's port unless turned off, never an old 10/100 switch) */
+  pairsMeet(c) {
+    const auto = function (e) { const x = this.d[e.dev]; if (!x) return true; if (x.kind === "mswitch") { const p = x.sw.ports["GigabitEthernet0/" + e.port]; return !p || p.mdix !== false; } return x.mdix !== false; }.bind(this);
+    if (auto(c.a) || auto(c.b)) return true;
+    const mdix = function (e) { const k = this.d[e.dev].kind; return k === "switch" || k === "mswitch"; }.bind(this);
+    return (mdix(c.a) !== mdix(c.b)) === (c.wiring !== "crossover");
+  }
   speed(c) {   /* gigabit needs all four pairs; 100 Mb/s needs only 1-2 and 3-6; a speed fixed at either end is what the link runs at */
     if (!this.cableUp(c)) return 0;
     let sp = c.cond === "damaged" ? 100 : 1000;
+    [c.a, c.b].forEach(function (e) { const x = this.d[e.dev]; if (x && x.maxMbps) sp = Math.min(sp, x.maxMbps); }, this);   /* an old 10/100 device */
     if (c.kind === "cat6") [c.a, c.b].forEach(function (e) { const f = this.speedSetting(e); if (f !== "auto") sp = Math.min(sp, +f); }, this);
     return sp;
   }
@@ -125,9 +136,10 @@ export class Sim {
     for (const c of this.cablesOf(id)) {
       if (c.kind !== "cat6") continue;
       const me = c.a.dev === id ? c.a : c.b, far = c.a.dev === id ? c.b : c.a, fd = this.d[far.dev];
-      if (!/^\d+$/.test(me.port) || !me.seated || !far.seated || c.cond === "crushed" || (c.length || 0) > COPPER_MAX || !this.on(far.dev)) continue;
+      if (!/^\d+$/.test(me.port) || !me.seated || !far.seated || c.cond === "crushed" || (c.length || 0) > COPPER_MAX || !this.on(far.dev) || !this.pairsMeet(c)) continue;
       const m = (fd.kind === "router" || fd.kind === "rogue" ? fd.mac : fd.ifaces ? fd.ifaces[0].mac : "02-00-5e-" + (hash(far.dev) >>> 0).toString(16).padStart(8, "0").slice(0, 6).replace(/(..)(..)(..)/, "$1-$2-$3")).replace(/-/g, "");
       L["GigabitEthernet0/" + me.port] = { mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n };
+      if (fd.maxMbps) L["GigabitEthernet0/" + me.port].max = Math.min(L["GigabitEthernet0/" + me.port].max, fd.maxMbps);
     }
     return L;
   }
@@ -477,7 +489,8 @@ export class Sim {
     switch (act.t) {
       case "reseat": { const c = this.cable(act.cable), e = c[act.end]; if (c.kind === "coax") e.tight = true; else e.seated = true; res = { ok: true }; break; }
       case "unplug": { const c = this.cable(act.cable); c[act.end].seated = false; res = { ok: true }; break; }
-      case "replace": { const c = this.cable(act.cable); c.cond = "good"; c.a.seated = true; c.b.seated = true; if (c.kind === "coax") { c.a.tight = true; c.b.tight = true; } res = { ok: true }; break; }
+      case "crossover": { const c = this.cable(act.cable); c.cond = "good"; c.wiring = "crossover"; c.a.seated = true; c.b.seated = true; res = { ok: true }; break; }   /* a crossover patch cable in its place */
+      case "replace": { const c = this.cable(act.cable); c.cond = "good"; delete c.wiring; c.a.seated = true; c.b.seated = true; if (c.kind === "coax") { c.a.tight = true; c.b.tight = true; } res = { ok: true }; break; }
       case "tighten": { const c = this.cable(act.cable); c[act.end].tight = true; res = { ok: true }; break; }
       case "power": {
         const x = this.d[act.dev];

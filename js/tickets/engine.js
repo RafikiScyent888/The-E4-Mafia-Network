@@ -14,8 +14,8 @@ import { exec } from "../net/cmd.js";
 import { page, physical } from "../net/pages.js";
 import { rng, hash } from "../net/util.js";
 
-const STATE_CHANGING = { cmd: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1, router: 1, client: 1, rogue: 1, print: 1, speed: 1, outside: 1, rejoin: 1, pcprinter: 1, forget: 1, join: 1, injector: 1, tftp: 1 };   /* print, speed and outside change nothing, but they draw on the same counter as ping, so replay needs them */
-const PHYSICAL = { look: 1, test: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1 };
+const STATE_CHANGING = { cmd: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1, router: 1, client: 1, rogue: 1, print: 1, speed: 1, outside: 1, rejoin: 1, pcprinter: 1, forget: 1, join: 1, injector: 1, tftp: 1, crossover: 1 };   /* print, speed and outside change nothing, but they draw on the same counter as ping, so replay needs them */
+const PHYSICAL = { look: 1, test: 1, reseat: 1, unplug: 1, replace: 1, crossover: 1, tighten: 1, power: 1 };
 
 /* open a ticket on a seed; if a generated network ever failed to show its fault, move to the next seed */
 export function open(def, seed) {

@@ -153,9 +153,10 @@ test("undo takes back the last line typed to the switch, and the job replays exa
     assert.equal(JSON.stringify(K.sim.net), JSON.stringify(J.sim.net)); assert.equal(K.sim.n, J.sim.n); assert.equal(prompt(K.sim, "tech"), prompt(J.sim, "tech"));
     assert.deepEqual([K.checks, K.done, K.notes], [J.checks, J.done, J.notes]);
     if (!/#\s*$/.test(prompt(J.sim, "tech"))) run(J, [cli(""), cli(p.console), cli("enable"), cli(p.secret)]);   /* a job with no switch work (SO-J4) hasn't logged in */
+    const con = J.sim.cablesOf("tech").find((c) => c.kind === "console"), swId = con.a.dev === "tech" ? con.b.dev : con.a.dev, was = J.sim.d[swId].sw.hostname;   /* whichever switch the console cable is on (SO-J10 ends on the back office's) */
     B.act(J, cli("configure terminal")); B.act(J, cli("hostname TEMP"));
-    assert.equal(J.sim.d.msw.sw.hostname, "TEMP");
-    const gone = B.undo(J); assert.equal(gone.line, "hostname TEMP"); assert.equal(J.sim.d.msw.sw.hostname, p.hostname);
+    assert.equal(J.sim.d[swId].sw.hostname, "TEMP");
+    const gone = B.undo(J); assert.equal(gone.line, "hostname TEMP"); assert.equal(J.sim.d[swId].sw.hostname, was);
   }
 });
 
@@ -398,4 +399,228 @@ test("SO-J5: the banner on every login, the copy's real prompts and errors, the 
   const K = B.open(def, 5033);
   assert.equal(B.act(K, { t: "lay", a: E("tech", "ETH"), b: E("msw", "CONSOLE") }).result.ok, false);
   assert.equal(B.act(K, { t: "lay", a: E("tech", "USB-C"), b: E("msw", "5") }).result.ok, false);
+});
+
+test("SO-J6: the backup brought back; the tempting wrong ways fail the right line, for the right reason; other right ways pass", () => {
+  for (const s of seeds("SO-J6").slice(0, 60)) {
+    const def = byId["SO-J6"], J0 = B.open(def, s), p = J0.v.plan, sol = def.solve(J0.v, J0.sim), k = sol.findIndex((a) => a.line === "copy tftp: running-config");
+    const tryIt = (acts) => { const J = B.open(def, s); run(J, acts); return J; };
+    const intoStart = (then) => sol.slice(0, k).concat([cli("copy tftp: startup-config"), cli(J0.v.lapIp), cli(J0.v.backupName), cli("")], then);
+    assert.equal(line(tryIt([]), "restored").real.id, "box");
+    /* the backup: never fetched (the server off, or VLAN 1 left shut so the switch can't reach it); into startup only; a reload that saved over it */
+    let J = tryIt(sol.filter((a) => a.t !== "tftp"));
+    assert.equal(line(J, "restored").real.id, "factory", "the TFTP server never started");
+    J = tryIt(sol.slice(0, k).filter((a) => a.line !== "no shutdown").concat(sol.slice(k)));
+    assert.equal(line(J, "restored").real.id, "factory", "VLAN 1 left shut: the switch can't reach your laptop");
+    J = tryIt(intoStart([]));
+    assert.equal(line(J, "restored").real.id, "startup", "in the startup configuration, never reloaded");
+    J = tryIt(intoStart([cli("reload"), cli("yes"), cli("")]));
+    assert.equal(line(J, "restored").real.id, "factory", "the reload asked to save, and yes saved the factory settings over the backup");
+    J = tryIt(sol.concat([cli("configure terminal"), cli("interface gi0/2"), cli("no description"), cli("end"), cli("copy running-config startup-config"), cli("")]));
+    assert.equal(line(J, "restored").real.id, "part"); assert.match(line(J, "restored").ev, /interface Gi0\/2/);
+    /* the cables: a desk left out, the printer on another port (which the backup shuts) */
+    J = tryIt(sol.filter((a) => !(a.t === "lay" && a.b.dev === "pc") && a.t !== "pull"));   /* one cable fewer: your laptop's has another number */
+    assert.equal(line(J, "cabled").real.id, "none"); assert.equal(line(J, "keep").real.id, "pc");
+    J = tryIt(sol.map((a) => (a.t === "lay" && a.b.dev === "printer" ? { t: "lay", a: E("msw", "5"), b: a.b } : a)));
+    assert.equal(line(J, "cabled").real.id, "port", "the printer on port 5"); assert.equal(line(J, "keep").real.id, "print", "and port 5 is shut by the backup");
+    /* SSH: no keys (a file never carries them); the old key still remembered by the front desk PC */
+    J = tryIt(sol.filter((a) => !/crypto/.test(a.line || "")));
+    assert.equal(line(J, "ssh").real.id, "keys"); assert.ok(line(J, "restored").ok, "the configuration is the backup's all the same");
+    assert.match(B.act(J, pc("ssh " + p.user + "@" + p.ip)).out, /Connection refused/);
+    J = tryIt(sol.filter((a) => !/ssh-keygen/.test(a.line || "")));
+    assert.equal(line(J, "ssh").real.id, "known");
+    assert.match(B.act(J, pc("ssh " + p.user + "@" + p.ip)).out, /REMOTE HOST IDENTIFICATION HAS CHANGED/);
+    /* leaving: the laptop still cabled; nothing saved */
+    J = tryIt(sol.filter((a) => a.t !== "pull"));
+    assert.equal(line(J, "tidy").real.id, "plugged");
+    J = tryIt(sol.filter((a) => a.line !== "copy running-config startup-config"));
+    assert.equal(line(J, "saved").real.id, "never");
+    /* other right ways: into startup and reloaded (no to saving), then the keys; the laptop on the router's LAN 2 */
+    J = tryIt(intoStart([cli("reload"), cli("no"), cli(""), cli(p.console), cli("enable"), cli(p.secret)].concat(sol.slice(k + 4))));
+    assert.ok(solved(J), "into startup, then reload, seed " + s);
+    J = tryIt(intoStart([cli("reload"), cli("no"), cli(""), cli(p.console), cli("enable"), cli(p.secret)].concat(sol.slice(k + 4).filter((a) => !/crypto/.test(a.line || "")))));
+    assert.equal(line(J, "ssh").real.id, "keys", "into startup and reloaded: still no keys, a file never carries them"); assert.ok(line(J, "restored").ok);
+    const viaRouter = sol.map((a) => (a.t === "lay" && a.a.dev === "tech" && a.a.port === "ETH" ? { t: "lay", a: E("tech", "ETH"), b: E("router", "LAN 2") } : a));
+    J = tryIt(viaRouter); assert.ok(solved(J), "the laptop on the router's LAN 2, seed " + s);
+  }
+});
+
+test("SO-J6: copy tftp: asks as the real thing does; a file brings back hashes, not passwords; the new key differs", () => {
+  const def = byId["SO-J6"], J = B.open(def, 5066), p = J.v.plan, sol = def.solve(J.v, J.sim), k = sol.findIndex((a) => a.line === "copy tftp: running-config");
+  run(J, sol.slice(0, k));
+  B.act(J, cli("copy tftp: running-config")); assert.equal(prompt(J.sim, "tech"), "Address or name of remote host []? ");
+  B.act(J, cli(J.v.lapIp)); assert.equal(prompt(J.sim, "tech"), "Source filename []? ");
+  B.act(J, cli("no-such-file")); assert.equal(prompt(J.sim, "tech"), "Destination filename [running-config]? ");
+  let r = B.act(J, cli("")); assert.match(r.out, /%Error opening tftp:\/\/[\d.]+\/no-such-file \(No such file or directory\)/);
+  assert.equal(J.sim.d.msw.sw.hostname, "Switch");
+  run(J, sol.slice(k, k + 4));
+  const sw = J.sim.d.msw.sw;
+  assert.equal(sw.hostname, p.hostname); assert.match(sw.enableSecret, /^\$1\$/, "the secret comes back as its hash");
+  assert.ok(J.sim.d.tech.tftp.log.some((l) => /^Read request from .* for .*: sent \d+ bytes$/.test(l)));
+  assert.equal(sw.rsa, 0, "no keys in a file");
+  assert.equal(sw.ports["GigabitEthernet0/4"].shutdown, true, "the spare port your laptop was on shuts as the backup lands");
+  /* the hashes still let the office's passwords in */
+  run(J, [cli("end"), cli("disable"), cli("enable")]); assert.equal(secretNext(J.sim, "tech"), true);
+  B.act(J, cli(p.secret)); assert.equal(prompt(J.sim, "tech"), p.hostname + "#");
+  run(J, sol.slice(k + 4));
+  B.act(J, pc("ssh " + p.user + "@" + p.ip)); r = B.act(J, pc(p.userPw)); assert.equal(prompt(J.sim, "pc"), p.hostname + ">", "the user's hashed secret lets the office's login in");
+  assert.notEqual(J.sim.d.pc.knownHosts[p.ip], undefined, "the new key, added after ssh-keygen -R");
+});
+
+test("SO-J7: the new hire's desk; the tempting wrong ways fail the right line, for the right reason; other right ways pass", () => {
+  for (const s of seeds("SO-J7").slice(0, 60)) {
+    const def = byId["SO-J7"], J0 = B.open(def, s), p = J0.v.plan, sol = def.solve(J0.v, J0.sim);
+    const tryIt = (acts) => { const J = B.open(def, s); run(J, acts); return J; };
+    const save = sol.findIndex((a) => a.line === "copy running-config startup-config"), lap = sol.findIndex((a) => a.t === "lay" && a.a.dev === "tech");
+    assert.equal(line(tryIt([]), "desk").real.id, "box");
+    /* where it goes: another room; straight into the router */
+    let J = tryIt([{ t: "place", dev: "hire", room: "manager" }]);
+    assert.equal(line(J, "desk").real.id, "room");
+    J = tryIt([sol[0], { t: "lay", a: E("router", "LAN 2"), b: E("hire", "NIC") }]);
+    assert.equal(line(J, "desk").real.id, "router", "online through the router, but not on the switch"); assert.ok(line(J, "online").ok, "it does get online that way");
+    /* the port: still shut; no description; another wording */
+    J = tryIt(sol.filter((a) => a.line !== "no shutdown"));
+    assert.equal(line(J, "port").real.id, "shut"); assert.equal(line(J, "online").real.id, "link");
+    J = tryIt(sol.filter((a) => !/^description /.test(a.line || "")));
+    assert.equal(line(J, "port").real.id, "none");
+    J = tryIt(sol.map((a) => (/^description /.test(a.line || "") ? Object.assign({}, a, { line: "description NEW-PC" }) : a)));
+    assert.equal(line(J, "port").real.id, "wrong");
+    /* a range opened instead of the one port: every spare live */
+    J = tryIt(sol.map((a) => (a.line === "interface gi0/5" ? Object.assign({}, a, { line: "interface range gi0/4 - 24" }) : a)));
+    assert.equal(line(J, "spares").real.id, "open"); assert.ok(line(J, "online").ok);
+    /* saved, but the backup left as it was; a running copy taken before saving; nothing saved at all */
+    J = tryIt(sol.slice(0, lap));
+    assert.equal(line(J, "backup").real.id, "stale", "the change saved, the backup not refreshed"); assert.ok(line(J, "saved").ok);
+    J = tryIt(sol.slice(0, save).concat(sol.slice(lap, lap + 2), [cli("copy running-config tftp:"), cli(J0.v.lapIp), cli("")], [cli("copy running-config startup-config"), cli("")]));
+    assert.ok(line(J, "backup").ok, "a running copy taken just before the save, nothing changed between: it is what's saved");
+    J = tryIt(sol.slice(0, save).concat(sol.slice(lap, lap + 2), [cli("copy running-config tftp:"), cli(J0.v.lapIp), cli(""), cli("configure terminal"), cli("interface gi0/5"), cli("description " + p.desc.hire + " "), cli("description TEMP"), cli("description " + p.desc.hire), cli("speed 100"), cli("end"), cli("copy running-config startup-config"), cli("")]));
+    assert.equal(line(J, "backup").real.id, "running", "a running copy taken with changes unsaved, then another change saved: not what the switch comes back with");
+    J = tryIt(sol.filter((a, i) => i !== save && !(i === save + 1)));
+    assert.equal(line(J, "saved").real.id, "since");
+    /* the laptop left on the network */
+    J = tryIt(sol.filter((a) => a.t !== "pull"));
+    assert.equal(line(J, "spares").real.id, "plugged");
+    /* another right way: the laptop on a spare switch port opened but not saved, then shut again */
+    const viaPort = sol.slice(0, lap).concat([cli("configure terminal"), cli("interface gi0/6"), cli("no shutdown"), cli("end"), { t: "lay", a: E("tech", "ETH"), b: E("msw", "6") }], sol.slice(lap + 1, -1), [{ t: "pull", cable: "c-run-" + (J0.v.runs + 2) }, cli("configure terminal"), cli("interface gi0/6"), cli("shutdown"), cli("end")]);
+    J = tryIt(viaPort); assert.ok(solved(J), "the laptop on a spare port opened without saving, seed " + s);
+  }
+});
+
+test("SO-J8: the printer moved; the tempting wrong ways fail the right line, for the right reason; other right ways pass", () => {
+  for (const s of seeds("SO-J8").slice(0, 60)) {
+    const def = byId["SO-J8"], J0 = B.open(def, s), p = J0.v.plan, sol = def.solve(J0.v, J0.sim), np = J0.v.newPort;
+    const tryIt = (acts) => { const J = B.open(def, s); run(J, acts); return J; };
+    const drop = (acts, re) => acts.filter((a) => !re.test(a.line || ""));
+    let J = tryIt([]);
+    assert.equal(line(J, "printer").real.id, "shut"); assert.match(line(J, "printer").ev, new RegExp("Gi0/" + np + ", where the printer's run lands, is disabled"));
+    assert.equal(line(J, "spares").real.id, "old");
+    /* the port opened with nothing else: the printer links, but the duplex is wrong and the description missing */
+    const k = sol.findIndex((a) => a.line === "interface gi0/" + np);
+    J = tryIt(sol.slice(0, k + 1).concat([cli("no shutdown"), cli("end")]));
+    assert.ok(line(J, "printer").ok, "opened: the printer prints (slowly)"); assert.equal(line(J, "duplex").real.id, "auto"); assert.equal(line(J, "desc").real.id, "none");
+    /* the settings carried over, the old port left as it was: still named for the printer, still live */
+    const old = sol.findIndex((a) => a.line === "interface gi0/3");
+    J = tryIt(sol.slice(0, old).concat(sol.slice(old + 5)));
+    assert.equal(line(J, "desc").real.id, "stale"); assert.match(line(J, "desc").ev, /Gi0\/3 is named .*empty wall jack/); assert.equal(line(J, "spares").real.id, "old");
+    J = tryIt(drop(sol, /^no description$/));
+    assert.equal(line(J, "desc").real.id, "stale", "shut, but still named for the printer"); assert.ok(line(J, "spares").ok);
+    J = tryIt(sol.filter((a, i) => !(i === old + 4)));
+    assert.equal(line(J, "spares").real.id, "old", "its label taken off, but left live"); assert.ok(line(J, "desc").ok);
+    /* half duplex forced; a speed the printer can't run */
+    J = tryIt(sol.map((a) => (a.line === "duplex full" ? cli("duplex half") : a)));
+    assert.equal(line(J, "duplex").real.id, "half");
+    J = tryIt(sol.map((a) => (a.line === "speed 100" ? cli("speed 1000") : a)));
+    assert.equal(line(J, "printer").real.id, "link"); assert.equal(line(J, "duplex").real.id, "link");
+    /* the backup left behind */
+    J = tryIt(sol.slice(0, sol.findIndex((a) => a.t === "lay")));
+    assert.equal(line(J, "backup").real.id, "stale"); assert.ok(line(J, "saved").ok);
+    /* a range shut that took in the front desk */
+    J = tryIt(sol.map((a) => (a.line === "interface gi0/3" ? cli("interface range gi0/2 - 3") : a)));
+    assert.equal(line(J, "spares").real.id, "used"); assert.equal(line(J, "keep").real.id, "pc");
+    /* another right way: the old run pulled, the printer's run laid into port 3 where its settings already are (no switch change at all) */
+    const oldRun = J0.sim.cablesOf("ojack")[0].id;
+    J = tryIt([{ t: "pull", cable: oldRun }, { t: "pull", cable: "c-run-cabler" }, { t: "lay", a: E("msw", "3"), b: E("printer", "NET") }]);
+    assert.ok(solved(J), "the printer's run into its old port, seed " + s);
+  }
+});
+
+test("SO-J9: the cable map; the tone and the probe find the runs; the tempting wrong ways fail the right line; other right ways pass", () => {
+  for (const s of seeds("SO-J9").slice(0, 60)) {
+    const def = byId["SO-J9"], J0 = B.open(def, s), p = J0.v.plan, sol = def.solve(J0.v, J0.sim), P = J0.v.P, sp = (id) => J0.v.set[id].replace("GigabitEthernet0/", "");
+    const tryIt = (acts) => { const J = B.open(def, s); run(J, acts); return J; };
+    const map = sol.find((a) => a.t === "cablemap"), cords = sol.filter((a) => a.t === "lay");
+    /* the probe hears nothing until a run is toned; toned at the front desk, it sounds at that run's panel port */
+    let J = B.open(def, s);
+    assert.match(B.act(J, { t: "probe" }).text, /Nothing to hear/);
+    B.act(J, { t: "tone", cable: "c-pp-pc" }); assert.match(B.act(J, { t: "probe" }).text, new RegExp("back of port " + P.pc + "\\b"));
+    const emptyBack = ["17", "18", "19", "20", "21", "22", "23", "24"][s % 8];   /* runs go on 1 to 16: the back of an empty port, punched down with nothing */
+    assert.equal(B.act(J, { t: "lay", a: E("pp", emptyBack + "R"), b: E("msw", "24") }).result.ok, false, "the back of the panel takes no cord, even at an empty port");
+    J = tryIt(cords.slice(0, 1)); assert.equal(J.sim.net.cables.find((c) => c.a.dev === "pp" && c.a.port === P.pc).length, 0.5, "a patch cord in the rack is half a metre");
+    assert.equal(line(B.open(def, s), "patched").real.id, "none");
+    /* a desk patched to a spare port (shut); to the router; two desks on each other's ports */
+    J = tryIt([{ t: "lay", a: E("pp", P.pc), b: E("msw", "4") }].concat(cords.slice(1), [map]));
+    assert.equal(line(J, "patched").real.id, "shut"); assert.equal(line(J, "ports").real.id, "spare");
+    J = tryIt([{ t: "lay", a: E("pp", P.pc), b: E("router", "LAN 2") }].concat(cords.slice(1), [map]));
+    assert.equal(line(J, "patched").real.id, "notsw", "online through the router, but not on the switch");
+    J = tryIt([{ t: "lay", a: E("pp", P.pc), b: E("msw", sp("printer")) }, { t: "lay", a: E("pp", P.printer), b: E("msw", sp("pc")) }, cords[2], map]);
+    assert.equal(line(J, "ports").real.id, "swap", "the front desk and the printer on each other's ports");
+    /* the map: none; the empty jacks left out; a room wrong; a room for an empty port */
+    J = tryIt(cords); assert.equal(line(J, "map").real.id, "none"); assert.ok(line(J, "patched").ok && line(J, "ports").ok);
+    const m2 = Object.assign({}, map.map); delete m2[P.mjack];
+    J = tryIt(cords.concat([{ t: "cablemap", map: m2 }])); assert.equal(line(J, "map").real.id, "missing", "the meeting room's empty jack left out");
+    J = tryIt(cords.concat([{ t: "cablemap", map: Object.assign({}, map.map, { [P.pc]: "open", [P.hire]: "front" }) }])); assert.equal(line(J, "map").real.id, "wrong");
+    const empty = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"].find((n) => !Object.values(P).includes(n));
+    J = tryIt(cords.concat([{ t: "cablemap", map: Object.assign({}, map.map, { [empty]: "front" }) }])); assert.equal(line(J, "map").real.id, "extra");
+    /* a spare opened and left */
+    J = tryIt(sol.concat([cli(""), cli(p.console), cli("enable"), cli(p.secret), cli("configure terminal"), cli("interface gi0/24"), cli("no shutdown"), cli("end")]));
+    assert.equal(line(J, "spares").real.id, "open");
+    /* another right way: the front desk patched to a spare, that port set up for it and the old one cleared and shut, saved, the backup refreshed */
+    const lapIp = J0.sim.offer("router", J0.sim.d.tech.ifaces[0].mac, null), old = sp("pc");
+    const alt = [{ t: "lay", a: E("pp", P.pc), b: E("msw", "4") }].concat(cords.slice(1), [map, cli(""), cli(p.console), cli("enable"), cli(p.secret), cli("configure terminal"),
+      cli("interface gi0/4"), cli("description " + p.desc.pc), cli("no shutdown"), cli("interface gi0/" + old), cli("no description"), cli("shutdown"), cli("end"), cli("copy running-config startup-config"), cli(""),
+      { t: "lay", a: E("tech", "ETH"), b: E("router", "LAN 2") }, { t: "tftp", dev: "tech", on: true }, cli("copy startup-config tftp:"), cli(lapIp), cli("")]);
+    J = tryIt(alt); assert.equal(line(J, "spares").real.id, "plugged", "your laptop still on the router");
+    J = tryIt(alt.concat([{ t: "pull", cable: J.sim.cablesOf("tech").find((c) => c.kind === "cat6").id }])); assert.ok(solved(J), "the front desk moved to another port and set up there, seed " + s);
+  }
+});
+
+test("SO-J10: the fibre to the back office; the wrong modules and the tempting wrong ways fail the right line; other right ways pass", () => {
+  for (const s of seeds("SO-J10").slice(0, 60)) {
+    const def = byId["SO-J10"], J0 = B.open(def, s), p = J0.v.plan, sol = def.solve(J0.v, J0.sim);
+    const tryIt = (acts) => { const J = B.open(def, s); run(J, acts); return J; };
+    const mod = (dev, type) => sol.map((a) => (a.t === "sfp" && a.dev === dev ? Object.assign({}, a, { type }) : a));
+    let J = B.open(def, s);
+    assert.equal(line(J, "fibre").real.id, "box");
+    assert.equal(B.act(J, { t: "place", dev: "bsw", room: "closet" }).result.ok, false, "the back office switch belongs in the back office");
+    run(J, sol.slice(0, 1));
+    assert.equal(B.act(J, { t: "lay", a: E("msw", "SFP1"), b: E("bsw", "SFP1") }).result.ok, false, "no module, no fibre: its plug goes into a module");
+    assert.equal(B.act(J, { t: "lay", a: E("msw", "SFP1"), b: E("bsw", "3") }).result.ok, false, "fibre from a slot to a copper port");
+    assert.equal(B.act(J, { t: "lay", a: E("tech", "USB-C"), b: E("bsw", "CONSOLE") }).result.ok, false, "the console cable doesn't reach the meeting room");
+    /* the modules: single-mode at either end or both, the SFP+ at either end */
+    J = tryIt(mod("msw", "1000BASE-LX")); assert.equal(line(J, "fibre").real.id, "smf"); assert.equal(line(J, "back").real.id, "addr");
+    J = tryIt(mod("bsw", "1000BASE-LX")); assert.equal(line(J, "fibre").real.id, "smf");
+    J = tryIt(mod("msw", "10GBASE-SR")); assert.equal(line(J, "fibre").real.id, "plus");
+    J = tryIt(mod("bsw", "10GBASE-SR")); assert.equal(line(J, "fibre").real.id, "plus");
+    /* the closet's fibre port: left shut; opened with no name */
+    J = tryIt(sol.filter((a) => a.line !== "no shutdown")); assert.equal(line(J, "fibre").real.id, "shut"); assert.equal(line(J, "port").real.id, "shut");
+    J = tryIt(sol.filter((a) => !/^description /.test(a.line || ""))); assert.equal(line(J, "port").real.id, "none"); assert.ok(line(J, "fibre").ok);
+    /* the back office PC on the closet switch instead (a spare, shut) */
+    J = tryIt(sol.map((a) => (a.t === "lay" && a.b.dev === "mpc" ? { t: "lay", a: E("msw", "24"), b: E("mpc", "NIC") } : a))); assert.equal(line(J, "back").real.id, "cable");
+    /* the new switch: never named; an enable password, not a secret; a console password never asked for */
+    const bs = sol.slice(sol.findIndex((a) => a.t === "lay" && a.b.dev === "bsw" && a.b.port === "CONSOLE"));
+    const head = sol.slice(0, sol.length - bs.length);
+    J = tryIt(head.concat(bs.filter((a) => !/^hostname /.test(a.line || "")))); assert.equal(line(J, "bsw").real.id, "factory");
+    J = tryIt(head.concat(bs.map((a) => (/^enable secret /.test(a.line || "") ? cli("enable password " + p.secret) : a)))); assert.equal(line(J, "bsw").real.id, "secret"); assert.match(line(J, "bsw").ev, /plain text/);
+    J = tryIt(head.concat(bs.filter((a) => a.line !== "login"))); assert.equal(line(J, "bsw").real.id, "con");
+    /* saving: the new switch never saved; the closet switch's change left unsaved */
+    J = tryIt(head.concat(bs.slice(0, -2))); assert.equal(line(J, "saved").real.id, "bnever");
+    const k = sol.findIndex((a) => a.line === "copy running-config startup-config");
+    J = tryIt(sol.filter((a, i) => i !== k && i !== k + 1 && !(a.t === "tftp") && !/tftp:/.test(a.line || ""))); assert.equal(line(J, "saved").real.id, "msince");
+    /* the backup not refreshed */
+    J = tryIt(sol.filter((a, i) => !(a.t === "tftp") && !/^copy startup-config tftp:/.test(a.line || "") && a.line !== J0.v.lapIp && !(i === sol.findIndex((x) => x.line === J0.v.lapIp) + 1)));
+    assert.equal(line(J, "backup").real.id, "stale");
+    /* another right way: SFP2 at the closet end (gi0/26), SFP3 at the back office's */
+    const alt = sol.map((a) => (a.t === "sfp" && a.dev === "msw" ? Object.assign({}, a, { slot: "SFP2" }) : a.t === "sfp" && a.dev === "bsw" ? Object.assign({}, a, { slot: "SFP3" }) : a.t === "lay" && a.a.port === "SFP1" ? { t: "lay", a: E("msw", "SFP2"), b: E("bsw", "SFP3") } : a.line === "interface gi0/25" ? cli("interface gi0/26") : a));
+    J = tryIt(alt); assert.ok(solved(J), "the fibre on other slots, seed " + s);
+  }
 });

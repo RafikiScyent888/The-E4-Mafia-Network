@@ -49,7 +49,8 @@ export const OFFICE_LAYOUT = {
   mjack: { px: 870, py: 400, room: "meeting" },
   /* the back office on its own managed switch, over fibre (SO-10): where the old 5-port stood in SO-04 */
   bsw: { x: 740, y: 170, px: 850, py: 355, room: "meeting", lab: "left" },
-  ojack: { px: 650, py: 470, room: "open" }   /* SO-14: the open-plan jack the printer was moved away from */
+  ojack: { px: 650, py: 470, room: "open" },   /* SO-14: the open-plan jack the printer was moved away from */
+  hire: { x: 110, y: 440, px: 400, py: 460, room: "open" }   /* SO-J7: the new hire's desk in the open-plan office */
 };
 export const OFFICE_ROOM_BOX = { closet: [30, 30, 300, 370], front: [300, 30, 640, 270], open: [300, 270, 760, 520], manager: [640, 30, 980, 270], meeting: [760, 270, 980, 520] };
 
@@ -67,7 +68,8 @@ export function makeOffice(seed) {
     hostname: biz.tag + "-CLOSET-SW1", ip: prefix + "." + swHost, mask: mask, gw: gw, domain: biz.name.split(/[ &]/)[0].toLowerCase().replace(/[^a-z]/g, "") + ".lan",
     secret: r.pick(SECRETS), console: r.pick(CONSOLES), user: r.pick(USERS), userPw: r.pick(USERPW),
     /* the office's port descriptions, by what's plugged in (SO-J3) */
-    desc: { router: "UPLINK-ROUTER", pc: "FRONT-DESK-PC", printer: "OFFICE-PRINTER" },
+    desc: { router: "UPLINK-ROUTER", pc: "FRONT-DESK-PC", printer: "OFFICE-PRINTER", hire: rng(seed ^ 0x41e3).pick(["ACCOUNTS-PC", "BOOKKEEPER-PC", "PAYROLL-PC", "SALES-DESK-2", "ADMIN-DESK-2"]), fibre: "BACK-OFFICE-FIBRE" },   /* hire: the new hire's desk (SO-J7), from a stream of its own; fibre: the closet switch's end of the back office's fibre (SO-J10) */
+    bswHost: biz.tag + "-BACK-SW1",   /* the back office's own switch (SO-J10) */
     ipam: ipamPlan(seed, prefix),
     /* SO-J5: the warning the office's insurer wants on every login, and the name the baseline copy is kept under */
     banner: "Authorized access only. This device belongs to " + biz.name + ". Disconnect now if you are not authorized.",

@@ -7,21 +7,25 @@
    as they really are. Each line is an ordered list of causes, as on the
    home jobs, so Mason's third rung can strike the ones the network has
    ruled out and leave two. None of it ever says what to type. */
-import { makeOffice } from "../net/office.js";
-import { Sim } from "../net/sim.js";
+import { makeOffice, OFFICE_RUN } from "../net/office.js";
+import { Sim, SFP_MODULES, swPort } from "../net/sim.js";
 import { exec } from "../net/cmd.js";
-import { unsaved, duplexEnds, PORT_NAMES, configText } from "../net/swcli.js";
+import { unsaved, duplexEnds, PORT_NAMES, configText, newSwitch, hostKey, pwOk } from "../net/swcli.js";
 import { online } from "./jobs.js";
 import { checkSheet, parseBlock } from "../net/ipam.js";
-import { ip2n, n2ip } from "../net/util.js";
+import { ip2n, n2ip, rng, mac } from "../net/util.js";
 
 const C = function (id, on, text, not, ev, skip) { return { id: id, on: !!on, text: text, not: not, ev: ev, skip: !!skip }; };
 const E = function (dev, port) { return { dev: dev, port: port }; };
 const cli = function (line) { return { t: "cmd", dev: "tech", line: line, cli: true }; };
 const SW = function (sim) { return sim.d.msw.sw; };
 const consoleCable = function (sim) { return sim.cablesOf("msw").find(function (c) { return c.kind === "console"; }) || null; };
-/* the cable from a device to one of the managed switch's numbered ports, or null */
-const onMsw = function (sim, id) { return sim.cablesOf(id).find(function (c) { const e = c.a.dev === "msw" ? c.a : c.b.dev === "msw" ? c.b : null; return e && /^\d+$/.test(e.port); }) || null; };
+/* the cable from a device to one of the managed switch's numbered ports, or null; through a patch panel (SO-J9), the path from the
+   device to the switch port its run is patched to */
+const onMsw = function (sim, id) {
+  for (const c0 of sim.cablesOf(id)) { const c = sim.panelEnd(c0) ? sim.viaPanel(c0) : c0; if (!c) continue; const e = c.a.dev === "msw" ? c.a : c.b.dev === "msw" ? c.b : null; if (e && /^\d+$/.test(e.port)) return c; }
+  return null;
+};
 const printOk = function (sim) { const ip = sim.d.printer.ifaces[0].cfg.ip, r = sim.route("pc", ip); return !!(r.local && r.owner.indexOf("printer") >= 0); };
 
 /* ---------------------------------------------------------------- the lines both jobs share */
@@ -58,7 +62,7 @@ function secretCauses(sim, v) {
   return [boxCause(sim),
     C("none", !sw.enableSecret && !sw.enablePassword, "Anyone at the console can type enable and change anything", "Privileged mode is protected.", "enable goes straight to privileged mode, with no password."),
     C("plain", !sw.enableSecret && !!sw.enablePassword, "Only an enable password is set: it sits in the configuration as plain text", "An enable secret is set, stored as a hash.", "show running-config shows the enable password in plain text."),
-    C("wrong", !!sw.enableSecret && sw.enableSecret !== v.plan.secret, "An enable secret is set, but it isn't the one in the office's records", "The enable secret is the office's.", "The office's enable secret doesn't open privileged mode.")];
+    C("wrong", !!sw.enableSecret && !pwOk(sw.enableSecret, v.plan.secret), "An enable secret is set, but it isn't the one in the office's records", "The enable secret is the office's.", "The office's enable secret doesn't open privileged mode.")];
 }
 function consoleCauses(sim, v) {
   const con = SW(sim).con;
@@ -66,7 +70,7 @@ function consoleCauses(sim, v) {
     C("none", !con.password, "The console line has no password", "The console line has a password.", "line con 0 has no password."),
     C("nologin", !!con.password && !con.login, "The console line has a password, but never asks for it", "The console line asks for its password.", "Log out of the console, press RETURN: it goes straight in."),
     C("local", con.login === "local", "The console line checks user names the switch doesn't use for it, not the console password", "The console checks its own password.", "line con 0 is set to login local."),
-    C("wrong", !!con.password && con.password !== v.plan.console, "The console asks for a password, but not the one in the office's records", "The console password is the office's.", "The office's console password isn't accepted.")];
+    C("wrong", !!con.password && !pwOk(con.password, v.plan.console), "The console asks for a password, but not the one in the office's records", "The console password is the office's.", "The office's console password isn't accepted.")];
 }
 function keepCauses(sim) {
   return [
@@ -170,7 +174,7 @@ function sshCauses(sim, v) {
     C("telnet", /^(telnet|all)$/.test(vty.transport), "The remote lines still take Telnet, which sends everything in the clear", "Telnet is off.", "telnet from the front desk PC still connects, or SSH is refused."),
     C("off", vty.transport === "none", "The remote lines take no logins at all", "The remote lines take SSH.", "ssh from the front desk PC: connection refused."),
     C("login", vty.login !== "local", "The remote lines don't check user names", "The remote lines check user names.", "ssh from the front desk PC can't log in."),
-    C("user", sw.users[v.plan.user] !== v.plan.userPw, "The office's user name isn't on the switch with its password", "The office's user is on the switch.", "ssh as the office's user: permission denied.")];
+    C("user", !pwOk(sw.users[v.plan.user], v.plan.userPw), "The office's user name isn't on the switch with its password", "The office's user is on the switch.", "ssh as the office's user: permission denied.")];
 }
 const SO2 = {
   id: "SO-J2", level: "office", title: "Remote management: an address, SSH only",
@@ -236,7 +240,7 @@ const SO2 = {
 };
 
 /* ---------------------------------------------------------------- SO-J3 */
-const WHO = { router: "the router", pc: "the front desk PC", printer: "the printer" };
+const WHO = { router: "the router", pc: "the front desk PC", printer: "the printer", hire: "the new hire's PC" };
 /* the managed switch's port a device is cabled to ("GigabitEthernet0/3"), or null */
 const portOf = function (sim, id) { const c = onMsw(sim, id); if (!c) return null; return "GigabitEthernet0/" + (c.a.dev === "msw" ? c.a.port : c.b.port); };
 const shortPort = function (n) { return n.replace("GigabitEthernet", "Gi"); };
@@ -264,7 +268,7 @@ function printerCauses(sim) {
 /* the switch's ports: the ones in use (by whose device), a port in use shut down, a spare copper port live, a spare fibre slot live */
 function spares(sim) {
   const sw = SW(sim), used = {};
-  ["router", "pc", "printer"].forEach(function (id) { const n = portOf(sim, id); if (n) used[n] = id; });
+  ["router", "pc", "printer", "hire"].forEach(function (id) { const n = sim.d[id] && portOf(sim, id); if (n) used[n] = id; });   /* the new hire's desk once there is one (SO-J7) */
   const cut = Object.keys(used).find(function (n) { return sw.ports[n].shutdown; });
   const open = PORT_NAMES.find(function (n) { return !used[n] && !sw.ports[n].sfp && !sw.ports[n].shutdown; });
   const sfp = PORT_NAMES.find(function (n) { return !used[n] && sw.ports[n].sfp && !sw.ports[n].shutdown; });
@@ -571,4 +575,601 @@ const SO5 = {
   }
 };
 
-export const OFFICE_JOBS = [SO1, SO2, SO3, SO4, SO5];
+/* ---------------------------------------------------------------- SO-J6 */
+/* the switch died overnight; the supplier's replacement, the same model, is in its box. The backup from SO-J5 is on your
+   laptop. A file brings back every setting but the SSH keys (they never leave a switch), and the front desk PC remembers
+   the old switch's key */
+const PORT_FOR = { router: "GigabitEthernet0/1", pc: "GigabitEthernet0/2", printer: "GigabitEthernet0/3" };   /* as the backup describes them (SO-J3) */
+const capFirst = function (t) { return t.charAt(0).toUpperCase() + t.slice(1); };
+/* the part of a configuration a line belongs to, as a technician would name it */
+function sectionOf(lines, i) {
+  let k = Math.min(i, lines.length - 1); while (k > 0 && (/^\s/.test(lines[k]) || lines[k] === "!")) k--;   /* back to the line that opens its part */
+  const t = lines[k] || "";
+  if (/^hostname/.test(t)) return "the switch's name";
+  if (/^enable/.test(t)) return "the enable secret";
+  if (/^username/.test(t)) return "the remote login's user";
+  if (/^ip domain-name/.test(t)) return "the domain name";
+  if (/^interface Vlan1/.test(t)) return "VLAN 1's address";
+  if (/^interface /.test(t)) return "interface " + shortPort(t.replace(/^interface /, ""));
+  if (/^ip default-gateway/.test(t)) return "the default gateway";
+  if (/^banner/.test(t)) return "the banner";
+  if (/^line con/.test(t)) return "the console line";
+  if (/^line vty/.test(t)) return "the remote (vty) lines";
+  return "a line near " + (t.trim() || "the end");
+}
+function firstDiff(a, b) { const A = a.split("\n"), Bl = b.split("\n"); for (let i = 0; i < Math.max(A.length, Bl.length); i++) if (A[i] !== Bl[i]) return sectionOf(i < A.length ? A : Bl, i); return null; }
+function restoredCauses(sim, v) {
+  const sw = SW(sim), run = configText(sw), st = configText(sw, "startup"), want = v.backup;
+  return [boxCause(sim),
+    C("factory", sw.hostname === "Switch" && st !== want, "None of the backup is on the switch yet: it's still on its factory settings", "The backup has reached the switch.", "The prompt still says Switch."),
+    C("startup", st === want && run !== want, "The backup is in the startup configuration, but the switch is still running what it started with: a saved configuration takes effect only when the switch starts", "What's running is the backup.", "show startup-config is the backup; show running-config isn't."),
+    C("part", run !== want, "Part of what's running isn't as the backup has it", "What's running is the backup, line for line.", "show running-config: " + (firstDiff(run, want) || "a line") + " isn't as the backup has it.")];
+}
+function cabledCauses(sim, v) {
+  const ids = ["router", "pc", "printer"], miss = ids.find(function (id) { return !onMsw(sim, id); }), wrong = ids.find(function (id) { return onMsw(sim, id) && portOf(sim, id) !== PORT_FOR[id]; });
+  return [boxCause(sim),
+    C("none", !!miss, "Something that was on the old switch isn't cabled to the new one", "The router and both desks are cabled to the new switch.", miss ? capFirst(WHO[miss]) + " isn't cabled to the new switch." : ""),
+    C("port", !!wrong, "A device is on another port from the one the backup sets up for it", "Each is on the port the backup sets up for it.", wrong ? capFirst(WHO[wrong]) + " is on " + shortPort(portOf(sim, wrong)) + "; the backup describes " + shortPort(PORT_FOR[wrong]) + " as " + v.plan.desc[wrong] + "." : "")];
+}
+function sshBackCauses(sim, v) {
+  const sw = SW(sim), p = v.plan, r = sim.route("pc", p.ip), kh = sim.d.pc.knownHosts || {}, vty = sw.vty;
+  return [boxCause(sim),
+    C("reach", !(r.local && r.owner.indexOf("msw") >= 0), "The front desk PC can't reach the switch at its management address", "The front desk PC reaches it.", "ping from the front desk PC: no reply from the switch."),
+    C("keys", !sw.rsa, "The switch has no SSH keys: a configuration file never carries them", "It has SSH keys of its own.", "ssh from the front desk PC: connection refused."),
+    C("short", !!sw.rsa && sw.rsa < 768, "Its keys are too short for SSH version 2 (768 bits or more)", "Its keys are long enough for SSH version 2.", "ssh from the front desk PC is turned away: the switch offers only the old SSH version 1."),
+    C("lines", !(/^(ssh|all)$/.test(vty.transport) && vty.login === "local" && pwOk(sw.users[p.user], p.userPw)), "The remote lines don't take the office's SSH login", "The remote lines take the office's SSH login.", "ssh from the front desk PC can't log in with the office's user."),
+    C("known", !!kh[p.ip] && kh[p.ip] !== hostKey(sw), "The front desk PC remembers the old switch's key, and stops at the new one's", "The front desk PC doesn't hold the old switch's key.", "ssh from the front desk PC: REMOTE HOST IDENTIFICATION HAS CHANGED, and it stops.")];
+}
+const SO6 = {
+  id: "SO-J6", level: "office", title: "A failed switch, rebuilt from its backup",
+  already: [],
+  start(seed) {
+    const b = SO5.start(seed), sim = b.sim, p = b.v.plan;
+    for (const a of SO5.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    sim.cli = {}; sim.d.tech.tftp.on = false;
+    const name = p.hostname.toLowerCase() + "-confg", backup = fileNamed(sim, name).text;
+    sim.d.pc.knownHosts = {}; sim.d.pc.knownHosts[p.ip] = hostKey(SW(sim));   /* the front desk PC has logged in to the old switch before */
+    /* overnight the switch died. The office manager pulled its cables and took it away; the replacement is in its box */
+    sim.net.cables = sim.net.cables.filter(function (c) { return c.a.dev !== "msw" && c.b.dev !== "msw"; });
+    const sw = newSwitch(); sw.unit = 2;
+    Object.assign(sim.d.msw, { boxed: true, mac: mac(rng(seed ^ 0x6e57)), sw: sw });
+    return { sim: sim, v: Object.assign({}, b.v, { backup: backup, backupName: name, runs: sim.net.extra.runs || 0, lapIp: sim.offer("router", sim.d.tech.ifaces[0].mac, null) }) };
+  },
+  brief() { return { quote: "The switch died overnight: no lights at all, and nobody can print or get online. The supplier sent a replacement this morning, the same model, under the warranty; it's still in its box. Everything was set up on the old one. You said you kept a copy?", from: "the office manager" }; },
+  mason: "Get the new switch talking to your laptop first, then bring the backup across. Then check what came back against what the office needs, not just what the file says.",
+  limits: function (v) { return ["Your backup from last visit is on your laptop, in its TFTP server's folder: " + v.backupName + ", and the baseline, " + v.plan.baseline + ".", "The replacement is the same model, fresh from its box: no address, no passwords, every port on. The office manager pulled the old switch's cables; the backup says which port each was on.", "The office's records: the switch is " + v.plan.hostname + ", at " + v.plan.ip + " (mask " + v.plan.mask + "). Enable secret " + v.plan.secret + ", console password " + v.plan.console + "; remote logins: user " + v.plan.user + ", password " + v.plan.userPw + ".", "The front desk PC has logged in to the old switch over SSH before. Your laptop has its console cable, its own Ethernet port and its TFTP server; take its network cable with you when you leave."]; },
+  reqs: [{
+    id: "rack", text: "The replacement is in the closet rack, with your laptop on its console",
+    causes: rackCauses,
+    ok: function () { return "The replacement is in the rack; your laptop's serial terminal reaches its console."; },
+    rung1: function () { return "Look at what's still in its box, then at your laptop's Serial terminal: does anything answer?"; },
+    rung2: function () { return "A switch fresh from its box has no address: the only way in is its console port."; }
+  }, {
+    id: "restored", text: "It runs the office's configuration again, from your backup",
+    causes: restoredCauses,
+    ok: function () { return "What's running is the backup, line for line."; },
+    rung1: function () { return "Your laptop's TFTP server tab: read the backup. Then show running-config on the switch beside it."; },
+    rung2: function () { return "A switch can copy a file from a TFTP server into its running configuration (in effect at once, merged with what's there) or into its startup configuration (in effect the next time it starts). To reach the server at all, it needs an address of its own first."; }
+  }, {
+    id: "cabled", text: "The router and both desks are back on the ports the backup sets up for them",
+    causes: cabledCauses,
+    ok: function () { return "The router, the front desk PC and the printer are each on the port the backup describes."; },
+    rung1: function () { return "Read the interface descriptions in the backup, then the Cable runs table."; },
+    rung2: function () { return "A configuration belongs to the ports, not to the devices: a port's description, speed and duplex only fit the device that's really cabled to it."; }
+  }, {
+    id: "ssh", text: "SSH from the front desk PC works again",
+    causes: sshBackCauses,
+    ok: function () { return "The switch has SSH keys of its own, and the front desk PC doesn't hold the old switch's key."; },
+    rung1: function () { return "From the front desk PC: ssh to the switch, and read every line it prints. On the switch: show crypto key mypubkey rsa."; },
+    rung2: function () { return "SSH keys are made on the switch and kept in its own memory, never in a configuration file. A computer remembers each switch's key and stops if it ever changes: check the new key against the switch's own before telling the computer to forget the old one."; }
+  }, Object.assign({}, L_SAVED), {
+    id: "tidy", text: "Your laptop is unplugged, every spare port is shut down, and every port in use is on",
+    causes: function (sim) { return [boxCause(sim)].concat(tidyCauses(sim)); },
+    ok: function () { return "Your laptop's cable is out; the spare ports and fibre slots are shut down; the three in use are on."; },
+    rung1: function () { return "The Cable runs table, then show interfaces status: is anything of yours still plugged in, and which spare ports aren't disabled?"; },
+    rung2: function () { return "A switch fresh from its box has every port on. The office's own configuration shuts the spares; a port opened for the job is shut again when it's done."; }
+  }, {
+    id: "keep", text: "The office runs again: the front desk PC online, and printing",
+    causes: keepCauses,
+    ok: function () { return "The front desk PC is online and reaches the printer."; },
+    rung1: function () { return "On the front desk PC: ipconfig, then ping the router and the printer."; },
+    rung2: function () { return "Every desk's traffic crosses the switch: until it's back, cabled and configured as before, nothing reaches anything."; }
+  }],
+  /* one way: cabled as before, a temporary address of the records' own on VLAN 1, your laptop on a spare port, the backup
+     copied into the running configuration (the spare port shuts as it lands: the copy has already arrived), keys made
+     again, saved; the laptop's cable pulled, and the old key taken off the front desk PC once the new one is checked */
+  solve(v) {
+    const p = v.plan, n = v.runs;
+    return [{ t: "place", dev: "msw", room: "closet" }, { t: "lay", a: E("tech", "USB-C"), b: E("msw", "CONSOLE") },
+      { t: "lay", a: E("router", "LAN 1"), b: E("msw", "1") }, { t: "lay", a: E("msw", "2"), b: E("pc", "NIC") }, { t: "lay", a: E("msw", "3"), b: E("printer", "NET") },
+      cli(""), cli("enable"), cli("configure terminal"), cli("interface vlan 1"), cli("ip address " + p.ip + " " + p.mask), cli("no shutdown"), cli("end"),
+      { t: "lay", a: E("tech", "ETH"), b: E("msw", "4") }, { t: "tftp", dev: "tech", on: true },
+      cli("copy tftp: running-config"), cli(v.lapIp), cli(v.backupName), cli(""),
+      cli("configure terminal"), cli("crypto key generate rsa modulus 2048"), cli("end"), cli("copy running-config startup-config"), cli(""),
+      { t: "pull", cable: "c-run-" + (n + 5) }, { t: "cmd", dev: "pc", line: "ssh-keygen -R " + p.ip }];
+  },
+  answer(v) {
+    return ["Place the switch in the closet; lay the console cable to it, and the router's LAN 1, the front desk PC and the printer to ports 1, 2 and 3 (the backup's descriptions).",
+      "On the console (a new switch asks for nothing): enable, configure terminal; interface vlan 1, ip address " + v.plan.ip + " " + v.plan.mask + ", no shutdown; end.",
+      "Lay your laptop's ETHERNET to a spare port (all are on from the box), start the TFTP server, read its address. copy tftp: running-config: your laptop's address, " + v.backupName + ", accept running-config. The spare port shuts as the backup lands.",
+      "configure terminal, crypto key generate rsa (2048 bits): a file never carries the keys; end; copy running-config startup-config. Pull your laptop's cable.",
+      "On the front desk PC: ssh to the switch shows the changed key. Check its fingerprint against show crypto key mypubkey rsa, then ssh-keygen -R " + v.plan.ip + ", and ssh again. (Copying into startup-config and reloading works too: answer no when it asks to save.)"];
+  },
+  summary(v, sim) {
+    return ["The replacement is in the rack, running the office's configuration from your backup, line for line.", "The router and both desks are on the ports the backup sets up for them; the spare ports are shut.",
+      "It has SSH keys of its own (no file carries them), and the front desk PC trusts the new key, checked against the switch's own.", "It's all saved, and the office runs again."];
+  }
+};
+
+/* ---------------------------------------------------------------- SO-J7 */
+/* a new hire's desk in the open-plan office: a PC still in its box, a run to lay, a port of its own opened (every spare was
+   shut in SO-J3) and described, and the backup on your laptop brought up to date once the change is saved */
+const hireOk = function (sim) { const ip = sim.d.printer.ifaces[0].cfg.ip, r = sim.route("hire", ip); return !!(r.local && r.owner.indexOf("printer") >= 0); };
+function deskCausesHire(sim) {
+  const x = sim.d.hire, c = sim.cablesOf("hire")[0], far = c && (c.a.dev === "hire" ? c.b : c.a);
+  return [
+    C("box", x.boxed, "The new hire's PC is still in its box", "It's out of its box.", "The new hire's PC is still in its box."),
+    C("room", !x.boxed && sim.net.rooms.hire !== "open", "The new hire's PC isn't at their desk in the open-plan office", "It's at the new hire's desk.", "The new hire's PC is in the " + ((sim.net.roomNames || {})[sim.net.rooms.hire] || "wrong room").toLowerCase() + "."),
+    C("none", !c, "Nothing joins the new hire's PC to the network", "It has a cable.", "The Cable runs table: nothing in the new hire's PC."),
+    C("router", !!c && far.dev === "router", "It's cabled straight to the router, not to the switch: the office's desks all go through the switch", "It isn't on the router.", "The Cable runs table: the new hire's PC goes to the router's " + (far ? far.port : "") + "."),
+    C("other", !!c && far.dev !== "router" && !onMsw(sim, "hire"), "Its cable doesn't go to one of the switch's ports", "It's on a switch port.", "The Cable runs table: the new hire's PC isn't cabled to the managed switch.")];
+}
+function hirePortCauses(sim, v) {
+  const sw = SW(sim), n = portOf(sim, "hire"), p = n && sw.ports[n], d = p ? (p.desc || "").trim().toUpperCase() : "";
+  return [
+    C("nocable", !n, "The new hire's PC isn't on a switch port yet", "It's on a switch port.", "The new hire's PC isn't cabled to the managed switch."),
+    C("shut", !!p && p.shutdown, "Its port is shut down, like every spare", "Its port is open.", n ? "show interfaces status: " + shortPort(n) + " is disabled." : ""),
+    C("none", !!p && !d, "Its port has no description", "Its port has a description.", n ? "show interfaces status: the Name column is empty on " + shortPort(n) + "." : ""),
+    C("wrong", !!p && !!d && d !== v.plan.desc.hire, "Its port's description isn't the one in the office's records", "Its description is the records'.", n ? shortPort(n) + " is named " + d + "." : "")];
+}
+function hireOnline(sim) {
+  const a = sim.addr("hire");
+  return [
+    C("link", !sim.hasLink("hire"), "The new hire's PC has no link", "It has a link.", "ipconfig on the new hire's PC: Media disconnected."),
+    C("addr", !a || a.kind === "apipa", "It has no address from the router", "It has an address from the router.", "ipconfig on the new hire's PC: " + (a ? a.ip : "no address") + "."),
+    C("net", !online(sim, "hire"), "It can't reach the internet", "It reaches the internet.", "The new hire's PC can't reach the internet."),
+    C("print", !hireOk(sim), "It can't reach the printer", "It reaches the printer.", "Test pages from the new hire's PC don't print.")];
+}
+const SO7 = {
+  id: "SO-J7", level: "office", title: "A new hire's desk",
+  already: ["spares", "saved", "backup", "keep"],   /* right as you find them: the job is not to break them, and the backup goes stale the moment the change is saved */
+  start(seed) {
+    const b = SO6.start(seed), sim = b.sim;
+    for (const a of SO6.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    sim.cli = {}; sim.d.tech.tftp.on = false;
+    const r = rng(seed ^ 0x41e7), d = sim.d;
+    d.hire = { id: "hire", kind: "pc", label: "New hire's PC", sub: "DHCP", on: true, boxed: true, os: "windows", user: "newhire", host: "NEWHIRE-PC", printer: { name: "Office printer", port: d.printer.ifaces[0].cfg.ip },
+      ifaces: [{ name: "Ethernet", type: "eth", port: "NIC", mac: mac(r), desc: "Gigabit Network Connection", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] };
+    sim.arp.hire = {};
+    return { sim: sim, v: Object.assign({}, b.v, { runs: sim.net.extra.runs || 0, lapIp: sim.offer("router", d.tech.ifaces[0].mac, null) }) };
+  },
+  brief() { return { quote: "We've taken on a new bookkeeper, starting Monday. Their desk is in the open-plan office, and their PC came yesterday: it's still in its box. Can you get them set up on the network, the way the rest of the office is? And keep that copy of the switch's setup you made up to date: after the week we had, I want it right.", from: "the office manager" }; },
+  mason: "One port, opened on purpose, and nothing else. A change isn't finished until it's saved, and the copy of it is fresh.",
+  limits: function (v) { return ["The office's records, the new hire's port: description " + v.plan.desc.hire + ". Their desk is in the open-plan office; the run back to the closet is 12 m.", "Every spare port on the switch was shut down on purpose: open only the one the new desk needs.", "Backups go to your laptop by TFTP, under the name the switch suggests for its own backup. Your laptop is on the console; take its network cable with you when you leave.", "The switch's console password and enable secret are the office's: " + v.plan.console + " and " + v.plan.secret + "."]; },
+  reqs: [{
+    id: "desk", text: "The new hire's PC is at their desk in the open-plan office, cabled to the switch",
+    causes: deskCausesHire,
+    ok: function () { return "The new hire's PC is at their desk, cabled to the switch."; },
+    rung1: function () { return "Look at what's still in its box, then at the Cable runs table."; },
+    rung2: function () { return "Every desk in the office runs back to the closet switch: it's where each desk gets its own port, with its own settings and its own description."; }
+  }, {
+    id: "port", text: "Its switch port is open, and described as the office's records say",
+    causes: hirePortCauses,
+    ok: function (sim) { return shortPort(portOf(sim, "hire")) + " is open, named as the records say."; },
+    rung1: function () { return "On the switch: show interfaces status. Find the new hire's port, then read its Status and Name."; },
+    rung2: function () { return "A shut-down port stays dark whatever is plugged into it; it comes up only when it's opened in its own interface configuration, where its description is set too."; }
+  }, {
+    id: "online", text: "The new hire's PC is online, and prints",
+    causes: hireOnline,
+    ok: function () { return "The new hire's PC is online and reaches the printer."; },
+    rung1: function () { return "On the new hire's PC: ipconfig, then ping the router and the printer."; },
+    rung2: function () { return "A PC set to get its address automatically asks again by itself once its link comes up; with an address from the router it reaches everything the office does."; }
+  }, {
+    id: "spares", text: "Every other spare port is still shut down, the ports in use are on, and your laptop is unplugged",
+    causes: tidyCauses,
+    ok: function () { return "Only the ports in use are on, and your laptop's network cable is out."; },
+    rung1: function () { return "show interfaces status: which ports aren't disabled, and what's on each? Then the Cable runs table."; },
+    rung2: function () { return "Opening a range opens every port in it. A port that isn't in use is a way in for anyone who plugs into it."; }
+  }, Object.assign({}, L_SAVED), {
+    id: "backup", text: "The backup on your laptop matches what's saved now",
+    causes: function (sim, v) { const bn = v.plan.baseline.toLowerCase(); return copyCauses(sim, backupName(sim), function (n) { return n !== bn; }, "backup"); },
+    ok: function () { return "Your laptop's backup matches what's saved."; },
+    rung1: function () { return "Your laptop's TFTP server tab: read the backup beside show startup-config."; },
+    rung2: function () { return "A backup is a copy of one moment: the moment the switch's saved configuration changes, the copy is out of date. Copy the saved configuration again, under the same name."; }
+  }, {
+    id: "keep", text: "Everything that worked still works: the front desk PC online, and printing",
+    causes: keepAll,
+    ok: function () { return "The front desk PC is online and reaches the printer."; },
+    rung1: function () { return "On the front desk PC: ping the router and the printer."; },
+    rung2: function () { return "A new port opened beside the others changes nothing for them; a range typed by mistake can."; }
+  }],
+  /* one way: the PC unboxed at the desk and cabled to port 5, the port opened and described, saved; the backup copied again
+     from the saved configuration, your laptop on the router's spare port so no switch port is touched */
+  solve(v) {
+    const p = v.plan, n = v.runs;
+    return [{ t: "place", dev: "hire", room: "open" }, { t: "lay", a: E("msw", "5"), b: E("hire", "NIC") },
+      cli(""), cli(p.console), cli("enable"), cli(p.secret), cli("configure terminal"), cli("interface gi0/5"), cli("description " + p.desc.hire), cli("no shutdown"), cli("end"), cli("copy running-config startup-config"), cli(""),
+      { t: "lay", a: E("tech", "ETH"), b: E("router", "LAN 2") }, { t: "tftp", dev: "tech", on: true },
+      cli("copy startup-config tftp:"), cli(v.lapIp), cli(""), { t: "pull", cable: "c-run-" + (n + 2) }];
+  },
+  answer(v) {
+    return ["Place the new hire's PC in the open-plan office; lay its cable to a spare switch port (port 5, say).",
+      "On the console: configure terminal; interface gi0/5, description " + v.plan.desc.hire + ", no shutdown; end; copy running-config startup-config. Only that port: a range would open the others too.",
+      "Lay your laptop's ETHERNET to the router's LAN 2 (or open a spare port without saving it), start the TFTP server, read its address.",
+      "copy startup-config tftp: to your laptop's address, accepting the switch's own name: the backup is replaced. Pull your laptop's cable."];
+  },
+  summary(v, sim) {
+    return ["The new hire's PC is at their desk, on a port of its own (" + shortPort(portOf(sim, "hire")) + "), opened and named as the office's records say.", "Every other spare port is still shut.",
+      "It's saved, and the backup on your laptop is the saved configuration as it is now.", "The rest of the office runs as before."];
+  }
+};
+
+/* ---------------------------------------------------------------- SO-J8 */
+/* the printer moved to the manager's office over the weekend. The cabler ran a new 22 m run from there and plugged it into a
+   spare switch port, which is shut, so the printer is offline. Its old run is still in its old port, live, ending at an
+   empty wall jack in the open-plan office. The printer's settings belong to the port it's on: the new one needs them, and
+   the old one goes back to being a spare */
+const oldRunPort = function (sim) { const c = sim.cablesOf("ojack")[0], e = c && (c.a.dev === "msw" ? c.a : c.b.dev === "msw" ? c.b : null); return e ? "GigabitEthernet0/" + e.port : null; };
+function printerBackCauses(sim) {
+  const n = portOf(sim, "printer"), p = n && SW(sim).ports[n];
+  return [
+    C("none", !n, "The printer isn't cabled to the switch", "The printer's run lands on a switch port.", "The Cable runs table: the printer isn't on the managed switch."),
+    C("shut", !!p && p.shutdown, "The printer's new run lands on a port that's shut down", "Its port is open.", n ? "show interfaces status: " + shortPort(n) + ", where the printer's run lands, is disabled." : ""),
+    C("link", !!p && !sim.hasLink("printer"), "The printer's port is open, but it has no link", "It has a link.", n ? "show interfaces status: " + shortPort(n) + " is notconnect." : ""),
+    C("print", !printOk(sim), "The front desk PC can't reach the printer", "The front desk PC reaches it.", "Test pages from the front desk don't print.")];
+}
+function descMovedCauses(sim, v) {
+  const sw = SW(sim), pn = portOf(sim, "printer"), want = v.plan.desc.printer;
+  const stale = PORT_NAMES.find(function (n) { return n !== pn && (sw.ports[n].desc || "").trim().toUpperCase() === want; });
+  const what = function (n) { return n === oldRunPort(sim) ? "its run ends at an empty wall jack in the open-plan office" : "nothing on it is the printer"; };
+  return descCauses(sim, v).concat([C("stale", !!stale, "A port still says it's the printer's, but the printer isn't on it any more", "Only the printer's own port says it's the printer's.", stale ? shortPort(stale) + " is named " + want + ", but " + what(stale) + "." : "")]);
+}
+function oldPortCauses(sim) {
+  const sw = SW(sim), old = oldRunPort(sim), live = !!old && !sw.ports[old].shutdown;
+  return [C("old", live, "The printer's old port is still live: its run ends at an empty wall jack in the open-plan office", "The printer's old port is shut down.", old ? "show interfaces status: " + shortPort(old) + ", the old open-plan run, is not disabled." : "")].concat(tidyCauses(sim).map(function (c) { return c.id === "open" ? Object.assign({}, c, { on: c.on && !(live && spares(sim).open === old) }) : c; }));
+}
+const keepMoved = function (sim) {
+  return [C("pc", !online(sim, "pc"), "The front desk PC isn't online any more", "The front desk PC is online.", "The front desk PC can't reach the internet."),
+    C("hire", !online(sim, "hire"), "The new hire's PC isn't online any more", "The new hire's PC is online.", "The new hire's PC can't reach the internet.")];
+};
+const SO8 = {
+  id: "SO-J8", level: "office", title: "The printer moved",
+  already: ["saved", "backup", "keep"],
+  start(seed) {
+    const b = SO7.start(seed), sim = b.sim, d = sim.d, net = sim.net;
+    for (const a of SO7.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    sim.cli = {}; d.tech.tftp.on = false;
+    const r = rng(seed ^ 0x8e1d), port = String(r.pick([6, 7, 8, 9, 10, 11, 12]));
+    /* the printer's old run stays in its port, ending at the open-plan office's wall jack; the printer is in the manager's office on the cabler's new run */
+    d.ojack = { id: "ojack", kind: "jack", label: "Open-plan wall jack", sub: "nothing plugged in", on: true }; net.rooms.ojack = "open"; sim.arp.ojack = {};
+    const c = sim.cablesOf("printer")[0], pe = c.a.dev === "printer" ? c.a : c.b; pe.dev = "ojack"; pe.port = "JACK";
+    net.rooms.printer = "manager";
+    net.cables.push({ id: "c-run-cabler", kind: "cat6", a: { dev: "msw", port: port, seated: true }, b: { dev: "printer", port: "NET", seated: true }, cond: "good", length: OFFICE_RUN.closet.manager });
+    return { sim: sim, v: Object.assign({}, b.v, { newPort: port, runs: net.extra.runs || 0, lapIp: sim.offer("router", d.tech.ifaces[0].mac, null) }) };
+  },
+  brief() { return { quote: "The printer was driving everyone mad in the open-plan office, so over the weekend we moved it into my office, and the cabler ran a new cable from there back to the closet. Now nothing prints. He says the cable's fine and plugged in at the switch. And keep your copy of the switch's setup up to date, as before.", from: "the office manager" }; },
+  mason: "Find where the new run really lands before you touch anything. Then ask what the printer's old port was doing for it, and what it's doing now.",
+  limits: function (v) { return ["The office's records: the printer's port is described " + v.plan.desc.printer + ". The printer is an older model: its network card is fixed at 100 Mb/s, full duplex, and can't negotiate.", "The cabler's new run, from the manager's office back to the closet, is 22 m. The printer's old run is still in the wall, from the open-plan office.", "Backups go to your laptop by TFTP, under the name the switch suggests for its own backup. Take your laptop's network cable with you when you leave.", "The switch's console password and enable secret are the office's: " + v.plan.console + " and " + v.plan.secret + "."]; },
+  reqs: [{
+    id: "printer", text: "The printer is back online, in the manager's office",
+    causes: printerBackCauses,
+    ok: function () { return "The printer is online in the manager's office; the front desk PC reaches it."; },
+    rung1: function () { return "The Cable runs table: where does the printer's new run land? Then show interfaces status on the switch."; },
+    rung2: function () { return "Every spare port on this switch is shut down on purpose. A run plugged into one stays dark until that port is opened."; }
+  }, {
+    id: "duplex", text: "Its port matches it: 100 Mb/s, full duplex, no errors climbing",
+    causes: printerCauses,
+    ok: function () { return "The printer's port runs 100 Mb/s, full duplex, set by hand to match the printer, with no errors climbing."; },
+    rung1: function () { return "show interfaces on the printer's new port, twice: read the duplex line, then the late collisions."; },
+    rung2: function () { return "Speed, duplex and descriptions are settings of a port, not of the device: when a device moves to another port, its settings have to go with it."; }
+  }, {
+    id: "desc", text: "Every port's description says what's really on it",
+    causes: descMovedCauses,
+    ok: function () { return "Each port in use says what's on it, and no other port claims the printer."; },
+    rung1: function () { return "show interfaces status: read the Name column against the Cable runs table."; },
+    rung2: function () { return "A description is only a label on a port. When a device moves, the label on its old port is wrong until someone takes it off."; }
+  }, {
+    id: "spares", text: "The printer's old port is shut down with the other spares, every port in use is on, and your laptop is unplugged",
+    causes: oldPortCauses,
+    ok: function () { return "Only the ports in use are on; the old open-plan run is on a shut port; your laptop's cable is out."; },
+    rung1: function () { return "show interfaces status: which ports aren't disabled, and what's at the far end of each run?"; },
+    rung2: function () { return "A live port whose run ends at an empty wall jack is a way into the network for anyone who plugs into that jack."; }
+  }, Object.assign({}, L_SAVED), {
+    id: "backup", text: "The backup on your laptop matches what's saved now",
+    causes: function (sim, v) { const bn = v.plan.baseline.toLowerCase(); return copyCauses(sim, backupName(sim), function (n) { return n !== bn; }, "backup"); },
+    ok: function () { return "Your laptop's backup matches what's saved."; },
+    rung1: function () { return "Your laptop's TFTP server tab: read the backup beside show startup-config."; },
+    rung2: function () { return "A backup is a copy of one moment: once the saved configuration changes, copy it again under the same name."; }
+  }, {
+    id: "keep", text: "Everyone else still works: the front desk PC and the new hire's PC online",
+    causes: keepMoved,
+    ok: function () { return "The front desk PC and the new hire's PC are online."; },
+    rung1: function () { return "On each PC: ipconfig, then ping the router."; },
+    rung2: function () { return "Moving one device's settings touches two ports; any other port changed by mistake takes a desk off the network."; }
+  }],
+  /* one way: the printer's settings on the port its new run lands on, the old port cleared and shut, saved; the backup refreshed */
+  solve(v) {
+    const p = v.plan, n = v.runs;
+    return [cli(""), cli(p.console), cli("enable"), cli(p.secret), cli("configure terminal"),
+      cli("interface gi0/" + v.newPort), cli("description " + p.desc.printer), cli("speed 100"), cli("duplex full"), cli("no shutdown"),
+      cli("interface gi0/3"), cli("no description"), cli("no speed"), cli("no duplex"), cli("shutdown"), cli("end"), cli("copy running-config startup-config"), cli(""),
+      { t: "lay", a: E("tech", "ETH"), b: E("router", "LAN 2") }, { t: "tftp", dev: "tech", on: true },
+      cli("copy startup-config tftp:"), cli(v.lapIp), cli(""), { t: "pull", cable: "c-run-" + (n + 1) }];
+  },
+  answer(v) {
+    return ["The Cable runs table shows the cabler's run from the printer lands on port " + v.newPort + "; show interfaces status says Gi0/" + v.newPort + " is disabled.",
+      "On the console: configure terminal; interface gi0/" + v.newPort + ", description " + v.plan.desc.printer + ", speed 100, duplex full, no shutdown.",
+      "interface gi0/3 (its run now ends at the open-plan office's empty wall jack): no description, no speed, no duplex, shutdown; end; copy running-config startup-config.",
+      "Refresh the backup: your laptop on the router's LAN 2, the TFTP server started, copy startup-config tftp: under the switch's own name; pull your laptop's cable. (Pulling the old run and laying the printer's run into port 3 works too.)"];
+  },
+  summary(v, sim) {
+    return ["The printer is online in the manager's office, on " + shortPort(portOf(sim, "printer")) + ", set by hand to 100 Mb/s full duplex like the printer, and named as the records say.",
+      "Its old port is shut, its label taken off: the open-plan office's empty jack is dead.", "It's saved, and the backup on your laptop is up to date."];
+  }
+};
+
+/* ---------------------------------------------------------------- SO-J9 */
+/* over the weekend the cablers redid the office's cabling: every desk's run, and the two empty wall jacks', comes back to a
+   new 24-port patch panel in the closet rack, punched down at its back. They took the old 8-port switch away, patched
+   nothing to the switch, and left no map. The switch's ports are still set up for the desks they had */
+const DESKS = ["pc", "printer", "hire"];
+const MAP_ROOM = { front: "front desk", open: "open-plan office", manager: "manager's office", meeting: "meeting room" };
+const descAt = function (sim, n) { return n ? (SW(sim).ports[n].desc || "").trim().toUpperCase() : ""; };
+/* where each run punched down at the back of the panel really goes (the room at its far end), by panel port */
+const panelRuns = function (sim) { const real = {}; sim.cablesOf("pp").forEach(function (c) { const e = c.a.dev === "pp" ? c.a : c.b, o = e === c.a ? c.b : c.a; if (/R$/.test(e.port)) real[e.port.slice(0, -1)] = sim.net.rooms[o.dev]; }); return real; };
+const runOf = function (sim, id) { return sim.cablesOf(id).find(function (c) { const pe = sim.panelEnd(c); return pe && /R$/.test(pe.port); }) || null; };
+function patchedCauses(sim) {
+  const cordFor = function (id) { const c = runOf(sim, id); return c ? sim.cableAt("pp", sim.panelEnd(c).port.slice(0, -1)) : null; };
+  const unp = DESKS.find(function (id) { return !cordFor(id); });
+  const notsw = DESKS.find(function (id) { const k = cordFor(id); return k && !onMsw(sim, id); });
+  const shut = DESKS.find(function (id) { const n = portOf(sim, id); return n && SW(sim).ports[n].shutdown; });
+  const offline = ["pc", "hire"].find(function (id) { return !online(sim, id); });
+  return [
+    C("none", !!unp, "A desk's run has nothing patched into the front of its panel port", "Every desk's run is patched.", unp ? capFirst(WHO[unp]) + " has no link: " + (unp === "printer" ? "its control panel says the network cable is disconnected." : "ipconfig says Media disconnected.") : ""),
+    C("notsw", !!notsw, "A desk is patched to something other than the switch: the office's desks all go through the switch", "Every desk is patched to the switch.", notsw ? capFirst(WHO[notsw]) + "'s panel port is patched to something that isn't the managed switch." : ""),
+    C("shut", !!shut, "A desk is patched to a switch port that's shut down", "Every desk's switch port is open.", shut ? "show interfaces status: " + shortPort(portOf(sim, shut)) + ", where " + WHO[shut] + " is patched, is disabled." : ""),
+    C("print", !printOk(sim), "The front desk PC can't reach the printer", "The front desk PC reaches the printer.", "Test pages from the front desk don't print."),
+    C("online", !!offline, "A desk can't reach the internet", "Both PCs reach the internet.", offline ? capFirst(WHO[offline]) + " can't reach the internet." : "")];
+}
+function deskPortCauses(sim, v) {
+  const on = DESKS.filter(function (id) { return portOf(sim, id); });
+  const swapped = on.find(function (id) { const d = descAt(sim, portOf(sim, id)); return d && d !== v.plan.desc[id] && DESKS.some(function (o) { return v.plan.desc[o] === d; }); });
+  const spare = on.find(function (id) { return !descAt(sim, portOf(sim, id)); });
+  const other = on.find(function (id) { return descAt(sim, portOf(sim, id)) !== v.plan.desc[id]; });
+  return [
+    C("none", on.length < DESKS.length, "Not every desk is on a switch port yet", "Every desk is on a switch port.", "The front desk PC, the printer and the new hire's PC aren't all patched to the switch yet."),
+    C("swap", !!swapped, "A desk is patched to a port set up for another desk", "No desk is on another desk's port.", swapped ? capFirst(WHO[swapped]) + " is on " + shortPort(portOf(sim, swapped)) + ", which is named " + descAt(sim, portOf(sim, swapped)) + "." : ""),
+    C("spare", !!spare, "A desk is patched to a spare port, with nothing on it set up for that desk", "No desk is on a spare port.", spare ? capFirst(WHO[spare]) + " is on " + shortPort(portOf(sim, spare)) + ", a port with no description." : ""),
+    C("other", !!other, "A desk is on a port whose description doesn't match it", "Each desk is on the port named for it.", other ? capFirst(WHO[other]) + " is on " + shortPort(portOf(sim, other)) + ", named " + descAt(sim, portOf(sim, other)) + "." : "")];
+}
+function mapCausesJob(sim) {
+  const m = sim.net.cablemap || {}, real = panelRuns(sim), empty = !Object.keys(m).some(function (k) { return m[k]; });
+  const wrong = Object.keys(real).find(function (n) { return m[n] && m[n] !== real[n]; });
+  const missing = Object.keys(real).find(function (n) { return !m[n]; });
+  const extra = Object.keys(m).find(function (n) { return m[n] && !real[n]; });
+  return [
+    C("none", empty, "Nothing is written in the cable map yet", "The map has been filled in.", "The cable map is empty."),
+    C("wrong", !!wrong, "A port in the map names a room its run doesn't go to", "Every room in the map is where its port's run goes.", wrong ? "The cable map: port " + wrong + "'s run doesn't go to the " + (MAP_ROOM[m[wrong]] || "room it names") + "." : ""),
+    C("missing", !empty && !!missing, "A port with a run punched down on it isn't in the map", "Every run is in the map.", missing ? "The cable map: port " + missing + " has a run, but the map leaves it out." : ""),
+    C("extra", !!extra, "The map names a room for a port with no run on it", "The map names nothing for an empty port.", extra ? "The cable map: port " + extra + " has no run punched down on it." : "")];
+}
+function sparesJ9(sim) {
+  const sw = SW(sim), used = spares(sim).used;
+  const open = PORT_NAMES.find(function (n) { return !used[n] && !descAt(sim, n) && !sw.ports[n].shutdown; });   /* a port named for a desk isn't a spare, even unpatched */
+  return [C("open", !!open, "A spare port is live: anyone in the office could plug something into it", "Every spare port is shut down.", open ? "show interfaces status: " + shortPort(open) + " has nothing on it and is not disabled." : "")]
+    .concat(tidyCauses(sim).filter(function (c) { return c.id === "plugged"; }));
+}
+const SO9 = {
+  id: "SO-J9", level: "office", title: "The cable map", cablemap: true,
+  already: ["spares", "saved", "backup"],
+  start(seed) {
+    const b = SO8.start(seed), sim = b.sim, d = sim.d, net = sim.net;
+    for (const a of SO8.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    sim.cli = {}; d.tech.tftp.on = false;
+    const r = rng(seed ^ 0x9ca7), free = r.shuffle(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"]);
+    const P = { pc: free[0], printer: free[1], hire: free[2], ojack: free[3], mjack: free[4] };
+    d.pp = { id: "pp", kind: "patchpanel", label: "Patch panel", sub: "24-port Cat6", on: true, tabs: {} };
+    d.mjack = { id: "mjack", kind: "jack", label: "Meeting room wall jack", sub: "nothing plugged in", on: true };
+    net.rooms.pp = "closet"; net.rooms.mjack = "meeting"; sim.arp.pp = {}; sim.arp.mjack = {};
+    if (d.switch && !sim.cablesOf("switch").length) { delete d.switch; delete net.rooms.switch; delete sim.arp.switch; }   /* the cablers took the old 8-port switch away: the panel is where it stood */
+    net.cables = net.cables.filter(function (c) { return !((c.a.dev === "msw" || c.b.dev === "msw") && ["pc", "printer", "hire", "ojack"].some(function (id) { return c.a.dev === id || c.b.dev === id; })); });
+    const LEN = { pc: OFFICE_RUN.closet.front, printer: OFFICE_RUN.closet.manager, hire: OFFICE_RUN.closet.open, ojack: OFFICE_RUN.closet.open, mjack: OFFICE_RUN.closet.meeting }, PORT = { pc: "NIC", printer: "NET", hire: "NIC", ojack: "JACK", mjack: "JACK" };
+    Object.keys(P).forEach(function (id) { net.cables.push({ id: "c-pp-" + id, kind: "cat6", a: { dev: "pp", port: P[id] + "R", seated: true }, b: { dev: id, port: PORT[id], seated: true }, cond: "good", length: LEN[id] }); });
+    net.cablemap = {};
+    const set = {}; DESKS.forEach(function (id) { set[id] = SW(sim).ports && PORT_NAMES.find(function (n) { return descAt(sim, n) === b.v.plan.desc[id]; }); });
+    return { sim: sim, v: Object.assign({}, b.v, { P: P, set: set }) };
+  },
+  brief() { return { quote: "The cablers finally came at the weekend and did it properly: every desk's cable now goes back to a patch panel in the closet rack, and the old little switch has gone. But this morning nobody's on the network at all, and they didn't leave any sort of map of what goes where. Can you get us working again, and write it down so nobody ever has to guess?", from: "the office manager" }; },
+  mason: "The switch already knows which port is whose: its descriptions. What nobody knows is which panel port each run is on. Ask the cable, then write down what it told you.",
+  limits: function (v) { return ["The switch is set up as you left it: each port in use is described for what was on it (show interfaces status).", "Every run is punched down at the back of the panel: the front desk's, the printer's from the manager's office, the new hire's, the old open-plan run (an empty wall jack now) and the meeting room's (an empty wall jack). A patch cord goes from a panel port's front to a switch port.", "In the van: a tone generator to clip onto a run at the desk end, and an inductive probe to run along the back of the panel.", "The switch's console password and enable secret are the office's: " + v.plan.console + " and " + v.plan.secret + "."]; },
+  reqs: [{
+    id: "patched", text: "Every desk is patched through the panel to the switch, and online: the front desk PC, the printer and the new hire's PC",
+    causes: patchedCauses,
+    ok: function () { return "Every desk is patched to the switch; the PCs are online and the front desk prints."; },
+    rung1: function () { return "On a desk's Physical tab, put the tone generator on its cable; then run the probe along the back of the panel."; },
+    rung2: function () { return "A patch panel joins the run punched down at the back of each port to whatever is patched into the front of the same port. A run with nothing in its front goes nowhere."; }
+  }, {
+    id: "ports", text: "Each desk is on the switch port set up for it",
+    causes: deskPortCauses,
+    ok: function () { return "Each desk is on the switch port named for it, with that port's settings."; },
+    rung1: function () { return "show interfaces status: read the Name column, then follow each desk's cord from the panel down to the switch."; },
+    rung2: function () { return "A switch port's description, speed and duplex were set for one device: patch each desk to the port set up for it, or the settings land on the wrong device."; }
+  }, {
+    id: "map", text: "The cable map names the room every panel port's run goes to",
+    causes: mapCausesJob,
+    ok: function () { return "The cable map names the right room for every run, and nothing for the empty ports."; },
+    rung1: function () { return "Tone each run from its far end, the empty wall jacks too, and note where the probe sounds."; },
+    rung2: function () { return "A cable map records where every run really goes, the unused ones as well: the next person patches from it without tracing anything."; }
+  }, {
+    id: "spares", text: "Every spare port is still shut down, and your laptop is unplugged",
+    causes: sparesJ9,
+    ok: function () { return "The spare ports are shut down; your laptop's network cable is out."; },
+    rung1: function () { return "show interfaces status: which ports aren't disabled, and what's on each?"; },
+    rung2: function () { return "Patching changes nothing on the switch. A port opened for a desk that has one already is a way in for anyone else."; }
+  }, Object.assign({}, L_SAVED), {
+    id: "backup", text: "The backup on your laptop matches what's saved now",
+    causes: function (sim, v) { const bn = v.plan.baseline.toLowerCase(); return copyCauses(sim, backupName(sim), function (n) { return n !== bn; }, "backup"); },
+    ok: function () { return "Your laptop's backup matches what's saved."; },
+    rung1: function () { return "Your laptop's TFTP server tab: read the backup beside show startup-config."; },
+    rung2: function () { return "Patching needs no change on the switch. If you changed and saved anything, the backup is out of date: copy it again."; }
+  }],
+  /* one way: each desk's run patched to the switch port named for it, the map written; no change on the switch at all */
+  solve(v) {
+    const P = v.P, sp = function (id) { return v.set[id].replace("GigabitEthernet0/", ""); };
+    return [{ t: "lay", a: E("pp", P.pc), b: E("msw", sp("pc")) }, { t: "lay", a: E("pp", P.printer), b: E("msw", sp("printer")) }, { t: "lay", a: E("pp", P.hire), b: E("msw", sp("hire")) },
+      { t: "cablemap", map: (function () { const m = {}; m[P.pc] = "front"; m[P.printer] = "manager"; m[P.hire] = "open"; m[P.ojack] = "open"; m[P.mjack] = "meeting"; return m; })() }];
+  },
+  answer(v) {
+    const P = v.P, sp = function (id) { return shortPort(v.set[id]); };
+    return ["Tone each run at its far end (the front desk PC's cable, the printer's, the new hire's, both empty wall jacks) and run the probe along the back of the panel: the front desk is port " + P.pc + ", the printer " + P.printer + ", the new hire " + P.hire + ", the open-plan jack " + P.ojack + ", the meeting room jack " + P.mjack + ".",
+      "show interfaces status gives the switch port named for each desk: the front desk " + sp("pc") + ", the printer " + sp("printer") + ", the new hire " + sp("hire") + ".",
+      "Lay a patch cord from each desk's panel port to its switch port. The empty jacks stay unpatched.",
+      "Write the cable map: every port with a run, the empty jacks' too, with the room its run goes to. Save it. Nothing on the switch changes, so the backup stays right."];
+  },
+  summary(v) {
+    return ["Every desk's run is patched from the panel to the switch port set up for it: the office is back online.", "The cable map names the room for every run on the panel, the two empty wall jacks too.", "Nothing on the switch needed changing: the spares are still shut, and the backup still matches."];
+  }
+};
+
+/* ---------------------------------------------------------------- SO-J10 */
+/* the meeting room becomes the back office, on a switch of its own of the same model, in its box. The installer ran a fibre
+   run there from the closet (it passes the lift's motor room, so copper was out): OM2 multimode, LC at both ends. The modules
+   come from the van; the switch's slots are 1 Gb/s SFP. The closet switch's fibre port was shut with the spares in SO-J3 */
+const BSW = function (sim) { return sim.d.bsw.sw; };
+const fibreRun = function (sim) { return sim.net.cables.find(function (c) { return c.kind === "fibre" && ((c.a.dev === "msw" && c.b.dev === "bsw") || (c.a.dev === "bsw" && c.b.dev === "msw")); }) || null; };
+const modAt = function (sim, e) { const x = sim.d[e.dev]; return x.sfp && x.sfp[e.port] ? SFP_MODULES[x.sfp[e.port]] : null; };
+function fibreCauses(sim) {
+  const x = sim.d.bsw, c = fibreRun(sim), mods = c ? [modAt(sim, c.a), modAt(sim, c.b)] : [], mswEnd = c && (c.a.dev === "msw" ? c.a : c.b);
+  const shut = !!mswEnd && SW(sim).ports[swPort(mswEnd.port)].shutdown;
+  return [
+    C("box", x.boxed, "The back office switch is still in its box", "It's out of its box, in the back office.", "The back office switch is still in its box."),
+    C("run", !x.boxed && !c, "The fibre run isn't plugged into both switches", "The fibre run is plugged in at both ends.", "The Cable runs table: no fibre between the closet switch and the back office switch."),
+    C("plus", !!c && mods.some(function (m) { return m && m.rate !== 1000; }), "A 10 Gb/s SFP+ module is in a 1 Gb/s SFP slot, which can't run it", "Both modules are 1 Gb/s SFP modules.", "show interfaces status on the closet switch: its fibre port is err-disabled, or the back office switch's module isn't supported."),
+    C("smf", !!c && mods.some(function (m) { return m && m.rate === 1000 && m.fiber !== c.fiber; }), "A single-mode module is on the multimode run", "Both modules are made for multimode fibre.", "show interfaces transceiver: no light received; a module's label says single-mode, the cord's jacket says multimode."),
+    C("pair", !!c && !!mods[0] && !!mods[1] && mods[0].nm !== mods[1].nm, "The two ends' modules aren't the same kind", "Both ends are the same kind of module.", "The two modules' labels give different wavelengths."),
+    C("shut", shut, "The closet switch's fibre port is shut down", "The closet switch's fibre port is open.", mswEnd ? "show interfaces status: " + shortPort(swPort(mswEnd.port)) + " is disabled." : ""),
+    C("dark", !!c && !sim.cableUp(c), "The fibre link is still dark", "The fibre link is up.", "show interfaces status: the fibre port is notconnect.")];
+}
+function fibrePortCauses(sim, v) {
+  const c = fibreRun(sim), e = c && (c.a.dev === "msw" ? c.a : c.b), n = e && swPort(e.port), p = n && SW(sim).ports[n], d = p ? (p.desc || "").trim().toUpperCase() : "";
+  return [
+    C("norun", !c, "Nothing joins the closet switch to the back office yet", "The fibre run is in the closet switch.", "The Cable runs table: no fibre at the closet switch."),
+    C("shut", !!p && p.shutdown, "The closet switch's fibre port is shut down, like every spare", "It's open.", n ? "show interfaces status: " + shortPort(n) + " is disabled." : ""),
+    C("none", !!p && !d, "Its fibre port has no description", "It has a description.", n ? "show interfaces status: the Name column is empty on " + shortPort(n) + "." : ""),
+    C("wrong", !!p && !!d && d !== v.plan.desc.fibre, "Its description isn't the one in the office's records", "Its description is the records'.", n ? shortPort(n) + " is named " + d + "." : "")];
+}
+const backOk = function (sim) { const ip = sim.d.printer.ifaces[0].cfg.ip, r = sim.route("mpc", ip); return !!(r.local && r.owner.indexOf("printer") >= 0); };
+function backPcCauses(sim) {
+  const c = sim.cablesOf("mpc")[0], far = c && (c.a.dev === "mpc" ? c.b : c.a), a = sim.addr("mpc");
+  return [
+    C("cable", !c || far.dev !== "bsw", "The back office PC isn't cabled to the back office switch", "It's cabled to the back office switch.", "The Cable runs table: the back office PC's cable doesn't go to the back office switch."),
+    C("link", !!c && !sim.hasLink("mpc"), "The back office PC has no link", "It has a link.", "ipconfig on the back office PC: Media disconnected."),
+    C("addr", !a || a.kind === "apipa", "It has no address from the router", "It has an address from the router.", "ipconfig on the back office PC: " + (a ? a.ip : "no address") + "."),
+    C("net", !online(sim, "mpc"), "It can't reach the internet", "It reaches the internet.", "The back office PC can't reach the internet."),
+    C("print", !backOk(sim), "It can't reach the printer", "It reaches the printer.", "Test pages from the back office PC don't print.")];
+}
+function bswCauses(sim, v) {
+  const x = sim.d.bsw, sw = BSW(sim), con = sw.con, p = v.plan;
+  return [
+    C("box", x.boxed, "The back office switch is still in its box", "It's out of its box.", "The back office switch is still in its box."),
+    C("factory", sw.hostname === "Switch", "It still has its factory name", "It has a name of its own.", "Its console prompt still says Switch."),
+    C("name", sw.hostname !== p.bswHost, "It has a name, but not the one in the office's records", "Its name is the records'.", "Its prompt says " + sw.hostname + "."),
+    C("secret", !sw.enableSecret, "Anyone at its console can type enable and change anything", "Privileged mode needs a secret.", sw.enablePassword ? "Only an enable password is set: it sits in the configuration as plain text." : "enable goes straight to privileged mode, with no password."),
+    C("secretw", !!sw.enableSecret && !pwOk(sw.enableSecret, p.secret), "Its enable secret isn't the office's", "Its enable secret is the office's.", "The office's enable secret doesn't open its privileged mode."),
+    C("con", !con.password || !con.login, "Its console doesn't ask for a password", "Its console asks for a password.", "Log out of its console, press RETURN: it goes straight in."),
+    C("conw", !!con.password && !!con.login && !pwOk(con.password, p.console), "Its console asks for a password, but not the office's", "Its console password is the office's.", "The office's console password isn't accepted.")];
+}
+function bothSaved(sim) {
+  const x = sim.d.bsw, b = BSW(sim), m = SW(sim);
+  return [
+    C("box", x.boxed, "The back office switch is still in its box", "It's out of its box.", "The back office switch is still in its box."),
+    C("bnever", !b.startup, "Nothing is saved on the back office switch: a power cut would bring back its factory settings", "The back office switch's configuration is saved.", "On the back office switch, show startup-config: startup-config is not present."),
+    C("bsince", !!b.startup && unsaved(b), "The back office switch has changes since it was last saved", "What runs on the back office switch is saved.", "On the back office switch, the running and startup configurations differ."),
+    C("msince", unsaved(m), "The closet switch has changes since it was last saved", "What runs on the closet switch is saved.", "On the closet switch, the running and startup configurations differ.")];
+}
+const SO10 = {
+  id: "SO-J10", level: "office", title: "A fibre link to the back office",
+  already: ["backup", "keep"],
+  start(seed) {
+    const b = SO9.start(seed), sim = b.sim, d = sim.d, net = sim.net;
+    for (const a of SO9.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    sim.cli = {}; d.tech.tftp.on = false;
+    const r = rng(seed ^ 0xb5a1), sw = newSwitch(); sw.unit = 3;
+    d.msw.sfp = { SFP1: null, SFP2: null, SFP3: null, SFP4: null };
+    d.bsw = { id: "bsw", kind: "mswitch", label: "Back office switch", sub: "MSW-2800G", on: true, boxed: true, mac: mac(r), sw: sw, sfp: { SFP1: null, SFP2: null, SFP3: null, SFP4: null }, fixed: ["meeting", "in the back office (the meeting room), on its wall shelf"] };
+    d.mpc = { id: "mpc", kind: "pc", label: "Back office PC", sub: "DHCP", on: true, os: "windows", user: "backoffice", host: "BACKOFFICE-PC", printer: { name: "Office printer", port: d.printer.ifaces[0].cfg.ip },
+      ifaces: [{ name: "Ethernet", type: "eth", port: "NIC", mac: mac(r), desc: "Gigabit Network Connection", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] };
+    net.rooms.mpc = "meeting"; sim.arp.bsw = {}; sim.arp.mpc = {};
+    const con = sim.net.cables.find(function (c) { return c.kind === "console"; });
+    return { sim: sim, v: Object.assign({}, b.v, { runs: net.extra.runs || 0, con: con ? con.id : null, lapIp: sim.offer("router", d.tech.ifaces[0].mac, null) }) };
+  },
+  brief() { return { quote: "We're turning the meeting room into a back office for our two part-timers. A second switch came this week, the same as the one in the closet, and the installer has already run a fibre from the closet to the meeting room: he said copper was out because it passes the lift's motor room. He left it coiled on the shelf in each room. The back office's PC is on its desk. Can you join it all up and set the new switch up the way the closet one is?", from: "the office manager" }; },
+  mason: "Read the run before you choose the modules: the fibre in the wall is the one thing you can't change. Then make the new switch the office's own, the way you did the first one.",
+  limits: function (v) { return ["The fibre run: OM2 multimode (50/125 µm), 35 m, LC at both ends. Both switches' SFP slots are 1 Gb/s SFP.", "In the van: 1000BASE-SX modules (850 nm, multimode), 1000BASE-LX modules (1310 nm, single-mode), and a 10GBASE-SR SFP+ module (850 nm, multimode, 10 Gb/s).", "The office's records: the back office switch is " + v.plan.bswHost + ", with the closet switch's enable secret (" + v.plan.secret + ") and console password (" + v.plan.console + "). The closet switch's end of the fibre is described " + v.plan.desc.fibre + ".", "Your laptop's console cable is 1.8 m: it reaches a switch in the same room. Backups of the closet switch go to your laptop by TFTP, under the name the switch suggests; take your laptop's network cable with you when you leave."]; },
+  reqs: [{
+    id: "fibre", text: "The back office switch is in the meeting room, joined to the closet switch over the fibre run",
+    causes: fibreCauses,
+    ok: function () { return "The fibre link is up between the closet switch and the back office switch."; },
+    rung1: function () { return "Read the run's jacket in the limits, then each module's label in the van. On the closet switch: show interfaces status and show interfaces transceiver."; },
+    rung2: function () { return "An SFP module sends one wavelength on one kind of fibre at one speed: both ends must match each other, the fibre between them, and the speed their slots can run."; }
+  }, {
+    id: "port", text: "The closet switch's fibre port is open, and described as the office's records say",
+    causes: fibrePortCauses,
+    ok: function () { return "The closet switch's fibre port is open, named as the records say."; },
+    rung1: function () { return "On the closet switch: show interfaces status, the fibre ports at the end of the list."; },
+    rung2: function () { return "The spare ports and the fibre slots were shut down on purpose; a fibre slot comes up only when it's opened in its own interface configuration, where its description is set too."; }
+  }, {
+    id: "back", text: "The back office PC is online through the back office switch, and prints",
+    causes: backPcCauses,
+    ok: function () { return "The back office PC is online and reaches the printer."; },
+    rung1: function () { return "On the back office PC: ipconfig, then ping the router and the printer."; },
+    rung2: function () { return "The back office PC's traffic crosses its own switch, then the fibre, then the closet switch: each hop has to be up. Once it is, a PC on 169.254 asks for an address again."; }
+  }, {
+    id: "bsw", text: "The back office switch is the office's: its name from the records, the enable secret, the console password",
+    causes: bswCauses,
+    ok: function (sim) { return "It's called " + BSW(sim).hostname + "; privileged mode and the console are locked with the office's secret and password."; },
+    rung1: function () { return "Your laptop's serial terminal on the back office switch: read its prompt, then show running-config."; },
+    rung2: function () { return "A switch fresh from its box has no name and no passwords: anyone at its console owns it. The console port is the way in, with the console cable in the same room."; }
+  }, {
+    id: "saved", text: "Both switches' setups survive a power cut",
+    causes: bothSaved,
+    ok: function () { return "What runs on each switch is saved."; },
+    rung1: function () { return "On each switch: compare show running-config with show startup-config."; },
+    rung2: function () { return "Each switch keeps its own startup configuration: saving one saves nothing on the other."; }
+  }, {
+    id: "backup", text: "The backup of the closet switch on your laptop matches what it has saved",
+    causes: function (sim, v) { const bn = v.plan.baseline.toLowerCase(); return copyCauses(sim, backupName(sim), function (n) { return n !== bn; }, "backup"); },
+    ok: function () { return "Your laptop's backup of the closet switch matches what it has saved."; },
+    rung1: function () { return "Your laptop's TFTP server tab: read the backup beside the closet switch's show startup-config."; },
+    rung2: function () { return "Once the closet switch's saved configuration changes, its backup is out of date: copy it again under the same name."; }
+  }, {
+    id: "keep", text: "Everything that worked still works: the front desk PC and the new hire's PC online, and printing",
+    causes: function (sim) { return keepMoved(sim).concat([C("print", !printOk(sim), "The front desk PC can't reach the printer", "The front desk PC reaches the printer.", "Test pages from the front desk don't print.")]); },
+    ok: function () { return "The front desk PC and the new hire's PC are online; the front desk prints."; },
+    rung1: function () { return "On each PC: ipconfig, then ping the router and the printer."; },
+    rung2: function () { return "Opening one fibre port changes nothing for the copper ports; a range typed by mistake can."; }
+  }],
+  /* one way: SX modules at both ends (multimode, 1 Gb/s), the run plugged in, the back office PC cabled; the closet switch's fibre port
+     opened, named, saved, its backup refreshed; your laptop carried to the back office, the new switch named and locked on its console, saved */
+  solve(v) {
+    const p = v.plan, n = v.runs;
+    return [{ t: "place", dev: "bsw", room: "meeting" }, { t: "sfp", dev: "msw", slot: "SFP1", type: "1000BASE-SX" }, { t: "sfp", dev: "bsw", slot: "SFP1", type: "1000BASE-SX" },
+      { t: "lay", a: E("msw", "SFP1"), b: E("bsw", "SFP1") }, { t: "lay", a: E("bsw", "1"), b: E("mpc", "NIC") },
+      cli(""), cli(p.console), cli("enable"), cli(p.secret), cli("configure terminal"), cli("interface gi0/25"), cli("description " + p.desc.fibre), cli("no shutdown"), cli("end"), cli("copy running-config startup-config"), cli(""),
+      { t: "lay", a: E("tech", "ETH"), b: E("router", "LAN 2") }, { t: "tftp", dev: "tech", on: true }, cli("copy startup-config tftp:"), cli(v.lapIp), cli(""), { t: "pull", cable: "c-run-" + (n + 3) },
+      { t: "pull", cable: v.con }, { t: "place", dev: "tech", room: "meeting" }, { t: "lay", a: E("tech", "USB-C"), b: E("bsw", "CONSOLE") },
+      cli(""), cli("enable"), cli("configure terminal"), cli("hostname " + p.bswHost), cli("enable secret " + p.secret), cli("line console 0"), cli("password " + p.console), cli("login"), cli("end"), cli("copy running-config startup-config"), cli("")];
+  },
+  answer(v) {
+    return ["Place the back office switch in the meeting room. The run is multimode and the slots are 1 Gb/s: put a 1000BASE-SX module in SFP1 of each switch (not the LX: single-mode; not the SFP+: 10 Gb/s). Lay the fibre between the two SFP1 slots, and the back office PC to a port of the new switch.",
+      "On the closet switch's console: interface gi0/25, description " + v.plan.desc.fibre + ", no shutdown; end; copy running-config startup-config. Refresh its backup (your laptop on the router's LAN 2, the TFTP server, copy startup-config tftp:), then pull your laptop's cable.",
+      "Pull the console cable, place your laptop in the meeting room and lay the console cable to the back office switch's CONSOLE.",
+      "On its console: enable, configure terminal, hostname " + v.plan.bswHost + ", enable secret (the office's), line console 0, password (the office's), login, end, copy running-config startup-config. The back office PC asks again for its address once the fibre is up."];
+  },
+  summary(v, sim) {
+    return ["The back office switch is in the meeting room, joined to the closet over the multimode run with a 1000BASE-SX module at each end.", "The closet switch's fibre port is open and named; the back office PC is online and prints.",
+      "The back office switch is the office's: " + BSW(sim).hostname + ", locked with the office's secret and console password.", "Both switches are saved, and the closet switch's backup is up to date."];
+  }
+};
+
+export const OFFICE_JOBS = [SO1, SO2, SO3, SO4, SO5, SO6, SO7, SO8, SO9, SO10];

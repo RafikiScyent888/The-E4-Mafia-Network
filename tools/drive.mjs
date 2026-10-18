@@ -719,7 +719,7 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
   }
   const ser = async (p, line) => { await type(p, line); };
   const promptNow = (p) => p.$eval(".term .prompt", (n) => n.textContent);
-  for (const job of ["SO-J1", "SO-J2", "SO-J3", "SO-J4", "SO-J5"]) for (const seed of [11, 2025, 777777]) {
+  for (const job of ["SO-J1", "SO-J2", "SO-J3", "SO-J4", "SO-J5", "SO-J6", "SO-J7", "SO-J8", "SO-J9", "SO-J10"].filter((k) => !process.env.JOB || k === process.env.JOB)) for (const seed of [11, 2025, 777777]) {
     const { p, ctx } = await opage("build.html", { net: homeDone.t, build: { current: job, j: { [job]: { seed } }, done: homeDone.j } });
     const tag = "office " + job + " " + seed + ": ";
     try {
@@ -825,6 +825,157 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
         for (const l of ["configure terminal", "interface gi0/4", "shutdown", "end"]) await ser(p, l);
         await tab(p, "Physical"); await p.waitForTimeout(60);
         check(/ETHERNET: empty\./.test(await p.$eval(".pane", (n) => n.textContent)) && /USB serial adapter is plugged in/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "your laptop's Physical tab: Ethernet empty, the serial adapter in");
+      } else if (job === "SO-J6") {
+        /* the replacement from its box: cabled as the backup says, a temporary address of the records' own on VLAN 1, your laptop on a
+           spare port, the backup copied in (the prompt takes the office's name), the keys made again, the changed key seen at the front
+           desk and checked against the switch's own fingerprint before it's forgotten, saved, the laptop's cable pulled */
+        const lapIp = await BJ(p, () => window.__e4b.T.v.lapIp), back = plan.hostname.toLowerCase() + "-confg", esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        check(/Managed switch/.test(await p.$eval(".tray", (n) => n.textContent).catch(() => "")), tag + "the replacement is in the box tray");
+        await place(p, "msw", "closet"); await lay(p, "tech", "USB-C", "msw", "CONSOLE");
+        await lay(p, "router", "LAN 1", "msw", "1"); await lay(p, "msw", "2", "pc", "NIC"); await lay(p, "msw", "3", "printer", "NET");
+        await dev(p, "tech"); await ser(p, "");
+        check((await promptNow(p)) === "Switch>", tag + "the replacement wakes with its factory prompt, asking for nothing");
+        for (const l of ["enable", "configure terminal", "interface vlan 1", "ip address " + plan.ip + " " + plan.mask, "no shutdown", "end"]) await ser(p, l);
+        await lay(p, "tech", "ETH", "msw", "4");
+        await dev(p, "tech"); await tab(p, "TFTP server");
+        const files = await p.$$eval(".tftp .tfiles li b", (l) => l.map((x) => x.textContent));
+        check(files.indexOf(back) >= 0 && files.indexOf(plan.baseline) >= 0, tag + "the TFTP tab still holds last visit's backup and baseline");
+        await p.click('.tftp button:text-is("Start the TFTP server")'); await p.waitForTimeout(40);
+        await tab(p, "Serial terminal"); await ser(p, "copy tftp: running-config");
+        check((await promptNow(p)) === "Address or name of remote host []? ", tag + "copy tftp: asks for the server");
+        await ser(p, lapIp); check((await promptNow(p)) === "Source filename []? ", tag + "then the file to fetch");
+        await ser(p, back); check((await promptNow(p)) === "Destination filename [running-config]? ", tag + "then where it goes, offering running-config");
+        await ser(p, "");
+        check(new RegExp("Loading " + esc(back) + " from " + esc(lapIp) + " \\(via Vlan1\\): !\\n\\[OK - \\d+ bytes\\]").test(await term(p)) && (await promptNow(p)) === plan.hostname + "#", tag + "the backup loads, and the prompt takes the office's name");
+        t = await checkJob(p); check(/connection refused/.test(t) && !/factory settings/.test(t), tag + "the check: the configuration is back; SSH is refused (no keys)");
+        await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ssh " + plan.user + "@" + plan.ip);
+        check(/port 22: Connection refused/.test(await term(p)), tag + "SSH from the front desk PC: refused, no keys on the new switch");
+        await dev(p, "tech"); for (const l of ["configure terminal", "crypto key generate rsa modulus 2048", "end", "show crypto key mypubkey rsa"]) await ser(p, l);
+        const own = ((await term(p)).match(/Fingerprint \(SHA256, as SSH clients show it\): (SHA256:\S+)/g) || []).pop() || "";
+        await dev(p, "pc"); await type(p, "ssh " + plan.user + "@" + plan.ip);
+        const warn = await term(p), fp = (warn.match(/The fingerprint for the RSA key sent by the remote host is\n(SHA256:\S+)\./) || [])[1];
+        check(/REMOTE HOST IDENTIFICATION HAS CHANGED/.test(warn) && !!fp && own.indexOf(fp) >= 0, tag + "the front desk PC warns the key changed; its fingerprint is the new switch's own");
+        await type(p, "ssh-keygen -R " + plan.ip); check(/known_hosts updated/.test(await term(p)), tag + "ssh-keygen -R forgets the old key");
+        await type(p, "ssh " + plan.user + "@" + plan.ip); check(/Permanently added/.test(await term(p)), tag + "SSH again: the new key is added");
+        await type(p, plan.userPw); check((await promptNow(p)) === plan.hostname + ">", tag + "and the office's login works (the backup's hashed secret)");
+        await type(p, "exit");
+        await dev(p, "tech"); await ser(p, "copy running-config startup-config"); await ser(p, "");
+        await p.click('#runs tr:has-text("Your laptop, ETHERNET") button:text-is("Pull")'); await p.waitForTimeout(40);
+      } else if (job === "SO-J7") {
+        /* the new hire's PC unboxed at their desk and cabled to a spare port (shut, so no link), the port opened and named, the PC online
+           by itself, saved; the backup goes stale and the check says so; refreshed from your laptop on the router's spare port */
+        const lapIp = await BJ(p, () => window.__e4b.T.v.lapIp), esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        check(/New hire's PC/.test(await p.$eval(".tray", (n) => n.textContent).catch(() => "")), tag + "the new hire's PC is in the box tray");
+        await place(p, "hire", "open"); await lay(p, "msw", "5", "hire", "NIC");
+        check(/New hire's PC, NIC[^]*?12 m[^]*?No link|Managed switch, port 5[^]*?New hire's PC[^]*?No link/.test(await p.$eval("#runs", (n) => n.textContent)), tag + "the 12 m run to the new desk: no link, its port is shut");
+        await dev(p, "tech"); await ser(p, "");
+        for (const l of [plan.console, "enable", plan.secret, "show interfaces status"]) await ser(p, l);
+        check(/Gi0\/5\s+disabled/.test(await term(p)), tag + "show interfaces status: Gi0/5 disabled, as every spare");
+        for (const l of ["configure terminal", "interface gi0/5", "description " + plan.desc.hire, "no shutdown", "end"]) await ser(p, l);
+        await dev(p, "hire"); await tab(p, "Command Prompt"); await type(p, "ipconfig");
+        const hip = ((await term(p)).match(/IPv4 Address[ .]*: ([\d.]+)/) || [])[1] || "";
+        check(!!hip && !/^169\.254/.test(hip), tag + "the port opened: the new hire's PC has its address from the router (" + hip + ")");
+        await type(p, "ping " + (await BJ(p, () => window.__e4b.T.sim.d.printer.ifaces[0].cfg.ip)));
+        check(/Reply from/.test(await term(p)), tag + "and it reaches the printer");
+        await dev(p, "tech"); await ser(p, "copy running-config startup-config"); await ser(p, "");
+        t = await checkJob(p); check(/differs from show startup-config/.test(t), tag + "saved: the backup on your laptop is now out of date, and the check says so");
+        await lay(p, "tech", "ETH", "router", "LAN 2");
+        await dev(p, "tech"); await tab(p, "TFTP server"); await p.click('.tftp button:text-is("Start the TFTP server")'); await p.waitForTimeout(40);
+        await tab(p, "Serial terminal");
+        for (const l of ["copy startup-config tftp:", lapIp, ""]) await ser(p, l);
+        check(/!!\n\d+ bytes copied in/.test(await term(p)), tag + "the saved configuration copied again under the switch's own name");
+        await p.click('#runs tr:has-text("Your laptop, ETHERNET") button:text-is("Pull")'); await p.waitForTimeout(40);
+        void esc;
+      } else if (job === "SO-J8") {
+        /* the printer offline in the manager's office: its new run found in the runs table, on a shut port; the port opened with the
+           printer's settings, and show interfaces proves the duplex; the old port's label taken off and the port shut; the backup refreshed */
+        const lapIp = await BJ(p, () => window.__e4b.T.v.lapIp), np = await BJ(p, () => window.__e4b.T.v.newPort), prIp = await BJ(p, () => window.__e4b.T.sim.d.printer.ifaces[0].cfg.ip);
+        const runs = await p.$eval("#runs", (n) => n.textContent);
+        check(new RegExp("Managed switch, port " + np + "[^]*?Office printer, NET[^]*?22 m[^]*?No link").test(runs), tag + "the runs table: the cabler's 22 m run from the printer lands on port " + np + ", no link");
+        check(/Managed switch, port 3[^]*?Open-plan wall jack/.test(runs) && !!(await p.$('#devtabs [data-d="ojack"]')), tag + "the old run is still in port 3, to the open-plan office's wall jack, which has a device button");
+        await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping " + prIp);
+        check(/Request timed out|Destination host unreachable/.test(await term(p)), tag + "the front desk PC can't reach the printer");
+        await dev(p, "tech"); await ser(p, "");
+        for (const l of [plan.console, "enable", plan.secret, "show interfaces status"]) await ser(p, l);
+        check(new RegExp("Gi0/" + np + "\\s+disabled").test(await term(p)) && new RegExp("Gi0/3\\s+" + plan.desc.printer + "\\s+notconnect").test(await term(p)), tag + "show interfaces status: the new port disabled, the old one still named for the printer, notconnect");
+        for (const l of ["configure terminal", "interface gi0/" + np, "description " + plan.desc.printer, "speed 100", "duplex full", "no shutdown", "interface gi0/3", "no description", "no speed", "no duplex", "shutdown", "end", "show interfaces gi0/" + np]) await ser(p, l);
+        const sh = await term(p); check(/Full-duplex, 100Mb\/s/.test(sh.slice(sh.lastIndexOf("GigabitEthernet0/" + np + " is"))), tag + "show interfaces on the new port: full duplex, 100 Mb/s");
+        await dev(p, "pc"); await type(p, "ping " + prIp); check(/Reply from/.test(await term(p)), tag + "the front desk PC reaches the printer again");
+        await dev(p, "tech"); await ser(p, "copy running-config startup-config"); await ser(p, "");
+        await lay(p, "tech", "ETH", "router", "LAN 2");
+        await dev(p, "tech"); await tab(p, "TFTP server"); await p.click('.tftp button:text-is("Start the TFTP server")'); await p.waitForTimeout(40);
+        await tab(p, "Serial terminal"); for (const l of ["copy startup-config tftp:", lapIp, ""]) await ser(p, l);
+        await p.click('#runs tr:has-text("Your laptop, ETHERNET") button:text-is("Pull")'); await p.waitForTimeout(40);
+      } else if (job === "SO-J9") {
+        /* no cord and no map: the runs table hides which back port each run is on; each run toned at its far end (the three desks and both
+           empty wall jacks) and found with the probe; the panel's back takes no cord; each desk patched to the switch port named for it; the
+           map written and saved */
+        const v = await BJ(p, () => ({ P: window.__e4b.T.v.P, set: window.__e4b.T.v.set })), found = {};
+        const runs = await p.$eval("#runs", (n) => n.textContent);
+        check((runs.match(/Patch panel, a run punched down at the back/g) || []).length === 5 && !/punched down at the back\)/.test(runs), tag + "the runs table lists the five runs at the panel's back, without saying which port each is on");
+        p.setDefaultTimeout(30000);   /* each Physical tab builds its 3D model: on a busy machine that holds the page for seconds */
+        for (const id of ["pc", "printer", "hire", "ojack", "mjack"]) {
+          await dev(p, id); if (!/jack$/.test(id)) await tab(p, "Physical");
+          await p.click('.cabs li:has-text("' + (/jack$/.test(id) ? "run from this jack" : "wall jack") + '") button:text-is("Put the tone generator on it")'); await p.waitForTimeout(40);
+          await dev(p, "pp"); await p.click("#probeBtn"); await p.waitForTimeout(40);
+          found[id] = ((await p.$eval(".phys", (n) => n.textContent)).match(/The probe screams at the back of port (\d+)/) || [])[1];
+        }
+        p.setDefaultTimeout(5000);
+        check(Object.keys(v.P).every((id) => found[id] === v.P[id]), tag + "the tone and the probe find every run's panel port (" + Object.keys(found).map((k) => k + " " + found[k]).join(", ") + ")");
+        await p.selectOption("#bmAd", "pp");
+        check(!(await p.$$eval("#bmAp option", (l) => l.some((o) => /R$/.test(o.value)))), tag + "the Lay form offers only the panel's front ports");
+        await dev(p, "tech"); await ser(p, ""); for (const l of [plan.console, "enable", plan.secret, "show interfaces status"]) await ser(p, l);
+        const st = await term(p);
+        check(["pc", "printer", "hire"].every((id) => new RegExp(v.set[id].replace("GigabitEthernet", "Gi").replace("/", "\\/") + "\\s+" + plan.desc[id] + "\\s+notconnect").test(st)), tag + "show interfaces status: each desk's port named, notconnect");
+        for (const id of ["pc", "printer", "hire"]) await lay(p, "pp", found[id], "msw", v.set[id].replace("GigabitEthernet0/", ""));
+        check(/Patch panel, port \d+[^]*?0\.5 m/.test(await p.$eval("#runs", (n) => n.textContent)), tag + "each patch cord is 0.5 m");
+        t = await checkJob(p); check(/cable map is empty/.test(t), tag + "patched: the check says the map is still empty");
+        const room = { pc: "front", printer: "manager", hire: "open", ojack: "open", mjack: "meeting" };
+        for (const id of Object.keys(room)) await p.selectOption("#cm" + found[id], room[id]);
+        await p.click("#cmapSave"); await p.waitForTimeout(60);
+        check(/Saved/.test(await p.$eval("#cmapSum", (n) => n.textContent)), tag + "the map says Saved");
+        await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping 203.0.113.80"); check(/Reply from 203\.0\.113\.80/.test(await term(p)), tag + "the front desk PC is online through the panel");
+      } else if (job === "SO-J10") {
+        /* the back office switch placed; the fibre refused into empty slots; a single-mode module tried at the closet end and caught by the
+           check, swapped for an SX; the closet's fibre port opened and named, light in both directions; the back office PC online; the
+           closet switch saved and backed up; your laptop carried to the back office for the new switch's console, named, locked, saved */
+        const lapIp = await BJ(p, () => window.__e4b.T.v.lapIp), prIp = await BJ(p, () => window.__e4b.T.sim.d.printer.ifaces[0].cfg.ip);
+        check(/Back office switch/.test(await p.$eval(".tray", (n) => n.textContent).catch(() => "")), tag + "the back office switch is in the box tray");
+        await place(p, "bsw", "closet"); check(/goes in the back office/.test(await p.$eval("#bmPmsg", (n) => n.textContent)), tag + "the back office switch has its own place, in the back office");
+        await place(p, "bsw", "meeting");
+        await lay(p, "msw", "SFP1", "bsw", "SFP1"); check(/Put a module in the .*SFP1 first: the fibre's LC plug goes into the module/.test(await p.$eval("#bmLmsg", (n) => n.textContent)), tag + "no module, no fibre: the Lay form says so");
+        p.setDefaultTimeout(30000);   /* a Physical tab builds its 3D model */
+        await dev(p, "msw"); await tab(p, "Physical");
+        await p.click('.acts:has-text("SFP1: empty") button:text-is("Put in a 1000BASE-LX module")'); await p.waitForTimeout(60);
+        await dev(p, "bsw"); await tab(p, "Physical");
+        await p.click('.acts:has-text("SFP1: empty") button:text-is("Put in a 1000BASE-SX module")'); await p.waitForTimeout(60);
+        p.setDefaultTimeout(5000);
+        await lay(p, "msw", "SFP1", "bsw", "SFP1");
+        check(/Managed switch, SFP1[^]*?Back office switch, SFP1[^]*?35 m/.test(await p.$eval("#runs", (n) => n.textContent)), tag + "the fibre run, 35 m, between the two SFP1 slots");
+        await lay(p, "bsw", "1", "mpc", "NIC");
+        t = await checkJob(p); check(/single-mode/.test(t), tag + "an LX at the closet end: the check reads the module against the run");
+        p.setDefaultTimeout(30000); await dev(p, "msw"); await tab(p, "Physical");
+        await p.click('.acts:has-text("SFP1: 1000BASE-LX") button:text-is("Swap in a 1000BASE-SX module")'); await p.waitForTimeout(60); p.setDefaultTimeout(5000);
+        await dev(p, "tech"); await tab(p, "Serial terminal"); await ser(p, "");
+        for (const l of [plan.console, "enable", plan.secret, "show interfaces status"]) await ser(p, l);
+        check(/Gi0\/25\s+disabled/.test(await term(p)), tag + "show interfaces status: the fibre port Gi0/25 disabled, as every spare");
+        for (const l of ["configure terminal", "interface gi0/25", "description " + plan.desc.fibre, "no shutdown", "end", "show interfaces transceiver"]) await ser(p, l);
+        check(/Gi0\/25\s+33\.8\s+3\.29\s+-5\.6\s+-6\.1/.test(await term(p)), tag + "show interfaces transceiver: light both ways on Gi0/25");
+        await ser(p, "copy running-config startup-config"); await ser(p, "");
+        await dev(p, "mpc"); await tab(p, "Command Prompt"); await type(p, "ipconfig");
+        if (/169\.254\./.test(await term(p))) await type(p, "ipconfig /renew");
+        await type(p, "ping " + prIp); check(/Reply from/.test(await term(p)), tag + "the back office PC reaches the printer across the fibre");
+        await lay(p, "tech", "ETH", "router", "LAN 2");
+        await dev(p, "tech"); await tab(p, "TFTP server"); await p.click('.tftp button:text-is("Start the TFTP server")'); await p.waitForTimeout(40);
+        await tab(p, "Serial terminal"); for (const l of ["copy startup-config tftp:", lapIp, ""]) await ser(p, l);
+        await p.click('#runs tr:has-text("Your laptop, ETHERNET") button:text-is("Pull")'); await p.waitForTimeout(40);
+        await p.click('#runs tr:has-text("Your laptop, USB-C") button:text-is("Pull")'); await p.waitForTimeout(40);
+        await lay(p, "tech", "USB-C", "bsw", "CONSOLE"); check(/same room/.test(await p.$eval("#bmLmsg", (n) => n.textContent)), tag + "the console cable doesn't reach the back office from the closet");
+        await place(p, "tech", "meeting"); await lay(p, "tech", "USB-C", "bsw", "CONSOLE");
+        await dev(p, "tech"); await tab(p, "Serial terminal"); await ser(p, "");
+        check((await promptNow(p)) === "Switch>", tag + "the back office switch's console: a factory prompt");
+        for (const l of ["enable", "configure terminal", "hostname " + plan.bswHost, "enable secret " + plan.secret, "line console 0", "password " + plan.console, "login", "end", "copy running-config startup-config", ""]) await ser(p, l);
+        check((await promptNow(p)) === plan.bswHost + "#", tag + "named " + plan.bswHost + " and saved");
       } else if (job === "SO-J3") {
         /* the printer's port, as found: half duplex, and the late collisions climb each time you look */
         await dev(p, "tech"); await ser(p, "");
@@ -874,38 +1025,38 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
       check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
       await p.reload(); await p.waitForTimeout(350);
       check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)) && /done 1×|Done 1×/.test(await p.$eval('#queue [data-j="' + job + '"]', (n) => n.textContent)), tag + "still done after a reload, and the list counts it");
-      if (job === "SO-J2") check(new RegExp("1 of " + LEVELS[1].jobs.length + " work orders done · more work orders and tickets are on the way").test((await lv(p, 2)).text), tag + "the level counts its work orders and says more is coming (" + (await lv(p, 2)).text + ")");
+      if (job === "SO-J2") check(new RegExp("1 of " + LEVELS[1].jobs.length + " work orders done").test((await lv(p, 2)).text) && !/on the way/.test((await lv(p, 2)).text), tag + "the level counts its work orders, and says nothing more is coming (" + (await lv(p, 2)).text + ")");
     } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
     await ctx.close();
   }
 }
 
-/* stage by stage (the owner, 17 October 2026): with everything built so far on the small office done, it says more is
-   on the way, and it doesn't count as finished, so Level 3 stays locked and says why */
+/* the small office complete (18 October 2026: its 10 work orders and 15 tickets all built): with every ticket solved and every work
+   order but the last done, finishing the last one finishes the level; the small business is built later, and says so */
 if (!process.env.ONLY || process.env.ONLY === "office") {
   const { LEVELS } = await import("../js/desk/levels.js");
-  const net = { t: {}, solved: Object.fromEntries(LEVELS[0].tickets.concat(LEVELS[1].tickets).map((id) => [id, 1])) };   /* the office's tickets built so far solved too */
-  const lastJob = LEVELS[1].jobs[LEVELS[1].jobs.length - 1];   /* every work order built so far done but the last, which the drive finishes */
+  const net = { t: {}, solved: Object.fromEntries(LEVELS[0].tickets.concat(LEVELS[1].tickets).map((id) => [id, 1])) };
+  const lastJob = LEVELS[1].jobs[LEVELS[1].jobs.length - 1];
   const built = { j: {}, done: Object.fromEntries(LEVELS[0].jobs.concat(LEVELS[1].jobs.slice(0, -1)).map((id) => [id, 1])) };
   const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
   await ctx.addInitScript(([n, b]) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify(n)); localStorage.setItem("e4-build-v1", JSON.stringify(b)); sessionStorage.setItem("seeded", "1"); } }, [net, built]);
-  const p = await ctx.newPage(); p.setDefaultTimeout(5000); p.on("pageerror", (e) => errs.push("office so far: " + e.message));
-  const tag = "levels, the small office done so far: ";
+  const p = await ctx.newPage(); p.setDefaultTimeout(5000); p.on("pageerror", (e) => errs.push("office finished: " + e.message));
+  const tag = "levels, the small office finished: ";
   try {
     await p.goto(base + "build.html"); await p.waitForTimeout(350);
     if (plant) await p.evaluate(plant);
+    check(/More work orders/i.test(await p.$eval("#queue", (n) => n.textContent)) === false, tag + "the small office's work orders list says nothing more is coming");
     await p.evaluate((id) => { const c = window.__e4b; c.openJob(id, true, 2026); const J = c.T; J.def.solve(J.v, J.sim).forEach((a) => c.act(a)); }, lastJob);
     await p.click("#doCheck"); await p.waitForTimeout(150);   /* the real button: it's what counts a job done */
     const box = await p.$eval("#check", (n) => n.textContent);
-    check(/That's everything on the small office so far/.test(box) && /More work orders and tickets are on the way/.test(box), tag + lastJob + "'s done box says that's everything so far, more on the way");
-    check(!/Level 2 finished/.test(box), tag + "and does not call the level finished");
+    check(/Level 2 finished/.test(box) && /Small business is still being built/.test(box), tag + lastJob + "'s done box says Level 2 is finished, and the small business is still being built");
+    check(!/on the way/.test(box), tag + "and no longer says more is on the way");
     await p.goto(base + "index.html"); await p.waitForTimeout(350);
-    const L3 = await p.$eval('#left [data-level="3"]', (b) => ({ locked: b.parentNode.classList.contains("locked"), text: b.textContent }));
-    check(L3.locked, tag + "Level 3 stays locked (" + L3.text + ")");
-    await p.click('#left [data-level="3"]'); await p.waitForTimeout(60);
-    check(/Small office is still being built: more work orders and tickets are on the way, and you've done everything ready so far/.test(await p.$eval("#lockpanel", (n) => n.textContent)), tag + "its lock panel says the small office is still being built");
-    const nj = LEVELS[1].jobs.length;
-    check(new RegExp(nj + " of " + nj + " work orders done · more work orders and tickets are on the way").test(await p.$eval('#left [data-level="2"]', (n) => n.textContent)), tag + "Level 2 counts " + nj + " of " + nj + " and says more is coming");
+    const L2 = await p.$eval('#left [data-level="2"]', (n) => n.textContent), L3 = await p.$eval('#left [data-level="3"]', (n) => n.textContent);
+    check(/Finished: 15 of 15 tickets, 10 of 10 work orders/.test(L2), tag + "Level 2 says finished, 15 of 15 tickets and 10 of 10 work orders (" + L2 + ")");
+    check(/built later/.test(L3), tag + "Level 3 says it's built later (" + L3 + ")");
+    await p.click('#left [data-level="2"]'); await p.waitForTimeout(60);
+    check(!/on the way|built later/i.test(await p.$eval("#queue", (n) => n.textContent)), tag + "the desk's queue for the small office says nothing more is coming");
   } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
   await ctx.close();
 }

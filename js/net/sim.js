@@ -664,7 +664,7 @@ export class Sim {
     const x = this.d[id];
     if (!x) return { ok: false, errs: ["No such device"] };
     if (!(this.net.roomNames ? this.net.roomNames[room] : SIGNAL[room])) return { ok: false, errs: ["There's no room called " + room] };
-    const fx = (this.net.fixed || FIXED_ROOM)[x.kind]; if (fx && fx[0] !== room) return { ok: false, errs: ["The " + x.label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }) + " goes " + fx[1]] };
+    const fx = x.fixed || (this.net.fixed || FIXED_ROOM)[x.kind]; if (fx && fx[0] !== room) return { ok: false, errs: ["The " + x.label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }) + " goes " + fx[1]] };
     if (!x.boxed && this.cablesOf(id).some(function (c) { return c.kind !== "coax"; }) && this.net.rooms[id] !== room) return { ok: false, errs: ["Pull its cables out first: it's still cabled where it is"] };
     x.boxed = false; this.net.rooms[id] = room;
     return { ok: true, room: room };
@@ -680,11 +680,24 @@ export class Sim {
       else if (this.cableAt(e[1].dev, e[1].port)) errs.push("The " + e[0].label + "'s " + (portName(e[0], e[1].port) === e[1].port ? "port " + e[1].port : portName(e[0], e[1].port)) + " already has a cable in it");
     }, this);
     if (errs.length) return { ok: false, errs: errs };
+    const slot = function (X, e) { return X.kind === "mswitch" && /^SFP\d$/.test(e.port); }, sa = slot(A, a), sb = slot(B, b);
+    if (sa !== sb) return { ok: false, errs: ["A fibre run joins two SFP slots; copper goes in the numbered ports"] };
+    if (sa) {   /* the fibre's LC plug goes into a module: a slot with none takes no fibre */
+      const empty = [[A, a], [B, b]].find(function (e) { return !(e[0].sfp && e[0].sfp[e[1].port]); });
+      if (empty) return { ok: false, errs: ["Put a module in the " + empty[0].label + "'s " + empty[1].port + " first: the fibre's LC plug goes into the module"] };
+      const nf = (this.net.extra.runs = (this.net.extra.runs || 0) + 1), flen = runLength(this.net.rooms[a.dev], this.net.rooms[b.dev], this.net) + (this.net.rooms[a.dev] === this.net.rooms[b.dev] ? 0 : 9);   /* the run in the wall goes the long way round, past the lift's motor room */
+      const fc = { id: "c-fibre-" + nf, kind: "fibre", fiber: "MMF", jacket: "OM2 50/125 µm MULTIMODE", polarity: "ab", a: { dev: a.dev, port: a.port, seated: true }, b: { dev: b.dev, port: b.port, seated: true }, length: flen };
+      this.net.cables.push(fc);
+      return { ok: true, cable: fc.id, length: flen };
+    }
+    const back = [[A, a], [B, b]].find(function (e) { return e[0].kind === "patchpanel" && /R$/.test(e[1].port); });
+    if (back) return { ok: false, errs: ["The back of the patch panel is punched down: a patch cord goes in its front"] };
     const ca = consoleEnd(A, a.port), cb = consoleEnd(B, b.port);
     if (ca !== cb) return { ok: false, errs: [ca ? (A.kind === "mswitch" ? "The switch's CONSOLE port takes the console cable from your laptop, not a network cable" : "Your laptop's USB serial adapter takes the console cable: its other end goes to a switch's CONSOLE port") : (B.kind === "mswitch" ? "The switch's CONSOLE port takes the console cable from your laptop, not a network cable" : "Your laptop's USB serial adapter takes the console cable: its other end goes to a switch's CONSOLE port")] };
     if (ca && A.kind === B.kind) return { ok: false, errs: ["A console cable joins your laptop to a switch's CONSOLE port"] };
     if (ca && this.net.rooms[a.dev] !== this.net.rooms[b.dev]) return { ok: false, errs: ["The console cable is 1.8 m long: your laptop has to be in the same room as the switch"] };
-    const n = (this.net.extra.runs = (this.net.extra.runs || 0) + 1), len = ca ? 1.8 : runLength(this.net.rooms[a.dev], this.net.rooms[b.dev], this.net);
+    const cord = (A.kind === "patchpanel" || B.kind === "patchpanel") && this.net.rooms[a.dev] === this.net.rooms[b.dev];   /* a patch cord in the rack, panel to switch */
+    const n = (this.net.extra.runs = (this.net.extra.runs || 0) + 1), len = ca ? 1.8 : cord ? 0.5 : runLength(this.net.rooms[a.dev], this.net.rooms[b.dev], this.net);
     const c = { id: (ca ? "c-console-" : "c-run-") + n, kind: ca ? "console" : "cat6", a: { dev: a.dev, port: a.port, seated: true }, b: { dev: b.dev, port: b.port, seated: true }, cond: "good", length: len };
     this.net.cables.push(c);
     return { ok: true, cable: c.id, length: len };

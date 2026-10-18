@@ -16,11 +16,12 @@ import { setupInstructor } from "../desk/instructor.js";
 import { LEVELS, isOpen, levelOfJob, finished, built, counts, progress, openHere, setOpenHere, instructorOn } from "../desk/levels.js";
 import { levelList, lockPanel } from "../desk/levelsui.js";
 import { ipamSheet as sheetForm } from "../desk/ipamui.js";
+import { cableMap } from "../desk/cablemapui.js";
 
 const KEY = "e4-build-v1";
 const ALL = JOBS.concat(OFFICE_JOBS);   /* every level's work orders */
 const DEFS = {}; ALL.forEach(function (d) { DEFS[d.id] = d; });
-const ORDER = ["modem", "router", "switch", "msw", "pc", "printer", "tv", "injector", "injector2", "camera", "mesh", "phone", "laptop", "guest", "tech"];
+const ORDER = ["modem", "router", "switch", "pp", "msw", "bsw", "pc", "hire", "printer", "mpc", "ojack", "mjack", "tv", "injector", "injector2", "camera", "mesh", "phone", "laptop", "guest", "tech"];
 const ROOM_ORDER = ["living", "office", "kitchen", "garage", "upstairs", "landing", "porch"];
 /* the site's own rooms, names and fixed places: a house, or the small office */
 const roomsOf = function (sim) { return sim.net.roomNames ? Object.keys(sim.net.roomNames) : ROOM_ORDER; };
@@ -44,7 +45,7 @@ const ctx = {
 
 /* ---------------------------------------------------------------- names for ports and devices */
 function portLabel(x, port) { return /^\d+$/.test(port) ? "port " + port : portName(x, port); }   /* the name printed by the port on the device */
-function endLabel(sim, e) { return e.dev === "wall" ? "Wall outlet (coax)" : sim.d[e.dev].label + ", " + (e.port === "CABLE IN" ? "CABLE IN" : portLabel(sim.d[e.dev], e.port)); }
+function endLabel(sim, e) { if (sim.d[e.dev] && sim.d[e.dev].kind === "patchpanel" && /R$/.test(e.port)) return sim.d[e.dev].label + ", a run punched down at the back"; return e.dev === "wall" ? "Wall outlet (coax)" : sim.d[e.dev].label + ", " + (e.port === "CABLE IN" ? "CABLE IN" : portLabel(sim.d[e.dev], e.port)); }   /* which port a run is punched down on is for the tone and the probe to find */
 const shown = function (sim, id) { return !!sim.d[id] && !sim.d[id].boxed; };
 const devices = function (sim) { return ORDER.filter(function (id) { return !!sim.d[id]; }); };
 
@@ -116,6 +117,7 @@ function renderBuild() {
   host.appendChild(el("h3", null, "Limits on this job"));
   const lim = el("ul", { class: "limits" }); (typeof J.def.limits === "function" ? J.def.limits(J.v, J.sim) : J.def.limits).forEach(function (t) { lim.appendChild(el("li", null, t)); }); host.appendChild(lim);
   if (J.def.ipam) ipamSheet(host, J, sim);
+  if (J.def.cablemap) mapForm(host, J, sim);
   const boxed = devices(sim).filter(function (id) { return sim.d[id].boxed; });
   host.appendChild(el("h3", null, "In the box, not placed yet"));
   if (boxed.length) { const tr = el("ul", { class: "tray" }); boxed.forEach(function (id) { tr.appendChild(el("li", null, sim.d[id].label)); }); host.appendChild(tr); }
@@ -146,7 +148,7 @@ function renderBuild() {
     const ds = el("select", { id: "bm" + end + "d", name: end + "d" }), ps = el("select", { id: "bm" + end + "p", name: end + "p" });
     can.forEach(function (id) { ds.appendChild(el("option", { value: id }, sim.d[id].label)); });
     if (pick) ds.value = pick;
-    const fill = function () { ps.innerHTML = ""; portsOf(sim.d[ds.value]).forEach(function (p) { const used = !!sim.cableAt(ds.value, p); const o = el("option", { value: p }, portLabel(sim.d[ds.value], p) + (used ? " (in use)" : "")); if (used) o.disabled = true; ps.appendChild(o); }); const free = Array.from(ps.options).find(function (o) { return !o.disabled; }); if (free) ps.value = free.value; };
+    const fill = function () { ps.innerHTML = ""; portsOf(sim.d[ds.value]).filter(function (p) { return !(sim.d[ds.value].kind === "patchpanel" && /R$/.test(p)); }).forEach(function (p) { const used = !!sim.cableAt(ds.value, p); const o = el("option", { value: p }, portLabel(sim.d[ds.value], p) + (used ? " (in use)" : "")); if (used) o.disabled = true; ps.appendChild(o); }); const free = Array.from(ps.options).find(function (o) { return !o.disabled; }); if (free) ps.value = free.value; };
     fill(); ds.addEventListener("change", function () { fill(); len(); });
     return { ds: ds, ps: ps };
   };
@@ -189,6 +191,14 @@ function ipamSheet(host, J, sim) {
   sheetForm(host, { plan: sim.net.plan.ipam, saved: saved, checked: saved.length > 0, note: "Work each block out by hand: the sheet says what's wrong with what you wrote, never what the right value is.",
     onSave: function (rows) { ctx.act({ t: "ipam", rows: rows }); renderBuild(); const b = $("ipamSave"); if (b) b.focus(); } });
 }
+/* the office's cable map (SO-J9 on): a row for each panel port with a run punched down on it, or named in the map; saving it is a
+   change like any other (Undo takes it back). Nothing here says whether a row is right: the cable does */
+function mapForm(host, J, sim) {
+  const map = sim.net.cablemap || {}, ports = Object.keys(map);
+  sim.cablesOf("pp").forEach(function (c) { const e = c.a.dev === "pp" ? c.a : c.b; if (/R$/.test(e.port) && ports.indexOf(e.port.slice(0, -1)) < 0) ports.push(e.port.slice(0, -1)); });
+  cableMap(host, { map: map, ports: ports.sort(function (a, b) { return a - b; }), saved: J.net.some(function (a) { return a.t === "cablemap"; }), note: "The cablers left no map. Write down where each run goes once you know: the tone and the probe will tell you.",
+    onSave: function (m) { ctx.act({ t: "cablemap", map: m }); renderBuild(); const b = $("cmapSave"); if (b) b.focus(); } });
+}
 function describe(a) {
   const sim = ctx.T.sim;
   if (a.t === "place") return "placing " + theName(sim, a.dev) + " in " + IN[a.room];
@@ -200,6 +210,9 @@ function describe(a) {
   if (a.t === "power") return "restarting " + theName(sim, a.dev);
   if (a.t === "pcprinter") return "the office PC's printer port";
   if (a.t === "ipam") return "saving the IPAM sheet";
+  if (a.t === "cablemap") return "saving the cable map";
+  if (a.t === "tone") return "putting the tone generator on a run";
+  if (a.t === "repatch") return "moving a patch cord";
   if (a.t === "tftp") return (a.on ? "starting" : "stopping") + " the TFTP server on your laptop";
   if (a.t === "join" || a.t === "rejoin" || a.t === "forget") return theName(sim, a.dev) + "'s Wi-Fi";
   return "your last change";

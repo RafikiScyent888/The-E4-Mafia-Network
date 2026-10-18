@@ -34,7 +34,7 @@ export function renderQueue(host, ctx) {
       ol.appendChild(el("li", { class: "tier" }, "Tier " + L.n + " · " + L.name + " · tickets"));
       tickets.forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
     }
-    ol.appendChild(el("li", { class: "tier" }, L.coming ? L.coming.charAt(0).toUpperCase() + L.coming.slice(1) : "Tickets: built later"));
+    if (L.coming || !tickets.length) ol.appendChild(el("li", { class: "tier" }, L.coming ? L.coming.charAt(0).toUpperCase() + L.coming.slice(1) : "Tickets: built later"));   /* a level with all its tickets built says nothing more */
     if (L.jobs.length) {
       ol.appendChild(el("li", { class: "tier" }, "Work orders, in Build"));
       L.jobs.forEach(function (id) { ol.appendChild(el("li", null, el("a", { class: "joblink", href: "build.html#job=" + id }, el("span", { class: "num" }, id), el("span", { class: "what" }, titleOf(id)), el("span", { class: "st" }, "Open it in Build")))); });

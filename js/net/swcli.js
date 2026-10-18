@@ -8,7 +8,11 @@
    "copy running-config startup-config" (or "write memory") keeps it over a
    reload or a power cut, as on the real thing. Either configuration can be
    copied to a TFTP server (a computer on the network that takes the file):
-   the session's tftp callback, given by whoever opens it, does the sending. */
+   the session's tftp callback, given by whoever opens it, does the sending.
+   A file on a TFTP server can be copied back in (copy tftp: running-config,
+   or startup-config): its lines are entered as configuration commands, the
+   hashes of its secrets kept as hashes; the switch's SSH keys are never in a
+   file, so a switch built from one has none until they're made again. */
 
 const COPPER = 24, SFP = 4;
 export const PORT_NAMES = Array.from({ length: COPPER + SFP }, function (_, i) { return "GigabitEthernet0/" + (i + 1); });
@@ -25,6 +29,15 @@ export function newSwitch(o = {}) {
   return sw;
 }
 const clone = function (x) { return x === undefined ? undefined : JSON.parse(JSON.stringify(x)); };
+/* a password as the switch keeps it: what was typed, or (copied in from a file) the hash of a secret ("$1$...") or a
+   type 7 password ("$7$..."). Does what someone types match it? */
+export function pwOk(stored, typed) {
+  if (stored == null || typed == null) return false;
+  if (stored === typed) return true;
+  if (/^\$1\$/.test(stored)) return stored === "$1$Rk3T$" + hashish(typed);
+  if (/^\$7\$/.test(stored)) return stored.slice(3) === hashish(typed).slice(0, 14).toUpperCase();
+  return false;
+}
 const CONFIG_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "vlan1", "gateway", "ports", "banner"];   /* keyGen: which set of RSA keys it holds (each crypto key generate makes a new one) */
 function snapshot(sw) { const s = {}; CONFIG_KEYS.forEach(function (k) { s[k] = clone(sw[k]); }); return s; }
 /* power off and on: what was saved comes back; anything not saved is gone (a factory switch comes back empty) */
@@ -130,7 +143,8 @@ const EXEC_USER = [
 const EXEC_PRIV = [
   ["configure", "Enter configuration mode", [["terminal", "Configure from the terminal", function (S) { S.mode = "config"; return ["Enter configuration commands, one per line.  End with CNTL/Z."]; }]], { bare: function (S) { S.pending = { kind: "confterm" }; return ["Configuring from terminal, memory, or network [terminal]? "]; } }],
   ["copy", "Copy from one file to another", [["running-config", "Copy from current system configuration", [["startup-config", "Copy to startup configuration", function (S) { S.pending = { kind: "copyname" }; return ["Destination filename [startup-config]? "]; }], ["tftp:", "Copy to tftp: file system", function (S, a, raw) { return tftpAsk(S, "running", raw); }]]],
-    ["startup-config", "Copy from startup configuration", [["tftp:", "Copy to tftp: file system", function (S, a, raw) { return tftpAsk(S, "startup", raw); }]]]]],
+    ["startup-config", "Copy from startup configuration", [["tftp:", "Copy to tftp: file system", function (S, a, raw) { return tftpAsk(S, "startup", raw); }]]],
+    ["tftp:", "Copy from tftp: file system", [["running-config", "Update (merge with) current system configuration", function (S, a, raw) { return tftpGetAsk(S, "running", raw); }], ["startup-config", "Copy to startup configuration", function (S, a, raw) { return tftpGetAsk(S, "startup", raw); }]]]]],
   ["write", "Write running configuration to memory", [["memory", "Write to NV memory", function (S) { save(S.sw); return ["Building configuration...", "[OK]"]; }]], { bare: function (S) { save(S.sw); return ["Building configuration...", "[OK]"]; } }],
   ["disable", "Turn off privileged commands", function (S) { S.mode = "user"; return []; }],
   ["exit", "Exit from the EXEC", function (S) { return logout(S); }],
@@ -150,8 +164,8 @@ const CONFIG = [
     S.sw.hostname = a[0]; return [];
   }],
   ["enable", "Modify enable password parameters", [
-    ["secret", "Assign the privileged level secret", function (S, a) { if (!a.length) return ["% Incomplete command."]; S.sw.enableSecret = a[a.length - 1]; return []; }],
-    ["password", "Assign the privileged level password", function (S, a) { if (!a.length) return ["% Incomplete command."]; const pw = a[a.length - 1]; if (S.sw.enableSecret === pw) return ["The enable password you have chosen is the same as your enable secret.", "This is not recommended.  Re-enter the enable password."]; S.sw.enablePassword = pw; return []; }]
+    ["secret", "Assign the privileged level secret", function (S, a) { if (!a.length) return ["% Incomplete command."]; S.sw.enableSecret = typed(a); return []; }],
+    ["password", "Assign the privileged level password", function (S, a) { if (!a.length) return ["% Incomplete command."]; const pw = typed(a); if (pwOk(S.sw.enableSecret, pw)) return ["The enable password you have chosen is the same as your enable secret.", "This is not recommended.  Re-enter the enable password."]; S.sw.enablePassword = pw; return []; }]
   ]],
   ["interface", "Select an interface to configure", function (S, a) {
     if (!a.length) return ["% Incomplete command."];
@@ -169,7 +183,7 @@ const CONFIG = [
   ]],
   ["username", "Establish User Name Authentication", function (S, a) {
     if (a.length < 3 || !/^(secret|password)$/i.test(a[1])) return a.length < 3 ? ["% Incomplete command."] : ["% Invalid input detected at '^' marker."];
-    S.sw.users[a[0]] = a.slice(2).join(" "); return [];
+    S.sw.users[a[0]] = a.length > 3 && /^[057]$/.test(a[2]) ? typed(a.slice(2)) : a.slice(2).join(" "); return [];
   }],
   ["crypto", "Encryption module", [["key", "Long term key operations", [["generate", "Generate new keys", [["rsa", "Generate RSA keys", function (S, a) {
     if (!S.sw.domain) return ["% Please define a domain-name first."];
@@ -217,7 +231,7 @@ const IFACE = [
   ["exit", "Exit from interface configuration mode", function (S) { S.mode = "config"; S.ifs = null; return []; }]
 ];
 const LINE = [
-  ["password", "Set a password", function (S, a) { if (!a.length) return ["% Incomplete command."]; S.sw[S.line].password = a[a.length - 1]; return []; }],
+  ["password", "Set a password", function (S, a) { if (!a.length) return ["% Incomplete command."]; S.sw[S.line].password = typed(a); return []; }],
   ["login", "Enable password checking", [["local", "Local password checking", function (S) { S.sw[S.line].login = "local"; return []; }]], { bare: function (S) { if (!S.sw[S.line].password) { S.sw[S.line].login = "password"; return ["% Login disabled on line " + (S.line === "con" ? "0" : "1") + ", until 'password' is set"]; } S.sw[S.line].login = "password"; return []; } }],
   ["transport", "Define transport protocols for line", [["input", "Define which protocols to use when connecting to the terminal server", [["ssh", "TCP/IP SSH protocol", function (S) { return setTransport(S, "ssh"); }], ["telnet", "TCP/IP Telnet protocol", function (S) { return setTransport(S, "telnet"); }], ["all", "All protocols", function (S) { return setTransport(S, "all"); }], ["none", "No protocols", function (S) { return setTransport(S, "none"); }]]]]],
   ["exec-timeout", "Set the EXEC timeout", function () { return []; }],
@@ -235,6 +249,14 @@ LINE.splice(0, 0, ["line", "Configure a terminal line", CONFIG.find(function (c)
 IFACE.splice(0, 0, ["line", "Configure a terminal line", CONFIG.find(function (c) { return c[0] === "line"; })[2]]);
 const TREE = { user: EXEC_USER, priv: EXEC_PRIV, config: CONFIG, if: IFACE, ifrange: IFACE, line: LINE };
 
+/* the password words after a command: "5 $1$..." is a secret's hash as a configuration file has it, "7 ..." a type 7
+   password, "0 ..." plain text; otherwise the last word, as typed */
+function typed(a) {
+  if (a.length > 1 && a[0] === "5" && /^\$1\$/.test(a[1])) return a[1];
+  if (a.length > 1 && a[0] === "7") return "$7$" + a[1];
+  if (a.length > 1 && a[0] === "0") return a[1];
+  return a[a.length - 1];
+}
 function setPort(S, k, v) { S.ifs.forEach(function (n) { if (n !== "Vlan1") S.sw.ports[n][k] = v; }); return []; }
 function setTransport(S, v) { if (S.line !== "vty") return ["% Invalid input detected at '^' marker.", "  (transport input is for the vty lines: remote logins)"]; S.sw.vty.transport = v; return []; }
 function rsa(S, bits) { if (bits < 360 || bits > 4096) return ["% Invalid input detected at '^' marker."]; S.sw.rsa = bits; S.sw.keyGen = (S.sw.keyGen || 0) + 1; return ["% Generating " + bits + " bit RSA keys, keys will be non-exportable...", "[OK] (elapsed time was 2 seconds)", "", "%SSH-5-ENABLED: SSH 2.0 has been enabled"]; }
@@ -269,6 +291,50 @@ function tftpSend(S, p) {
   const secs = 0.02 + text.length / 48000;
   return ["!!", text.length + " bytes copied in " + secs.toFixed(3) + " secs (" + Math.round(text.length / secs) + " bytes/sec)"];
 }
+/* copy tftp: running-config (or startup-config): the server, the file, where it goes, then the file is fetched by the
+   session's tftpGet callback. Into the running configuration its lines are merged in as commands (anything the file
+   doesn't mention stays as it is); into the startup configuration it replaces what's saved, as a switch starting from it
+   would have it, and takes effect at the next reload */
+function tftpGetAsk(S, into, raw) {
+  const u = /tftp:\/\/([^\/\s]*)\/?(\S*)/i.exec(raw || "");
+  S.pending = { kind: "gethost", into: into, host: u ? u[1] : "", file: u && u[2] ? u[2] : "" };
+  return ["Address or name of remote host [" + S.pending.host + "]? "];
+}
+function tftpLoad(S, p) {
+  const url = "tftp://" + p.host + "/" + p.file, r = S.tftpGet ? S.tftpGet(p.host, p.file) : { err: "Timed out" };
+  if (!r || r.err) return ["Accessing " + url + "..."].concat(r && r.err === "Timed out" ? ["....."] : [], ["%Error opening " + url + " (" + ((r && r.err) || "Timed out") + ")"]);
+  const n = r.text.length, secs = 0.02 + n / 48000, out = ["Accessing " + url + "...", "Loading " + p.file + " from " + p.host + " (via Vlan1): !", "[OK - " + n + " bytes]", "", n + " bytes copied in " + secs.toFixed(3) + " secs (" + Math.round(n / secs) + " bytes/sec)"];
+  if (p.into === "startup") { S.sw.startup = bootFrom(S.sw, r.text); return out; }
+  applyText(S.sw, r.text, false);
+  return out.concat(["%SYS-5-CONFIG_I: Configured from " + url + " by " + (S.via === "console" ? "console" : "vty0")]);
+}
+/* a configuration file's lines entered as configuration commands. boot: as a switch starting from the file sees it, so an
+   interface the file names comes up unless the file shuts it down (on a merge, an interface keeps its state unless the
+   file says otherwise, as the real thing does) */
+function applyText(sw, text, boot) {
+  const S = { sw: sw, mode: "config", history: [], pending: null, via: "console", fresh: false }, L = String(text || "").split("\n");
+  for (let i = 0; i < L.length; i++) {
+    const raw = L[i].replace(/\r$/, ""), t = raw.trim();
+    if (!t || t[0] === "!" || /^(version|building configuration|current configuration)/i.test(t)) continue;
+    if (/^end$/i.test(t)) break;
+    if (/^banner motd \^C/i.test(t)) {   /* the banner, written with ^C at each end, over as many lines as it has */
+      let body = raw.slice(raw.indexOf("^C") + 2);
+      while (body.indexOf("^C") < 0 && i < L.length - 1) body += "\n" + L[++i].replace(/\r$/, "");
+      sw.banner = body.indexOf("^C") >= 0 ? body.slice(0, body.indexOf("^C")) : body;
+      continue;
+    }
+    if (!/^\s/.test(raw)) { S.mode = "config"; S.ifs = null; S.line = null; }   /* a line at the margin is a global command */
+    run(S, t); S.pending = null;
+    if (boot && S.mode !== "config" && S.ifs && /^interface\s/i.test(t)) S.ifs.forEach(function (n) { if (n === "Vlan1") sw.vlan1.shutdown = false; else sw.ports[n].shutdown = false; });
+  }
+}
+/* what the startup configuration becomes from a file: a factory switch with the file entered, keeping the keys it has saved */
+function bootFrom(sw, text) {
+  const t = snapshot(newSwitch()), keys = sw.startup || { rsa: 0, keyGen: 0 };
+  t.rsa = keys.rsa || 0; t.keyGen = keys.keyGen || 0; t.links = {};
+  applyText(t, text, true);
+  return snapshot(t);
+}
 /* whether the running configuration differs from what is saved (a factory switch has nothing saved) */
 export function unsaved(sw) { return changed(sw); }
 function changed(sw) { return JSON.stringify(snapshot(sw)) !== JSON.stringify(sw.startup || snapshot(newSwitch())); }
@@ -283,7 +349,7 @@ function pingOut(S, a) {
 /* ------------------------------------------------------------ the show outputs */
 function runningConfig(sw, startup) {
   const L = ["Building configuration...", "", "Current configuration : " + (1800 + JSON.stringify(sw.ports).length % 900) + " bytes", "!", "version 4.2", sw.encrypt ? "service password-encryption" : "no service password-encryption", "!", "hostname " + sw.hostname, "!"];
-  const pw = function (p, kind) { return kind === "secret" ? "5 $1$Rk3T$" + hashish(p) : sw.encrypt ? "7 " + hashish(p).slice(0, 14).toUpperCase() : p; };
+  const pw = function (p, kind) { if (/^\$1\$/.test(p)) return "5 " + p; if (/^\$7\$/.test(p)) return "7 " + p.slice(3); return kind === "secret" ? "5 $1$Rk3T$" + hashish(p) : sw.encrypt ? "7 " + hashish(p).slice(0, 14).toUpperCase() : p; };   /* copied in from a file, a hash stays the hash it was */
   if (sw.enableSecret) L.push("enable secret " + pw(sw.enableSecret, "secret"));
   if (sw.enablePassword) L.push("enable password " + pw(sw.enablePassword));
   Object.keys(sw.users).forEach(function (u) { L.push("username " + u + " secret " + pw(sw.users[u], "secret")); });
@@ -310,7 +376,7 @@ function ipBrief(sw) {
 /* the fingerprint of the switch's RSA host key, as an SSH client shows it: a new one each time keys are made */
 export function hostKey(sw) {
   if (!sw.rsa) return null;
-  const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", seed = String(sw.mac) + ":" + sw.rsa + ":" + (sw.keyGen || 0);
+  const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", seed = String(sw.mac) + ":" + sw.rsa + ":" + (sw.keyGen || 0) + (sw.unit ? ":" + sw.unit : "");   /* unit: a replacement switch makes keys of its own */
   let out = "", h = 2166136261;
   for (let i = 0; out.length < 43; i++) { for (const ch of seed + ":" + i) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } out += A[h % 64] + A[(h >>> 6) % 64] + A[(h >>> 12) % 64]; }
   return "SHA256:" + out.slice(0, 43);
@@ -424,7 +490,7 @@ export function promptOf(S) {
 }
 /* a console login: the password prompt only if the console line asks for one */
 export function session(sw, o = {}) {
-  const S = { sw: sw, mode: "user", history: [], pending: null, via: o.via || "console", reach: o.reach, tftp: o.tftp, fresh: true };   /* fresh: the first RETURN wakes the line ("Press RETURN to get started") */
+  const S = { sw: sw, mode: "user", history: [], pending: null, via: o.via || "console", reach: o.reach, tftp: o.tftp, tftpGet: o.tftpGet, fresh: true };   /* fresh: the first RETURN wakes the line ("Press RETURN to get started") */
   const ln = S.via === "console" ? sw.con : sw.vty;
   if (ln.login === "password" && ln.password) { S.mode = "login"; S.pending = { kind: "login", tries: 0 }; }
   return S;
@@ -436,7 +502,7 @@ function wake(S) { return motd(S.sw).concat(S.mode === "login" ? ["", "User Acce
 /* run one line; returns { out: [lines], prompt, secret: true when the next input is a password (not echoed) } */
 export function exec(S, raw) {
   raw = String(raw == null ? "" : raw);
-  if (S.mode === "gone") { const fresh = session(S.sw, { via: S.via, reach: S.reach, tftp: S.tftp }); Object.assign(S, fresh); S.fresh = false; return { out: wake(S), prompt: promptOf(S), secret: S.mode === "login" }; }   /* RETURN at "Press RETURN to get started" */
+  if (S.mode === "gone") { const fresh = session(S.sw, { via: S.via, reach: S.reach, tftp: S.tftp, tftpGet: S.tftpGet }); Object.assign(S, fresh); S.fresh = false; return { out: wake(S), prompt: promptOf(S), secret: S.mode === "login" }; }   /* RETURN at "Press RETURN to get started" */
   if (S.fresh) { S.fresh = false; if (!raw.trim()) return { out: wake(S), prompt: promptOf(S), secret: S.mode === "login" }; }
   if (S.pending) return answer(S, raw);
   if (/\?$/.test(raw)) return { out: help(S, raw), prompt: promptOf(S), keep: raw.slice(0, -1) };
@@ -467,7 +533,7 @@ function answer(S, raw) {
   const p = S.pending, t = raw.trim();
   if (p.kind === "login" || p.kind === "enable") {
     const want = p.kind === "login" ? S.sw[S.via === "console" ? "con" : "vty"].password : (S.sw.enableSecret || S.sw.enablePassword);
-    if (raw === want) { S.pending = null; S.mode = p.kind === "login" ? "user" : "priv"; return { out: [], prompt: promptOf(S) }; }
+    if (pwOk(want, raw)) { S.pending = null; S.mode = p.kind === "login" ? "user" : "priv"; return { out: [], prompt: promptOf(S) }; }
     p.tries++;
     if (p.tries >= 3) { S.pending = null; if (p.kind === "login") { S.mode = "gone"; return { out: ["% Bad passwords", "", "Press RETURN to get started."], prompt: "" }; } return { out: ["% Bad secrets"], prompt: promptOf(S) }; }
     return { out: [], prompt: "Password: ", secret: true };   /* asked again, up to three tries */
@@ -485,6 +551,23 @@ function answer(S, raw) {
     return { out: [], prompt: "Destination filename [" + p.file + "]? " };
   }
   if (p.kind === "tftpfile") { S.pending = null; if (t) p.file = t; return { out: tftpSend(S, p), prompt: promptOf(S) }; }
+  if (p.kind === "gethost") {
+    const h = t || p.host;
+    if (!h || !/^[A-Za-z0-9.-]+$/.test(h)) { S.pending = null; return { out: ["%Error parsing tftp://" + (h || "") + "/" + p.file + " (Bad IP address or host name)"], prompt: promptOf(S) }; }
+    p.host = h; p.kind = "getsrc";
+    return { out: [], prompt: "Source filename [" + p.file + "]? " };
+  }
+  if (p.kind === "getsrc") {
+    if (t) p.file = t;
+    if (!p.file) { S.pending = null; return { out: ["%Error parsing tftp://" + p.host + "/ (Bad file name)"], prompt: promptOf(S) }; }
+    p.kind = "getdst";
+    return { out: [], prompt: "Destination filename [" + p.into + "-config]? " };
+  }
+  if (p.kind === "getdst") {
+    S.pending = null;
+    if (t && t.toLowerCase() !== p.into + "-config") return { out: ["% Only " + p.into + "-config is a destination here: say which configuration with the copy command."], prompt: promptOf(S) };
+    return { out: tftpLoad(S, p), prompt: promptOf(S) };
+  }
   if (p.kind === "copyname") { S.pending = null; if (!t || t === "startup-config") { save(S.sw); return { out: ["Building configuration...", "[OK]"], prompt: promptOf(S) }; } return { out: ["% Only startup-config is a destination on this switch."], prompt: promptOf(S) }; }
   if (p.kind === "confterm") { S.pending = null; if (!t || /^t/i.test(t)) { S.mode = "config"; return { out: ["Enter configuration commands, one per line.  End with CNTL/Z."], prompt: promptOf(S) }; } return { out: ["?Must be \"terminal\""], prompt: promptOf(S) }; }
   if (p.kind === "modulus") { S.pending = null; return { out: rsa(S, t ? +t : 512), prompt: promptOf(S) }; }
@@ -497,7 +580,7 @@ function answer(S, raw) {
     }
     S.pending = null;
     if (t && !/^y/i.test(t) && t !== "") return { out: [], prompt: promptOf(S) };
-    reload(S.sw, "reload"); const fresh = session(S.sw, { via: S.via, reach: S.reach, tftp: S.tftp }); Object.assign(S, fresh);
+    reload(S.sw, "reload"); const fresh = session(S.sw, { via: S.via, reach: S.reach, tftp: S.tftp, tftpGet: S.tftpGet }); Object.assign(S, fresh);
     return { out: ["", "%SYS-5-RELOAD: Reload requested by console. Reload Reason: Reload command.", "", "Loading the system image... [OK]", "", "MSW-2800G Network Operating System, Version 4.2.1", S.sw.startup ? "" : "No startup configuration found: starting with factory settings.", ""].concat(banner(S)), prompt: promptOf(S), secret: S.mode === "login" };
   }
   S.pending = null; return { out: [], prompt: promptOf(S) };

@@ -270,7 +270,7 @@ function physicalPane(id, P, ctx, rerender) {
     const sr = el("p", { class: "res", role: "status" }); if (physLog[id]["sfp"]) sr.textContent = physLog[id]["sfp"]; else sr.hidden = true;
     P.sfp.forEach(function (m) {
       wrap.appendChild(el("div", { class: "acts", style: "margin-top:10px" }, el("p", { class: "nm" }, m.slot + ": " + m.label), ...m.swaps.map(function (t) {
-        return el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "sfp", dev: id, slot: m.slot, type: t }); physLog[id]["sfp"] = "Swapped the module in " + m.slot + " for a " + t + " from the van." + (r && r.facts && r.facts.link ? " The slot's link light comes on." : " The slot's link light stays off."); rerender(); } }, "Swap in a " + t + " module");
+        return el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "sfp", dev: id, slot: m.slot, type: t }); physLog[id]["sfp"] = (m.type ? "Swapped the module in " + m.slot + " for a " + t + " from the van." : "Put a " + t + " module from the van into " + m.slot + ".") + (r && r.facts && r.facts.link ? " The slot's link light comes on." : " The slot's link light stays off."); rerender(); } }, (m.type ? "Swap in a " : "Put in a ") + t + " module");   /* an empty slot (build mode) takes a module; a full one swaps it */
       })));
     });
     wrap.appendChild(sr);

@@ -551,12 +551,12 @@
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J2',true,4242); c.act({t:'pull',cable:'c-old-pc'}); c.act({t:'lay',a:{dev:'msw',port:'2'},b:{dev:'pc',port:'NIC'}}); c.act({t:'cmd',dev:'tech',line:'',cli:true}); for(let i=0;i<3;i++) c.check();"
  },
  {
-  "name": "levels: build, everything on the small office so far done (still being built)",
+  "name": "levels: build, the small office finished (the small business built later)",
   "page": "build.html",
   "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS[0].tickets.concat(L.LEVELS[1].tickets).map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS[0].jobs.concat(L.LEVELS[1].jobs.slice(0,-1)).map(id=>[id,1]))})); const c=window.__e4b; c.openJob(L.LEVELS[1].jobs[L.LEVELS[1].jobs.length-1],true,4242); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); document.getElementById('doCheck').click();})()"
  },
  {
-  "name": "levels: desk, small office done so far, level 3 locked (still being built)",
+  "name": "levels: desk, the small office finished, level 3 built later",
   "page": "index.html",
   "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS[0].tickets.concat(L.LEVELS[1].tickets).map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS[0].jobs.concat(L.LEVELS[1].jobs).map(id=>[id,1]))})); document.querySelector('#left [data-level=\"3\"]').click();})()"
  },
@@ -620,6 +620,131 @@
   "name": "office: SO-J5 done, the banner as the console wakes",
   "page": "build.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J5',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), mid=sol.findIndex(a=>a.t==='pull'); sol.forEach(a=>c.act(a)); document.getElementById('doCheck').click(); document.querySelector('#devtabs [data-d=tech]').click(); const k=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; k('exit'); k('');"
+ },
+ {
+  "name": "office: SO-J6 start, the replacement in its box, the work order and its limits",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J6',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), k=sol.findIndex(a=>a.line==='copy tftp: running-config'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const key=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; document.getElementById('bm').scrollIntoView();"
+ },
+ {
+  "name": "office: SO-J6 the backup loaded from your laptop, on the console",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J6',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), k=sol.findIndex(a=>a.line==='copy tftp: running-config'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const key=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; sol.slice(0,k+4).forEach(a=>c.act(a)); document.querySelector('#devtabs [data-d=tech]').click(); tab('Serial terminal');"
+ },
+ {
+  "name": "office: SO-J6 your laptop's TFTP server, the read request in its log",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J6',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), k=sol.findIndex(a=>a.line==='copy tftp: running-config'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const key=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; sol.slice(0,k+4).forEach(a=>c.act(a)); document.querySelector('#devtabs [data-d=tech]').click(); tab('TFTP server');"
+ },
+ {
+  "name": "office: SO-J6 the front desk PC: the switch's key has changed",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J6',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), k=sol.findIndex(a=>a.line==='copy tftp: running-config'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const key=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; sol.filter(a=>!/ssh-keygen/.test(a.line||'')).forEach(a=>c.act(a)); document.querySelector('#devtabs [data-d=pc]').click(); tab('Command Prompt'); key('ssh '+J.v.plan.user+'@'+J.v.plan.ip);"
+ },
+ {
+  "name": "office: SO-J6 no keys yet, checks with Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J6',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), k=sol.findIndex(a=>a.line==='copy tftp: running-config'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const key=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; sol.filter(a=>!/crypto/.test(a.line||'')).forEach(a=>c.act(a)); for(let i=0;i<5;i++) c.check(); document.getElementById('doCheck').scrollIntoView();"
+ },
+ {
+  "name": "office: SO-J6 done, the logical diagram",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J6',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), k=sol.findIndex(a=>a.line==='copy tftp: running-config'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const key=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; sol.forEach(a=>c.act(a)); document.getElementById('doCheck').click(); document.getElementById('vLog').click();"
+ },
+ {
+  "name": "office: SO-J7 start, the new hire's PC in its box, the work order",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J7',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), save=sol.findIndex(a=>a.line==='copy running-config startup-config'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const key=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; c.check(); document.getElementById('bm').scrollIntoView();"
+ },
+ {
+  "name": "office: SO-J7 saved, the backup out of date, checks with Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J7',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), save=sol.findIndex(a=>a.line==='copy running-config startup-config'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const key=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; sol.slice(0,save+2).forEach(a=>c.act(a)); for(let i=0;i<5;i++) c.check(); document.getElementById('doCheck').scrollIntoView();"
+ },
+ {
+  "name": "office: SO-J7 the new hire's PC: ipconfig, and its 3D model",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J7',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), save=sol.findIndex(a=>a.line==='copy running-config startup-config'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const key=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; sol.slice(0,save).forEach(a=>c.act(a)); document.querySelector('#devtabs [data-d=hire]').click(); tab('Physical');",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "office: SO-J7 done, the logical diagram with the new desk",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J7',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), save=sol.findIndex(a=>a.line==='copy running-config startup-config'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const key=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; sol.forEach(a=>c.act(a)); document.getElementById('doCheck').click(); document.getElementById('vLog').click();"
+ },
+ {
+  "name": "office: SO-J8 start, the printer offline, the cable runs and the floor plan",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J8',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), save=sol.findIndex(a=>a.line==='copy running-config startup-config'), old=sol.findIndex(a=>a.line==='interface gi0/3'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const key=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; c.check(); document.getElementById('runs').scrollIntoView();"
+ },
+ {
+  "name": "office: SO-J8 the old port still named and live, checks with Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J8',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), save=sol.findIndex(a=>a.line==='copy running-config startup-config'), old=sol.findIndex(a=>a.line==='interface gi0/3'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const key=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; sol.slice(0,old).concat([{t:'cmd',dev:'tech',line:'end',cli:true}]).forEach(a=>c.act(a)); for(let i=0;i<5;i++) c.check(); document.getElementById('doCheck').scrollIntoView();"
+ },
+ {
+  "name": "office: SO-J8 the open-plan wall jack, empty, its 3D model",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J8',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), save=sol.findIndex(a=>a.line==='copy running-config startup-config'), old=sol.findIndex(a=>a.line==='interface gi0/3'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const key=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; document.querySelector('#devtabs [data-d=ojack]').click(); tab('Physical');",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "office: SO-J8 done, the logical diagram",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J8',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), save=sol.findIndex(a=>a.line==='copy running-config startup-config'), old=sol.findIndex(a=>a.line==='interface gi0/3'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const key=(v)=>{const i=document.querySelector('.term .cmdin'); i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; sol.forEach(a=>c.act(a)); document.getElementById('doCheck').click(); document.getElementById('vLog').click();"
+ },
+ {
+  "name": "office: SO-J9 start, the runs at the panel's back, the empty cable map",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J9',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), cords=sol.filter(a=>a.t==='lay'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); c.check(); document.getElementById('cmap').scrollIntoView();"
+ },
+ {
+  "name": "office: SO-J9 the probe at the patch panel, its rack in 3D",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J9',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), cords=sol.filter(a=>a.t==='lay'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); c.act({t:'tone',cable:'c-pp-pc'}); document.querySelector('#devtabs [data-d=pp]').click(); document.getElementById('probeBtn').click();",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "office: SO-J9 patched, the map left out, checks with Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J9',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), cords=sol.filter(a=>a.t==='lay'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); cords.forEach(a=>c.act(a)); for(let i=0;i<5;i++) c.check(); document.getElementById('doCheck').scrollIntoView();"
+ },
+ {
+  "name": "office: SO-J9 done, the floor plan with the panel's runs",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J9',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim), cords=sol.filter(a=>a.t==='lay'); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); sol.forEach(a=>c.act(a)); document.getElementById('doCheck').click(); document.getElementById('plan').scrollIntoView();"
+ },
+ {
+  "name": "office: SO-J10 start, the back office switch in its box, the work order",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J10',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); c.check(); document.getElementById('bm').scrollIntoView();"
+ },
+ {
+  "name": "office: SO-J10 the closet switch's empty SFP slots and the van's modules, in 3D",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J10',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); c.act(sol[0]); document.querySelector('#devtabs [data-d=msw]').click(); tab('Physical');",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))",
+  "after": "[...document.querySelectorAll('.m3d-bar button')].find(b=>b.textContent==='Fibre slots').click()"
+ },
+ {
+  "name": "office: SO-J10 a single-mode module on the multimode run, checks with Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J10',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); sol.map(a=>a.t==='sfp'&&a.dev==='msw'?Object.assign({},a,{type:'1000BASE-LX'}):a).forEach(a=>c.act(a)); for(let i=0;i<5;i++) c.check(); document.getElementById('doCheck').scrollIntoView();"
+ },
+ {
+  "name": "office: SO-J10 the back office switch's console, named and locked",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J10',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); sol.forEach(a=>c.act(a)); document.querySelector('#devtabs [data-d=tech]').click(); tab('Serial terminal');"
+ },
+ {
+  "name": "office: SO-J10 done, the logical diagram with the fibre to the back office",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J10',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); sol.forEach(a=>c.act(a)); document.getElementById('doCheck').click(); document.getElementById('vLog').click();"
+ },
+ {
+  "name": "office: SO-J10 done, the floor plan",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SO-J10',true,4242); const J=c.T, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); sol.forEach(a=>c.act(a)); document.getElementById('plan').scrollIntoView();"
  },
  {
   "name": "office tickets: SO-01 on the desk, the switch's console, show interfaces twice, the notebook",

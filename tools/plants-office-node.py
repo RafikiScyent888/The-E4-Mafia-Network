@@ -16,7 +16,7 @@ PLANTS = [
  ("a block bigger than it needs, accepted", "js/build/office.js", 'C("big", !!big,', 'C("big", false,'),
  ("overlapping blocks, accepted", "js/build/office.js", 'C("overlap", !!lap,', 'C("overlap", false,'),
  ("a gateway that isn't the first usable, accepted", "js/build/office.js", 'C("first", !!notFirst,', 'C("first", false,'),
- ("the TFTP server takes files when stopped", "js/net/cmd.js", "if (!srv || !srv.on) return { err: \"Timed out\" };", "if (!srv) return { err: \"Timed out\" };"),
+ ("the TFTP server takes files when stopped", "js/net/cmd.js", "if (!srv || !srv.on) return { err: \"Timed out\" };\n    const from = sim.addr(sw).ip, f = {", "if (!srv) return { err: \"Timed out\" };\n    const from = sim.addr(sw).ip, f = {"),
  ("a banner cut short, accepted", "js/build/office.js", 'C("part", !!have && have !== want && want.indexOf(have) >= 0,', 'C("part", false,'),
  ("the backup under any name, accepted", "js/build/office.js", "return files(sim).find(function (f) { return f.name.toLowerCase() === n; }) || null; };", "return files(sim)[0] || null; };"),
  ("a copy of the running configuration with changes not saved, accepted", "js/build/office.js", "const off = !!f && f.text !== st,", "const off = false,"),
@@ -68,13 +68,43 @@ PLANTS = [
  ("the module's label left off the look", "js/net/pages.js", '" The module\'s label: " + m.label + "; its bail latch is " + m.bail + "."', '""'),
  ("SO-11: both ends at half duplex, accepted", "js/tickets/office.js", ' && sw.ports[PC_PORT].duplex === "auto" && !!sp && sp.duplex === "auto" && !sp.shutdown;', " && !!sp && !sp.shutdown;"),
  ("a full-duplex end facing a negotiator counts no CRC errors", "js/net/swcli.js", "{ crc: 53 * t + 7, inErr: 61 * t + 9, runts: 8 * t + 2 }", "{ crc: 0, inErr: 0, runts: 0 }"),
- ("SO-12: a console password with no login, accepted", "js/tickets/office.js", '(c.login === "password" && c.password === p.console) || c.login === "local"', 'c.password === p.console || c.login === "local"'),
+ ("SO-12: a console password with no login, accepted", "js/tickets/office.js", '(c.login === "password" && SW.pwOk(c.password, p.console)) || c.login === "local"', 'SW.pwOk(c.password, p.console) || c.login === "local"'),
  ("the console asks for a password with its login off", "js/net/swcli.js", '  if (ln.login === "password" && ln.password) { S.mode = "login";', '  if (ln.password) { S.mode = "login";'),
  ("SSH never checks a remembered host key", "js/net/cmd.js", "  if (kh && kh[host] && kh[host] !== fp) return {", "  if (false) return {"),
  ("ssh-keygen -R forgets nothing", "js/net/cmd.js", "  delete kh[host];\n", ""),
  ("making keys again keeps the same fingerprint", "js/net/swcli.js", " S.sw.keyGen = (S.sw.keyGen || 0) + 1;", ""),
  ("Help doesn't list ssh-keygen", "js/net/cmd.js", '  ["ssh-keygen -R <address>", "forget a host\'s remembered SSH key (its line in known_hosts)"],\n', ""),
  ("SO-14: the printer patched away, accepted", "js/tickets/office.js", "fixed(sim) { return online(sim, \"pc\") && printOk(sim) && mapRight(sim); },", "fixed(sim) { return online(sim, \"pc\") && mapRight(sim); },"),
+ ("SO-J6: the backup only in startup, never reloaded, accepted", "js/build/office.js", 'C("startup", st === want && run !== want,', 'C("startup", false,'),
+ ("SO-J6: part of the backup missing, accepted", "js/build/office.js", 'C("part", run !== want,', 'C("part", false,'),
+ ("SO-J6: a device on another port, accepted", "js/build/office.js", 'C("port", !!wrong,', 'C("port", false,'),
+ ("SO-J6: the old key still remembered, accepted", "js/build/office.js", 'C("known", !!kh[p.ip] && kh[p.ip] !== hostKey(sw),', 'C("known", false,'),
+ ("SO-J6: a configuration file carries the SSH keys", "js/net/swcli.js", "  t.rsa = keys.rsa || 0; t.keyGen = keys.keyGen || 0; t.links = {};", "  t.rsa = 2048; t.keyGen = keys.keyGen || 0; t.links = {};"),
+ ("SO-J6: a copy into startup takes effect at once", "js/net/swcli.js", '  if (p.into === "startup") { S.sw.startup = bootFrom(S.sw, r.text); return out; }', '  if (p.into === "startup") { S.sw.startup = bootFrom(S.sw, r.text); applyText(S.sw, r.text, false); return out; }'),
+ ("SO-J6: a secret's hash from a file taken as the password itself", "js/net/swcli.js", "  if (/^\$1\$/.test(stored)) return stored === \"$1$Rk3T$\" + hashish(typed);", "  if (/^\$1\$/.test(stored)) return false;"),
+ ("SO-J6: a replacement switch makes the same keys as the old one", "js/net/swcli.js", ' + (sw.unit ? ":" + sw.unit : "");', ";"),
+ ("SO-J6: the TFTP server hands out files when stopped", "js/net/cmd.js", "    if (!srv || !srv.on) return { err: \"Timed out\" };\n    const f = srv.files.find", "    if (!srv) return { err: \"Timed out\" };\n    const f = srv.files.find"),
+ ("SO-J6: a merge leaves a shut port open", "js/net/swcli.js", "    run(S, t); S.pending = null;", "    if (!/^shutdown$/.test(t)) run(S, t); S.pending = null;"),
+ ("SO-J7: the new hire's PC on the router, accepted", "js/build/office.js", 'C("router", !!c && far.dev === "router",', 'C("router", false,'),
+ ("SO-J7: the new hire's port left shut, accepted", "js/build/office.js", 'C("shut", !!p && p.shutdown, "Its port is shut down, like every spare",', 'C("shut", false, "Its port is shut down, like every spare",'),
+ ("SO-J7: the new hire's port counted as a spare", "js/build/office.js", '["router", "pc", "printer", "hire"].forEach(function (id) {', '["router", "pc", "printer"].forEach(function (id) {'),
+ ("SO-J7: any description accepted on the new port", "js/build/office.js", 'C("wrong", !!p && !!d && d !== v.plan.desc.hire,', 'C("wrong", false,'),
+ ("SO-J8: the printer's port left shut, accepted", "js/build/office.js", 'C("shut", !!p && p.shutdown, "The printer\'s new run lands on a port that\'s shut down",', 'C("shut", false, "The printer\'s new run lands on a port that\'s shut down",'),
+ ("SO-J8: a stale label on the old port, accepted", "js/build/office.js", 'C("stale", !!stale,', 'C("stale", false,'),
+ ("SO-J8: the old open-plan port left live, accepted", "js/build/office.js", 'C("old", live,', 'C("old", false,'),
+ ("SO-J8: a moved device's settings follow it, not the port", "js/net/sim.js", 'const p = x.sw.ports[swPort(e.port)]; if (!p || p.shutdown) return false;', 'const p = x.sw.ports[swPort(e.port)]; if (!p) return false;'),
+ ("SO-J9: a cord into the panel's back, accepted", "js/net/sim.js", '    if (back) return { ok: false, errs: ["The back of the patch panel is punched down: a patch cord goes in its front"] };', ''),
+ ("SO-J9: a desk on another desk's port, accepted", "js/build/office.js", 'C("swap", !!swapped, "A desk is patched to a port set up for another desk",', 'C("swap", false, "A desk is patched to a port set up for another desk",'),
+ ("SO-J9: the empty jacks left out of the map, accepted", "js/build/office.js", 'C("missing", !empty && !!missing,', 'C("missing", false,'),
+ ("SO-J9: a desk patched to the router, accepted", "js/build/office.js", 'C("notsw", !!notsw,', 'C("notsw", false,'),
+ ("SO-J9: a path through the panel never reaches the switch", "js/build/office.js", "  for (const c0 of sim.cablesOf(id)) { const c = sim.panelEnd(c0) ? sim.viaPanel(c0) : c0; if (!c) continue;", "  for (const c0 of sim.cablesOf(id)) { const c = c0; if (!c) continue;"),
+ ("a level finished before it is all built", "js/desk/levels.js", "return !L.later && built(L) && c.tickets", "return !L.later && c.tickets"),
+ ("SO-J10: a single-mode module on the multimode run, accepted", "js/build/office.js", 'C("smf", !!c && mods.some(', 'C("smf", false && mods.some('),
+ ("SO-J10: an SFP+ in an SFP slot, accepted", "js/build/office.js", 'C("plus", !!c && mods.some(', 'C("plus", false && mods.some('),
+ ("SO-J10: fibre into an empty slot", "js/net/sim.js", "      if (empty) return { ok: false, errs: [", "      if (false) return { ok: false, errs: ["),
+ ("SO-J10: the back office switch goes anywhere", "js/net/sim.js", "    const fx = x.fixed || (this.net.fixed || FIXED_ROOM)[x.kind];", "    const fx = (this.net.fixed || FIXED_ROOM)[x.kind] && x.kind !== \"mswitch\" ? (this.net.fixed || FIXED_ROOM)[x.kind] : null;"),
+ ("SO-J10: the back office switch never saved, accepted", "js/build/office.js", 'C("bnever", !b.startup,', 'C("bnever", false,'),
+ ("SO-J10: an enable password taken for a secret", "js/build/office.js", 'C("secret", !sw.enableSecret, "Anyone at its console', 'C("secret", !sw.enableSecret && !sw.enablePassword, "Anyone at its console'),
 ]
 only = sys.argv[1:]
 for name, f, a, b in PLANTS:
@@ -84,7 +114,7 @@ for name, f, a, b in PLANTS:
     shutil.copy(f, "/tmp/nplant.bak")
     open(f, "w").write(src.replace(a, b))
     try:
-        r = subprocess.run(["node", "--test", "tests/office-jobs.test.js", "tests/office.test.js", "tests/office-tickets.test.js"], env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=900)
+        r = subprocess.run(["node", "--test", "tests/office-jobs.test.js", "tests/office.test.js", "tests/office-tickets.test.js", "tests/levels.test.js"], env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=900)
         fails = [l.strip() for l in r.stdout.splitlines() if l.startswith("not ok")]
         print(("CAUGHT" if r.returncode else "MISSED") + " · " + name + " · " + (", ".join(fails)[:200]))
     finally:

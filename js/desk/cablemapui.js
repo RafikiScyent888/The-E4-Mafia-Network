@@ -7,7 +7,7 @@ export const MAP_ROOMS = [["", "Not in use"], ["front", "Front desk"], ["open", 
 /* o: { map (net.cablemap), ports, saved (it has been saved in this ticket), onSave(map) } */
 export function cableMap(host, o) {
   const box = el("section", { class: "ipam cmap", id: "cmap", "aria-labelledby": "cmaph" }, el("h3", { id: "cmaph" }, "Cable map · patch panel ports"));
-  box.appendChild(el("p", { class: "note" }, "The installer's map, as it's taped inside the rack door. Change it here and save it once you know where each run really goes."));
+  box.appendChild(el("p", { class: "note" }, o.note || "The installer's map, as it's taped inside the rack door. Change it here and save it once you know where each run really goes."));
   const form = el("form", { class: "sheet", novalidate: true }), tb = el("tbody");
   o.ports.forEach(function (p) {
     const sel = el("select", { id: "cm" + p, name: p });

@@ -171,7 +171,7 @@ const SO03 = {
   exhibits(sim, v) { const sw = SW_(sim); return sw.restart === "power-on" && (v.kind === "user" ? !sw.users[v.user] : sw.vlan1.ip === v.plan.ip); },
   fixed(sim, v) {
     const sw = SW_(sim), st = sw.startup;
-    if (v.kind === "user") return sw.users[v.user] === v.pw && !!st && st.users[v.user] === v.pw;
+    if (v.kind === "user") return SW.pwOk(sw.users[v.user], v.pw) && !!st && SW.pwOk(st.users[v.user], v.pw);
     const r = sim.route("pc", v.newIp);
     return sw.vlan1.ip === v.newIp && !!st && st.vlan1.ip === v.newIp && !!(r.local && r.owner.indexOf("msw") >= 0);
   },
@@ -225,7 +225,7 @@ const SO05 = {
   exhibits(sim, v) { const sw = SW_(sim); return v.kind === "nokeys" ? !sw.rsa : v.kind === "telnet" ? sw.vty.transport === "telnet" : sw.vty.login === "password"; },
   fixed(sim, v) {
     const sw = SW_(sim), st = sw.startup, p = v.plan, r = sim.route("pc", p.ip);
-    const ok = function (c) { return c.rsa >= 768 && c.vty.transport === "ssh" && c.vty.login === "local" && c.users[p.user] === p.userPw; };
+    const ok = function (c) { return c.rsa >= 768 && c.vty.transport === "ssh" && c.vty.login === "local" && SW.pwOk(c.users[p.user], p.userPw); };
     return ok(sw) && !!st && ok(st) && !!(r.local && r.owner.indexOf("msw") >= 0);
   },
   partial(v, sim) { const sw = SW_(sim); return /^(telnet|all)$/.test(sw.vty.transport) ? "SSH works, but the remote lines still take Telnet too: passwords cross the office in the clear. The office's policy is SSH only." : "SSH works now, but the switch hasn't saved it: after the next power cut it's back to how it was."; },
@@ -637,10 +637,10 @@ const SO12 = {
   fixHints() { return ["The console line needs its password, and needs to ask for it.", "Set it from the office's records, then log out and wake the console again: it should ask.", "Save it."]; },
   exhibits(sim) { const c = SW_(sim).con; return !c.login; },
   fixed(sim, v) {
-    const sw = SW_(sim), p = v.plan, ok = function (c) { return (c.login === "password" && c.password === p.console) || c.login === "local"; };
+    const sw = SW_(sim), p = v.plan, ok = function (c) { return (c.login === "password" && SW.pwOk(c.password, p.console)) || c.login === "local"; };
     return ok(sw.con) && !!sw.startup && ok(sw.startup.con);
   },
-  partial(v, sim) { const c = SW_(sim).con; return c.login === "password" && c.password !== v.plan.console ? "It asks now, but not for the office's console password: the records and the switch disagree, and the next technician is locked out." : "It asks now, but the switch hasn't saved it: the next power cut opens the console again."; },
+  partial(v, sim) { const c = SW_(sim).con; return c.login === "password" && !SW.pwOk(c.password, v.plan.console) ? "It asks now, but not for the office's console password: the records and the switch disagree, and the next technician is locked out." : "It asks now, but the switch hasn't saved it: the next power cut opens the console again."; },
   proves(f) { return f.cmd === "serial" && /User Access Verification/.test(f.out || ""); },
   proofText: "your laptop's serial terminal: the console, woken again, asking for its password",
   evidence: [

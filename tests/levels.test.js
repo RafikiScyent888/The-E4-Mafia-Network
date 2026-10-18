@@ -11,17 +11,17 @@ test("Home finished opens the small office", function () {
   assert.equal(isOpen(2, all(1)), true);
   assert.equal(isOpen(2, { t: {}, j: {} }), false);
 });
-test("the small office, still being built, is never finished: level 3 stays shut", function () {
-  const L = LEVELS[1], P = all(2);
-  assert.ok(L.planned > L.jobs.length + L.tickets.length, "the small office is still being built");
+test("a level still being built is never finished, however much of it is done: the next level stays shut", function () {
+  const L = Object.assign({}, LEVELS[1], { planned: LEVELS[1].jobs.length + LEVELS[1].tickets.length + 1 }), P = all(2);
   assert.equal(built(L), false);
   assert.equal(finished(L, P), false, "doing everything built so far doesn't finish it");
-  assert.equal(isOpen(3, P), false);
-  assert.match(lockText(3, P), /still being built/);
-  assert.doesNotMatch(lockText(3, P), /to go\)/);
 });
-test("once everything planned exists and is done, the level is finished", function () {
-  const L = Object.assign({}, LEVELS[1], { planned: LEVELS[1].jobs.length + LEVELS[1].tickets.length });
+test("the small office is complete: 10 work orders and 15 tickets, all built; doing them all finishes it, and the small business is built later", function () {
+  const L = LEVELS[1];
+  assert.equal(L.jobs.length, 10); assert.equal(L.tickets.length, 15); assert.equal(L.planned, undefined, "a complete level carries no planned");
   assert.equal(built(L), true);
+  assert.equal(finished(L, all(1)), false, "nothing of it done yet");
   assert.equal(finished(L, all(2)), true);
+  assert.equal(LEVELS[2].later, true);
+  assert.match(lockText(3, all(1)), /\(15 tickets and 10 work orders to go\)/);
 });

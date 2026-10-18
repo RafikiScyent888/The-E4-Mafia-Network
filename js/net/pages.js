@@ -5,7 +5,7 @@
 import { isIp } from "./util.js";
 import { portName as printedPort, SFP_MODULES } from "./sim.js";
 
-const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", meet: "switch", mpc: "pc", mgr: "pc" };   /* the office's back office (SO-04) and the manager's PC (SO-08): the same housings */
+const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc" };   /* the office's back office (SO-04) and the manager's PC (SO-08): the same housings */
 
 export function tabsFor(sim, id) {
   const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" || k === "techlaptop" || k === "patchpanel" || k === "jack" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
@@ -103,7 +103,8 @@ export function page(sim, id, key) {
     const inj = x.kind === "injector" ? { power: !!x.power, std: x.std, swap: !sim.net.extra.build } : null;   /* in a build house the right injector comes out of the van, not a swap */
     const free = x.kind === "patchpanel" ? Array.from({ length: 24 }, function (_, i) { return String(i + 1); }).filter(function (p) { return !sim.cableAt(id, p); }) : null;   /* front ports a cord can move to */
     return { kind: "physical", still: STILL[id] ? "assets/stills/" + STILL[id] + ".jpg" : null, label: x.label, cables: cables, restart: x.kind !== "injector" && x.kind !== "patchpanel" && x.kind !== "jack", injector: inj, probe: x.kind === "patchpanel", freePorts: free,
-      sfp: x.kind === "mswitch" ? Object.keys(x.sfp || {}).filter(function (k) { return x.sfp[k]; }).map(function (k) { return { slot: k, type: x.sfp[k], label: SFP_MODULES[x.sfp[k]].label, swaps: ["1000BASE-SX", "1000BASE-LX"].filter(function (t) { return t !== x.sfp[k]; }) }; }) : null,
+      /* each SFP slot with a module, and the modules from the van; in build mode an empty slot too, and the van carries a 10 Gb/s SFP+ module as well (SO-J10) */
+      sfp: x.kind === "mswitch" ? Object.keys(x.sfp || {}).filter(function (k) { return x.sfp[k] || sim.net.extra.build; }).map(function (k) { return { slot: k, type: x.sfp[k] || null, label: x.sfp[k] ? SFP_MODULES[x.sfp[k]].label : "empty, no module in it", swaps: (sim.net.extra.build ? ["1000BASE-SX", "1000BASE-LX", "10GBASE-SR"] : ["1000BASE-SX", "1000BASE-LX"]).filter(function (t) { return t !== x.sfp[k]; }) }; }) : null,
       facts: { page: id + "-physical", rogue: id === "rogue", injector: inj, camera: id === "camera" ? sim.on("camera") : undefined } };
   }
   if (id === "router") {

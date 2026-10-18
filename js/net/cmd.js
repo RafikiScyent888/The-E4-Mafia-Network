@@ -120,6 +120,21 @@ function tftpFrom(sim, sw) {
     return { ok: true };
   };
 }
+/* a TFTP read from a switch: the file comes only from a computer it can reach with a TFTP server running, by its name
+   (Windows: case doesn't matter), and the server's log says who asked for it */
+function tftpGetFrom(sim, sw) {
+  return function (host, name) {
+    const r = sim.route(sw, host);
+    if (r.fail === "no-link" || r.fail === "no-route") return { err: "No route to host" };
+    if (r.fail || !r.local) return { err: "Timed out" };
+    const x = sim.d[r.owner[0]], srv = x && x.tftp;
+    if (!srv || !srv.on) return { err: "Timed out" };
+    const f = srv.files.find(function (g) { return g.name.toLowerCase() === String(name).toLowerCase(); }), from = sim.addr(sw).ip;
+    if (!f) { srv.log.push("Read request from " + from + " for " + name + ": file not found"); return { err: "No such file or directory" }; }
+    srv.log.push("Read request from " + from + " for " + f.name + ": sent " + f.text.length + " bytes");
+    return { text: f.text };
+  };
+}
 const lines = function (L) { return L.length ? L.join("\n") + "\n" : ""; };
 function serial(sim, id, raw) {
   sim.cli = sim.cli || {};
@@ -127,7 +142,7 @@ function serial(sim, id, raw) {
   let st = sim.cli[id];
   if (!tgt) return { out: "(Nothing answers on COM3: the console cable isn't joined to a powered switch's CONSOLE port.)\n", facts: { cmd: "serial", connected: false }, serial: true };
   sim.syncSwitch(tgt);
-  if (!st || st.sw !== tgt) st = sim.cli[id] = { S: SW.session(sim.d[tgt].sw, { via: "console", reach: reachFrom(sim, tgt), tftp: tftpFrom(sim, tgt) }), sw: tgt, via: "console" };
+  if (!st || st.sw !== tgt) st = sim.cli[id] = { S: SW.session(sim.d[tgt].sw, { via: "console", reach: reachFrom(sim, tgt), tftp: tftpFrom(sim, tgt), tftpGet: tftpGetFrom(sim, tgt) }), sw: tgt, via: "console" };
   const r = SW.exec(st.S, raw); st.prompt = r.prompt;
   const dup = dupAddr(sim, tgt); if (dup && st.dup !== dup) { st.dup = dup; r.out = r.out.concat([dup]); }   /* once a session, as the console log shows it */
   const sl = sfpLog(sim, tgt), sk = sl.join("|"); if (sl.length && st.sfp !== sk) { st.sfp = sk; r.out = r.out.concat(sl); }
@@ -138,9 +153,9 @@ function remote(sim, id, raw, k) {
   if (st.auth) {   /* the password (or user name) the remote end asked for */
     const A = st.auth;
     if (A.step === "user") { A.user = raw.trim(); A.step = "pass"; A.secret = true; st.ask = "Password: "; return { out: "", facts: { cmd: st.via }, secret: true, cli: true }; }
-    const ok = st.via === "ssh" ? sw.sw.vty.login === "local" && sw.sw.users[A.user] === raw : A.local ? sw.sw.users[A.user] === raw : sw.sw.vty.password === raw;
+    const ok = st.via === "ssh" ? sw.sw.vty.login === "local" && SW.pwOk(sw.sw.users[A.user], raw) : A.local ? SW.pwOk(sw.sw.users[A.user], raw) : SW.pwOk(sw.sw.vty.password, raw);
     if (ok) {
-      const S = SW.session(sw.sw, { via: "vty", reach: reachFrom(sim, st.sw), tftp: tftpFrom(sim, st.sw) }); S.mode = "user"; S.pending = null;
+      const S = SW.session(sw.sw, { via: "vty", reach: reachFrom(sim, st.sw), tftp: tftpFrom(sim, st.sw), tftpGet: tftpGetFrom(sim, st.sw) }); S.mode = "user"; S.pending = null;
       st.S = S; st.auth = null; st.ask = null; st.prompt = SW.promptOf(S);
       const m = st.via === "ssh" ? SW.motd(sw.sw) : [];   /* over SSH the message of the day comes once you're in; Telnet showed it before the password */
       return { out: m.length ? lines(m.concat([""])) : st.via === "ssh" ? "" : "\n", facts: { cmd: st.via, dev: id, login: true, host: st.host, user: A.user }, cli: true };

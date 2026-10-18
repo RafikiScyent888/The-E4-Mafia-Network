@@ -1,4 +1,4 @@
-import subprocess, shutil, os
+import subprocess, shutil, os, sys
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))   # this checkout, wherever it is
 PLANTS = [
  ("changes after saving not seen", "js/build/office.js", 'C("since", !!sw.startup && unsaved(sw),', 'C("since", false,'),
@@ -24,15 +24,23 @@ PLANTS = [
  ("the server or the network blamed after files landed", "js/build/office.js", 'C("net", !f && !any && !lapOnNet(sim),', 'C("net", !f && !lapOnNet(sim),'),
  ("the laptop's two terminals share one login", "js/net/cmd.js", 'const keyOf = function (id, win) { return win ? id + "/win" : id; };', 'const keyOf = function (id, win) { return id; };'),
  ("no banner after an SSH login", "js/net/cmd.js", 'const m = st.via === "ssh" ? SW.motd(sw.sw) : [];', 'const m = [];'),
+ ("SO-01: a fix that isn't saved counts as fixed", "js/tickets/office.js", "return !sim.mismatched(\"printer\") && !!l && !!sp && !sp.shutdown && !SW.duplexEnds(sp, l).mismatch && printOk(sim);", "return !sim.mismatched(\"printer\") && printOk(sim);"),
+ ("SO-02: the spare ports opened again, accepted", "js/tickets/office.js", "&& spareLive(sw).length === 0 && spareLive(Object.assign({}, sw, { ports: sw.startup.ports })).length === 0;", ";"),
+ ("SO-05: Telnet left on, accepted", "js/tickets/office.js", 'c.vty.transport === "ssh" &&', '/^(ssh|all)$/.test(c.vty.transport) &&'),
+ ("a duplex mismatch loses nothing", "js/net/sim.js", "return this.mismatched(id) ? { loss: 0.3, base: 1 } : { loss: 0, base: 0 };", "return { loss: 0, base: 0 };"),
+ ("show version never says it came back from a power cut", "js/net/swcli.js", '"System returned to ROM by " + (sw.restart || "power-on"), "",', ''),
+ ("SO-02: any ping from the PC proves it, even to itself", "js/tickets/office.js", 'proves(f) { return f.cmd === "ping" && f.dev === "pc" && f.beyond; },', 'proves(f) { return f.cmd === "ping" && f.dev === "pc" && f.ok; },'),
  ("reload keeps unsaved changes", "js/net/swcli.js", "  const base = sw.startup ? clone(sw.startup) : snapshot(newSwitch());\n  CONFIG_KEYS.forEach(function (k) { sw[k] = base[k]; });", "  const base = sw.startup ? clone(sw.startup) : snapshot(newSwitch());"),
 ]
+only = sys.argv[1:]
 for name, f, a, b in PLANTS:
+    if only and not any(o in name for o in only): continue
     src = open(f).read()
     assert src.count(a) == 1, (name, src.count(a))
     shutil.copy(f, "/tmp/nplant.bak")
     open(f, "w").write(src.replace(a, b))
     try:
-        r = subprocess.run(["node", "--test", "tests/office-jobs.test.js", "tests/office.test.js"], env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=900)
+        r = subprocess.run(["node", "--test", "tests/office-jobs.test.js", "tests/office.test.js", "tests/office-tickets.test.js"], env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=900)
         fails = [l.strip() for l in r.stdout.splitlines() if l.startswith("not ok")]
         print(("CAUGHT" if r.returncode else "MISSED") + " · " + name + " · " + (", ".join(fails)[:200]))
     finally:

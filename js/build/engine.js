@@ -23,7 +23,7 @@ function apply(J, a) {
   if (a.t === "view") return page(sim, a.dev, a.key);
   if (PHYSICAL[a.t]) return physical(sim, a);
   if (a.t === "rejoin" || a.t === "join") { const r = sim.apply(a), ad = sim.addr(a.dev), l = sim.wifiLink(a.dev); return { result: r, facts: { join: r.result, dev: a.dev, ap: l && l.connected ? l.ap.id : null, ip: ad && ad.ip, apipa: !!(ad && ad.kind === "apipa"), internet: !!(ad && sim.route(a.dev, PUBLIC).internet) } }; }
-  if (a.t === "print") { const r = sim.apply(a); return { result: r, facts: { print: r.ok ? "ok" : "fail", port: r.port } }; }
+  if (a.t === "print") { const r = sim.apply(a); return { result: r, facts: { print: r.ok ? "ok" : "fail", slow: !!r.slow, port: r.port } }; }
   if (a.t === "speed") { const r = sim.apply(a); return { result: r, facts: { speed: r.ok ? r.down : 0, dev: a.dev } }; }
   if (a.t === "outside") { const r = sim.apply(a); return { result: r, facts: { outside: true, ok: !!r.ok, why: r.why } }; }
   if (a.t === "injector") { const r = sim.apply(a); return { result: r, facts: { injector: true, power: r.power, std: r.std, camera: sim.on("camera") } }; }

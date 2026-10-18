@@ -104,7 +104,7 @@ function pagePane(id, key, ctx, rerender) {
     if (P.cameraApp) pane.appendChild(button(id, "camera", "Open the camera app on mobile data", ctx, rerender, function () { const r = ctx.act({ t: "outside", port: 8443 }); const x = r && r.result; return x && x.ok ? "Camera app: connected. The porch camera's picture comes up." : "Camera app: can't connect to the camera" + (x && x.why === "refused" ? " (the connection was refused)" : x && x.why === "nobody" ? " (nothing answered)" : "") + "."; }));
   } else if (P.kind === "printers") {
     pane.appendChild(el("table", { class: "kv" }, el("tbody", null, el("tr", null, el("th", { scope: "row" }, "Printer"), el("td", null, P.name)), el("tr", null, el("th", { scope: "row" }, "Printer port (its address)"), el("td", null, P.port)))));
-    pane.appendChild(button(id, "print", "Print a test page", ctx, rerender, function () { const r = ctx.act({ t: "print" }); const x = r && r.result; return x && x.ok ? "Test page sent to " + x.port + ": it printed." : "Test page sent to " + (x && x.port) + ": nothing printed. Windows says the printer is offline."; }));
+    pane.appendChild(button(id, "print", "Print a test page", ctx, rerender, function () { const r = ctx.act({ t: "print" }); const x = r && r.result; return x && x.ok ? "Test page sent to " + x.port + (x.slow ? ": it printed, but slowly: the page took over a minute to come out." : ": it printed.") : "Test page sent to " + (x && x.port) + ": nothing printed. Windows says the printer is offline."; }));
     const msg = el("p", { class: "msg", role: "status" });
     const f = el("form", { class: "devform", novalidate: true, style: "margin-top:12px" }, el("fieldset", null, el("legend", null, "Change the printer port"), field("Printer's IP address", "port", P.port), el("div", { class: "acts" }, el("button", { class: "btn", type: "submit" }, "Save"))), msg);
     f.addEventListener("submit", function (e) { e.preventDefault(); const r = ctx.act({ t: "pcprinter", ip: new FormData(f).get("port") }); if (r && r.result && r.result.ok) { ctx.flash = "Saved: the office printer is now at " + new FormData(f).get("port") + "."; rerender(); } else { msg.className = "msg err"; msg.textContent = "Not saved: " + ((r && r.result && r.result.errs) || []).join(". ") + "."; } });
@@ -399,7 +399,7 @@ function ipForm(id, v, ctx, rerender) {
 function printerForm(P, ctx, rerender) {
   const v = P.values, msg = el("p", { class: "msg", role: "status" });
   const f = el("form", { class: "devform", novalidate: true });
-  f.appendChild(el("table", { class: "kv" }, el("tbody", null, el("tr", null, el("th", { scope: "row" }, "Status"), el("td", null, P.status)), el("tr", null, el("th", { scope: "row" }, "Hardware address"), el("td", null, P.mac)))));
+  f.appendChild(el("table", { class: "kv" }, el("tbody", null, el("tr", null, el("th", { scope: "row" }, "Status"), el("td", null, P.status)), el("tr", null, el("th", { scope: "row" }, "Hardware address"), el("td", null, P.mac)), P.link ? el("tr", null, el("th", { scope: "row" }, "Ethernet"), el("td", null, P.link)) : null)));
   f.appendChild(el("fieldset", null, el("legend", null, "Network > TCP/IP"), el("div", { class: "radio" }, radio("mode", "static", v.mode === "static", "Manual (static)"), radio("mode", "dhcp", v.mode === "dhcp", "Automatic (DHCP)")),
     field("IP address", "ip", v.ip), el("div", { class: "row2" }, field("Subnet mask", "mask", v.mask), field("Gateway", "gw", v.gw))));
   f.appendChild(el("div", { class: "acts" }, el("button", { class: "btn", type: "submit" }, "Save")));

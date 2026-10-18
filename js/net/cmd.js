@@ -127,7 +127,7 @@ function serial(sim, id, raw) {
   sim.syncSwitch(tgt);
   if (!st || st.sw !== tgt) st = sim.cli[id] = { S: SW.session(sim.d[tgt].sw, { via: "console", reach: reachFrom(sim, tgt), tftp: tftpFrom(sim, tgt) }), sw: tgt, via: "console" };
   const r = SW.exec(st.S, raw); st.prompt = r.prompt;
-  return { out: lines(r.out), facts: { cmd: "serial", connected: true, mode: st.S.mode, line: raw.trim() }, secret: !!r.secret, cli: true, keep: r.keep };
+  return { out: lines(r.out), facts: { cmd: "serial", dev: id, connected: true, mode: st.S.mode, line: raw.trim(), out: r.out.join("\n") }, secret: !!r.secret, cli: true, keep: r.keep };
 }
 function remote(sim, id, raw, k) {
   const st = sim.cli[k], sw = sim.d[st.sw];
@@ -139,17 +139,17 @@ function remote(sim, id, raw, k) {
       const S = SW.session(sw.sw, { via: "vty", reach: reachFrom(sim, st.sw), tftp: tftpFrom(sim, st.sw) }); S.mode = "user"; S.pending = null;
       st.S = S; st.auth = null; st.ask = null; st.prompt = SW.promptOf(S);
       const m = st.via === "ssh" ? SW.motd(sw.sw) : [];   /* over SSH the message of the day comes once you're in; Telnet showed it before the password */
-      return { out: m.length ? lines(m.concat([""])) : st.via === "ssh" ? "" : "\n", facts: { cmd: st.via, login: true, host: st.host }, cli: true };
+      return { out: m.length ? lines(m.concat([""])) : st.via === "ssh" ? "" : "\n", facts: { cmd: st.via, dev: id, login: true, host: st.host, user: A.user }, cli: true };
     }
     A.tries++;
-    if (A.tries >= 3) { delete sim.cli[k]; return { out: st.via === "ssh" ? A.user + "@" + st.host + ": Permission denied (password).\n" : "% Bad passwords\n\nConnection to host lost.\n", facts: { cmd: st.via, login: false, denied: true } }; }
-    return { out: st.via === "ssh" ? "Permission denied, please try again.\n" : "% Login invalid\n", facts: { cmd: st.via }, secret: true, cli: true };
+    if (A.tries >= 3) { delete sim.cli[k]; return { out: st.via === "ssh" ? A.user + "@" + st.host + ": Permission denied (password).\n" : "% Bad passwords\n\nConnection to host lost.\n", facts: { cmd: st.via, dev: id, login: false, denied: true, user: A.user } }; }
+    return { out: st.via === "ssh" ? "Permission denied, please try again.\n" : "% Login invalid\n", facts: { cmd: st.via, dev: id, denied: true, user: A.user }, secret: true, cli: true };
   }
   sim.syncSwitch(st.sw);
   const r = SW.exec(st.S, raw);
   if (st.S.mode === "gone") { delete sim.cli[k]; return { out: lines(r.out.filter(function (l) { return !/con0 is now available|Press RETURN/.test(l); })).replace(/\n+$/, "\n") + (st.via === "ssh" ? "Connection to " + st.host + " closed.\n" : "\nConnection to host lost.\n"), facts: { cmd: st.via, closed: true } }; }
   st.prompt = r.prompt;
-  return { out: lines(r.out), facts: { cmd: st.via, line: raw.trim(), mode: st.S.mode }, secret: !!r.secret, cli: true, keep: r.keep };
+  return { out: lines(r.out), facts: { cmd: st.via, dev: id, line: raw.trim(), mode: st.S.mode, out: r.out.join("\n") }, secret: !!r.secret, cli: true, keep: r.keep };
 }
 /* ssh user@host, or ssh -l user host: Windows' own OpenSSH client */
 function ssh(sim, id, args, k) {

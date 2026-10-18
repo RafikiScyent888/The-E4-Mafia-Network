@@ -5,7 +5,7 @@
    Every change goes through apply(), so a ticket can be replayed exactly
    (progress is saved as the list of actions). */
 import { rng, hash, ip2n, n2ip, sameSubnet, isIp, isApipa, isPublic, isPrivate, isLoopback, broadcast, network, maskBits } from "./util.js";
-import { reload as reloadSwitch } from "./swcli.js";
+import { reload as reloadSwitch, duplexEnds } from "./swcli.js";
 
 /* each radio has its own hardware address: the 5 GHz one is the next number up */
 function bump(m) { const p = m.split("-"); p[5] = ((parseInt(p[5], 16) + 1) & 255).toString(16).padStart(2, "0"); return p.join("-"); }
@@ -114,7 +114,7 @@ export class Sim {
   /* the managed switch's view of its own links, for its show commands: refreshed from the cables before it's asked */
   syncSwitch(id) {
     const x = this.d[id]; if (!x || x.kind !== "mswitch") return null;
-    x.sw.links = this.switchLinks(id); x.sw.uptime = (2 + this.n) + " minutes";
+    x.sw.links = this.switchLinks(id); x.sw.uptime = x.sw.uptimeFixed || (2 + this.n) + " minutes";   /* a ticket can set how long it has really been up (since Sunday's power cut) */
     return x.sw;
   }
   /* what each of a managed switch's ports sees at the far end of its cable, worked out without changing anything
@@ -434,7 +434,17 @@ export class Sim {
     return !!(b.gw && sameSubnet(b.ip, b.gw, b.mask) && this.owners(b.gw, dom).some((g) => this.d[g].kind === "router" || this.d[g].kind === "rogue"));   /* the router hands it back across the LAN */
   }
   /* the quality of the first hop: Wi-Fi loss and delay */
-  hop(id) { const l = this.wifiLink(id); return l && l.connected ? { loss: l.loss, base: l.band === 5 ? 3 : 5 } : { loss: 0, base: 0 }; }
+  hop(id) {
+    const l = this.wifiLink(id); if (l && l.connected) return { loss: l.loss, base: l.band === 5 ? 3 : 5 };
+    return this.mismatched(id) ? { loss: 0.3, base: 1 } : { loss: 0, base: 0 };   /* a duplex mismatch: frames lost to late collisions on the half-duplex end */
+  }
+  /* is this device on a managed switch port whose duplex disagrees with its own (the link up, the two ends running differently)? */
+  mismatched(id) {
+    const c = this.cablesOf(id).find(function (k) { return k.kind === "cat6" && (k.a.dev === "msw" || k.b.dev === "msw"); }); if (!c || !this.cableUp(c)) return false;
+    const e = c.a.dev === "msw" ? c.a : c.b; if (!/^\d+$/.test(e.port)) return false;
+    const n = "GigabitEthernet0/" + e.port, p = this.d.msw.sw.ports[n], lk = this.switchLinks("msw")[n];
+    return !!(p && lk && duplexEnds(p, lk).mismatch);
+  }
 
   /* ------------------------------------------------------------ names */
   /* can this device get an answer from a DNS server? */
@@ -472,7 +482,7 @@ export class Sim {
       case "power": {
         const x = this.d[act.dev];
         if (x.ifaces && x.ifaces[0].cfg.mode !== "static") { /* a restart asks for its address again */ }
-        if (x.kind === "mswitch") { reloadSwitch(x.sw); for (const k in (this.cli || {})) if (this.cli[k].sw === act.dev) delete this.cli[k]; }   /* power off and on: only what was saved comes back; every login to it is dropped */
+        if (x.kind === "mswitch") { reloadSwitch(x.sw, "power-on"); for (const k in (this.cli || {})) if (this.cli[k].sw === act.dev) delete this.cli[k]; }   /* power off and on: only what was saved comes back; every login to it is dropped */
         res = { ok: true, restarted: act.dev };
         break;
       }
@@ -656,6 +666,7 @@ export class Sim {
     if (!r.local) return { ok: false, why: r.fail || "beyond", port: ip };
     const who = r.owner[this.n % r.owner.length];
     this.arp.pc[ip] = this.macOf(who);
+    if (who === "printer" && this.mismatched("printer")) return this.n % 3 === 0 ? { ok: false, why: "timeout", port: ip, slow: true } : { ok: true, port: ip, slow: true };   /* a duplex mismatch: pages crawl, and every so often one never arrives */
     return who === "printer" ? { ok: true, port: ip } : { ok: false, why: "wrong-device", who: who, port: ip, conflict: r.owner.length > 1 };
   }
 

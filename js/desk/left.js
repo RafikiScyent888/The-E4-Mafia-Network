@@ -29,7 +29,11 @@ export function renderQueue(host, ctx) {
   if (sel > 1) {
     host.appendChild(el("h2", null, "Queue · Level " + L.n + " · " + L.name));
     if (!isOpen(sel)) { host.appendChild(lockPanel(sel)); return; }
-    const ol = el("ol", { id: "queue" });
+    const ol = el("ol", { id: "queue" }), tickets = ctx.list.filter(function (t) { return t.level === sel; });
+    if (tickets.length) {
+      ol.appendChild(el("li", { class: "tier" }, "Tier " + L.n + " · " + L.name + " · tickets"));
+      tickets.forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
+    }
     ol.appendChild(el("li", { class: "tier" }, L.coming ? L.coming.charAt(0).toUpperCase() + L.coming.slice(1) : "Tickets: built later"));
     if (L.jobs.length) {
       ol.appendChild(el("li", { class: "tier" }, "Work orders, in Build"));
@@ -41,11 +45,11 @@ export function renderQueue(host, ctx) {
   host.appendChild(el("h2", null, "Queue · Level 1 · Home"));
   const ol = el("ol", { id: "queue" });
   ol.appendChild(el("li", { class: "tier" }, "Tier 1 · Home · the most common"));
-  ctx.list.filter(function (t) { return t.tier === "common"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
+  ctx.list.filter(function (t) { return t.level === 1 && t.tier === "common"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
   ol.appendChild(el("li", { class: "tier" }, "Tier 1 · Home · harder"));
-  ctx.list.filter(function (t) { return t.tier === "harder"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
+  ctx.list.filter(function (t) { return t.level === 1 && t.tier === "harder"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
   ol.appendChild(el("li", { class: "tier" }, "Tier 1 · Home · five more"));
-  ctx.list.filter(function (t) { return t.tier === "more"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
+  ctx.list.filter(function (t) { return t.level === 1 && t.tier === "more"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
   host.appendChild(ol);
 }
 
@@ -65,11 +69,13 @@ export function renderShelves(host, ctx) {
     const ol = el("ol");
     if (sh[2] === null) {
       ol.appendChild(el("li", { class: "tier" }, "Home · the most common"));
-      ctx.list.filter(function (t) { return t.tier === "common"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
+      ctx.list.filter(function (t) { return t.level === 1 && t.tier === "common"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
       ol.appendChild(el("li", { class: "tier" }, "Home · harder"));
-      ctx.list.filter(function (t) { return t.tier === "harder"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
+      ctx.list.filter(function (t) { return t.level === 1 && t.tier === "harder"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
       ol.appendChild(el("li", { class: "tier" }, "Home · five more"));
-      ctx.list.filter(function (t) { return t.tier === "more"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
+      ctx.list.filter(function (t) { return t.level === 1 && t.tier === "more"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
+      ol.appendChild(el("li", { class: "tier" }, "Small office" + (isOpen(2) ? "" : " · locked until the home level is finished")));
+      if (isOpen(2)) ctx.list.filter(function (t) { return t.level === 2; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
       ol.appendChild(el("li", { class: "tier" }, "From the Network-Sims"));
       ["Network Troubleshooting", "Routing Table Troubleshooting", "STP Troubleshooting", "Switch CLI Output Analysis"].forEach(function (n) { ol.appendChild(el("li", null, el("button", { type: "button", "aria-disabled": "true" }, el("span", { class: "num" }, "·"), el("span", { class: "what" }, n), el("span", { class: "st" }, "Network-Sims · at a later level")))); });
     } else {
@@ -128,10 +134,11 @@ export function renderMap(host, ctx) {
   dl.appendChild(el("dt", null, "Teaches")); const ul = el("ul"); s.obj.forEach(function (o) { ul.appendChild(el("li", null, o)); }); dl.appendChild(el("dd", null, ul));
   dl.appendChild(el("dt", null, "Connects to")); dl.appendChild(el("dd", null, s.links));
   card.appendChild(dl);
-  if (s.open) {
-    card.appendChild(el("p", { class: "lvl", style: "margin-top:10px" }, "Tickets at the client homes"));
+  if (s.open || (s.id === "dental" && isOpen(2))) {
+    const lv = s.open ? 1 : 2;
+    card.appendChild(el("p", { class: "lvl", style: "margin-top:10px" }, lv === 1 ? "Tickets at the client homes" : "Tickets at the small office"));
     const tl = el("ul", { class: "tickets" });
-    ctx.list.forEach(function (t) { tl.appendChild(el("li", null, ticketButton(ctx, t))); });
+    ctx.list.filter(function (t) { return t.level === lv; }).forEach(function (t) { tl.appendChild(el("li", null, ticketButton(ctx, t))); });
     card.appendChild(tl);
   } else card.appendChild(el("p", { class: "later" }, "Opens at " + s.level.split(" · ")[0] + "."));
   host.appendChild(card);

@@ -14,16 +14,17 @@
 import { HOME_TICKETS } from "../tickets/home.js";
 import { JOBS } from "../build/jobs.js";
 import { OFFICE_JOBS } from "../build/office.js";
+import { OFFICE_TICKETS } from "../tickets/office.js";
 
 export const LEVELS = [
   { n: 1, id: "home", name: "Home", the: "the home level", tickets: HOME_TICKETS.map(function (t) { return t.id; }), jobs: JOBS.filter(function (d) { return !d.free; }).map(function (d) { return d.id; }) },
   /* 10 work orders (5 and the standing 5 extra) and 15 tickets (10 and 5 extra), as agreed 11 October 2026 */
-  { n: 2, id: "office", name: "Small office", the: "the small office", tickets: [], jobs: OFFICE_JOBS.map(function (d) { return d.id; }), planned: 25, coming: "more work orders and tickets are on the way" },
+  { n: 2, id: "office", name: "Small office", the: "the small office", tickets: OFFICE_TICKETS.map(function (t) { return t.id; }), jobs: OFFICE_JOBS.map(function (d) { return d.id; }), planned: 25, coming: "more work orders and tickets are on the way" },
   { n: 3, id: "business", name: "Small business", the: "the small business", tickets: [], jobs: [], later: true },
   { n: 4, id: "campus", name: "Campus", the: "the campus", tickets: [], jobs: [], later: true },
   { n: 5, id: "enterprise", name: "Enterprise", the: "the enterprise level", tickets: [], jobs: [], later: true }
 ];
-const TITLES = {}; HOME_TICKETS.concat(JOBS, OFFICE_JOBS).forEach(function (d) { TITLES[d.id] = d.title; });
+const TITLES = {}; HOME_TICKETS.concat(JOBS, OFFICE_JOBS, OFFICE_TICKETS).forEach(function (d) { TITLES[d.id] = d.title; });
 export function titleOf(id) { return TITLES[id] || ""; }
 const OPEN_HERE = "e4-levels-open";
 const read = function (k) { try { return JSON.parse(localStorage.getItem(k) || "null") || {}; } catch (e) { return {}; } };

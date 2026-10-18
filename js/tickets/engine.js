@@ -14,7 +14,7 @@ import { exec } from "../net/cmd.js";
 import { page, physical } from "../net/pages.js";
 import { rng, hash } from "../net/util.js";
 
-const STATE_CHANGING = { cmd: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1, router: 1, client: 1, rogue: 1, print: 1, speed: 1, outside: 1, rejoin: 1, pcprinter: 1, forget: 1, join: 1, injector: 1 };   /* print, speed and outside change nothing, but they draw on the same counter as ping, so replay needs them */
+const STATE_CHANGING = { cmd: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1, router: 1, client: 1, rogue: 1, print: 1, speed: 1, outside: 1, rejoin: 1, pcprinter: 1, forget: 1, join: 1, injector: 1, tftp: 1 };   /* print, speed and outside change nothing, but they draw on the same counter as ping, so replay needs them */
 const PHYSICAL = { look: 1, test: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1 };
 
 /* open a ticket on a seed; if a generated network ever failed to show its fault, move to the next seed */
@@ -63,7 +63,8 @@ function apply(T, a, replay) {
   if (a.t === "client") { const r = T.sim.apply(a); return { result: r, facts: r.ok ? { client: a.dev, saved: true } : {} }; }
   if (a.t === "rogue") { const r = T.sim.apply(a); return { result: r, facts: { rogueDhcp: T.sim.d.rogue.dhcp.on } }; }
   if (a.t === "pcprinter") { const r = T.sim.apply(a); return { result: r, facts: r.ok ? { pcprinter: a.ip } : {} }; }
-  if (a.t === "print") { const r = T.sim.apply(a); return { result: r, facts: { print: r.ok ? "ok" : "fail", port: r.port, who: r.who, conflict: !!r.conflict } }; }
+  if (a.t === "print") { const r = T.sim.apply(a); return { result: r, facts: { print: r.ok ? "ok" : "fail", slow: !!r.slow, port: r.port, who: r.who, conflict: !!r.conflict } }; }
+  if (a.t === "tftp") { const r = T.sim.apply(a); return { result: r, facts: { tftp: r.on } }; }
   if (a.t === "speed") { const r = T.sim.apply(a); return { result: r, facts: { speed: r.ok ? r.down : 0, dev: a.dev, link: r.link } }; }
   if (a.t === "outside") { const r = T.sim.apply(a); return { result: r, facts: { outside: true, ok: !!r.ok, why: r.why, port: a.port, target: r.target } }; }
   if (a.t === "injector") { const r = T.sim.apply(a); return { result: r, facts: { injector: true, power: r.power, std: r.std, camera: T.sim.on("camera") } }; }

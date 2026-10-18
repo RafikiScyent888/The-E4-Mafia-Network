@@ -28,10 +28,10 @@ const clone = function (x) { return JSON.parse(JSON.stringify(x)); };
 const CONFIG_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "vlan1", "gateway", "ports", "banner"];
 function snapshot(sw) { const s = {}; CONFIG_KEYS.forEach(function (k) { s[k] = clone(sw[k]); }); return s; }
 /* power off and on: what was saved comes back; anything not saved is gone (a factory switch comes back empty) */
-export function reload(sw) {
+export function reload(sw, why) {
   const base = sw.startup ? clone(sw.startup) : snapshot(newSwitch());
   CONFIG_KEYS.forEach(function (k) { sw[k] = base[k]; });
-  sw.uptime = "0 minutes";
+  sw.uptime = "0 minutes"; sw.uptimeFixed = null; sw.restart = why || "reload";   /* show version says what brought it back: a power cut, or the reload command */
 }
 
 /* ------------------------------------------------------------ interface names */
@@ -96,7 +96,7 @@ function mismatchCounters(p, l) {
 const SHOW = [
   ["running-config", "Current operating configuration", function (S) { return runningConfig(S.sw); }],
   ["startup-config", "Contents of startup-config", function (S) { return S.sw.startup ? runningConfig(Object.assign({}, S.sw, S.sw.startup), true) : ["startup-config is not present"]; }],
-  ["version", "System hardware and software status", function (S) { const sw = S.sw; return ["MSW-2800G Network Operating System, Version 4.2.1", "", sw.hostname + " uptime is " + sw.uptime, "", "Model number: MSW-2800G (24 x 10/100/1000, 4 x SFP)", "Base MAC address: " + sw.mac, "System serial number: " + sw.serial, "", "Configuration register: 0x2102"]; }],
+  ["version", "System hardware and software status", function (S) { const sw = S.sw; return ["MSW-2800G Network Operating System, Version 4.2.1", "", sw.hostname + " uptime is " + sw.uptime, "", "Model number: MSW-2800G (24 x 10/100/1000, 4 x SFP)", "Base MAC address: " + sw.mac, "System serial number: " + sw.serial, "", "System returned to ROM by " + (sw.restart || "power-on"), "", "Configuration register: 0x2102"]; }],
   ["ip", "IP information", [["interface", "IP interface status and configuration", [["brief", "Brief summary of IP status and configuration", function (S) { return ipBrief(S.sw); }]]]]],
   ["interfaces", "Interface status and configuration", function (S, args) {
     if (!args.length) return PORT_NAMES.slice(0, 4).reduce(function (a, n) { return a.concat(ifDetail(S.sw, n)); }, []).concat(["(showing the first four; name a port: show interfaces gi0/5)"]);
@@ -467,7 +467,7 @@ function answer(S, raw) {
     }
     S.pending = null;
     if (t && !/^y/i.test(t) && t !== "") return { out: [], prompt: promptOf(S) };
-    reload(S.sw); const fresh = session(S.sw, { via: S.via, reach: S.reach, tftp: S.tftp }); Object.assign(S, fresh);
+    reload(S.sw, "reload"); const fresh = session(S.sw, { via: S.via, reach: S.reach, tftp: S.tftp }); Object.assign(S, fresh);
     return { out: ["", "%SYS-5-RELOAD: Reload requested by console. Reload Reason: Reload command.", "", "Loading the system image... [OK]", "", "MSW-2800G Network Operating System, Version 4.2.1", S.sw.startup ? "" : "No startup configuration found: starting with factory settings.", ""].concat(banner(S)), prompt: promptOf(S), secret: S.mode === "login" };
   }
   S.pending = null; return { out: [], prompt: promptOf(S) };

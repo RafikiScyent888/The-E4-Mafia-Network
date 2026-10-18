@@ -3,6 +3,8 @@
    The ticket, its network and the student's progress are shared, so a
    ticket opened on one view is the same ticket on the others. */
 import { HOME_TICKETS, HOME_COMING } from "../tickets/home.js";
+import { OFFICE_TICKETS, OFFICE_COMING } from "../tickets/office.js";
+import { LEVELS, isOpen } from "./levels.js";
 import * as E from "../tickets/engine.js";
 import { HELP } from "../net/cmd.js";
 import { load, store, newSeed, dyslexia, el } from "./store.js";
@@ -14,16 +16,18 @@ import { setupInstructor } from "./instructor.js";
 
 const PAGE = document.body.dataset.page;
 const S = load();
-const DEFS = {}; HOME_TICKETS.forEach(function (d) { DEFS[d.id] = d; });
-const LIST = HOME_TICKETS.map(function (d) { return { id: d.id, n: d.n, tier: d.tier, title: d.title, built: true }; }).concat(HOME_COMING.map(function (c) { return Object.assign({ built: false }, c); }));
-const DEVICES = ["pc", "switch", "router", "modem", "printer", "injector", "camera", "tv", "mesh", "laptop", "phone", "guest"];   /* an undocumented box gets no button: find it on the floor plan */
+const DEFS = {}; HOME_TICKETS.concat(OFFICE_TICKETS).forEach(function (d) { DEFS[d.id] = d; });
+const item = function (d) { return { id: d.id, n: d.n, tier: d.tier, title: d.title, level: d.level || 1, built: true }; };
+const LIST = HOME_TICKETS.map(item).concat(HOME_COMING.map(function (c) { return Object.assign({ built: false, level: 1 }, c); }),
+  OFFICE_TICKETS.map(item), OFFICE_COMING.map(function (c) { return Object.assign({ built: false }, c); }));   /* every level's tickets; the queue shows the chosen level's */
+const DEVICES = ["pc", "switch", "msw", "router", "modem", "printer", "tech", "injector", "camera", "tv", "mesh", "laptop", "phone", "guest"];   /* an undocumented box gets no button: find it on the floor plan */
 const $ = function (id) { return document.getElementById(id); };
 let replateMap = null;
 
 const ctx = {
   T: null, open: "pc", tab: null, fixHint: null, flash: null,
   get list() { return LIST; }, get solved() { return S.solved; }, get current() { return ctx.T && ctx.T.def.id; },
-  get nextId() { const b = LIST.filter(function (t) { return t.built; }); const i = b.findIndex(function (t) { return t.id === ctx.current; }); return b.length > 1 ? b[(i + 1) % b.length].id : null; },
+  get nextId() { const lv = (ctx.T && ctx.T.def.level) || 1, b = LIST.filter(function (t) { return t.built && t.level === lv; }); const i = b.findIndex(function (t) { return t.id === ctx.current; }); return b.length > 1 ? b[(i + 1) % b.length].id : null; },
   onReplate: function (f) { replateMap = f; },
   act: function (a) {
     const was = ctx.T.solved, r = E.act(ctx.T, a);
@@ -56,11 +60,12 @@ const ctx = {
 function persist() { S.t[ctx.T.def.id] = E.save(ctx.T); S.current = ctx.T.def.id; store(S); }
 
 function openTicket(id, fresh, seed) {
-  const def = DEFS[id] || HOME_TICKETS[0];
+  let def = DEFS[id] || HOME_TICKETS[0];
+  if (!isOpen(def.level || 1)) def = HOME_TICKETS[0];   /* a level still locked opens nothing: back to the first ticket */
   let T = null;
   if (!fresh && S.t[def.id]) { try { T = E.restore(def, S.t[def.id]); } catch (e) { T = null; } }
   if (!T) T = E.open(def, seed == null ? newSeed() : seed);
-  ctx.T = T; ctx.open = def.affected; ctx.tab = null; ctx.fixHint = T.fixHint ? def.fixHints(T.v, T.sim)[Math.min(T.fixHint, 3) - 1] : null;
+  ctx.T = T; ctx.open = def.affected; ctx.tab = null; ctx.level = def.level || 1; ctx.fixHint = T.fixHint ? def.fixHints(T.v, T.sim)[Math.min(T.fixHint, 3) - 1] : null;
   forgetTerminals(); persist(); renderAll();
 }
 
@@ -75,8 +80,9 @@ function renderLeft() {
 }
 function renderTitle() {
   const d = ctx.T.def, net = ctx.T.sim.net, lt = $("labtitle");
-  const surname = net.client.name.replace(/^(Mrs?|Ms)\. /, "");
-  const t = { desk: ["Ticket " + d.id + " · " + d.title, "Queue: Tier 1 · Home · Rafiki's IT Services"], bench: ["Lab " + d.id + " · " + d.title, "Shelf: Network troubleshooting · Level: Home"], map: [surname + " home · ticket " + d.id + " · " + d.title, "Site: Client homes, Maple Street · Level 1: Home"] }[PAGE];
+  const surname = net.client.name.replace(/^(Mrs?|Ms)\. /, ""), L = LEVELS[(d.level || 1) - 1], office = net.site === "office";
+  const t = { desk: ["Ticket " + d.id + " · " + d.title, "Queue: Tier " + L.n + " · " + L.name + " · Rafiki's IT Services"], bench: ["Lab " + d.id + " · " + d.title, "Shelf: Network troubleshooting · Level: " + L.name],
+    map: [(office ? net.client.name : surname + " home") + " · ticket " + d.id + " · " + d.title, office ? "Site: Small office, " + net.client.street + " · Level 2: Small office" : "Site: Client homes, Maple Street · Level 1: Home"] }[PAGE];
   lt.textContent = t[0]; lt.appendChild(el("small", null, t[1]));
   document.title = d.id + " · " + { desk: "Ticket Desk", bench: "Lab Bench", map: "Service Map" }[PAGE] + " · The E4 Mafia Network";
 }
@@ -85,7 +91,7 @@ function renderTicketCard() {
   tk.innerHTML = "";
   tk.appendChild(el("h3", { tabindex: "-1", id: "tkh" }, d.id + " · " + d.title));
   tk.appendChild(el("div", { class: "meta" }, el("b", null, "Priority " + d.priority), el("br"), "Due in " + d.due));
-  tk.appendChild(el("p", { class: "from" }, net.client.name + " · " + net.client.street + " · home network"));
+  tk.appendChild(el("p", { class: "from" }, net.client.name + " · " + net.client.street + " · " + (net.site === "office" ? "office network" : "home network")));
   tk.appendChild(el("p", { class: "q" }, "“" + b.quote + "”"));
   tk.appendChild(el("p", { class: "mason2" }, el("b", null, "Mason: "), d.mason));
 }

@@ -735,7 +735,7 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
    on the way, and it doesn't count as finished, so Level 3 stays locked and says why */
 if (!process.env.ONLY || process.env.ONLY === "office") {
   const { LEVELS } = await import("../js/desk/levels.js");
-  const net = { t: {}, solved: Object.fromEntries(LEVELS[0].tickets.map((id) => [id, 1])) };
+  const net = { t: {}, solved: Object.fromEntries(LEVELS[0].tickets.concat(LEVELS[1].tickets).map((id) => [id, 1])) };   /* the office's tickets built so far solved too */
   const lastJob = LEVELS[1].jobs[LEVELS[1].jobs.length - 1];   /* every work order built so far done but the last, which the drive finishes */
   const built = { j: {}, done: Object.fromEntries(LEVELS[0].jobs.concat(LEVELS[1].jobs.slice(0, -1)).map((id) => [id, 1])) };
   const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });

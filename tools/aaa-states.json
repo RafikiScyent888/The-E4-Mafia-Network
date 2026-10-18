@@ -553,12 +553,12 @@
  {
   "name": "levels: build, everything on the small office so far done (still being built)",
   "page": "build.html",
-  "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS[0].tickets.map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS[0].jobs.concat(L.LEVELS[1].jobs.slice(0,-1)).map(id=>[id,1]))})); const c=window.__e4b; c.openJob(L.LEVELS[1].jobs[L.LEVELS[1].jobs.length-1],true,4242); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); document.getElementById('doCheck').click();})()"
+  "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS[0].tickets.concat(L.LEVELS[1].tickets).map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS[0].jobs.concat(L.LEVELS[1].jobs.slice(0,-1)).map(id=>[id,1]))})); const c=window.__e4b; c.openJob(L.LEVELS[1].jobs[L.LEVELS[1].jobs.length-1],true,4242); const J=c.T; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); document.getElementById('doCheck').click();})()"
  },
  {
   "name": "levels: desk, small office done so far, level 3 locked (still being built)",
   "page": "index.html",
-  "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS[0].tickets.map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS[0].jobs.concat(L.LEVELS[1].jobs).map(id=>[id,1]))})); document.querySelector('#left [data-level=\"3\"]').click();})()"
+  "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS[0].tickets.concat(L.LEVELS[1].tickets).map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS[0].jobs.concat(L.LEVELS[1].jobs).map(id=>[id,1]))})); document.querySelector('#left [data-level=\"3\"]').click();})()"
  },
  {
   "name": "office: SO-J3 start, the brief and the records, show interfaces with late collisions climbing",

@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (17 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1 to SO-J5, tickets SO-01 to SO-05, the managed switch, the IPAM sheet, your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5" and "Level 2, tickets SO-01 to 05" below.**
+**Status (18 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1 to SO-J5, tickets SO-01 to SO-07 and SO-09, the managed switch, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05" and "Level 2, tickets SO-06, SO-07 and SO-09" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
 from the Under the Hood tile (decision 6). See "The real site" below. The owner, 11
 October 2026: **"Build it like the preview you gave me just keep the layout
@@ -1270,7 +1270,24 @@ and SO-10 with the rack and patch panel in the Physical tab.
   - Before this, printing alternated on the simulation's action counter, so a
     command typed between two prints kept the same device answering.
   - HOME-06 passes unchanged.
-- **Checks:** filled in below at go-live.
+- **Checks:**
+  - `npm test`: 229. `tests/office-tickets.test.js` covers each new ticket on
+    150 offices. For SO-09 it adds: any plan the sheet accepts, with either
+    block moved, fixes it; ending the clash while the sheet still overlaps
+    doesn't.
+  - The full drive: 2501 checks. SO-06 and SO-07 go through the desk on every
+    variant: the office-ticket run is 523 checks, and SO-09 on its own is 84.
+    For SO-09 that includes the sheet checked, then corrected and saved, and
+    the switch or the printer moved.
+  - AAA: 7 new states, 13,911 text runs, all passing. A pale colour planted on
+    the desk's sheet was caught.
+  - `node tools/models.mjs`: 108 checks.
+  - Node plants: 15 new, all caught. One SO-09 plant (the sheet left
+    overlapping, accepted) was missed at first. That showed a missing case,
+    the clash ended by moving the other device, which is now a wrong fix in
+    the tests.
+  - Page plants: 4 new, all caught by named checks. The drive now names a
+    ticket that isn't built instead of crashing on it.
 
 Next: SO-08 and SO-10 with the rack, the patch panel and the SFP in the
 Physical tab; then five extra jobs (SO-J6 to J10) and five extra tickets

@@ -363,6 +363,13 @@ noscript p { margin: 16px; padding: 12px; background: #ffffff; border: 2px solid
 .ipam .blk.badrow { border-color: var(--bad); box-shadow: inset 4px 0 0 var(--bad); }
 .ipam .blk.goodrow { border-color: var(--good); box-shadow: inset 4px 0 0 var(--good); }
 @media (max-width: 700px) { .ipam .blkgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* the office's records on an office ticket's card: the switch's name and address, and the passwords a technician is given */
+.office-recs { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.office-recs h4 { margin: 0 0 6px; font-size: 0.95rem; color: var(--ink); }
+.office-recs .recs { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; margin: 0; }
+.office-recs dt { font-weight: 700; color: var(--ink); }
+.office-recs dd { margin: 0; color: var(--ink); font-family: Consolas, "DejaVu Sans Mono", monospace; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .office-recs .recs { grid-template-columns: 1fr; } .office-recs dd { margin-bottom: 4px; } }
 /* the office's cable map (SO-08): a port and its room in each row */
 .cmap .cmaptab { border-collapse: collapse; width: 100%; max-width: 30rem; }
 .cmap .cmaptab th, .cmap .cmaptab td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); color: var(--ink); }

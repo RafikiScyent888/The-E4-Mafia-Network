@@ -20,12 +20,12 @@ export function newSwitch(o = {}) {
   PORT_NAMES.forEach(function (n, i) { ports[n] = { desc: "", speed: "auto", duplex: "auto", shutdown: false, sfp: i >= COPPER, mdix: true }; });   /* mdix: the port swaps its pairs by itself to suit the far end (auto-MDIX), on from the box */
   const sw = { model: "MSW-2800G", hostname: "Switch", enableSecret: null, enablePassword: null, encrypt: false,
     con: { password: null, login: null }, vty: { password: null, login: null, transport: "telnet" },
-    users: {}, domain: null, rsa: 0, banner: null, vlan1: { ip: null, mask: null, shutdown: true }, gateway: null, ports: ports,
+    users: {}, domain: null, rsa: 0, keyGen: 0, banner: null, vlan1: { ip: null, mask: null, shutdown: true }, gateway: null, ports: ports,
     links: o.links || {}, mac: o.mac || "00e0.4c██.████", serial: "██████████", startup: null, uptime: o.uptime || "2 minutes" };
   return sw;
 }
-const clone = function (x) { return JSON.parse(JSON.stringify(x)); };
-const CONFIG_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "vlan1", "gateway", "ports", "banner"];
+const clone = function (x) { return x === undefined ? undefined : JSON.parse(JSON.stringify(x)); };
+const CONFIG_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "vlan1", "gateway", "ports", "banner"];   /* keyGen: which set of RSA keys it holds (each crypto key generate makes a new one) */
 function snapshot(sw) { const s = {}; CONFIG_KEYS.forEach(function (k) { s[k] = clone(sw[k]); }); return s; }
 /* power off and on: what was saved comes back; anything not saved is gone (a factory switch comes back empty) */
 export function reload(sw, why) {
@@ -107,6 +107,10 @@ const SHOW = [
   }, { sub: [["status", "Show interface line status"], ["transceiver", "Show the SFP modules' readings (DOM)"], ["GigabitEthernet", "GigabitEthernet IEEE 802.3z"], ["Vlan", "The switch's own interface (VLAN 1)"]] }],
   ["mac", "MAC configuration", [["address-table", "MAC forwarding table", function (S) { return macTable(S.sw); }]]],
   ["inventory", "Physical inventory: the chassis and its modules", function (S) { return inventory(S.sw); }],
+  ["crypto", "Encryption module", [["key", "Show long term public keys", [["mypubkey", "Show the switch's own public keys", [["rsa", "Show its RSA keys", function (S) {
+    const sw = S.sw; if (!sw.rsa) return ["% No RSA keys: none have been generated."];
+    return ["% Key pair was generated at: 10:12:44 UTC Oct 11 2026", "Key name: " + sw.hostname + "." + (sw.domain || "local"), "Key type: RSA KEYS " + sw.rsa + " bits", " Usage: General Purpose Key", " Key is not exportable. Redundancy enabled.", " Fingerprint (SHA256, as SSH clients show it): " + hostKey(sw)];
+  }]]]]]]],
   ["history", "Display the session command history", function (S) { return S.history.slice(-10).map(function (h) { return "  " + h; }); }],
   ["clock", "Display the system clock", function () { return ["*10:42:07.311 UTC Sun Oct 11 2026"]; }],
   ["users", "Display information about terminal lines", function (S) { return ["    Line       User       Host(s)              Idle       Location", S.via === "console" ? "*  0 con 0                idle                 00:00:00" : "*  1 vty 0                idle                 00:00:00 (remote)"]; }],
@@ -233,7 +237,7 @@ const TREE = { user: EXEC_USER, priv: EXEC_PRIV, config: CONFIG, if: IFACE, ifra
 
 function setPort(S, k, v) { S.ifs.forEach(function (n) { if (n !== "Vlan1") S.sw.ports[n][k] = v; }); return []; }
 function setTransport(S, v) { if (S.line !== "vty") return ["% Invalid input detected at '^' marker.", "  (transport input is for the vty lines: remote logins)"]; S.sw.vty.transport = v; return []; }
-function rsa(S, bits) { if (bits < 360 || bits > 4096) return ["% Invalid input detected at '^' marker."]; S.sw.rsa = bits; return ["% Generating " + bits + " bit RSA keys, keys will be non-exportable...", "[OK] (elapsed time was 2 seconds)", "", "%SSH-5-ENABLED: SSH 2.0 has been enabled"]; }
+function rsa(S, bits) { if (bits < 360 || bits > 4096) return ["% Invalid input detected at '^' marker."]; S.sw.rsa = bits; S.sw.keyGen = (S.sw.keyGen || 0) + 1; return ["% Generating " + bits + " bit RSA keys, keys will be non-exportable...", "[OK] (elapsed time was 2 seconds)", "", "%SSH-5-ENABLED: SSH 2.0 has been enabled"]; }
 function save(sw) { sw.startup = snapshot(sw); }
 /* banner motd: the first character after "motd" is the delimiter, and the message runs to the next one. On one line it
    ends there (anything after it is ignored); if the line ends first, the message carries on over the lines that follow */
@@ -302,6 +306,14 @@ function ipBrief(sw) {
   L.push(pad("Vlan1", 23) + pad(sw.vlan1.ip || "unassigned", 16) + "YES " + pad(sw.vlan1.ip ? "manual" : "unset", 7) + pad(v[0], 22) + (sw.vlan1.shutdown ? "down" : "up"));
   PORT_NAMES.forEach(function (n) { const s = status(sw, n); L.push(pad(n, 23) + pad("unassigned", 16) + "YES " + pad("unset", 7) + pad(s[0], 22) + s[1]); });
   return L;
+}
+/* the fingerprint of the switch's RSA host key, as an SSH client shows it: a new one each time keys are made */
+export function hostKey(sw) {
+  if (!sw.rsa) return null;
+  const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", seed = String(sw.mac) + ":" + sw.rsa + ":" + (sw.keyGen || 0);
+  let out = "", h = 2166136261;
+  for (let i = 0; out.length < 43; i++) { for (const ch of seed + ":" + i) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } out += A[h % 64] + A[(h >>> 6) % 64] + A[(h >>> 12) % 64]; }
+  return "SHA256:" + out.slice(0, 43);
 }
 /* what each SFP module reads about itself (digital optical monitoring): it sends light whatever happens; it receives
    only what the far end sends it on a wavelength it can hear. -40 dBm is no light at all */

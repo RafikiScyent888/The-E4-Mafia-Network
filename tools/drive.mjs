@@ -149,7 +149,9 @@ const PLAN = {
 };
 
 /* the small office's tickets: the switch's console from your laptop, ssh and ping from the front desk PC */
-const swLogin = async (p, v) => { await dev(p, "tech"); await tab(p, "Serial terminal"); for (const l of ["", v.plan.console, "enable", v.plan.secret]) await type(p, l); };
+/* the passwords come off the page, from the office's records on the ticket card, as a student would get them */
+const rec = (p, name) => p.$eval('#officeRecs dd[data-rec="' + name + '"]', (n) => n.textContent).catch(() => "(no records on the ticket)");
+const swLogin = async (p, v) => { const con = await rec(p, "Console password"), sec = await rec(p, "Enable secret"); check(con === v.plan.console && sec === v.plan.secret, "the office's records on the ticket give the console password and the enable secret"); await dev(p, "tech"); await tab(p, "Serial terminal"); for (const l of ["", con, "enable", sec]) await type(p, l); };
 const swConf = async (p, v, lines, save) => { await swLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end"], save === false ? [] : ["copy running-config startup-config", ""])) await type(p, l); };
 const sshFromPc = async (p, user, host, pw, tries) => { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ssh " + user + "@" + host); for (let k = 0; k < (tries || 1); k++) await type(p, pw); };
 Object.assign(PLAN, {
@@ -191,7 +193,7 @@ Object.assign(PLAN, {
     proof: async (p) => { await dev(p, "mpc"); await tab(p, "Command Prompt"); await type(p, "ping 203.0.113.80"); }
   },
   "SO-05": {
-    look: async (p, v) => { await sshFromPc(p, v.plan.user, v.plan.ip, v.plan.userPw, v.kind === "lines" ? 3 : 0); check(v.kind === "lines" ? /Permission denied \(password\)/.test(await term(p)) : /Connection refused/.test(await term(p)), "SO-05 (" + v.kind + "): ssh from the front desk PC is " + (v.kind === "lines" ? "denied" : "refused")); },
+    look: async (p, v) => { check((await rec(p, "Remote logins (SSH)")) === "user " + v.plan.user + " · password " + v.plan.userPw, "SO-05: the office's records give the SSH user and password"); await sshFromPc(p, v.plan.user, v.plan.ip, v.plan.userPw, v.kind === "lines" ? 3 : 0); check(v.kind === "lines" ? /Permission denied \(password\)/.test(await term(p)) : /Connection refused/.test(await term(p)), "SO-05 (" + v.kind + "): ssh from the front desk PC is " + (v.kind === "lines" ? "denied" : "refused")); },
     wrong: async (p, v) => { await swConf(p, v, v.kind === "nokeys" ? ["crypto key generate rsa modulus 2048"] : v.kind === "telnet" ? ["line vty 0 15", "transport input all"] : ["line vty 0 15", "login local"], v.kind === "telnet"); },
     afterWrong: async (p) => { check(/still take Telnet|hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SO-05: SSH working but Telnet open, or not saved: Mason says so"); },
     fix: async (p, v) => { await swConf(p, v, v.kind === "nokeys" ? ["crypto key generate rsa modulus 2048"] : v.kind === "telnet" ? ["line vty 0 15", "transport input ssh"] : ["line vty 0 15", "login local"]); },
@@ -252,6 +254,55 @@ Object.assign(PLAN, {
       check(/link light comes on/.test(await p.$eval(".phys", (n) => n.textContent)), "SO-10: the module swapped, the slot's link light comes on");
       await dev(p, "mpc"); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew");
     },
+    proof: async (p) => { await dev(p, "mpc"); await tab(p, "Command Prompt"); await type(p, "ping 203.0.113.80"); }
+  },
+  "SO-11": {
+    look: async (p, v) => { await swLogin(p, v); await type(p, "show interfaces gi0/2"); await type(p, "show interfaces gi0/2"); const c = [...(await term(p)).matchAll(/(\d+) CRC/g)].map((m) => +m[1]); check(/Full-duplex/.test(await term(p)) && c.length >= 2 && c[c.length - 1] > c[c.length - 2], "SO-11: show interfaces gi0/2 twice: full duplex, CRC errors climbing"); },
+    wrong: async (p, v) => { await swConf(p, v, ["interface gi0/2", "duplex half"]); },
+    afterWrong: async (p) => { check(/now runs half duplex/.test(await p.$eval("#board", (n) => n.textContent)), "SO-11: both ends at half: Mason says it now runs half duplex"); },
+    fix: async (p, v) => { await swConf(p, v, ["interface gi0/2", "speed auto", "duplex auto"]); },
+    proof: async (p, gw) => { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping " + gw); }
+  },
+  "SO-12": {
+    look: async (p, v) => {
+      await dev(p, "tech"); await tab(p, "Serial terminal"); await type(p, "");
+      check(!/User Access Verification/.test(await term(p)) && />\s*$/.test(await p.$eval(".term .prompt, .term label", (n) => n.textContent).catch(() => ">")), "SO-12: the console wakes straight to the prompt, no password asked");
+      await type(p, "enable"); await type(p, await rec(p, "Enable secret")); await type(p, "show running-config");
+      check(/line con 0/.test(await term(p)), "SO-12: show running-config read at the console");
+    },
+    wrong: async (p, v) => { await swConf(p, v, ["line console 0", "password " + v.plan.console]); },
+    fix: async (p, v) => { await swConf(p, v, ["line console 0", "password " + (await rec(p, "Console password")), "login"]); },
+    proof: async (p) => { await dev(p, "tech"); await tab(p, "Serial terminal"); await type(p, "exit"); await type(p, ""); check(/User Access Verification/.test(await term(p)), "SO-12: woken again, the console asks for its password"); }
+  },
+  "SO-13": {
+    look: async (p, v) => {
+      await sshFromPc(p, v.plan.user, v.plan.ip, v.plan.userPw, 0); const t = await term(p), fp = (t.match(/remote host is\s+(SHA256:\S+)\./) || [])[1];
+      check(/REMOTE HOST IDENTIFICATION HAS CHANGED/.test(t) && !!fp, "SO-13: ssh from the front desk PC stops at the changed host key");
+      await swLogin(p, v); await type(p, "show crypto key mypubkey rsa"); check(fp && (await term(p)).indexOf(fp) >= 0, "SO-13: the switch's console shows the same fingerprint as the warning");
+    },
+    wrong: async (p, v) => { await swConf(p, v, ["crypto key generate rsa modulus 2048"]); },
+    fix: async (p, v) => { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ssh-keygen -R " + v.plan.ip); check(/known_hosts updated/.test(await term(p)), "SO-13: ssh-keygen -R takes the old key off the front desk PC"); },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await sshFromPc(p, v.plan.user, v.plan.ip, v.plan.userPw); }
+  },
+  "SO-14": {
+    look: async (p, v) => {
+      await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ipconfig"); check(/Media disconnected/.test(await term(p)), "SO-14: the front desk PC has no link");
+      check(await p.$eval("#cm" + v.ports.front, (n) => n.value) === "front", "SO-14: the cable map gives the front desk's panel port");
+      await tab(p, "Physical"); await p.click('.cabs li:has-text("wall jack") button:text-is("Put the tone generator on it")'); await dev(p, "pp"); await p.click("#probeBtn"); await p.waitForTimeout(40);
+      check(new RegExp("back of port " + v.ports.front + "\\b").test(await p.$eval(".phys", (n) => n.textContent)), "SO-14: the probe finds the front desk's run at its mapped port");
+    },
+    wrong: async (p, v) => { await dev(p, "pp"); await p.selectOption("#rp-c-cord-printer", v.ports.front); await p.click('.cabs li:has-text("port ' + v.ports.open + ',") button:text-is("Move the cord")'); await p.waitForTimeout(40); },
+    fix: async (p, v) => { await dev(p, "pp"); await p.selectOption("#rp-c-cord-pc", v.ports.front); await p.click('.cabs li:has-text("down to the managed switch (port 2)") button:text-is("Move the cord")'); await p.waitForTimeout(40); },
+    proof: async (p, gw) => { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping " + gw); }
+  },
+  "SO-15": {
+    look: async (p, v) => {
+      await dev(p, "mpc"); await tab(p, "Command Prompt"); await type(p, "ipconfig"); check(/169\.254\./.test(await term(p)), "SO-15: the back office PC is on 169.254");
+      await swLogin(p, v); await type(p, "show interfaces transceiver"); check(/-40\.0\s+\(no light received\)/.test(await term(p)), "SO-15: show interfaces transceiver: no light received");
+      for (const d of ["msw", "bsw"]) { await dev(p, d); await tab(p, "Physical"); await p.click('.cabs li:has-text("Fibre patch cord") button:text-is("Look at the plug")'); await p.waitForTimeout(40); }
+    },
+    wrong: async (p) => { await dev(p, "bsw"); await tab(p, "Physical"); await p.click('.phys button:text-is("Swap in a 1000BASE-LX module")'); await dev(p, "mpc"); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); },
+    fix: async (p) => { await dev(p, "msw"); await tab(p, "Physical"); await p.click('.cabs li:has-text("Fibre patch cord") button:text-is("Swap the LC pair over at this end")'); await dev(p, "mpc"); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); },
     proof: async (p) => { await dev(p, "mpc"); await tab(p, "Command Prompt"); await type(p, "ping 203.0.113.80"); }
   },
   "SO-09": {
@@ -343,7 +394,7 @@ if (!process.env.ONLY || process.env.ONLY === "tickets-office") {
   {
     const { p, ctx } = await page("SO-02", 2025);
     const q = await p.$$eval('#queue [data-t^="SO-"]', (l) => l.map((b) => b.dataset.t + ":" + (b.getAttribute("aria-disabled") === "true" ? "off" : "on")));
-    check(q.join(",") === "SO-01:on,SO-02:on,SO-03:on,SO-04:on,SO-05:on,SO-06:on,SO-07:on,SO-08:on,SO-09:on,SO-10:on", "office tickets: the level 2 queue lists SO-01 to SO-10 (" + q.join(",") + ")");
+    check(q.join(",") === "SO-01:on,SO-02:on,SO-03:on,SO-04:on,SO-05:on,SO-06:on,SO-07:on,SO-08:on,SO-09:on,SO-10:on,SO-11:on,SO-12:on,SO-13:on,SO-14:on,SO-15:on", "office tickets: the level 2 queue lists SO-01 to SO-15 (" + q.join(",") + ")");
     check(/office network/.test(await p.$eval("#tk .from", (n) => n.textContent)) && /Tier 2 · Small office/.test(await p.$eval("#labtitle", (n) => n.textContent)), "office tickets: the card says office network, the title Tier 2 · Small office");
     check(!!(await p.$('#devtabs [data-d="msw"]')) && !!(await p.$('#devtabs [data-d="tech"]')), "office tickets: the managed switch and your laptop have device buttons");
     await ctx.close();

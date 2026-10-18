@@ -48,7 +48,8 @@ export const OFFICE_LAYOUT = {
   mgr: { x: 740, y: 170, px: 820, py: 150, room: "manager", lab: "left" },
   mjack: { px: 870, py: 400, room: "meeting" },
   /* the back office on its own managed switch, over fibre (SO-10): where the old 5-port stood in SO-04 */
-  bsw: { x: 740, y: 170, px: 850, py: 355, room: "meeting", lab: "left" }
+  bsw: { x: 740, y: 170, px: 850, py: 355, room: "meeting", lab: "left" },
+  ojack: { px: 650, py: 470, room: "open" }   /* SO-14: the open-plan jack the printer was moved away from */
 };
 export const OFFICE_ROOM_BOX = { closet: [30, 30, 300, 370], front: [300, 30, 640, 270], open: [300, 270, 760, 520], manager: [640, 30, 980, 270], meeting: [760, 270, 980, 520] };
 

@@ -24,6 +24,7 @@ export const HELP = [
   ["getmac", "show this computer's hardware address"],
   ["hostname", "show this computer's name"],
   ["ssh <user>@<address>", "log in to a switch's command line over the network (SSH, encrypted)"],
+  ["ssh-keygen -R <address>", "forget a host's remembered SSH key (its line in known_hosts)"],
   ["telnet <address>", "log in to a switch's command line with Telnet (not encrypted)"],
   ["dir <folder>", "list the files in a folder (your laptop: dir C:\\TFTP-Root)"],
   ["cls", "clear the screen"]
@@ -130,7 +131,7 @@ function serial(sim, id, raw) {
   const r = SW.exec(st.S, raw); st.prompt = r.prompt;
   const dup = dupAddr(sim, tgt); if (dup && st.dup !== dup) { st.dup = dup; r.out = r.out.concat([dup]); }   /* once a session, as the console log shows it */
   const sl = sfpLog(sim, tgt), sk = sl.join("|"); if (sl.length && st.sfp !== sk) { st.sfp = sk; r.out = r.out.concat(sl); }
-  return { out: lines(r.out), facts: { cmd: "serial", dev: id, connected: true, mode: st.S.mode, line: raw.trim(), out: r.out.join("\n") }, secret: !!r.secret, cli: true, keep: r.keep };
+  return { out: lines(r.out), facts: { cmd: "serial", dev: id, connected: true, mode: st.S.mode, line: raw.trim(), out: r.out.join("\n"), asked: !!r.secret }, secret: !!r.secret, cli: true, keep: r.keep };   /* asked: the switch is asking for a password next */
 }
 function remote(sim, id, raw, k) {
   const st = sim.cli[k], sw = sim.d[st.sw];
@@ -168,6 +169,15 @@ function sfpLog(sim, sw) {
     L.push("%PHY-4-UNSUPPORTED_TRANSCEIVER: Unsupported transceiver found in " + n, "%PM-4-ERR_DISABLE: gbic-invalid error detected on " + n + ", putting " + n + " in err-disable state"); });
   return L;
 }
+/* ssh-keygen -R host: take a host's remembered key off this computer's list of known hosts */
+function sshKeygen(sim, id, args) {
+  const facts = { cmd: "ssh-keygen", dev: id }, home = "C:\\Users\\" + (sim.d[id].user || "user") + "/.ssh/known_hosts";
+  if (args[0] !== "-R" || !args[1]) return { out: "usage: ssh-keygen -R hostname   (remove a host's key from known_hosts)\n", facts: Object.assign(facts, { usage: true }) };
+  const kh = sim.d[id].knownHosts, host = args[1];
+  if (!kh || !kh[host]) return { out: "Host " + host + " not found in " + home + "\n", facts: Object.assign(facts, { host: host, removed: false }) };
+  delete kh[host];
+  return { out: "# Host " + host + " found: line 1\n" + home + " updated.\nOriginal contents retained as " + home + ".old\n", facts: Object.assign(facts, { host: host, removed: true }) };
+}
 /* ssh user@host, or ssh -l user host: Windows' own OpenSSH client */
 function ssh(sim, id, args, k) {
   let user = null, host = null;
@@ -184,11 +194,18 @@ function ssh(sim, id, args, k) {
   if (x.kind !== "mswitch") return { out: x.kind === "pc" || x.kind === "laptop" ? "ssh: connect to host " + host + " port 22: Connection timed out\n" : "ssh: connect to host " + host + " port 22: Connection refused\n", facts: Object.assign(facts, { ok: false, why: "no-ssh" }) };
   const v = x.sw.vty;
   if (!x.sw.rsa || !/^(ssh|all)$/.test(v.transport)) return { out: "ssh: connect to host " + host + " port 22: Connection refused\n", facts: Object.assign(facts, { ok: false, why: "refused" }) };
-  if (x.sw.rsa < 768) return { out: "Protocol major versions differ: 2 vs. 1\n", facts: Object.assign(facts, { ok: false, why: "v1" }) };   /* keys under 768 bits: the switch offers only SSH version 1, and Windows' client speaks only version 2 */
+  if (x.sw.rsa < 768) return { out: "Protocol major versions differ: 2 vs. 1\n", facts: Object.assign(facts, { ok: false, why: "v1" }) };
+  /* the host keys this computer has met before (SO-13's office keeps a list): a different key from the one remembered stops the
+     connection, as OpenSSH does; a host met for the first time is added to the list */
+  const kh = sim.d[id].knownHosts, fp = SW.hostKey(x.sw), home = "C:\\Users\\" + (sim.d[id].user || "user") + "/.ssh/known_hosts";
+  if (kh && kh[host] && kh[host] !== fp) return { out: ["@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@", "@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @", "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+    "IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!", "Someone could be eavesdropping on you right now (man-in-the-middle attack)!", "It is also possible that a host key has just been changed.", "The fingerprint for the RSA key sent by the remote host is", fp + ".",
+    "Please contact your system administrator.", "Add correct host key in " + home + " to get rid of this message.", "Offending RSA key in " + home + ":1", "Host key for " + host + " has changed and you have requested strict checking.", "Host key verification failed.", ""].join("\n"), facts: Object.assign(facts, { ok: false, why: "hostkey", fp: fp }) };
+  const added = !!kh && !kh[host]; if (added) kh[host] = fp;   /* keys under 768 bits: the switch offers only SSH version 1, and Windows' client speaks only version 2 */
   if (!v.login) return { out: "Password required, but none set\nConnection to " + host + " closed by remote host.\n", facts: Object.assign(facts, { ok: false, why: "no-login" }) };
   sim.cli = sim.cli || {};
   sim.cli[k || id] = { sw: who, via: "ssh", host: host, auth: { step: "pass", user: user, tries: 0, secret: true }, ask: user + "@" + host + "'s password: " };
-  return { out: "", facts: Object.assign(facts, { ok: true, asked: true }), secret: true, cli: true };
+  return { out: added ? "Warning: Permanently added '" + host + "' (RSA) to the list of known hosts.\n" : "", facts: Object.assign(facts, { ok: true, asked: true, added: added }), secret: true, cli: true };
 }
 /* telnet host: port 23, everything (passwords too) sent in the clear */
 function telnet(sim, id, args, k) {
@@ -489,6 +506,7 @@ export function run(sim, id, line, k) {
     case "arp": return arp(sim, id, args);
     case "netsh": return netsh(sim, id, args);
     case "ssh": return ssh(sim, id, args, k);
+    case "ssh-keygen": return sshKeygen(sim, id, args);
     case "telnet": return telnet(sim, id, args, k);
     case "dir": return dir(sim, id, args);
     case "hostname": return { out: (x.host || "PC") + "\n", facts: { cmd: "hostname" } };

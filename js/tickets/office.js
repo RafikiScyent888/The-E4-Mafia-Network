@@ -152,6 +152,7 @@ const SO03 = {
     return { quote: (v.kind === "user" ? v.who + " can't log in to the switch from the front desk: it says permission denied." : "The new monitoring says the switch is down: nothing answers at its address.") + " The power went off for a few hours on Sunday. " + notes };
   },
   mason: "Compare what was done with what's there. Then ask the switch when it last started, and why.",
+  records(v) { if (v.kind !== "addr") return null; const p = v.plan; return [["The switch", p.hostname + " · management address " + v.newIp + ", mask " + p.mask + " (the new address plan, from Friday) · gateway " + p.gw], ["Console password", p.console], ["Enable secret", p.secret], ["Remote logins (SSH)", "user " + p.user + " · password " + p.userPw]]; },
   affected: "pc",
   options(v) {
     return [
@@ -559,6 +560,254 @@ const SO10 = {
   }
 };
 
+/* ---------------------------------------------------------------- SO-11 */
+/* the front desk PC's port fixed at full duplex by hand; the PC negotiates, senses the speed but not the duplex, and falls
+   back to half. The other way round from SO-01: here the switch's end is the full-duplex one, so it counts CRC errors and runts */
+const SO11 = {
+  id: "SO-11", n: "11", level: 2, tier: "more", title: "Copying files to the front desk PC crawls", priority: 3, due: "4 h",
+  build(seed) {
+    const B = settled(seed), r = rng(hash("SO-11:" + seed)), kind = r.pick(["giga", "fast"]);
+    onSwitch(B.sim, ["configure terminal", "interface gi0/2", "speed " + (kind === "giga" ? "1000" : "100"), "duplex full", "end"].concat(SAVE));
+    return { sim: B.sim, v: { kind: kind, plan: B.plan, pcCable: B.sim.cablesOf("pc")[0].id, story: r.pick(["tune", "guide"]) } };
+  },
+  brief(v) {
+    return { quote: "Since last week everything to and from the front desk computer crawls: copying the accounts folder takes ten minutes, and video calls freeze. Everywhere else in the office is fine. " +
+      (v.story === "tune" ? "Our IT person \"tuned the front desk's switch port for speed\" while the new accounts software went in." : "I followed an online guide that said to \"lock your important ports to full duplex\", and did the front desk's.") };
+  },
+  mason: "Errors that climb are counted at one end. Which end, and why?",
+  affected: "pc",
+  options() {
+    return [
+      { id: "right", right: true, text: "The front desk PC's switch port is fixed at full duplex, so the PC, left to negotiate, has fallen back to half" },
+      { id: "cable", text: "The front desk PC's cable is damaged", why: "The cable tester passes every pin. And the port's duplex is set by hand while the PC negotiates: the errors are counted at the switch's full-duplex end only." },
+      { id: "printer", text: "The printer's port has a duplex mismatch again", why: "show interfaces gi0/3 counts no errors. It's gi0/2, the front desk's port, whose CRC errors and runts climb." },
+      { id: "speed", text: "The port is forced to a speed the PC can't run", why: "The link is up and passing traffic. A speed the PC couldn't run would leave no link at all." },
+      { id: "nic", text: "The front desk PC's network adapter is failing", why: "show running-config has duplex full set by hand on gi0/2, and the PC is set to negotiate: that pair always disagrees, whatever the adapter." },
+      { id: "emi", text: "Interference on the run is corrupting frames", why: "The run is 18 m of Cat6 through the front office, nowhere near a motor, and the errors are exactly a mismatch's: CRC errors and runts at the full-duplex end." }
+    ];
+  },
+  rung1() { return "On the switch: show interfaces gi0/2, twice, and show running-config for that port. On the front desk PC: ping something, and count what's lost."; },
+  rung2() { return "When one end is fixed and the other negotiates, the negotiating end senses the speed but not the duplex, and falls back to half. Then the full-duplex end counts CRC errors and runts, and the half-duplex end late collisions."; },
+  fixHints() { return ["The PC negotiates. The switch's end should too.", "Take the port's speed and duplex back to automatic, then look at show interfaces twice: the errors should stop climbing.", "Save it."]; },
+  exhibits(sim) { return sim.mismatched("pc") && online(sim, "pc"); },
+  fixed(sim) { const sw = SW_(sim), sp = sw.startup && sw.startup.ports[PC_PORT]; return online(sim, "pc") && !sim.mismatched("pc") && sw.ports[PC_PORT].duplex === "auto" && !!sp && sp.duplex === "auto" && !sp.shutdown; },
+  partial(v, sim) { return SW_(sim).ports[PC_PORT].duplex === "half" ? "No more errors, but the port now runs half duplex: everything waits its turn. Let both ends negotiate, and they'll settle on full." : "It's quick now, but the switch hasn't saved it: the next power cut fixes the port at full duplex again."; },
+  proves(f) { return f.cmd === "ping" && f.dev === "pc" && f.beyond && f.sent >= 4 && f.replies === f.sent; },
+  proofText: "a ping from the front desk PC to something else, with nothing lost",
+  evidence: [
+    { id: "int", test: function (f) { const b = block(swOut(f), PC_PORT); return /Full-duplex/.test(b) && /[1-9]\d* CRC/.test(b); }, text: function () { return "show interfaces gi0/2, the front desk's port: up, Full-duplex, CRC errors and runts counted"; } },
+    { id: "run", test: function (f) { const o = swOut(f), i = o.indexOf("interface GigabitEthernet0/2\n"); return i >= 0 && /^[^!]* duplex full\n/.test(o.slice(i)); }, text: function () { return "show running-config: the front desk's port, gi0/2, has duplex full set by hand"; } },
+    { id: "ping", test: function (f) { return f.cmd === "ping" && f.dev === "pc" && f.replies < f.sent && f.replies > 0; }, text: function (f) { return "Ping from the front desk PC: " + f.loss + "% of the packets lost"; } },
+    { id: "settings", test: function (f) { return f.page === "pc-settings"; }, text: function () { return "The front desk PC's network settings: speed and duplex set to Auto negotiation"; } },
+    { id: "test", test: function (f, v) { return f.phys === "test" && f.cable === v.pcCable; }, text: function () { return "Cable tester on the front desk PC's cable: all eight pins pass"; } }
+  ],
+  summary(v) {
+    return { cause: "The front desk's switch port had been fixed at " + (v.kind === "giga" ? "1000" : "100") + " Mb/s, full duplex, by hand. The PC negotiates: it sensed the speed but not the duplex, and fell back to half. The two ends disagreed: CRC errors and runts on the switch's full-duplex end, late collisions on the PC's, frames lost both ways.",
+      fix: "Set the port's speed and duplex back to automatic, so both ends negotiate (and settle on full), and saved it." };
+  }
+};
+
+/* ---------------------------------------------------------------- SO-12 */
+/* the console line with no login: anyone at the closet with a console cable is straight at the switch's prompt */
+const SO12 = {
+  id: "SO-12", n: "12", level: 2, tier: "more", title: "Anyone with a console cable gets straight in", priority: 2, due: "1 day",
+  build(seed) {
+    const B = settled(seed), r = rng(hash("SO-12:" + seed)), kind = r.pick(["nologin", "cleared"]);
+    onSwitch(B.sim, ["configure terminal", "line console 0", "no login"].concat(kind === "cleared" ? ["no password"] : [], ["end"], SAVE));
+    return { sim: B.sim, v: { kind: kind, plan: B.plan, story: r.pick(["locked", "unknown"]) } };
+  },
+  brief(v) {
+    return { quote: "Our insurer's auditor plugged a console cable into the closet switch on Tuesday and was at its prompt without typing a password. They won't sign us off until it's fixed. " +
+      (v.story === "locked" ? "A contractor who'd locked himself out last month says he \"took the console's password check off to get back in\"." : "Nobody here knows who changed it.") };
+  },
+  mason: "Each way into a switch has its own lock. Find which one is open.",
+  affected: "tech",
+  options() {
+    return [
+      { id: "right", right: true, text: "The switch's console line asks for no password: its login has been turned off" },
+      { id: "enable", text: "The switch has no enable secret", why: "Typing enable still asks for the secret. It's the console line's own login that's missing, before you ever get to enable." },
+      { id: "vty", text: "The remote (vty) lines let anyone log in", why: "The auditor came in on the console cable, not over the network. show running-config has login local on the vty lines." },
+      { id: "telnet", text: "Telnet is turned on", why: "The vty lines take SSH only, and the console isn't reached over the network at all." },
+      { id: "banner", text: "The warning banner is missing", why: "The banner shows as the console wakes. A banner warns; it doesn't lock anything." },
+      { id: "user", text: "The office's user account was deleted", why: "show running-config still has the office's user. And the console line checks a line password, as it was set up, not user names." }
+    ];
+  },
+  rung1() { return "On your laptop's serial terminal: wake the switch's console and watch what it asks for. Then show running-config, and read the line con 0 section."; },
+  rung2() { return "Each way into a switch has its own lock: the console line, the remote lines, and enable for the privileged commands. A line with no login lets anyone at that line straight in."; },
+  fixHints() { return ["The console line needs its password, and needs to ask for it.", "Set it from the office's records, then log out and wake the console again: it should ask.", "Save it."]; },
+  exhibits(sim) { const c = SW_(sim).con; return !c.login; },
+  fixed(sim, v) {
+    const sw = SW_(sim), p = v.plan, ok = function (c) { return (c.login === "password" && c.password === p.console) || c.login === "local"; };
+    return ok(sw.con) && !!sw.startup && ok(sw.startup.con);
+  },
+  partial(v, sim) { const c = SW_(sim).con; return c.login === "password" && c.password !== v.plan.console ? "It asks now, but not for the office's console password: the records and the switch disagree, and the next technician is locked out." : "It asks now, but the switch hasn't saved it: the next power cut opens the console again."; },
+  proves(f) { return f.cmd === "serial" && /User Access Verification/.test(f.out || ""); },
+  proofText: "your laptop's serial terminal: the console, woken again, asking for its password",
+  evidence: [
+    { id: "wake", test: function (f) { return f.cmd === "serial" && f.connected && f.mode === "user" && !/User Access Verification/.test(f.out || "") && /^\s*$/.test(f.line || "") ; }, text: function () { return "The console woke straight to the switch's prompt: no password asked"; } },
+    { id: "run", test: function (f) { const o = swOut(f), i = o.indexOf("line con 0"); return i >= 0 && /Building configuration|Current configuration/.test(o) && !/^line con 0\n(?: password .*\n)? login/m.test(o.slice(i)); }, text: function (f, v) { return "show running-config, line con 0: " + (v.kind === "cleared" ? "no password and no login" : "a password, but no login: it's never asked for"); } },
+    { id: "enable", test: function (f) { return f.cmd === "serial" && f.asked && /^\s*en/i.test(f.line || ""); }, text: function () { return "enable still asks for the enable secret"; } }
+  ],
+  summary(v) {
+    return { cause: "The console line's login had been turned off" + (v.kind === "cleared" ? ", and its password cleared" : " (its password was still there, never asked for)") + ", and that saved. Anyone with a console cable at the closet was straight at the switch's prompt.",
+      fix: "Set the console password from the office's records, turned login back on, checked the console asks again, and saved." };
+  }
+};
+
+/* ---------------------------------------------------------------- SO-13 */
+/* the switch's RSA keys made again (a contractor fixing something else, or a replacement loaded from the backup and given
+   fresh keys); the front desk PC remembers the old key, and OpenSSH refuses the new one. The lesson: check a changed key
+   against the switch itself before trusting it, then forget the old one */
+const SO13 = {
+  id: "SO-13", n: "13", level: 2, tier: "more", title: "SSH warns the switch's identity has changed", priority: 2, due: "4 h",
+  build(seed) {
+    const B = settled(seed), sim = B.sim, r = rng(hash("SO-13:" + seed)), kind = r.pick(["regen", "replaced"]), sw = SW_(sim);
+    sim.d.pc.knownHosts = {}; sim.d.pc.knownHosts[B.plan.ip] = SW.hostKey(sw);   /* the front desk has logged in before: it remembers this key */
+    onSwitch(sim, ["configure terminal", "crypto key generate rsa modulus 2048", "end"].concat(SAVE));
+    return { sim: sim, v: { kind: kind, plan: B.plan, oldKey: sim.d.pc.knownHosts[B.plan.ip] } };
+  },
+  brief(v) {
+    return { quote: "SSH from the front desk to the closet switch now prints a big warning about the remote host's identity having changed, and stops. " +
+      (v.kind === "regen" ? "A contractor was in on Thursday \"sorting out the switch's encryption\"." : "The switch was swapped under warranty last week; the supplier's engineer loaded our backup onto the new one.") + " Is someone attacking us?" };
+  },
+  mason: "Before you trust a new key, ask the switch itself what key it holds.",
+  affected: "pc",
+  options() {
+    return [
+      { id: "right", right: true, text: "The switch's SSH keys were made again, so it now offers a different host key from the one the front desk PC remembers" },
+      { id: "mitm", text: "Someone is intercepting the connection (a man in the middle)", why: "The fingerprint in the warning is the one the switch itself shows on its console, where nothing can sit in the middle: it's the switch's own new key." },
+      { id: "pw", text: "The SSH password was changed", why: "It never gets as far as a password: the PC stops at the host key, before any login." },
+      { id: "telnet", text: "The switch now takes Telnet only", why: "Telnet only would refuse the connection. This one connects, offers a key, and the PC refuses the key." },
+      { id: "nokeys", text: "The switch has no RSA keys", why: "With no keys the switch refuses SSH outright. This one offers a key, just a different one from before." },
+      { id: "addr", text: "Another device has taken the switch's address", why: "The fingerprint the warning shows matches the one on the switch's own console, and ping reaches it at its address." }
+    ];
+  },
+  rung1() { return "From the front desk PC: ssh to the switch, and read the whole warning, the fingerprint included. Then on your laptop's console: show crypto key mypubkey rsa."; },
+  rung2() { return "An SSH client remembers each host's key and refuses a different one: that's what stops an impostor. A key also changes, legitimately, when a switch's keys are made again. The way to tell is to compare the new fingerprint with the one the switch shows on its own console."; },
+  fixHints() { return ["Check first: the fingerprint in the warning against the one on the switch's console.", "When they match, have the front desk PC forget the old key for that address: Help lists the command that removes one host's line from its known hosts.", "Then SSH again: the PC learns the new key, and the login works."]; },
+  exhibits(sim, v) { const kh = sim.d.pc.knownHosts; return !!kh && kh[v.plan.ip] === v.oldKey && SW.hostKey(SW_(sim)) !== v.oldKey; },
+  fixed(sim, v) { const kh = sim.d.pc.knownHosts || {}, fp = SW.hostKey(SW_(sim)); return !!fp && (!kh[v.plan.ip] || kh[v.plan.ip] === fp) && SW_(sim).startup.keyGen === SW_(sim).keyGen; },
+  proves(f, sim, v) { return f.cmd === "ssh" && f.dev === "pc" && f.login && f.host === v.plan.ip; },
+  proofText: "an SSH login from the front desk PC to the switch",
+  evidence: [
+    { id: "warn", test: function (f) { return f.cmd === "ssh" && f.dev === "pc" && f.why === "hostkey"; }, text: function (f) { return "ssh from the front desk PC: REMOTE HOST IDENTIFICATION HAS CHANGED; the switch offers " + f.fp; } },
+    { id: "fp", test: function (f) { return /Fingerprint \(SHA256/.test(swOut(f)); }, text: function (f, v, sim) { return "show crypto key mypubkey rsa on the console: the switch's own key is " + SW.hostKey(SW_(sim)) + ", the same as the warning's"; } },
+    { id: "ping", test: function (f, v) { return f.cmd === "ping" && f.dev === "pc" && f.ip === v.plan.ip && f.replies > 0; }, text: function () { return "Ping from the front desk PC reaches the switch's address"; } }
+  ],
+  summary(v) {
+    return { cause: (v.kind === "regen" ? "The contractor made new RSA keys on the switch" : "The replacement switch was given fresh RSA keys (keys don't travel in a backup)") + ". The front desk PC remembered the old key for the switch's address, and OpenSSH refuses a key it doesn't expect: exactly what it's for. The fingerprint on the switch's own console matched the warning's, so the change was the switch's, not an impostor's.",
+      fix: "Checked the warning's fingerprint against the switch's console, removed the old key from the front desk PC (ssh-keygen -R), and logged in again so it learned the new one." };
+  }
+};
+
+/* ---------------------------------------------------------------- SO-14 */
+/* the new cabling (SO-08's, with its map right this time); the printer moved to a desk by the window, its new run on
+   another panel port. Whoever moved it patched the printer's cord across correctly, then "tidied" the front desk's cord
+   out of its port: into the printer's old port (its run now to an empty jack), or a spare port with no run at all */
+const SO14 = {
+  id: "SO-14", n: "14", level: 2, tier: "more", title: "The printer moved desks; now the front desk is offline", priority: 2, due: "2 h", cablemap: true,
+  build(seed) {
+    const B = settled(seed), sim = B.sim, d = sim.d, net = sim.net, r = rng(hash("SO-14:" + seed)), kind = r.pick(["old", "spare"]);
+    const free = r.shuffle(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]), P = { front: free[0], old: free[1], open: free[2], spare: free[3] };
+    d.pp = { id: "pp", kind: "patchpanel", label: "Patch panel", sub: "24-port Cat6", on: true };
+    d.ojack = { id: "ojack", kind: "jack", label: "Open-plan wall jack (the printer's old desk)", sub: "nothing plugged in", on: true };
+    ["pp", "ojack"].forEach(function (id) { sim.arp[id] = {}; }); net.rooms.pp = "closet"; net.rooms.ojack = "open";
+    if (d.switch && !sim.cablesOf("switch").length) { delete d.switch; delete net.rooms.switch; delete sim.arp.switch; }
+    const pcRun = sim.cablesOf("pc")[0], prRun = sim.cablesOf("printer")[0];
+    pcRun.a = { dev: "pp", port: P.front + "R", seated: true }; pcRun.b = { dev: "pc", port: "NIC", seated: true };
+    prRun.a = { dev: "pp", port: P.old + "R", seated: true }; prRun.b = { dev: "ojack", port: "JACK", seated: true };   /* the printer's old run: its jack empty now */
+    net.cables.push({ id: "c-run-print2", kind: "cat6", a: { dev: "pp", port: P.open + "R", seated: true }, b: { dev: "printer", port: "NET", seated: true }, cond: "good", length: OFFICE_RUN.closet.open + 4 });
+    net.cables.push({ id: "c-cord-printer", kind: "cat6", a: { dev: "msw", port: "3", seated: true }, b: { dev: "pp", port: P.open, seated: true }, cond: "good", length: 0.5 });   /* moved across, correctly */
+    net.cables.push({ id: "c-cord-pc", kind: "cat6", a: { dev: "msw", port: "2", seated: true }, b: { dev: "pp", port: kind === "old" ? P.old : P.spare, seated: true }, cond: "good", length: 0.5 });   /* "tidied" out of its port */
+    const map = {}; map[P.front] = "front"; map[P.open] = "open"; map[P.old] = "open";   /* the map was kept up to date: the old jack is still a jack in the open-plan office */
+    net.cablemap = map; d.pp.tabs = Object.assign({}, map);
+    sim.relink(Object.assign(sim.links(), { pc: true }));
+    return { sim: sim, v: { kind: kind, plan: B.plan, ports: P, pcRun: pcRun.id, story: r.pick(["it", "manager"]) } };
+  },
+  brief(v) {
+    return { quote: "On Monday " + (v.story === "it" ? "our IT person" : "the office manager") + " moved the printer to the desk by the window and repatched it in the closet: the printer works fine at its new desk. But the front desk computer has had no network since. The cable map was updated for the printer's new jack." };
+  },
+  mason: "The map says where things should be. Check where they are.",
+  affected: "pc",
+  options() {
+    return [
+      { id: "right", right: true, text: "The front desk's patch cord was moved out of the front desk's panel port, so the front desk's run has no cord" },
+      { id: "run", text: "Moving the printer damaged the front desk's run", why: "The cable tester passes every pin of the front desk's run, and the tone from its desk comes out at its own port on the panel." },
+      { id: "map", text: "The cable map is wrong", why: "The tone from the front desk's cable lands at the port the map gives for the front desk: the map is right. It's the cord that isn't there." },
+      { id: "shut", text: "The front desk's switch port is shut down", why: "show interfaces status says notconnect, not disabled: the port is on, but sees no link." },
+      { id: "ip", text: "The printer's new desk took the front desk PC's address", why: "ipconfig on the front desk PC says Media disconnected: there's no link, so no address of any kind is in play." },
+      { id: "swport", text: "The printer is now on the front desk's switch port", why: "The printer's cord runs down to the switch's port 3, its own. The front desk's port 2 has a cord that leads nowhere live." }
+    ];
+  },
+  rung1() { return "On the front desk PC: ipconfig. On the switch: show interfaces status. Then the cable map against the patch panel: which port is the front desk's, and what's patched into it?"; },
+  rung2() { return "A patch panel joins each run at its back to whatever is patched into the same port at its front. A port with a run and no cord is a desk with no network; a cord in a port with no live run is a switch port with nothing on it."; },
+  fixHints() { return ["The map is right: use it to find the front desk's port on the panel.", "Put the front desk's cord back into that port.", "Then check the front desk PC has an address, and that the printer still prints."]; },
+  exhibits(sim, v) { return !sim.hasLink("pc") && sim.hasLink("printer") && mapRight(sim) && !sim.cableAt("pp", v.ports.front); },
+  fixed(sim) { return online(sim, "pc") && printOk(sim) && mapRight(sim); },
+  partial(v, sim) { return !printOk(sim) ? "The front desk is back, but the printer isn't any more: its cord was the right one." : "The front desk is back, but the cable map no longer matches the panel: put it back, or the next technician will patch from a wrong map."; },
+  proves(f) { return f.cmd === "ping" && f.dev === "pc" && f.beyond; },
+  proofText: "a ping from the front desk PC that gets replies from something else",
+  evidence: [
+    { id: "ipc", test: function (f) { return f.cmd === "ipconfig" && f.dev === "pc" && f.media === "disconnected"; }, text: function () { return "ipconfig on the front desk PC: Media disconnected (no link)"; } },
+    { id: "status", test: function (f) { return /^Gi0\/2\s+FRONT-DESK-PC\s+notconnect/m.test(swOut(f)); }, text: function () { return "show interfaces status: Gi0/2, the front desk's port, is notconnect"; } },
+    { id: "probe", test: function (f, v) { return f.phys === "probe" && f.toned === v.pcRun && !!f.port; }, text: function (f) { return "Tone on the front desk's cable: the probe finds its run at the back of panel port " + f.port + ", with no cord in the front"; } },
+    { id: "cord", test: function (f) { return f.phys === "look" && f.cable === "c-cord-pc"; }, text: function (f, v, sim) { return "The front desk's cord, from the switch's port 2, is in panel port " + sim.cable("c-cord-pc").b.port; } },
+    { id: "test", test: function (f, v) { return f.phys === "test" && f.cable === v.pcRun; }, text: function () { return "Cable tester on the front desk's run: all eight pins pass"; } }
+  ],
+  summary(v) {
+    return { cause: "When the printer was repatched for its new desk, the front desk's cord was " + (v.kind === "old" ? "moved into the printer's old panel port, whose run now ends at an empty jack" : "moved into a spare panel port with no run behind it") + ". The front desk's own port " + v.ports.front + " was left with its run and no cord.",
+      fix: "Followed the map to the front desk's port " + v.ports.front + " (the tone confirmed it), and put the front desk's cord back there." };
+  }
+};
+
+/* ---------------------------------------------------------------- SO-15 */
+/* the fibre to the back office, cleaned on Friday and put back with its LC pair the wrong way round: each end's transmit
+   on the other end's transmit. The right modules (SX at both ends) on the right fibre */
+const SO15 = {
+  id: "SO-15", n: "15", level: 2, tier: "more", title: "The fibre went dark after it was cleaned", priority: 2, due: "2 h",
+  build(seed) {
+    const B = settled(seed), sim = B.sim, r = rng(hash("SO-15:" + seed));
+    fibreBackOffice(sim, r, "1000BASE-SX");
+    sim.cable("c-fibre").polarity = "flipped";
+    onSwitch(sim, ["configure terminal", "interface gi0/25", "description BACK-OFFICE-FIBRE", "no shutdown", "end"].concat(SAVE));
+    sim.dhcp("mpc", "boot");
+    return { sim: sim, v: { plan: B.plan, kind: r.pick(["closet", "back"]) } };
+  },
+  brief(v) {
+    return { quote: "The fibre to the back office worked for months. On Friday the installer came back to clean the connectors at " + (v.kind === "closet" ? "the closet end" : "the back office's end") + ", tested both strands with his light meter (both passed), and plugged everything back in. Since then nothing in the back office connects." };
+  },
+  mason: "Light that leaves one end has to arrive where the other end listens.",
+  affected: "mpc",
+  options() {
+    return [
+      { id: "right", right: true, text: "The LC pair went back the wrong way round: each end's transmit faces the other end's transmit" },
+      { id: "mismatch", text: "The two ends' SFP modules don't match", why: "Both modules' labels say 1000BASE-SX, 850 nm, multimode, and the fibre is multimode." },
+      { id: "dirty", text: "The connectors are still dirty", why: "A dirty connector dims the light; it doesn't take it away. show interfaces transceiver reads nothing at all coming back." },
+      { id: "broken", text: "A strand of the fibre broke while it was being cleaned", why: "The installer's light meter passed both strands after cleaning: light gets through each one." },
+      { id: "shut", text: "The closet switch's fibre port is shut down", why: "show interfaces status says notconnect, not disabled: the port is open." },
+      { id: "plus", text: "A 10 Gb/s module was fitted by mistake", why: "show inventory lists two 1000BASE-SX modules, and the port is notconnect, not err-disabled." }
+    ];
+  },
+  rung1() { return "On the closet switch: show interfaces status and show interfaces transceiver. Then read both modules' labels, and think about which way each strand runs."; },
+  rung2() { return "A duplex fibre has two strands, one each way: one end's transmit must land on the other end's receive. Swap them over at one end and both ends shout into each other's mouths, and nobody hears anything."; },
+  fixHints() { return ["The modules are right and the fibre is good: it's how the two strands meet the modules.", "Swap the LC pair over at one end, not both.", "Then have the back office PC ask for its address again."]; },
+  exhibits(sim) { const c = sim.cable("c-fibre"); return !!c && c.polarity === "flipped" && !sim.cableUp(c) && sim.hasLink("mpc"); },
+  fixed(sim) { return sim.cableUp(sim.cable("c-fibre")) && online(sim, "mpc"); },
+  proves(f) { return f.cmd === "ping" && f.dev === "mpc" && f.beyond; },
+  proofText: "a ping from the back office PC that gets replies from beyond it",
+  evidence: [
+    { id: "ipc", test: function (f) { return f.cmd === "ipconfig" && f.dev === "mpc" && f.apipa; }, text: function () { return "ipconfig on the back office PC: a 169.254 address (no DHCP server reached)"; } },
+    { id: "status", test: function (f) { return /^Gi0\/25\s.*\bnotconnect\b.*1000BaseSX/m.test(swOut(f)); }, text: function () { return "show interfaces status: Gi0/25, the fibre to the back office, notconnect, its module 1000BaseSX"; } },
+    { id: "dom", test: function (f) { return /^Gi0\/25\s+.*-40\.0/m.test(swOut(f)); }, text: function () { return "show interfaces transceiver: Gi0/25 sends light (-5.6 dBm) and receives none (-40.0 dBm)"; } },
+    { id: "lookc", test: function (f) { return f.phys === "look" && f.cable === "c-fibre" && f.end === "a"; }, text: function () { return "The closet's end: module labelled 1000BASE-SX, 850 nm, multimode; the cord's jacket orange, OM2 multimode"; } },
+    { id: "lookb", test: function (f) { return f.phys === "look" && f.cable === "c-fibre" && f.end === "b"; }, text: function () { return "The back office's end: module labelled 1000BASE-SX, 850 nm, multimode"; } }
+  ],
+  summary(v) {
+    return { cause: "When the connectors were cleaned at " + (v.kind === "closet" ? "the closet end" : "the back office's end") + ", the LC pair went back the wrong way round: each end's transmit strand landed on the other end's transmit. Both strands were good and both modules right; neither end received any light.",
+      fix: "Swapped the LC pair over at one end, then had the back office PC ask for its address again." };
+  }
+};
+
 /* ---------------------------------------------------------------- SO-09 */
 /* the office has started using SO-J4's address plan, ready for next year's VLANs: the router hands out only the Staff
    block, and each fixed device takes the first address after its block's gateway, keeping the office's mask and
@@ -591,6 +840,7 @@ const SO09 = {
       (v.story === "friday" ? "The printer and the switch were both renumbered on Friday, from the sheet." : "Our part-time IT person renumbered the printer on Wednesday and the switch on Friday, both from the sheet.") };
   },
   mason: "When something works every other time, ask who's answering.",
+  records(v) { const p = v.plan; return [["The switch", p.hostname + " · management address: the first address after the Network gear block's gateway, on the IPAM sheet · mask " + p.mask + " · gateway " + p.gw], ["Console password", p.console], ["Enable secret", p.secret], ["Remote logins (SSH)", "user " + p.user + " · password " + p.userPw]]; },
   affected: "pc",
   options(v) {
     return [
@@ -642,6 +892,6 @@ const SO09 = {
   }
 };
 
-export const OFFICE_TICKETS = [SO01, SO02, SO03, SO04, SO05, SO06, SO07, SO08, SO09, SO10];
+export const OFFICE_TICKETS = [SO01, SO02, SO03, SO04, SO05, SO06, SO07, SO08, SO09, SO10, SO11, SO12, SO13, SO14, SO15];
 export { ROOM_NAME };
 export const OFFICE_COMING = [];

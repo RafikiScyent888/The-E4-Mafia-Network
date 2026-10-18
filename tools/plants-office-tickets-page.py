@@ -25,6 +25,7 @@ PLANTS = [
  ("no module swap on the switch's Physical tab", "js/net/pages.js", "sfp: x.kind === \"mswitch\" ? Object.keys(x.sfp || {})", "sfp: false ? Object.keys(x.sfp || {})"),
  ("no LC pair swap on the fibre cord", "js/net/pages.js", 'c.kind === "fibre" ? ["look", "polarity"] :', 'c.kind === "fibre" ? ["look"] :'),
  ("SO-10's back office switch has no device button", "js/desk/app.js", '"bsw", "mpc",', '"mpc",'),
+ ("the office's records left off the ticket", "js/desk/app.js", '  if (net.site === "office" && T.v.plan) tk.appendChild(officeRecords(d, T));', ""),
 ]
 only = sys.argv[1:]
 bad = 0

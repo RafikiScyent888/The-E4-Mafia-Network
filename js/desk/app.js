@@ -22,7 +22,7 @@ const DEFS = {}; HOME_TICKETS.concat(OFFICE_TICKETS).forEach(function (d) { DEFS
 const item = function (d) { return { id: d.id, n: d.n, tier: d.tier, title: d.title, level: d.level || 1, built: true }; };
 const LIST = HOME_TICKETS.map(item).concat(HOME_COMING.map(function (c) { return Object.assign({ built: false, level: 1 }, c); }),
   OFFICE_TICKETS.map(item), OFFICE_COMING.map(function (c) { return Object.assign({ built: false }, c); }));   /* every level's tickets; the queue shows the chosen level's */
-const DEVICES = ["pc", "switch", "msw", "pp", "mgr", "mjack", "meet", "bsw", "mpc", "router", "modem", "printer", "tech", "injector", "camera", "tv", "mesh", "laptop", "phone", "guest"];   /* an undocumented box gets no button: find it on the floor plan */
+const DEVICES = ["pc", "switch", "msw", "pp", "mgr", "mjack", "ojack", "meet", "bsw", "mpc", "router", "modem", "printer", "tech", "injector", "camera", "tv", "mesh", "laptop", "phone", "guest"];   /* an undocumented box gets no button: find it on the floor plan */
 const $ = function (id) { return document.getElementById(id); };
 let replateMap = null;
 
@@ -96,6 +96,15 @@ function renderTicketCard() {
   tk.appendChild(el("p", { class: "from" }, net.client.name + " · " + net.client.street + " · " + (net.site === "office" ? "office network" : "home network")));
   tk.appendChild(el("p", { class: "q" }, "“" + b.quote + "”"));
   tk.appendChild(el("p", { class: "mason2" }, el("b", null, "Mason: "), d.mason));
+  if (net.site === "office" && T.v.plan) tk.appendChild(officeRecords(d, T));
+}
+/* the office's records, as the client keeps them: what a technician is given to log in to its switch. A ticket can
+   change a line where its story says the records changed (SO-03's new address; SO-09's address from the IPAM sheet) */
+function officeRecords(d, T) {
+  const p = T.v.plan, rows = (d.records && d.records(T.v, T.sim)) || [["The switch", p.hostname + " · management address " + p.ip + ", mask " + p.mask + " · gateway " + p.gw], ["Console password", p.console], ["Enable secret", p.secret], ["Remote logins (SSH)", "user " + p.user + " · password " + p.userPw]];
+  const dl = el("dl", { class: "recs" });
+  rows.forEach(function (r) { dl.appendChild(el("dt", null, r[0])); dl.appendChild(el("dd", { "data-rec": r[0] }, r[1])); });
+  return el("div", { class: "office-recs", id: "officeRecs" }, el("h4", null, "The office's records"), dl);
 }
 /* a ticket that needs the office's records shows them under the ticket: the IPAM sheet (SO-09), the cable map (SO-08).
    Checking the sheet is evidence like any other; saving either changes the records, and is replayed like the rest.

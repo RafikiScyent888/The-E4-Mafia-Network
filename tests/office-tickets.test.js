@@ -40,7 +40,12 @@ const FIX = {
   "SO-07": (T) => conf(T, ["interface gi0/2", T.seed % 2 ? "speed auto" : "speed 100"]).concat(SAVE),
   "SO-09": (T) => [{ t: "ipam", rows: sheetFixed(T) }].concat(moveDevice(T, homeAddr(T))),
   "SO-08": (T) => [{ t: "tone", cable: "c-run-mgr" }, { t: "probe", dev: "pp" }, { t: "repatch", cable: "c-cord-mgr", port: T.v.ports.manager }, { t: "cablemap", map: rightMap(T) }],
-  "SO-10": (T) => [{ t: "sfp", dev: T.v.end, slot: "SFP1", type: "1000BASE-SX" }, mpc("ipconfig /renew")]
+  "SO-10": (T) => [{ t: "sfp", dev: T.v.end, slot: "SFP1", type: "1000BASE-SX" }, mpc("ipconfig /renew")],
+  "SO-11": (T) => conf(T, ["interface gi0/2", T.seed % 2 ? "speed auto" : "no speed", "duplex auto"]).concat(SAVE),
+  "SO-12": (T) => conf(T, ["line console 0", "password " + T.v.plan.console, "login"]).concat(SAVE),
+  "SO-13": (T) => [pc("ssh-keygen -R " + T.v.plan.ip)],
+  "SO-14": (T) => [{ t: "repatch", cable: "c-cord-pc", port: T.v.ports.front }],
+  "SO-15": (T) => [{ t: "polarity", cable: "c-fibre" }, mpc("ipconfig /renew")]
 };
 /* what proves it, run from the front desk PC */
 const PROOF = {
@@ -53,11 +58,16 @@ const PROOF = {
   "SO-07": (T) => [pc("ping " + T.v.plan.gw)],
   "SO-09": () => [{ t: "print" }],
   "SO-08": () => [mgr("ping 203.0.113.80")],
-  "SO-10": () => [mpc("ping 203.0.113.80")]
+  "SO-10": () => [mpc("ping 203.0.113.80")],
+  "SO-11": (T) => [pc("ping " + T.v.plan.gw)],
+  "SO-12": () => [cli("exit"), cli("")],
+  "SO-13": (T) => [pc("ssh " + T.v.plan.user + "@" + T.v.plan.ip), pc(T.v.plan.userPw)],
+  "SO-14": (T) => [pc("ping " + T.v.plan.gw)],
+  "SO-15": () => [mpc("ping 203.0.113.80")]
 };
 /* the real fix without saving it: it works, it isn't the fix */
 /* null: a ticket whose fix has no "works but isn't saved" state (a module swapped is swapped) */
-const UNSAVED = (def, T) => def.id === "SO-10" ? null : def.id === "SO-08" ? FIX[def.id](T).slice(0, -1) : def.id === "SO-09" ? FIX[def.id](T).slice(1) : def.id === "SO-04" ? conf(T, ["interface gi0/5", "mdix auto"]).concat([{ t: "cmd", dev: "mpc", line: "ipconfig /renew" }]) : FIX[def.id](T).slice(0, -2);
+const UNSAVED = (def, T) => def.id === "SO-10" || def.id === "SO-13" || def.id === "SO-15" ? null : def.id === "SO-14" ? [{ t: "repatch", cable: "c-cord-pc", port: T.v.ports.front }, { t: "cablemap", map: {} }] : def.id === "SO-12" ? conf(T, ["line console 0", "password " + T.v.plan.console, "login"]).concat([cli("exit"), cli("")]).slice(0, -2) : def.id === "SO-08" ? FIX[def.id](T).slice(0, -1) : def.id === "SO-09" ? FIX[def.id](T).slice(1) : def.id === "SO-04" ? conf(T, ["interface gi0/5", "mdix auto"]).concat([{ t: "cmd", dev: "mpc", line: "ipconfig /renew" }]) : FIX[def.id](T).slice(0, -2);
 /* tempting fixes that treat a symptom, or the wrong part: none may fix it */
 const WRONG = {
   "SO-01": (T) => [[{ t: "power", dev: "printer" }], [{ t: "power", dev: "msw" }], conf(T, ["interface gi0/3", "duplex half"]).concat(SAVE), conf(T, ["interface gi0/3", "shutdown", "no shutdown"]).concat(SAVE)],
@@ -83,7 +93,17 @@ const WRONG = {
   /* the LC pair swapped; the other end matched to the wrong one (both LX on multimode); restarts; the port bounced; a renew */
   "SO-10": (T) => [[{ t: "polarity", cable: "c-fibre" }, mpc("ipconfig /renew")], [{ t: "sfp", dev: otherEnd(T), slot: "SFP1", type: "1000BASE-LX" }, mpc("ipconfig /renew")],
     [{ t: "power", dev: "msw" }, { t: "power", dev: "bsw" }], conf(T, ["interface gi0/25", "shutdown", "no shutdown"]).concat(SAVE, [mpc("ipconfig /renew")]), [mpc("ipconfig /renew")],
-    [{ t: "sfp", dev: T.v.end, slot: "SFP1", type: "1000BASE-SX" }, { t: "polarity", cable: "c-fibre" }, mpc("ipconfig /renew")]]
+    [{ t: "sfp", dev: T.v.end, slot: "SFP1", type: "1000BASE-SX" }, { t: "polarity", cable: "c-fibre" }, mpc("ipconfig /renew")]],
+  /* the switch's end left fixed; both ends fixed at half (no errors, half duplex); restarts; the port bounced */
+  "SO-11": (T) => [conf(T, ["interface gi0/2", "duplex half"]).concat(SAVE), [{ t: "power", dev: "pc" }], [{ t: "power", dev: "msw" }], conf(T, ["interface gi0/2", "shutdown", "no shutdown"]).concat(SAVE), [{ t: "replace", cable: T.v.pcCable }]],
+  /* a password set but login left off; an enable secret changed instead; the vty lines tightened instead; a wrong password */
+  "SO-12": (T) => [conf(T, ["line console 0", "password " + T.v.plan.console]).concat(SAVE), conf(T, ["enable secret Another#Secret9"]).concat(SAVE), conf(T, ["line vty 0 15", "login local"]).concat(SAVE), [{ t: "power", dev: "msw" }]],
+  /* the keys made yet again; the wrong address forgotten; the switch restarted */
+  "SO-13": (T) => [conf(T, ["crypto key generate rsa modulus 2048"]).concat(SAVE), [pc("ssh-keygen -R " + T.v.plan.gw)], [{ t: "power", dev: "msw" }], [pc("ipconfig /renew")]],
+  /* the printer's cord moved instead; a new cord in the wrong port; the map changed to match the wrong cord; restarts */
+  "SO-14": (T) => { const m = {}; m[T.v.ports.open] = "open"; m[T.v.ports.old] = "open"; m[T.v.kind === "old" ? T.v.ports.old : T.v.ports.spare] = "front"; return [[{ t: "repatch", cable: "c-cord-printer", port: T.v.ports.front }], [{ t: "replace", cable: "c-cord-pc" }], [{ t: "cablemap", map: m }], [{ t: "power", dev: "pc" }, { t: "power", dev: "msw" }]]; },
+  /* the modules swapped (they were right); the LC pair swapped at both ends; restarts; a renew */
+  "SO-15": (T) => [[{ t: "sfp", dev: "msw", slot: "SFP1", type: "1000BASE-LX" }, mpc("ipconfig /renew")], [{ t: "polarity", cable: "c-fibre" }, { t: "polarity", cable: "c-fibre" }, mpc("ipconfig /renew")], [{ t: "power", dev: "msw" }, { t: "power", dev: "bsw" }], [mpc("ipconfig /renew")]]
 };
 /* the fault, in real output */
 const SYMPTOM = {
@@ -165,6 +185,45 @@ const SYMPTOM = {
     assert.match(a, /orange, printed OM2 50\/125/); assert.match(a, v.kind === "lx" ? /bail latch is blue/ : /bail latch is black/);
     const L = E.act(T, { t: "view", dev: "bsw", key: "lights" }); assert.deepEqual(L.ports.map((x) => x.port + ":" + x.up), ["1:true", "SFP1:false"]); assert.equal(L.facts.page, "bsw-lights");
     assert.deepEqual(E.act(T, { t: "view", dev: "msw", key: "physical" }).sfp.map((m) => m.slot + "=" + m.swaps.join("/")), ["SFP1=" + ["1000BASE-SX", "1000BASE-LX"].filter((t) => t !== T.sim.d.msw.sfp.SFP1).join("/")]);
+  },
+  "SO-11": (T) => {
+    const a = out(T, login(T).concat([cli("show interfaces gi0/2")])), b = out(T, [cli("show interfaces gi0/2")]);
+    assert.match(a, /GigabitEthernet0\/2 is up, line protocol is up/); assert.match(a, /Full-duplex, (100|1000)Mb\/s/);
+    const crc = (x) => +x.match(/(\d+) CRC/g).pop().split(" ")[0]; assert.ok(crc(b) > crc(a), "the CRC errors climb"); assert.match(b, /[1-9]\d* runts/);
+    assert.match(out(T, [cli("show running-config")]), /interface GigabitEthernet0\/2\n description FRONT-DESK-PC\n speed (100|1000)\n duplex full\n/);
+    const p = E.act(T, pc("ping " + T.v.plan.gw)); assert.ok(p.facts.replies > 0 && p.facts.replies < p.facts.sent, "some pings are lost");
+    assert.match(out(T, [cli("show interfaces gi0/3")]), /0 CRC/, "the printer's port is clean");
+  },
+  "SO-12": (T) => {
+    const w = E.act(T, cli("")); assert.doesNotMatch(w.out, /User Access Verification|Password:/); assert.match(w.out, /Authorized access only/);
+    assert.equal(E.act(T, cli("")).facts.mode, "user", "straight to the prompt");
+    assert.equal(E.act(T, cli("enable")).facts.asked, true, "enable still asks");
+    E.act(T, cli(T.v.plan.secret));
+    const run = out(T, [cli("show running-config")]), con = run.slice(run.indexOf("line con 0"), run.indexOf("line vty"));
+    assert.doesNotMatch(con, / login/); if (T.v.kind === "cleared") assert.doesNotMatch(con, / password/); else assert.match(con, / password/);
+  },
+  "SO-13": (T) => {
+    const r = E.act(T, pc("ssh " + T.v.plan.user + "@" + T.v.plan.ip));
+    assert.match(r.out, /REMOTE HOST IDENTIFICATION HAS CHANGED[^]*The fingerprint for the RSA key sent by the remote host is\nSHA256:\S+\.[^]*Host key verification failed\./);
+    const fp = r.facts.fp; assert.match(out(T, login(T).concat([cli("show crypto key mypubkey rsa")])), new RegExp("Fingerprint \\(SHA256, as SSH clients show it\\): " + fp.replace(/[+/.]/g, "\\$&")));
+    assert.notEqual(fp, T.v.oldKey); assert.ok(E.act(T, pc("ping " + T.v.plan.ip)).facts.replies > 0);
+    assert.match(E.act(T, pc("ssh-keygen -R " + T.v.plan.gw)).out, /not found/);
+  },
+  "SO-14": (T) => {
+    const P = T.v.ports;
+    assert.match(E.act(T, pc("ipconfig")).out, /Media disconnected/);
+    assert.match(out(T, login(T).concat([cli("show interfaces status")])), /Gi0\/2\s+FRONT-DESK-PC\s+notconnect/);
+    assert.ok(E.act(T, { t: "view", dev: "msw", key: "lights" }).ports.find((x) => x.port === 3).up, "the printer's port is up");
+    E.act(T, { t: "tone", cable: T.v.pcRun }); assert.equal(E.act(T, { t: "probe", dev: "pp" }).facts.port, P.front);
+    assert.equal(T.sim.net.cablemap[P.front], "front", "the map has the front desk's port right");
+    assert.notEqual(T.sim.cable("c-cord-pc").b.port, P.front);
+    assert.match(E.act(T, { t: "test", cable: T.v.pcRun }).text, /all pass/);
+  },
+  "SO-15": (T) => {
+    assert.match(E.act(T, mpc("ipconfig")).out, /Autoconfiguration IPv4 Address[ .]*: 169\.254\./);
+    const o = out(T, login(T).concat([cli("show interfaces status"), cli("show interfaces transceiver"), cli("show inventory")]));
+    assert.match(o, /Gi0\/25\s+BACK-OFFICE-FIBRE\s+notconnect.*1000BaseSX/); assert.match(o, /Gi0\/25\s+.*-40\.0/); assert.match(o, /PID: SFP-1000BASE-SX/);
+    assert.match(E.act(T, { t: "look", cable: "c-fibre", end: "a" }).text, /1000BASE-SX · 850 nm/); assert.match(E.act(T, { t: "look", cable: "c-fibre", end: "b" }).text, /1000BASE-SX · 850 nm/);
   },
   "SO-09": (T) => {
     const v = T.v, prints = [], seen = new Set();
@@ -251,7 +310,7 @@ for (const def of OFFICE_TICKETS) {
       for (const x of texts) {
         assert.ok(x.indexOf(right) < 0, x);
         for (const bad of [p.secret, p.console, p.userPw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, def.id + " names a password: " + x);
-        for (const cmd of ["no shutdown", "duplex full", "speed 100", "transport input ssh", "login local", "crypto key", "copy running-config", "mdix auto", "ip address", "speed auto", "no speed", "speed 1000", "pcprinter"]) assert.ok(x.indexOf(cmd) < 0, def.id + " names the fix's command (" + cmd + "): " + x);
+        for (const cmd of ["no shutdown", "duplex full", "speed 100", "transport input ssh", "login local", "crypto key generate", "copy running-config", "mdix auto", "ip address", "speed auto", "no speed", "speed 1000", "pcprinter", "duplex auto", "ssh-keygen", "line console"]) assert.ok(x.indexOf(cmd) < 0, def.id + " names the fix's command (" + cmd + "): " + x);
       }
     }
   });

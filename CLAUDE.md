@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (18 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1 to SO-J5, tickets SO-01 to SO-10, the managed switch, the closet rack and patch panel, SFP modules and fibre, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05", "Level 2, tickets SO-06, SO-07 and SO-09", "Level 2, ticket SO-08" and "Level 2, ticket SO-10" below.**
+**Status (19 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1 to SO-J5, tickets SO-01 to SO-15 with the office's records on each, the managed switch, the closet rack and patch panel, SFP modules and fibre, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05", "Level 2, tickets SO-06, SO-07 and SO-09", "Level 2, ticket SO-08", "Level 2, ticket SO-10" and "Level 2: the office's records on office tickets; tickets SO-11 to SO-15" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
 from the Under the Hood tile (decision 6). See "The real site" below. The owner, 11
 October 2026: **"Build it like the preview you gave me just keep the layout
@@ -1522,7 +1522,25 @@ and SO-10 with the rack and patch panel in the Physical tab.
     - Fix: swap the LC pair at one end, then renew.
 - The serial terminal's facts now say when the switch is asking for a
   password (`asked`): its "Password:" is the prompt, not output.
-- **Checks:** filled in below at go-live.
+- **The diagram's port markers kept off device labels** (live 19 October 2026
+  as its own push, before this one). With easier reading on, the red diamond
+  on SO-04's and SO-10's dead links sat on the managed switch's label (2.95:1,
+  caught by AAA). The logical diagram now draws its devices first, measures
+  their labels in the font in use, and slides a marker along its line until
+  it's clear. Switching easier reading, and the fonts arriving, redraw it.
+- **Checks:**
+  - `npm test`: 278.
+  - The full drive: 3,115 checks. Every office ticket's passwords are read
+    off the page; SO-11 to SO-15 go through the desk on every variant.
+  - AAA: 5 new states (11,222 text runs). The full set, 141 states and
+    286,053 text runs, was run with the port-marker fix: 140 pass. The one
+    failure is the instructor's PIN dialog: the PIN box's focus ring overlaps
+    the bottom of its label (1.71:1), live on `main` before today too. It's
+    fixed with the next work.
+  - `node tools/models.mjs`: 134 checks.
+  - Node plants: 9 new, all caught. Page plants: the office's records left
+    off the ticket (105 failing checks) and SO-11 to SO-15 left off the desk,
+    both caught.
 
 Next: five extra work orders (SO-J6 to J10), then `planned` set to the real
 total.

@@ -200,3 +200,25 @@ test("tracert through the router: the gateway, then the far network; blocked com
   const c = CMD.exec(s, "guest", "tracert 8.8.8.8").out; assert.match(c, /  1 .*192\.168\.40\.1\n  2 .*198\.51\.100\.1/);
   const d = CMD.exec(s, "staff", "tracert 192.168.40.2").out; assert.match(d, /  1 .*192\.168\.10\.1\n  2     \*        \*        \*     Request timed out\./, "the guest laptop's firewall stays silent");
 });
+
+test("neighbour discovery: each device names who's on the far end of each link, and its management address", () => {
+  const s = built(["hostname SB-SW1", "interface vlan 1", "ip address 192.168.1.2 255.255.255.0", "no shutdown"], ["hostname SB-RTR"]);
+  s.syncSwitch("msw"); s.syncRouter("rtr");
+  const S = C.session(s.d.msw.sw); ["", "enable"].forEach((l) => C.exec(S, l));
+  const t = C.exec(S, "show lldp neighbors").out.join("\n");
+  assert.match(t, /SB-RTR\s+Gi0\/24\s+120\s+R\s+Gi0\/0/, t); assert.match(t, /Total entries displayed: 1/, "the PCs and the printer don't announce themselves");
+  const R2 = C.session(s.d.rtr.sw, { live: s.rtLive("rtr") }); ["", "enable"].forEach((l) => C.exec(R2, l));
+  const d = C.exec(R2, "show lldp neighbors detail").out.join("\n");
+  assert.match(d, /Local Intf: Gi0\/0\nChassis id: SB-SW1\nPort id: Gi0\/24/); assert.match(d, /IP: 192\.168\.1\.2/);
+});
+
+test("two managed switches with addresses on other VLANs, joined: neighbour discovery and addresses still work out (no loop)", () => {
+  const n = net(); n.devices.bsw = { id: "bsw", kind: "mswitch", label: "Back switch", on: true, mac: "00e0.4c01.0002", sw: C.newSwitch() };
+  n.cables.push(cab("c-sw-sw", "msw", "23", "bsw", "23"));
+  const s = new Sim(n);
+  cli(s, "msw", SWITCH.concat(["vlan 99", "interface vlan 99", "ip address 10.9.9.2 255.255.255.0", "interface gi0/23", "switchport mode trunk"]));
+  cli(s, "bsw", ["hostname BACK", "vlan 99", "interface vlan 99", "ip address 10.9.9.3 255.255.255.0", "interface gi0/23", "switchport mode trunk"]);
+  assert.equal(s.addr("bsw").ip, "10.9.9.3");
+  assert.ok(s.route("msw", "10.9.9.3").local, "management VLAN 99 carried over the trunk between them");
+  s.syncSwitch("msw"); assert.equal(s.d.msw.sw.links["GigabitEthernet0/23"].lldp.id, "BACK");
+});

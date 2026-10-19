@@ -191,6 +191,7 @@ const SHOW = [
   }, { sub: [["brief", "VTP all VLAN status in brief"], ["id", "VTP VLAN status by VLAN id"]] }],
   ["mac", "MAC configuration", [["address-table", "MAC forwarding table", function (S) { return macTable(S.sw); }]]],
   ["inventory", "Physical inventory: the chassis and its modules", function (S) { return inventory(S.sw); }],
+  ["lldp", "LLDP information (neighbour discovery)", [["neighbors", "LLDP neighbor entries", function (S, a) { return lldpTable(S.sw, a[0] && /^d/i.test(a[0])); }, { sub: [["detail", "Show detailed information: each neighbour's management address"]] }]]],
   ["crypto", "Encryption module", [["key", "Show long term public keys", [["mypubkey", "Show the switch's own public keys", [["rsa", "Show its RSA keys", function (S) {
     const sw = S.sw; if (!sw.rsa) return ["% No RSA keys: none have been generated."];
     return ["% Key pair was generated at: 10:12:44 UTC Oct 11 2026", "Key name: " + sw.hostname + "." + (sw.domain || "local"), "Key type: RSA KEYS " + sw.rsa + " bits", " Usage: General Purpose Key", " Key is not exportable. Redundancy enabled.", " Fingerprint (SHA256, as SSH clients show it): " + hostKey(sw)];
@@ -626,6 +627,19 @@ function switchportOf(sw, n) {
     "Administrative Trunking Encapsulation: dot1q", "Operational Trunking Encapsulation: " + (up && c.mode === "trunk" ? "dot1q" : "native"),
     "Negotiation of Trunking: " + (p.nonegotiate || p.mode === "access" ? "Off" : "On"), "Access Mode VLAN: " + nm(p.access), "Trunking Native Mode VLAN: " + nm(p.native),
     "Trunking VLANs Enabled: " + (p.allowed === "all" ? "ALL" : vlanText(p.allowed))];
+}
+/* show lldp neighbors [detail]: who's at the far end of each link that's up, as the far end says (links[n].lldp) */
+export function lldpTable(sw, detail, ifs) {
+  const pad = function (x, k) { return (String(x) + " ".repeat(k)).slice(0, k); }, rows = [];
+  (ifs || PORT_NAMES).forEach(function (n) { const l = sw.links && sw.links[n]; if (l && l.lldp && (l.up !== false)) rows.push([n, l.lldp]); });
+  if (detail) {
+    const L = [];
+    rows.forEach(function (r) { L.push("------------------------------------------------", "Local Intf: " + short(r[0]), "Chassis id: " + r[1].id, "Port id: " + short(r[1].port), "System Name: " + r[1].id, "System Description: " + r[1].model, "System Capabilities: " + r[1].caps, "Management Addresses:", "    IP: " + (r[1].addr || "not advertised"), ""); });
+    return L.concat(["Total entries displayed: " + rows.length]);
+  }
+  const L = ["Capability codes:", "    (R) Router, (B) Bridge, (T) Telephone, (C) DOCSIS Cable Device", "    (W) WLAN Access Point, (P) Repeater, (S) Station, (O) Other", "", pad("Device ID", 20) + pad("Local Intf", 15) + pad("Hold-time", 11) + pad("Capability", 16) + "Port ID"];
+  rows.forEach(function (r) { L.push(pad(r[1].id, 20) + pad(short(r[0]), 15) + pad("120", 11) + pad(r[1].caps, 16) + short(r[1].port)); });
+  return L.concat(["", "Total entries displayed: " + rows.length]);
 }
 function macTable(sw) {
   const L = ["          Mac Address Table", "-------------------------------------------", "", "Vlan    Mac Address       Type        Ports", "----    -----------       --------    -----"];

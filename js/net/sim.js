@@ -108,6 +108,8 @@ export class Sim {
     const worst = [c.cond, o.cond].indexOf("crushed") >= 0 ? "crushed" : [c.cond, o.cond].indexOf("damaged") >= 0 ? "damaged" : "good";
     return { id: c.id, kind: "cat6", a: near, b: far, cond: worst, length: (c.length || 0) + (o.length || 0), wiring: (c.wiring === "crossover") !== (o.wiring === "crossover") ? "crossover" : "straight", via: [c.id, o.id] };
   }
+  /* the device beyond a PoE injector on this cable (what LLDP hears through it), or null if there's no injector on it */
+  viaInjectorEnd(c, id) { const v = [c.a, c.b].some(function (e) { return this.d[e.dev] && this.d[e.dev].kind === "injector"; }, this) ? this.viaInjector(c.kind === "cat6" && this.panelEnd(c) ? this.viaPanel(c) : c) : null; if (!v) return null; return v.a.dev === id ? v.b : v.a; }
   /* a link through a PoE injector, one path from the device on its output to the device on its input (the same pair's
      other port), each side through the patch panel if it's patched. null: nothing on the injector's other side */
   viaInjector(c) {
@@ -182,6 +184,16 @@ export class Sim {
     x.sw.links = this.switchLinks(id); x.sw.uptime = x.sw.uptimeFixed || (2 + this.n) + " minutes";   /* a ticket can set how long it has really been up (since Sunday's power cut) */
     return x.sw;
   }
+  /* what the far end of a link says about itself over LLDP (neighbour discovery): a switch, a router or an access point,
+     its name, the port it's on, what it is, and its management address. Computers don't send it */
+  lldpOf(end) {
+    const x = end && this.d[end.dev]; if (!x || !this.on(end.dev)) return null;
+    /* the address it advertises is the one it's configured with (worked out from its own links, two devices asking each other would never finish) */
+    if (x.kind === "mswitch") { const sw = x.sw, v = sw.vlan1.ip && !sw.vlan1.shutdown ? sw.vlan1 : Object.keys(sw.svis || {}).map(function (k) { return sw.svis[k]; }).find(function (f) { return f.ip && !f.shutdown; }); return { id: sw.hostname, port: swPort(end.port), caps: "B", model: sw.model, addr: v ? v.ip : null }; }
+    if (x.kind === "brouter") { const r = x.sw, f = RT.allIfs(r).map(function (n) { return n.indexOf(".") > 0 ? r.subs[n] : r.ifs[n]; }).find(function (g) { return g && g.ip && !g.shutdown; }); return { id: r.hostname, port: RT_IF(end.port), caps: "R", model: r.model, addr: f ? f.ip : null }; }
+    if (x.kind === "bap") { const f = x.ifaces && x.ifaces[0], a = f && f.lease; return { id: x.host || "AP-" + x.mac.replace(/[^0-9a-f]/gi, "").slice(-6).toUpperCase(), port: "eth0", caps: "W", model: "Ceiling access point", addr: a ? a.ip : null }; }
+    return null;
+  }
   /* what a managed switch's port says about trunking to the far end (DTP); null from anything else */
   dtpOf(end) { const x = end && this.d[end.dev]; if (!x || x.kind !== "mswitch") return null; const p = x.sw.ports[swPort(end.port)]; return p ? { mode: p.mode || "dynamic auto", nonegotiate: !!p.nonegotiate } : null; }
   /* what each of a managed switch's ports sees at the far end of its cable, worked out without changing anything
@@ -193,7 +205,7 @@ export class Sim {
     Object.keys(x.sfp || {}).forEach(function (slot) {
       const M = SFP_MODULES[x.sfp[slot]], c = this.cableAt(id, slot); if (!M) return;
       const far = c ? (c.a.dev === id && c.a.port === slot ? c.b : c.a) : null, fd = far && this.d[far.dev], up = !!c && c.kind === "fibre" && this.fibreUp(c), mm = fd && fd.mac ? fd.mac.replace(/[^0-9a-f]/gi, "").toLowerCase() : "";
-      L[swPort(slot)] = { dtp: this.dtpOf(far), module: M.show, pid: M.pid, unsupported: M.rate !== 1000, sfpMismatch: !up, light: up, mac: up ? mm.slice(0, 4) + "." + mm.slice(4, 8) + "." + mm.slice(8, 12) : null, speed: "1000", duplex: "full", max: 1000, tick: this.n };
+      L[swPort(slot)] = { lldp: up ? this.lldpOf(far) : null, dtp: this.dtpOf(far), module: M.show, pid: M.pid, unsupported: M.rate !== 1000, sfpMismatch: !up, light: up, mac: up ? mm.slice(0, 4) + "." + mm.slice(4, 8) + "." + mm.slice(8, 12) : null, speed: "1000", duplex: "full", max: 1000, tick: this.n };
     }, this);
     for (const c0 of this.cablesOf(id)) {
       if (c0.kind !== "cat6") continue;
@@ -201,7 +213,7 @@ export class Sim {
       const me = c.a.dev === id ? c.a : c.b, far = c.a.dev === id ? c.b : c.a, fd = this.d[far.dev];
       if (!/^\d+$/.test(me.port) || !me.seated || !far.seated || fd.kind === "jack" || c.cond === "crushed" || (c.length || 0) > COPPER_MAX || !this.on(far.dev) || !this.pairsMeet(c)) continue;
       const m = (fd.kind === "router" || fd.kind === "rogue" ? fd.mac : fd.ifaces ? fd.ifaces[0].mac : "02-00-5e-" + (hash(far.dev) >>> 0).toString(16).padStart(8, "0").slice(0, 6).replace(/(..)(..)(..)/, "$1-$2-$3")).replace(/-/g, "");
-      L["GigabitEthernet0/" + me.port] = { dtp: this.dtpOf(far), mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n };
+      L["GigabitEthernet0/" + me.port] = { lldp: this.cableUp(c0) ? this.lldpOf(this.viaInjectorEnd(c0, id) || far) : null, dtp: this.dtpOf(far), mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n };
       if (fd.maxMbps) L["GigabitEthernet0/" + me.port].max = Math.min(L["GigabitEthernet0/" + me.port].max, fd.maxMbps);
     }
     return L;
@@ -614,7 +626,7 @@ export class Sim {
   /* what its ports see at the far end, worked out without storing anything */
   routerLinks(id) {
     const L = {};
-    RT.RT_PORTS.forEach(function (n) { const c = this.cableAt(id, RT_PORT(n)); if (!c || c.kind === "console") return; const v = c.kind === "cat6" && this.panelEnd(c) ? this.viaPanel(c) : c; if (!v) return; const far = v.a.dev === id ? v.b : v.a; L[n] = { up: this.cableUp(c), far: far.dev }; }, this);
+    RT.RT_PORTS.forEach(function (n) { const c = this.cableAt(id, RT_PORT(n)); if (!c || c.kind === "console") return; const v = c.kind === "cat6" && this.panelEnd(c) ? this.viaPanel(c) : c; if (!v) return; const far = v.a.dev === id ? v.b : v.a, up = this.cableUp(c); L[n] = { up: up, far: far.dev, lldp: up ? this.lldpOf(far) : null }; }, this);
     return L;
   }
   syncRouter(id) { const x = this.d[id]; if (!x || x.kind !== "brouter") return null; x.sw.links = this.routerLinks(id); x.sw.uptime = x.sw.uptimeFixed || (2 + this.n) + " minutes"; return x.sw; }

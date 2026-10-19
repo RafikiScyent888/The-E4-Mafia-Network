@@ -10,7 +10,7 @@
    - NAT: inside and outside interfaces, PAT (ip nat inside source list N interface X overload) and static NAT.
    What only the network knows (which links are up, the leases handed out, the translations made, the access lists'
    hit counts) the session asks for through its live callback, given by whoever opens it (cmd.js). */
-import { CORE, registerOS, pwOk } from "./swcli.js";
+import { CORE, registerOS, pwOk, lldpTable } from "./swcli.js";
 
 const { CONFIG, EXEC_USER, EXEC_PRIV, SHOW, LINE, typed, pwText, hashish, ip4, isMask } = CORE;
 export const RT_PORTS = ["GigabitEthernet0/0", "GigabitEthernet0/1", "GigabitEthernet0/2"];
@@ -480,6 +480,7 @@ const RT_SHOW = pick(SHOW, ["startup-config", "history", "clock", "users", "ssh"
     ["nat", "IP NAT information", [["translations", "Translation entries", function (S) { return rtNat(S.sw, S.live); }]]],
     ["access-lists", "List IP access lists", function (S, a) { return rtAcls(S.sw, a[0], S.live); }]]],
   ["access-lists", "List access lists", function (S, a) { return rtAcls(S.sw, a[0], S.live); }],
+  ["lldp", "LLDP information (neighbour discovery)", [["neighbors", "LLDP neighbor entries", function (S, a) { return lldpTable(S.sw, a[0] && /^d/i.test(a[0]), RT_PORTS); }, { sub: [["detail", "Show detailed information: each neighbour's management address"]] }]]],
   ["interfaces", "Interface status and configuration", function (S, a) {
     if (!a.length) return allIfs(S.sw).reduce(function (L, n) { return L.concat(rtIfDetail(S.sw, n, S.live)); }, []);
     const f = rtName(a, 0); if (!f || f.err || !ifOf(S.sw, f.name)) return bad;

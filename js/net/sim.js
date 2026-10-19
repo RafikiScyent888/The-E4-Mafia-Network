@@ -657,7 +657,7 @@ export class Sim {
     const pass = function (n, dir, pk) { const f = RT.allIfs(R).indexOf(n) >= 0 ? (n.indexOf(".") > 0 ? R.subs[n] : R.ifs[n]) : null, L = f && (dir === "in" ? f.aclIn : f.aclOut); if (!L) return true; const v = RT.aclVerdict(R, L, pk); if (!v.missing) acls.push([L, v.line]); return v.permit; };
     const req = Object.assign({}, P, { src: a.ip, dst: dst }), rep = Object.assign({}, P, { src: dst, dst: a.ip, port: P.sport, sport: P.port });
     const gwIp = a.gw, base = { via: rid, addr: a, inIf: inIf, acls: acls };
-    if (!pass(inIf, "in", req)) return Object.assign({ fail: "blocked", hops: [gwIp], acl: { iface: inIf, dir: "in" } }, base);
+    if (!pass(inIf, "in", req)) return Object.assign({ fail: "blocked", hops: [], acl: { iface: inIf, dir: "in" } }, base);   /* checked as it comes in, before anything else: even tracert's first probe gets no answer */
     /* to one of the router's own addresses */
     const own = RT.allIfs(R).find(function (n) { const x = RT.addrOf(R, n, live); return x && x.ip === dst && RT.rtStatus(R, n)[1] === "up"; });
     if (own) return pass(inIf, "out", rep) ? Object.assign({ local: true, owner: [rid], next: dst, hops: [dst], routed: own !== inIf }, base) : Object.assign({ fail: "no-reply", hops: [gwIp] }, base);
@@ -670,8 +670,8 @@ export class Sim {
       if (!isPublic(dst)) return Object.assign({ fail: "beyond", hops: [gwIp, this.net.isp.gw] }, base);
       const fin = (inIf.indexOf(".") > 0 ? R.subs[inIf] : R.ifs[inIf]).nat, fout = R.ifs[outIf].nat;
       const rule = R.nat.find(function (x) { return x.iface === outIf && RT.aclVerdict(R, x.list, { proto: "ip", src: a.ip, dst: dst }).permit && R.acls[x.list]; });
-      if (isPrivate(a.ip) && !(fin === "inside" && fout === "outside" && rule && rule.overload)) return Object.assign({ fail: "no-nat", hops: [gwIp, this.net.isp.gw], why: !rule ? "no rule" : fin !== "inside" ? "inside" : fout !== "outside" ? "outside" : "overload" }, base);   /* a private source the provider won't route: no reply ever comes */
-      if (!pass(outIf, "in", Object.assign({}, rep, { dst: this.net.isp.wanIp })) || !pass(inIf, "out", rep)) return Object.assign({ fail: "no-reply", hops: [gwIp, this.net.isp.gw, this.net.isp.core, dst] }, base);
+      if (isPrivate(a.ip) && !(fin === "inside" && fout === "outside" && rule && rule.overload)) return Object.assign({ fail: "no-nat", hops: [gwIp], why: !rule ? "no rule" : fin !== "inside" ? "inside" : fout !== "outside" ? "outside" : "overload" }, base);   /* a private source the provider won't route: no reply ever comes */
+      if (!pass(outIf, "in", Object.assign({}, rep, { dst: this.net.isp.wanIp })) || !pass(inIf, "out", rep)) return Object.assign({ fail: "no-reply", hops: [gwIp] }, base);
       return Object.assign({ internet: true, nat: { inside: a.ip, global: this.net.isp.wanIp }, hops: [gwIp, this.net.isp.gw, this.net.isp.core, dst] }, base);
     }
     /* out onto another of the business's own networks */
@@ -679,8 +679,8 @@ export class Sim {
     if (!owners.length) return Object.assign({ fail: "no-reply", hops: [gwIp], why: "arp" }, base);   /* the router's ARP for it goes unanswered: Request timed out */
     if (rt.nh) return Object.assign({ fail: "beyond", hops: [gwIp, rt.nh] }, base);
     const back = owners.filter(function (o) { return this.canReply(o, a.ip, odom); }, this);
-    if (!back.length) return Object.assign({ fail: "no-reply", hops: [gwIp, dst], why: "their gateway" }, base);
-    if (!pass(outIf, "in", rep) || !pass(inIf, "out", rep)) return Object.assign({ fail: "no-reply", hops: [gwIp, dst], why: "reply blocked" }, base);
+    if (!back.length) return Object.assign({ fail: "no-reply", hops: [gwIp], why: "their gateway" }, base);   /* the router answers tracert's first probe; nothing after it */
+    if (!pass(outIf, "in", rep) || !pass(inIf, "out", rep)) return Object.assign({ fail: "no-reply", hops: [gwIp], why: "reply blocked" }, base);
     return Object.assign({ local: false, routed: true, owner: back, outIf: outIf, next: dst, hops: [gwIp, dst] }, base);
   }
 

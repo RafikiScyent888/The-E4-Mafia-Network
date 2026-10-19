@@ -192,3 +192,11 @@ test("pings through the router: the TTL one less, Windows PCs still silent, the 
   const nr = built([], ["interface g0/1", "no ip address dhcp", "ip address 198.51.100.77 255.255.255.0"]);
   assert.match(CMD.exec(nr, "staff", "ping 8.8.8.8").out, /Reply from 192\.168\.10\.1: Destination net unreachable\./, "the router has no route: it says so");
 });
+
+test("tracert through the router: the gateway, then the far network; blocked coming in, nothing answers at all", () => {
+  const s = built([], ["access-list 140 deny ip any 192.168.10.0 0.0.0.255", "access-list 140 permit ip any any", "interface g0/0.40", "ip access-group 140 in"]);
+  const a = CMD.exec(s, "staff", "tracert 192.168.40.1").out; assert.match(a, /  1 .*192\.168\.40\.1\n\nTrace complete\./, a);
+  const b = CMD.exec(s, "guest", "tracert 192.168.10.11").out; assert.match(b, /  1     \*        \*        \*     Request timed out\./); assert.doesNotMatch(b, /192\.168\.40\.1/);
+  const c = CMD.exec(s, "guest", "tracert 8.8.8.8").out; assert.match(c, /  1 .*192\.168\.40\.1\n  2 .*198\.51\.100\.1/);
+  const d = CMD.exec(s, "staff", "tracert 192.168.40.2").out; assert.match(d, /  1 .*192\.168\.10\.1\n  2     \*        \*        \*     Request timed out\./, "the guest laptop's firewall stays silent");
+});

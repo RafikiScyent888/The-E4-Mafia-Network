@@ -431,14 +431,16 @@ function tracert(sim, id, args) {
     if (!r.ok) { facts.ok = false; facts.kind = "dns-fail"; return { out: "Unable to resolve target system name " + target + ".\n", facts: facts }; }
     ip = r.ip; head = ["", "Tracing route to " + target + " [" + ip + "]", "over a maximum of 30 hops:", ""];
   } else head = ["", "Tracing route to " + ip + " over a maximum of 30 hops", ""];
-  const rt = sim.route(id, ip), R = sim.r("tracert" + ip), lines = head.slice();
+  let rt = sim.route(id, ip); const R = sim.r("tracert" + ip), lines = head.slice();
   const ms = function (base) { const v = base + Math.floor(R() * 4); return v < 1 ? "    <1 ms" : lpad(v + " ms", 9); };
   const hopLine = function (k, base, addr) { return lpad(k, 3) + ms(base) + ms(base) + ms(base) + "  " + addr; };
   if (rt.fail === "no-link" || rt.fail === "no-route") { lines.push("Transmit error: code 1231.", "", "Trace complete."); facts.ok = false; return { out: lines.join("\n") + "\n", facts: facts }; }
   if (rt.fail === "host-unreachable" || rt.fail === "gateway-unreachable") { lines.push(lpad(1, 3) + "  " + rt.addr.ip + "  reports: Destination host unreachable.", "", "Trace complete."); facts.ok = false; return { out: lines.join("\n") + "\n", facts: facts }; }
   const w = sim.hop(id).base;
   if (rt.local) { lines.push(hopLine(1, w, ip), "", "Trace complete."); facts.ok = true; facts.reached = 1; return { out: lines.join("\n") + "\n", facts: facts }; }
-  const hops = rt.hops || [];
+  const hops = (rt.hops || []).slice();
+  if (rt.routed && /^(pc|laptop)$/.test(sim.d[rt.owner[0]].kind)) { hops.pop(); rt = Object.assign({}, rt, { fail: "firewall" }); }   /* a Windows PC at the end: its firewall answers nothing */
+  if (!hops.length) { for (let k = 0; k < 5; k++) lines.push(lpad(k + 1, 3) + "     *        *        *     Request timed out."); lines.push("^C"); facts.ok = false; return { out: lines.join("\n") + "\n", facts: facts }; }
   lines.push(hopLine(1, w, hops[0]));
   if (rt.fail === "net-unreachable") { lines.push(lpad(2, 3) + "  " + hops[0] + "  reports: Destination net unreachable.", "", "Trace complete."); facts.ok = false; facts.stopAt = hops[0]; return { out: lines.join("\n") + "\n", facts: facts }; }
   for (let k = 1; k < hops.length; k++) lines.push(hopLine(k + 1, w + 7 + k * 3, hops[k] + (k === hops.length - 1 && !isIp(target) ? "" : "")));

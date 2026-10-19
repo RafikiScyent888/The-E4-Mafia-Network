@@ -108,6 +108,15 @@ export class Sim {
     const worst = [c.cond, o.cond].indexOf("crushed") >= 0 ? "crushed" : [c.cond, o.cond].indexOf("damaged") >= 0 ? "damaged" : "good";
     return { id: c.id, kind: "cat6", a: near, b: far, cond: worst, length: (c.length || 0) + (o.length || 0), wiring: (c.wiring === "crossover") !== (o.wiring === "crossover") ? "crossover" : "straight", via: [c.id, o.id] };
   }
+  /* a link through a PoE injector, one path from the device on its output to the device on its input (the same pair's
+     other port), each side through the patch panel if it's patched. null: nothing on the injector's other side */
+  viaInjector(c) {
+    const ie = [c.a, c.b].find(function (e) { return this.d[e.dev] && this.d[e.dev].kind === "injector"; }, this), near = ie === c.a ? c.b : c.a;
+    let o = this.cableAt(ie.dev, POE_PAIR[ie.port]); if (!o) return null;
+    if (o.kind === "cat6" && this.panelEnd(o)) { o = this.viaPanel(o); if (!o) return null; }
+    const far = o.a.dev === ie.dev ? o.b : o.a;
+    return { id: c.id, kind: "cat6", a: near, b: far, cond: c.cond, length: (c.length || 0) + (o.length || 0), via: (c.via || [c.id]).concat(o.via || [o.id]) };
+  }
   /* a fibre link: both plugs in, a module in each end that its slot can run (a 1 Gb/s SFP slot can't run a 10 Gb/s SFP+
      module), the two modules the same kind (850 nm talks only to 850 nm), each made for the fibre between them, the
      LC pair the right way round (each end's transmit to the other's receive), both switches on and both ports open */
@@ -234,6 +243,12 @@ export class Sim {
     /* a hotspot outside the house broadcasting the house's own network name, open (HOME-15) */
     const tw = this.d.twin;
     if (tw && this.on("twin")) out.push({ id: "twin", node: "twin:lan", band: 24, ch: tw.ch, ssid: tw.ssid, mac: tw.mac, sec: "Open", heard: tw.heard });
+    for (const id in this.d) {   /* a business access point (powered over its cable, its cable up): each of its networks on both radios, each on its own VLAN */
+      const x = this.d[id]; if (x.kind !== "bap" || !this.on(id) || !this.cableUp(this.cableAt(id, "ETH"))) continue;
+      (x.ssids || []).forEach(function (w, i) { const node = this.bapNode(id, w.vlan); let m = x.mac; for (let k = 0; k < i * 2; k++) m = bump(m);
+        out.push({ id: id, node: node, room: this.net.rooms[id], band: 24, ch: x.ch24 || 6, ssid: w.ssid, mac: m, sec: w.sec, gen: w.gen || 1, vlan: w.vlan, guest: !!w.guest });
+        out.push({ id: id, node: node, room: this.net.rooms[id], band: 5, ch: x.ch5 || 36, ssid: w.ssid, mac: bump(m), sec: w.sec, gen: w.gen || 1, vlan: w.vlan, guest: !!w.guest }); }, this);
+    }
     const m = this.d.mesh;
     if (m && this.meshLink().ok) {   /* wired or wireless back to the router, it broadcasts the house's Wi-Fi */
       out.push({ id: "mesh", node: "mesh", room: this.net.rooms.mesh, band: 24, ch: this.ch24(), ssid: r.wifi.ssid, mac: m.ifaces[0].mac, sec: r.wifi.sec });
@@ -282,7 +297,7 @@ export class Sim {
   canSec(f, sec) { const can = f.secs || ["WPA2-Personal", "WPA3-Personal"]; if (sec === "Open") return true; return sec === "WPA2/WPA3-Personal" ? can.indexOf("WPA2-Personal") >= 0 || can.indexOf("WPA3-Personal") >= 0 : can.indexOf(sec) >= 0; }
   usesSec(f, sec) { const can = f.secs || ["WPA2-Personal", "WPA3-Personal"]; return sec === "WPA2/WPA3-Personal" ? (can.indexOf("WPA3-Personal") >= 0 ? "WPA3-Personal" : "WPA2-Personal") : sec; }
   heardAt(ap, room) { return ap.heard ? (ap.heard[room] || 0) : this.signal(ap.room, room, ap.band); }
-  signal(apRoom, room, band) { const t = SIGNAL[apRoom]; if (!t || !t[room]) return 0; return t[room][band === 24 ? 0 : 1]; }
+  signal(apRoom, room, band) { const t = (this.net.signal && this.net.signal[apRoom]) || SIGNAL[apRoom]; if (!t || !t[room]) return 0; return t[room][band === 24 ? 0 : 1]; }   /* a site with rooms of its own has its own table (net.signal) */
   /* a Wi-Fi client's link: which access point, band and channel, how strong, and how lossy */
   wifiLink(id) {
     const x = this.d[id]; if (!x || !x.ifaces || !this.on(id)) return null;
@@ -310,8 +325,11 @@ export class Sim {
   }
 
   /* ------------------------------------------------------------ layer 2: who can hear whom */
+  /* a business access point's networks on layer 2: each VLAN its own node; untagged (no VLAN set) on the access point itself, with its own address */
+  bapNode(id, vlan) { return vlan ? id + "#v" + vlan : id + "#n"; }
   nodeOf(dev, port) {
     const k = this.d[dev] && this.d[dev].kind;
+    if (k === "bap") return this.bapNode(dev, null);
     if (k === "router" || k === "rogue") return port === "WAN" ? dev + ":wan" : dev + ":lan";
     if (k === "injector" && / 2$/.test(port)) return dev + ":2";   /* a dual injector's second pair: a path of its own, never bridged to the first */
     if (k === "patchpanel") return dev + ":" + String(port).replace(/R$/, "");   /* each port joins only its own front jack and its own run */
@@ -323,7 +341,9 @@ export class Sim {
     for (const c0 of this.net.cables) {
       if (c0.kind === "coax" || c0.kind === "console" || !this.cableUp(c0)) continue;
       let c = c0;
-      if (c0.kind === "cat6" && this.panelEnd(c0)) { c = this.viaPanel(c0); const k = c.via.slice().sort().join("+"); if (seen.has(k)) continue; seen.add(k); }   /* patched through a panel: one link, end to end */
+      if (c0.kind === "cat6" && this.panelEnd(c0)) c = this.viaPanel(c0);   /* patched through a panel: one link, end to end */
+      if (c && [c.a, c.b].some(function (x) { return this.d[x.dev] && this.d[x.dev].kind === "injector"; }, this)) { c = this.viaInjector(c); if (!c) continue; }   /* through a PoE injector too: it passes every frame, tagged or not */
+      if (c.via) { const k = c.via.slice().sort().join("+"); if (seen.has(k)) continue; seen.add(k); }
       this.linkEdges(c, e);
     }
     const m = this.d.mesh;
@@ -344,6 +364,7 @@ export class Sim {
         cr.tagged.forEach(function (v) { t[v] = this.vnode(end.dev, v); }, this);
         return { u: cr.untagged != null ? this.vnode(end.dev, cr.untagged) : null, t: t };
       }
+      if (x && x.kind === "bap") { const t = {}; (x.ssids || []).forEach(function (w) { if (w.vlan) t[w.vlan] = this.bapNode(end.dev, w.vlan); }, this); return { u: this.bapNode(end.dev, null), t: t }; }   /* its uplink: untagged for itself (and any network with no VLAN), each network's VLAN tagged */
       if (x && x.kind === "brouter") {   /* a routed port: untagged to the port itself (or its native subinterface), each subinterface's tag to that subinterface */
         const ph = RT_IF(end.port), r = x.sw; if (!ph || !r.ifs[ph] || r.ifs[ph].shutdown) return { u: null, t: {} };
         let u = this.rtNode(end.dev, ph); const t = {};
@@ -744,6 +765,11 @@ export class Sim {
         if (g && act.ssid && act.ssid === g.ssid) f.saved = g.sec === "Open" ? { ssid: g.ssid, passOk: true, sec: "Open" } : { ssid: g.ssid, passOk: true, gen: g.gen };
         else f.saved = act.open ? { ssid: w.ssid, passOk: true, sec: "Open" } : { ssid: w.ssid, passOk: true, gen: w.gen || 1 }; this.release(act.dev);   /* open: the copy with no password */
         res = this.hasLink(act.dev) ? this.dhcp(act.dev, "join") : { result: "no-wifi" }; break;
+      }
+      case "joinssid": {                                        /* join a business access point's network by name, with its password (the client's records give it) */
+        const f = this.d[act.dev].ifaces[0], ap = this.aps().find(function (p) { return p.ssid === act.ssid; });
+        f.saved = ap ? (ap.sec === "Open" ? { ssid: ap.ssid, passOk: true, sec: "Open" } : { ssid: ap.ssid, passOk: act.pass !== false, gen: ap.gen }) : { ssid: act.ssid, passOk: false };
+        this.release(act.dev); res = this.hasLink(act.dev) ? this.dhcp(act.dev, "join") : { result: "no-wifi" }; break;
       }
       case "pcprinter": { const ip = String(act.ip || "").trim(); if (!isIp(ip)) { res = { ok: false, errs: ["The printer port must be an IPv4 address"] }; break; } this.d.pc.printer.port = ip; res = { ok: true }; break; }
       case "client": res = this.setClient(act.dev, act.values); break;

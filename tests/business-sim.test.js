@@ -154,3 +154,26 @@ test("SSH from a staff PC to the router, once it has a name, a domain, keys and 
   const g = built(); g.d.rtr.sw.vty.transport = "ssh";
   assert.match(CMD.exec(g, "guest", "ssh admin@192.168.40.1").out, /Connection refused/, "no keys yet: refused");
 });
+
+/* ---------------------------------------------------------------- the business access point */
+test("a ceiling access point on a trunk: the staff network and the guest network each land on their own VLAN", () => {
+  const n = net();
+  n.devices.inj = { id: "inj", kind: "injector", label: "PoE injector", on: true, power: true, std: "af" };
+  n.devices.ap = { id: "ap", kind: "bap", label: "Ceiling access point", on: true, poe: true, draw: 9, mac: "00-26-cb-00-00-10", ch24: 6, ch5: 36,
+    ssids: [{ ssid: "CLINIC-STAFF", sec: "WPA2-Personal", vlan: 10, gen: 1 }, { ssid: "CLINIC-GUEST", sec: "WPA2-Personal", vlan: 40, gen: 1, guest: true }], ifaces: [{ name: "Ethernet", type: "eth", port: "ETH", mac: "00-26-cb-00-00-0f", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] };
+  n.devices.phone = { id: "phone", kind: "phone", label: "Visitor's phone", on: true, ifaces: [{ name: "Wi-Fi", type: "wifi", mac: "aa-00-00-00-00-20", bands: [24, 5], secs: ["WPA2-Personal", "WPA3-Personal"], saved: { ssid: null }, cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] };
+  n.cables.push(cab("c-inj-in", "msw", "5", "inj", "DATA IN"), cab("c-inj-out", "inj", "PoE OUT", "ap", "ETH"));
+  n.rooms = { ap: "waiting", phone: "waiting" }; n.signal = { waiting: { waiting: [80, 70] } };
+  const s = new Sim(n); cli(s, "msw", SWITCH.concat(["interface gi0/5", "switchport mode trunk", "switchport trunk allowed vlan 1,10,40"])); cli(s, "rtr", ROUTER);
+  assert.equal(s.aps().filter((a) => a.id === "ap").length, 4, "two networks on two radios");
+  s.apply({ t: "joinssid", dev: "phone", ssid: "CLINIC-GUEST" });
+  assert.match(lease(s, "phone"), /^192\.168\.40\./, "the guest network is VLAN 40: the guest pool");
+  assert.ok(s.route("phone", "8.8.8.8").internet);
+  s.apply({ t: "joinssid", dev: "phone", ssid: "CLINIC-STAFF" });
+  assert.match(lease(s, "phone"), /^192\.168\.10\./, "the staff network is VLAN 10");
+  const t = new Sim(JSON.parse(JSON.stringify(n))); cli(t, "msw", SWITCH.concat(["interface gi0/5", "switchport mode trunk", "switchport trunk allowed vlan 1,10"])); cli(t, "rtr", ROUTER);
+  t.apply({ t: "joinssid", dev: "phone", ssid: "CLINIC-GUEST" });
+  assert.equal(lease(t, "phone"), "apipa", "VLAN 40 left off the access point's trunk port: the guest network has no way out");
+  const u = new Sim(JSON.parse(JSON.stringify(n))); u.d.inj.power = false; cli(u, "msw", SWITCH); cli(u, "rtr", ROUTER);
+  assert.equal(u.aps().filter((a) => a.id === "ap").length, 0, "no power down its cable: no Wi-Fi at all");
+});

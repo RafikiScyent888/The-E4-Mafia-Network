@@ -5,7 +5,7 @@
    Every change goes through apply(), so a ticket can be replayed exactly
    (progress is saved as the list of actions). */
 import { rng, hash, ip2n, n2ip, sameSubnet, isIp, isApipa, isPublic, isPrivate, isLoopback, broadcast, network, maskBits } from "./util.js";
-import { reload as reloadSwitch, duplexEnds } from "./swcli.js";
+import { reload as reloadSwitch, duplexEnds, carries, ownAddrs } from "./swcli.js";
 
 /* each radio has its own hardware address: the 5 GHz one is the next number up */
 function bump(m) { const p = m.split("-"); p[5] = ((parseInt(p[5], 16) + 1) & 255).toString(16).padStart(2, "0"); return p.join("-"); }
@@ -168,6 +168,8 @@ export class Sim {
     x.sw.links = this.switchLinks(id); x.sw.uptime = x.sw.uptimeFixed || (2 + this.n) + " minutes";   /* a ticket can set how long it has really been up (since Sunday's power cut) */
     return x.sw;
   }
+  /* what a managed switch's port says about trunking to the far end (DTP); null from anything else */
+  dtpOf(end) { const x = end && this.d[end.dev]; if (!x || x.kind !== "mswitch") return null; const p = x.sw.ports[swPort(end.port)]; return p ? { mode: p.mode || "dynamic auto", nonegotiate: !!p.nonegotiate } : null; }
   /* what each of a managed switch's ports sees at the far end of its cable, worked out without changing anything
      (a check must never change the network: a saved job has to replay exactly) */
   switchLinks(id) {
@@ -177,7 +179,7 @@ export class Sim {
     Object.keys(x.sfp || {}).forEach(function (slot) {
       const M = SFP_MODULES[x.sfp[slot]], c = this.cableAt(id, slot); if (!M) return;
       const far = c ? (c.a.dev === id && c.a.port === slot ? c.b : c.a) : null, fd = far && this.d[far.dev], up = !!c && c.kind === "fibre" && this.fibreUp(c), mm = fd && fd.mac ? fd.mac.replace(/[^0-9a-f]/gi, "").toLowerCase() : "";
-      L[swPort(slot)] = { module: M.show, pid: M.pid, unsupported: M.rate !== 1000, sfpMismatch: !up, light: up, mac: up ? mm.slice(0, 4) + "." + mm.slice(4, 8) + "." + mm.slice(8, 12) : null, speed: "1000", duplex: "full", max: 1000, tick: this.n };
+      L[swPort(slot)] = { dtp: this.dtpOf(far), module: M.show, pid: M.pid, unsupported: M.rate !== 1000, sfpMismatch: !up, light: up, mac: up ? mm.slice(0, 4) + "." + mm.slice(4, 8) + "." + mm.slice(8, 12) : null, speed: "1000", duplex: "full", max: 1000, tick: this.n };
     }, this);
     for (const c0 of this.cablesOf(id)) {
       if (c0.kind !== "cat6") continue;
@@ -185,7 +187,7 @@ export class Sim {
       const me = c.a.dev === id ? c.a : c.b, far = c.a.dev === id ? c.b : c.a, fd = this.d[far.dev];
       if (!/^\d+$/.test(me.port) || !me.seated || !far.seated || fd.kind === "jack" || c.cond === "crushed" || (c.length || 0) > COPPER_MAX || !this.on(far.dev) || !this.pairsMeet(c)) continue;
       const m = (fd.kind === "router" || fd.kind === "rogue" ? fd.mac : fd.ifaces ? fd.ifaces[0].mac : "02-00-5e-" + (hash(far.dev) >>> 0).toString(16).padStart(8, "0").slice(0, 6).replace(/(..)(..)(..)/, "$1-$2-$3")).replace(/-/g, "");
-      L["GigabitEthernet0/" + me.port] = { mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n };
+      L["GigabitEthernet0/" + me.port] = { dtp: this.dtpOf(far), mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n };
       if (fd.maxMbps) L["GigabitEthernet0/" + me.port].max = Math.min(L["GigabitEthernet0/" + me.port].max, fd.maxMbps);
     }
     return L;
@@ -312,15 +314,36 @@ export class Sim {
   }
   /* bridging devices pass frames between everything joined to them */
   edges() {
-    const e = [];
-    for (const c of this.net.cables) {
-      if (c.kind === "coax" || c.kind === "console" || !this.cableUp(c)) continue;
-      e.push([this.nodeOf(c.a.dev, c.a.port), this.nodeOf(c.b.dev, c.b.port)]);
+    const e = [], seen = new Set();
+    for (const c0 of this.net.cables) {
+      if (c0.kind === "coax" || c0.kind === "console" || !this.cableUp(c0)) continue;
+      let c = c0;
+      if (c0.kind === "cat6" && this.panelEnd(c0)) { c = this.viaPanel(c0); const k = c.via.slice().sort().join("+"); if (seen.has(k)) continue; seen.add(k); }   /* patched through a panel: one link, end to end */
+      this.linkEdges(c, e);
     }
     const m = this.d.mesh;
     if (m && this.meshLink().ok && this.meshLink().kind === "wifi") e.push(["mesh", "router:lan"]);   /* a wired link is a cable: it's in the edges already */
     for (const id in this.d) { const l = this.wifiLink(id); if (l && l.connected) e.push([id, l.ap.node]); }
     return e;
+  }
+  /* a VLAN's own node inside a managed switch: VLAN 1 is the switch itself, as it always was */
+  vnode(dev, v) { return v === 1 ? dev : dev + ":v" + v; }
+  /* the frames one link carries, VLAN by VLAN: untagged at each end (an access port's VLAN, a trunk's native VLAN,
+     everything a computer or a router sends), and tagged where both ends carry the same VLAN. A trunk's native VLAN
+     meeting an access port, or two different native VLANs, join two VLANs into one, as on the real thing */
+  linkEdges(c, e) {
+    const side = function (end, far) {
+      const x = this.d[end.dev];
+      if (x && x.kind === "mswitch") {
+        const fx = this.d[far.dev], fp = fx && fx.kind === "mswitch" ? fx.sw.ports[swPort(far.port)] : null, cr = carries(x.sw, swPort(end.port), fp ? { mode: fp.mode, nonegotiate: fp.nonegotiate } : null), t = {};
+        cr.tagged.forEach(function (v) { t[v] = this.vnode(end.dev, v); }, this);
+        return { u: cr.untagged != null ? this.vnode(end.dev, cr.untagged) : null, t: t };
+      }
+      return { u: this.nodeOf(end.dev, end.port), t: {} };
+    }.bind(this);
+    const a = side(c.a, c.b), b = side(c.b, c.a);
+    if (a.u && b.u) e.push([a.u, b.u]);
+    for (const v in a.t) if (b.t[v]) e.push([a.t[v], b.t[v]]);
   }
   domain(node) {
     const e = this.edges(), seen = new Set([node]), q = [node];
@@ -328,7 +351,7 @@ export class Sim {
     return seen;
   }
   /* the node a device's network interface sits on */
-  homeNode(id) { return this.nodeOf(id, "LAN"); }
+  homeNode(id) { const x = this.d[id]; if (x && x.kind === "mswitch") { const a = this.addr(id); return this.vnode(id, a && a.vlan ? a.vlan : 1); } return this.nodeOf(id, "LAN"); }   /* a managed switch: the VLAN its management address is on */
   hasLink(id) {
     const x = this.d[id]; if (!x || !this.on(id)) return false;
     const f = x.ifaces && x.ifaces[0]; if (!f) return false;
@@ -343,7 +366,11 @@ export class Sim {
     const x = this.d[id];
     if (id === "router") return this.on("router") ? { ip: x.lan.ip, mask: x.lan.mask, gw: null, dns: [], kind: "static" } : null;
     if (x.kind === "rogue") return this.on(id) ? { ip: x.lan.ip, mask: x.lan.mask, gw: null, dns: [], kind: "static" } : null;
-    if (x.kind === "mswitch") { const v = x.sw.vlan1; return this.on(id) && v.ip && !v.shutdown ? { ip: v.ip, mask: v.mask, gw: x.sw.gateway || null, dns: [], kind: "static" } : null; }   /* its own address, on VLAN 1 */
+    if (x.kind === "mswitch") {   /* its own address: VLAN 1's as it always was, or its interface on another VLAN (the one its default gateway is on, if there's a choice) */
+      if (!this.on(id)) return null; const A = this.mgmtAddrs(id); if (!A.length) return null;
+      const g = x.sw.gateway, pick = A.find(function (o) { return g && sameSubnet(o.ip, g, o.mask); }) || A[0];
+      return { ip: pick.ip, mask: pick.mask, gw: g || null, dns: [], kind: "static", vlan: pick.vlan };
+    }
     if (!x.ifaces || !this.hasLink(id)) return null;
     const f = x.ifaces[0];
     let a = null;
@@ -353,13 +380,19 @@ export class Sim {
     if (a && f.cfg.dnsMode === "static" && f.cfg.mode !== "static") a.dns = (f.cfg.dns || []).filter(Boolean);
     return a;
   }
+  /* a managed switch's own addresses, worked out from its cables as they are now without storing anything (a check must
+     never change the network). Only an interface on a VLAN other than 1 needs its links: it's up only while a port carries it */
+  mgmtAddrs(id) {
+    const sw = this.d[id].sw, more = Object.keys(sw.svis || {}).some(function (v) { return sw.svis[v].ip; });
+    return ownAddrs(more ? Object.assign({}, sw, { links: this.switchLinks(id) }) : sw);
+  }
   /* every device in a broadcast domain that answers ARP for an address */
   owners(ip, dom) {
     const out = [];
     for (const id in this.d) {
       const x = this.d[id];
       if (x.kind === "router" || x.kind === "rogue") { if ((dom.has(id + ":lan") && this.on(id) && x.lan.ip === ip) || (id === "router" && this.guestOn() && dom.has("router:guest") && x.guest.lan.ip === ip)) out.push(id); continue; }
-      if (x.kind === "mswitch") { if (dom.has(id)) { const a = this.addr(id); if (a && a.ip === ip) out.push(id); } continue; }
+      if (x.kind === "mswitch") { if (this.on(id)) { if (this.mgmtAddrs(id).some(function (o) { return o.ip === ip && dom.has(this.vnode(id, o.vlan)); }, this)) out.push(id); } continue; }
       if (!x.ifaces) continue;
       if (!dom.has(id)) continue;
       const a = this.addr(id); if (a && a.ip === ip) out.push(id);

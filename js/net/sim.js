@@ -248,7 +248,7 @@ export class Sim {
   /* ------------------------------------------------------------ Wi-Fi */
   aps() {
     const out = [], r = this.d.router;
-    if (this.on("router")) {
+    if (r && this.on("router") && !r.wifi.off) {   /* off: a router whose Wi-Fi has been turned off (the small business's provider's router) */
       out.push({ id: "router", node: "router:lan", room: this.net.rooms.router, band: 24, ch: this.ch24(), ssid: r.wifi.ssid, mac: r.mac, sec: r.wifi.sec });
       out.push({ id: "router", node: "router:lan", room: this.net.rooms.router, band: 5, ch: r.wifi.ch5, ssid: r.wifi.ssid, mac: bump(r.mac), sec: r.wifi.sec });
       if (this.guestOn()) {   /* the guest network: its own name and password on the same radios, its own subnet behind them */

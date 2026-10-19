@@ -33,7 +33,7 @@ export function renderWindow(host, ctx) {
 export function focusCmd(id, win) { const t = terms[win ? id + "/win" : id]; if (t) t.input.focus({ preventScroll: true }); }
 
 /* your laptop's serial terminal: what a terminal program shows when it opens the USB serial adapter's port */
-const SERIAL_INTRO = "Serial terminal · COM3 (the USB serial adapter) · 9600 baud, 8 data bits, no parity, 1 stop bit, no flow control.\nWhat the switch on the other end of the console cable sends shows here. Press Enter to wake its console.\n\n";
+const SERIAL_INTRO = "Serial terminal · COM3 (the USB serial adapter) · 9600 baud, 8 data bits, no parity, 1 stop bit, no flow control.\nWhat the switch or router on the other end of the console cable sends shows here. Press Enter to wake its console.\n\n";
 function cmdPane(id, ctx, win) {
   const key = win ? id + "/win" : id, W = win ? { win: true } : {};
   let t = terms[key];

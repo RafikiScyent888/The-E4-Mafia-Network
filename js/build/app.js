@@ -5,6 +5,7 @@
    change goes through the build engine, so a job replays exactly. */
 import { JOBS, JOBS_COMING, NAME, IN } from "./jobs.js";
 import { OFFICE_JOBS } from "./office.js";
+import { BUSINESS_JOBS } from "./business.js";
 import * as B from "./engine.js";
 import { HELP } from "../net/cmd.js";
 import { portsOf, portName, FIXED_ROOM, runLength, COPPER_MAX } from "../net/sim.js";
@@ -19,16 +20,18 @@ import { ipamSheet as sheetForm } from "../desk/ipamui.js";
 import { cableMap } from "../desk/cablemapui.js";
 
 const KEY = "e4-build-v1";
-const ALL = JOBS.concat(OFFICE_JOBS);   /* every level's work orders */
+const ALL = JOBS.concat(OFFICE_JOBS, BUSINESS_JOBS);   /* every level's work orders */
 const DEFS = {}; ALL.forEach(function (d) { DEFS[d.id] = d; });
-const ORDER = ["modem", "router", "switch", "pp", "msw", "bsw", "pc", "hire", "printer", "mpc", "ojack", "mjack", "tv", "injector", "injector2", "camera", "mesh", "phone", "laptop", "guest", "tech"];
+const ORDER = ["modem", "router", "rtr", "switch", "pp", "msw", "bsw", "pc", "mgr", "bpc", "hire", "printer", "mpc", "ojack", "mjack", "tv", "injector", "injector2", "camera", "mesh", "phone", "laptop", "guest", "tech"];
 const ROOM_ORDER = ["living", "office", "kitchen", "garage", "upstairs", "landing", "porch"];
-/* the site's own rooms, names and fixed places: a house, or the small office */
+/* the site's own rooms, names and fixed places: a house, the small office or the small business */
 const roomsOf = function (sim) { return sim.net.roomNames ? Object.keys(sim.net.roomNames) : ROOM_ORDER; };
 const roomName = function (sim, r) { return (sim.net.roomNames || ROOMS)[r]; };
 const fixedOf = function (sim) { return sim.net.fixed || FIXED_ROOM; };
+/* "the network closet", "the waiting room": a room mid-sentence. The business's rooms are its own (a clinic's reception, a café's kitchen) */
+const inRoom = function (sim, r) { return sim.net.site === "business" ? "the " + String(sim.net.roomNames[r]).replace(/^[A-Z](?=[a-z])/, function (m) { return m.toLowerCase(); }) : IN[r]; };
 /* "the router", "the managed switch", "your laptop": a device's name mid-sentence */
-const theName = function (sim, id) { if (id === "tech") return "your laptop"; return "the " + (sim.net.site === "office" ? sim.d[id].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }) : NAME[id]); };
+const theName = function (sim, id) { if (id === "tech") return "your laptop"; return "the " + (sim.net.site ? sim.d[id].label.replace(/^[A-Z](?=[a-z])/, function (m) { return m.toLowerCase(); }) : NAME[id]); };
 const $ = function (id) { return document.getElementById(id); };
 const cap = function (s) { return s[0].toUpperCase() + s.slice(1); };
 const S = load();
@@ -126,7 +129,7 @@ function renderBuild() {
   /* place or move */
   const movable = devices(sim).filter(function (id) { return !fixedOf(sim)[sim.d[id].kind] || sim.d[id].boxed; });   /* a device with a fixed place can still come out of its box (onto its mount); once there it stays */
   const dsel = el("select", { id: "bmDev", name: "dev" }), rsel = el("select", { id: "bmRoom", name: "room" });
-  movable.forEach(function (id) { dsel.appendChild(el("option", { value: id }, sim.d[id].label + (sim.d[id].boxed ? " (in its box)" : " (in " + IN[sim.net.rooms[id]] + ")"))); });
+  movable.forEach(function (id) { dsel.appendChild(el("option", { value: id }, sim.d[id].label + (sim.d[id].boxed ? " (in its box)" : " (in " + inRoom(sim, sim.net.rooms[id]) + ")"))); });
   if (boxed.length) dsel.value = boxed.filter(function (id) { return movable.indexOf(id) >= 0; })[0] || dsel.value;
   roomsOf(sim).forEach(function (r) { rsel.appendChild(el("option", { value: r }, roomName(sim, r))); });
   const pmsg = el("p", { class: "msg", role: "status", id: "bmPmsg" });
@@ -136,7 +139,7 @@ function renderBuild() {
   pf.addEventListener("submit", function (e) {
     e.preventDefault();
     const id = dsel.value, room = rsel.value, was = sim.d[id].boxed, r = ctx.act({ t: "place", dev: id, room: room });
-    ctx.said = r.result.ok ? { k: "p", ok: true, text: (was ? "Unboxed " + theName(sim, id) + " and set it up in " : "Moved " + theName(sim, id) + " to ") + IN[room] + "." } : { k: "p", ok: false, text: "Not placed: " + r.result.errs.join(". ") + "." };
+    ctx.said = r.result.ok ? { k: "p", ok: true, text: (was ? "Unboxed " + theName(sim, id) + " and set it up in " : "Moved " + theName(sim, id) + " to ") + inRoom(sim, room) + "." } : { k: "p", ok: false, text: "Not placed: " + r.result.errs.join(". ") + "." };
     renderBuild(); renderWin(); const f = $("bmPlace"); if (f) f.focus();
   });
   host.appendChild(pf);
@@ -158,7 +161,7 @@ function renderBuild() {
     const a0 = free("router") && shown(sim, "router") ? "router" : can.filter(free)[0] || can[0], b0 = can.filter(function (x) { return x !== a0 && free(x); })[0] || can.filter(function (x) { return x !== a0; })[0];
     const A = mk("A", a0), Bq = mk("B", b0);
     const lenp = el("p", { class: "note", id: "bmLen", "aria-live": "polite" });
-    len = function () { const a = sim.net.rooms[A.ds.value], b = sim.net.rooms[Bq.ds.value], m = runLength(a, b, sim.net); lenp.textContent = "This run: " + m + " m" + (a === b ? ", inside " + IN[a] : ", " + IN[a] + " to " + IN[b]) + (m > COPPER_MAX ? ": longer than copper Ethernet can carry." : "."); };
+    len = function () { const a = sim.net.rooms[A.ds.value], b = sim.net.rooms[Bq.ds.value], m = runLength(a, b, sim.net); lenp.textContent = "This run: " + m + " m" + (a === b ? ", inside " + inRoom(sim, a) : ", " + inRoom(sim, a) + " to " + inRoom(sim, b)) + (m > COPPER_MAX ? ": longer than copper Ethernet can carry." : "."); };
     len();
     const lmsg = el("p", { class: "msg", role: "status", id: "bmLmsg" });
     const lf = el("form", { class: "devform bmf", novalidate: true }, el("fieldset", null, el("legend", null, "Lay a cable"),
@@ -201,7 +204,7 @@ function mapForm(host, J, sim) {
 }
 function describe(a) {
   const sim = ctx.T.sim;
-  if (a.t === "place") return "placing " + theName(sim, a.dev) + " in " + IN[a.room];
+  if (a.t === "place") return "placing " + theName(sim, a.dev) + " in " + inRoom(sim, a.room);
   if (a.t === "lay") return "the cable from " + endLabel(sim, a.a) + " to " + endLabel(sim, a.b);
   if (a.t === "pull") return "pulling a cable";
   if (a.t === "router") return "a change on the router's " + (a.page === "admin" ? "Status" : a.page === "wifi" ? "Wi-Fi" : "settings") + " page";
@@ -229,7 +232,7 @@ function renderRuns() {
   sim.net.cables.forEach(function (c) {
     const up = sim.cableUp(c), sp = sim.speed(c);
     const link = c.kind === "coax" ? (up ? "Link: signal locked" : "No signal") : c.kind === "console" ? (up ? "Console: connected" : "Console: no connection") : up ? "Link, " + (sp === 1000 ? "1 Gb/s" : sp + " Mb/s") : "No link";
-    const len = c.kind === "coax" ? "2 m" : c.length + " m" + (sim.net.rooms[c.a.dev] !== sim.net.rooms[c.b.dev] ? ", " + IN[sim.net.rooms[c.a.dev]] + " to " + IN[sim.net.rooms[c.b.dev]] : "");
+    const len = c.kind === "coax" ? "2 m" : c.length + " m" + (sim.net.rooms[c.a.dev] !== sim.net.rooms[c.b.dev] ? ", " + inRoom(sim, sim.net.rooms[c.a.dev]) + " to " + inRoom(sim, sim.net.rooms[c.b.dev]) : "");
     tb.appendChild(el("tr", { class: up ? "" : "down" }, el("td", { "data-label": "From" }, endLabel(sim, c.a)), el("td", { "data-label": "To" }, endLabel(sim, c.b)), el("td", { "data-label": "Length" }, len),
       el("td", { class: up ? "ok-t" : "bad-t", "data-label": "Link" }, (up ? "✓ " : "✕ ") + link),
       el("td", { class: "pullc" }, c.kind === "coax" ? el("span", { class: "note" }, "The provider's") : el("button", { type: "button", class: "btn ghost small", "aria-label": "Pull the cable from " + endLabel(sim, c.a) + " to " + endLabel(sim, c.b), onclick: function () { ctx.act({ t: "pull", cable: c.id }); ctx.said = { k: "u", ok: true, text: "Pulled the cable from " + endLabel(sim, c.a) + " to " + endLabel(sim, c.b) + "." }; renderBuild(); renderWin(); } }, "Pull"))));

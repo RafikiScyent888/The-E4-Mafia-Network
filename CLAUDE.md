@@ -1756,6 +1756,62 @@ piece node-tested (`tests/business-cli.test.js`, `tests/business-sim.test.js`;
     inside and outside swapped). Built stage by stage, each stage live once
     verified.
 
+### Level 3, stage 1: the business and SB-J1, SB-J2 (19 October 2026)
+
+- **The business** (`js/net/business.js`, `makeBusiness(seed)`): one of the six,
+  as the technician finds it. The provider's router runs one flat network (its
+  Wi-Fi off: `wifi.off`, so `aps()` skips it); the closet switch is set up as the
+  small office's was (name, secret, console, a user for SSH, VLAN 1's address,
+  port descriptions, unused ports shut, saved); the BR-4200 is in its box. Staff
+  PCs on switch ports 1, 2 and 4 (the counter's PC, the manager's PC, the back's
+  PC), the printer on 3 at `.20`. Its rooms are the business's own (a clinic's
+  reception and treatment rooms, a café's kitchen): `roomNames`, drawn from
+  `BUSINESS_ROOM_BOX`, positions in `BUSINESS_LAYOUT`.
+- **SB-J1** (`js/build/business.js`): rack and console, the name and passwords,
+  the provider's side (DHCP from the provider), the inside port as the gateway
+  every device already uses, NAT with PAT, the router's DHCP pool keeping the
+  gear's addresses back, every PC online again (a PC that hasn't renewed still
+  asks the old router for names: its own cause), saved. **SB-J2**: the staff
+  VLAN on the switch, the trunk to the router (a router never negotiates DTP, so
+  a port left dynamic stays access: its own cause), the subinterface (any number
+  on the inside port that tags the staff VLAN counts; the records' number is a
+  convention), its pool, the PCs moved and renewed, printing across the router,
+  both devices saved. The provider's router is collected between the two.
+- **The page**: `draw.js` has a `SITES` table (the office and the business: layout,
+  room boxes, rooms, names, fixed runs, names on the plan); the business router has
+  its own icon (`brouter`); `build/app.js` says rooms by the business's names
+  (`inRoom`). The router has a **Lights** tab (PWR, SYS, ACT, ALM, a row per
+  cabled port) and a **Physical** tab: `businessRouter` drawn from the simulation
+  (plugs where the cables are, each copper port's link light, the status lights,
+  the SFP slots' LNK/ACT, the console cable), with a **Ports close-up** view (from
+  the whole front a port's light is three pixels across).
+- **Fixed on the way, Level 2 too:** every PC's Network settings tab (the manager's
+  PC's and the new hire's were blank: only the front desk PC's was ever filled in);
+  a Printers tab only on a PC with a printer set up; a console cable can't join two
+  CONSOLE ports (the switch's and the router's both counted as console ends); the
+  console wording names the router where it's the router; a switch's two-digit
+  ports read "(port 24)" in cable names; names lower-cased mid-sentence with
+  `/^[A-Z](?=[a-z])/`, so "Manager's office" reads "the manager's office".
+- **Level 3 opens** when the small office is finished: `planned: 25`, `coming`
+  says more work orders and its tickets are on the way.
+- **Checks:** `tests/business-jobs.test.js` (150 businesses: the work still to do
+  for the real reason, the solution passing, the tempting wrong ways failing their
+  line for their cause, other right ways passing, replay and undo, Mason's ladder,
+  no help naming a name, password, VLAN or address, random work never breaking the
+  checker); `ONLY=business node tools/drive.mjs` (the lock; SB-J1 and SB-J2 on
+  three businesses each, every step through the page's own forms, buttons and
+  terminals; the router's prompt, its Lights tab, NAT's translations, the trunk,
+  both drawings measured); `ONLY=business node tools/models.mjs` (the router's
+  lights sampled from the rendered pixels, its plugs); the AAA states named
+  "business:". The drive's drawing check now measures the diagram's device names
+  and addresses too (it found the manager's PC's name and the printer's address
+  off the diagram, and "Business router" on "Manager's PC"). Plants: a cause
+  dropped, the native VLAN read as not allowed, an address in a hint, a stale
+  lease never named, a single-cause line, a solution missing a renew; on the page,
+  the router's Lights empty, the home router's icon, the colliding layout, a
+  house's rooms offered, the provider's router never collected; in 3D, every port
+  lit, the power light dark, no plugs drawn. Each failed as it should.
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

@@ -30,7 +30,7 @@ const between = function (sim, a, b) {
   return null;
 };
 const consoleOn = function (sim, id) { return sim.cablesOf(id).find(function (c) { return c.kind === "console"; }) || null; };
-const name = function (sim, id) { return sim.d[id].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }); };
+const name = function (sim, id) { return sim.d[id].label.replace(/^[A-Z](?=[a-z])/, function (m) { return m.toLowerCase(); }); };   /* "the manager's PC", "the till PC" */
 
 /* ---------------------------------------------------------------- the lines the jobs share */
 const boxCause = function (sim) { return C("box", sim.d.rtr.boxed, "The new router is still in its box", "The router is out of its box, in the rack.", "The business router is still in its box."); };

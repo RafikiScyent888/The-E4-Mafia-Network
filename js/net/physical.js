@@ -9,7 +9,7 @@ import { prompt } from "./cmd.js";
 import { POE, SFP_MODULES } from "./sim.js";
 
 /* the model each device is drawn with (the old router in HOME-10 is a home router too) */
-export const MODEL_OF = { modem: "modem", router: "router", rogue: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", injector: "injector", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc" };   /* the office's meeting room (SO-04): an old 5-port switch in the same housing, and a desktop */
+export const MODEL_OF = { modem: "modem", router: "router", rogue: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", injector: "injector", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc", bpc: "pc" };   /* the office's meeting room (SO-04): an old 5-port switch in the same housing, and a desktop */
 
 /* each model's network ports: the name printed on the model, and the sim's port at that device */
 const PORTS = {
@@ -19,6 +19,8 @@ const PORTS = {
   pc: [["LAN", "NIC"]], printer: [["NETWORK", "NET"]], camera: [["PoE", "LAN"]], tv: [["LAN", "LAN"]],
   laptop: [["ETHERNET", "ETH"]], techlaptop: [["ETHERNET", "ETH"], ["USB-C", "USB-C"]], mesh: [["WAN", "WAN"], ["LAN", "LAN"]], injector: [["DATA IN", "DATA IN"], ["DATA + POWER OUT", "PoE OUT"]],
   switch8: [1, 2, 3, 4, 5, 6, 7, 8].map(function (n) { return [String(n), String(n)]; }),
+  /* the business router (BR-4200): copper GE 0/0 to 0/7, the SFP slots GE 0/8 and 0/9, CON */
+  brouter: Array.from({ length: 10 }, function (_, i) { return ["Gi0/" + i, "Gi0/" + i]; }).concat([["CONSOLE", "CONSOLE"]]),
   /* the managed switch: its 24 ports by the numbers printed over and under them, and CONSOLE */
   msw: Array.from({ length: 24 }, function (_, i) { return [String(i + 1), String(i + 1)]; }).concat([["CONSOLE", "CONSOLE"], ["SFP1", "SFP1"], ["SFP2", "SFP2"], ["SFP3", "SFP3"], ["SFP4", "SFP4"]]),
   /* build mode's PoE+ injector, as photographed: two pairs, "DATA IN" over each input and the pair's number under it */
@@ -30,11 +32,11 @@ const PORTS = {
 /* what the installer wrote on the panel's tabs, from his map */
 const TAB = { front: "FRONT", open: "OPEN", manager: "MGR", meeting: "MEET" };
 const INJ = { injector: true, injectorDual: true };
-const SAY_PORT = { switch: function (p) { return "Port " + p; }, switch8: function (p) { return "Port " + p; }, msw: function (p) { return /^\d+$/.test(p) ? "Port " + p : p; }, rack: function (p) { return "Patch panel port " + p.slice(1); } };
+const SAY_PORT = { brouter: function (p) { return p === "CONSOLE" ? "CON (console)" : "Port GE " + p.slice(2) + (+p.slice(4) >= 8 ? " (SFP slot)" : "") + ", " + p; }, switch: function (p) { return "Port " + p; }, switch8: function (p) { return "Port " + p; }, msw: function (p) { return /^\d+$/.test(p) ? "Port " + p : p; }, rack: function (p) { return "Patch panel port " + p.slice(1); } };
 
 export function physicalState(sim, id) {
   const x = sim.d[id]; if (!x) return null;
-  const model = x.kind === "patchpanel" ? "rack" : x.kind === "jack" ? "wallplate" : x.kind === "injector" ? (x.dual ? "injectorDual" : "injector") : x.kind === "mswitch" ? "msw" : x.kind === "techlaptop" ? "techlaptop" : x.kind === "switch" && x.ports === 8 ? "switch8" : MODEL_OF[id]; if (!model) return null;   /* build mode's PoE+ injector is the dual-port one; the office has the managed switch and an old 8-port */
+  const model = x.kind === "patchpanel" ? "rack" : x.kind === "jack" ? "wallplate" : x.kind === "injector" ? (x.dual ? "injectorDual" : "injector") : x.kind === "mswitch" ? "msw" : x.kind === "brouter" ? "brouter" : x.kind === "techlaptop" ? "techlaptop" : x.kind === "switch" && x.ports === 8 ? "switch8" : MODEL_OF[id]; if (!model) return null;   /* build mode's PoE+ injector is the dual-port one; the office has the managed switch and an old 8-port */
   const ports = [], leds = [], says = [], opts = {};
   /* the device an injector output powers right now (its PoE light lit), or null */
   const feeds = function (port) { const c = sim.cableAt(id, port); if (!c) return null; const o = c.a.dev === id ? c.b.dev : c.a.dev; return sim.d[o] && sim.d[o].poe && sim.on(o) && sim.poeSource(o) === x ? o : null; };
@@ -80,6 +82,15 @@ export function physicalState(sim, id) {
     opts.sfpBare = [0, 1, 2, 3].map(function (k) { return !!slot(k) && !corded(k); });
     opts.sfpBail = [0, 1, 2, 3].map(function (k) { const m = slot(k); return m ? (m.bail === "blue" ? 0x2f6fd0 : 0x1d1e21) : null; });
     opts.sfpText = [0, 1, 2, 3].map(function (k) { const c = sim.cableAt(id, "SFP" + (k + 1)); return c && c.jacket ? c.jacket + "  ·  LC-LC DUPLEX" : null; });
+  } else if (model === "brouter") {
+    /* the business router: its status lights, each copper port's plug and lights, the SFP slots' modules and their LNK/ACT lights, the console cable */
+    const act = on && ports.some(function (p) { return p.link; });
+    L("PWR", "PWR", on ? "on" : "off"); L("SYS", "SYS", on ? "on" : "off"); L("ACT", "ACT", act ? "on" : "off"); L("ALM", "ALM", "off", "amber"); L("PSU", "Power supply", on ? "on" : "off"); L("FAN", "Fan", on ? "on" : "off");
+    [8, 9].forEach(function (n) { const p = ports[n]; L("GE 0/" + n + " LNK", "GE 0/" + n + " LNK", p.link ? "on" : "off"); L("GE 0/" + n + " ACT", "GE 0/" + n + " ACT", p.link ? "on" : "off"); });   /* the slots' lights are on the panel beside them, not on the cage */
+    opts.plugged = ports.slice(0, 8).map(function (p) { return p.plug !== "none"; }); opts.lights = ports.slice(0, 8).map(function (p) { return p.lights === "green"; });
+    opts.console = ports[10].plug !== "none";
+    const mods = x.sfp || {};
+    opts.sfp = [8, 9].map(function (n) { const c = sim.cableAt(id, "Gi0/" + n); return mods["Gi0/" + n] && c ? (c.fiber === "SMF" ? 0xf2c200 : 0xe8893a) : null; });
   } else if (model === "rack") {
     /* the patch panel's cords down to the managed switch under it, the tabs as written, the switch's port lights */
     opts.patches = []; opts.tabs = {};
@@ -135,8 +146,8 @@ export function physicalState(sim, id) {
   }
   if (model === "wallplate") { says.push("A data/voice wall plate: nothing plugged into its ETHERNET or TELEPHONE jack. Its run goes back through the wall to the closet."); return { id: id, model: model, label: x.label, ports: ports, leds: leds, opts: opts, says: says }; }
   ports.forEach(function (p) {
-    if (model === "laptop" || model === "mesh" || model === "msw" || model === "techlaptop") { if (p.plug === "none") return; }
-    if (model === "techlaptop" && p.name === "USB-C") { says.push("USB-C: the USB serial adapter is plugged in, its console cable running to the switch's CONSOLE port."); return; }
+    if (model === "laptop" || model === "mesh" || model === "msw" || model === "brouter" || model === "techlaptop") { if (p.plug === "none") return; }
+    if (model === "techlaptop" && p.name === "USB-C") { const c = sim.cableAt(id, "USB-C"), o = c && (c.a.dev === id ? c.b.dev : c.a.dev); says.push("USB-C: the USB serial adapter is plugged in, its console cable running to the " + (o ? sim.d[o].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }) : "switch") + "'s CONSOLE port."); return; }
     let s = p.label + ": ";
     if (p.coax) s += p.plug === "in" ? "the coax connector is screwed on snugly." : "the coax connector is loose, backed off its thread.";
     else if (p.dc) s += p.plug === "in" ? "plugged in." : "unplugged: its plug is out, hanging loose.";
@@ -153,6 +164,7 @@ export function physicalState(sim, id) {
   if (model === "techlaptop") { if (ports[0].plug === "none") says.push("ETHERNET: empty."); if (ports[1].plug === "none") says.push("USB-C: empty (the console cable isn't plugged in)."); says.push("On screen: " + opts.title.replace(/\s+\u00b7\s+/g, ", ") + (x.tftp.on ? ". " + opts.screen.filter(Boolean).join(". ") + "." : ".")); }
   if (model === "mesh") says.push("No network cables: it reaches the router over Wi-Fi.");
   if (model === "msw") Object.keys(x.sfp || {}).forEach(function (k) { const m = x.sfp[k] && SFP_MODULES[x.sfp[k]]; if (m) says.push(k + ": a module, its label " + m.label + ", its bail latch " + m.bail + "."); });
+  if (model === "brouter") { [8, 9].forEach(function (n) { const m = x.sfp && x.sfp["Gi0/" + n] && SFP_MODULES[x.sfp["Gi0/" + n]]; if (m) says.push("GE 0/" + n + ": a module, its label " + m.label + ", its bail latch " + m.bail + "."); }); if (!ports.some(function (p) { return p.plug !== "none"; })) says.push("Nothing plugged into it yet."); says.push("Printed on the front: BUSINESS ROUTER, MODEL: BR-4200; WAN 0/8 and WAN 0/9 over the SFP slots. Its settings are on its command line, not on lights or buttons."); }
   if (model === "msw") { if (!ports.some(function (p) { return p.plug !== "none"; })) says.push("Nothing plugged into it yet."); says.push("Printed on the front: MANAGED SWITCH 24-PORT + 4 SFP, MODEL: MSW-2800G. Its settings are on its command line, not on lights or buttons."); }
   if (x.labelText) says.push("Its label: " + x.labelText + ".");
   if (model === "printer") says.push("Control panel screen: " + opts.screen.status + ", IP address " + opts.screen.ip + ".");

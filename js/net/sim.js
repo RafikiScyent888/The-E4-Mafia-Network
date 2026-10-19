@@ -917,9 +917,11 @@ export class Sim {
     const back = [[A, a], [B, b]].find(function (e) { return e[0].kind === "patchpanel" && /R$/.test(e[1].port); });
     if (back) return { ok: false, errs: ["The back of the patch panel is punched down: a patch cord goes in its front"] };
     const ca = consoleEnd(A, a.port), cb = consoleEnd(B, b.port);
-    if (ca !== cb) return { ok: false, errs: [ca ? (A.kind === "mswitch" ? "The switch's CONSOLE port takes the console cable from your laptop, not a network cable" : "Your laptop's USB serial adapter takes the console cable: its other end goes to a switch's CONSOLE port") : (B.kind === "mswitch" ? "The switch's CONSOLE port takes the console cable from your laptop, not a network cable" : "Your laptop's USB serial adapter takes the console cable: its other end goes to a switch's CONSOLE port")] };
-    if (ca && A.kind === B.kind) return { ok: false, errs: ["A console cable joins your laptop to a switch's CONSOLE port"] };
-    if (ca && this.net.rooms[a.dev] !== this.net.rooms[b.dev]) return { ok: false, errs: ["The console cable is 1.8 m long: your laptop has to be in the same room as the switch"] };
+    const who = function (X) { return X.kind === "brouter" ? "router" : "switch"; }, far = A.kind === "techlaptop" ? B : A;
+    const conErr = function (X) { return X.kind === "techlaptop" ? "Your laptop's USB serial adapter takes the console cable: its other end goes to a switch's or router's CONSOLE port" : "The " + who(X) + "'s CONSOLE port takes the console cable from your laptop, not a network cable"; };
+    if (ca !== cb) return { ok: false, errs: [conErr(ca ? A : B)] };
+    if (ca && (A.kind === "techlaptop") === (B.kind === "techlaptop")) return { ok: false, errs: ["A console cable joins your laptop to a switch's or router's CONSOLE port"] };   /* never two CONSOLE ports to each other */
+    if (ca && this.net.rooms[a.dev] !== this.net.rooms[b.dev]) return { ok: false, errs: ["The console cable is 1.8 m long: your laptop has to be in the same room as the " + who(far)] };
     const cord = (A.kind === "patchpanel" || B.kind === "patchpanel") && this.net.rooms[a.dev] === this.net.rooms[b.dev];   /* a patch cord in the rack, panel to switch */
     const n = (this.net.extra.runs = (this.net.extra.runs || 0) + 1), len = ca ? 1.8 : cord ? 0.5 : runLength(this.net.rooms[a.dev], this.net.rooms[b.dev], this.net);
     const c = { id: (ca ? "c-console-" : "c-run-") + n, kind: ca ? "console" : "cat6", a: { dev: a.dev, port: a.port, seated: true }, b: { dev: b.dev, port: b.port, seated: true }, cond: "good", length: len };

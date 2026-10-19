@@ -5,10 +5,10 @@
 import { isIp } from "./util.js";
 import { portName as printedPort, SFP_MODULES } from "./sim.js";
 
-const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc" };   /* the office's back office (SO-04) and the manager's PC (SO-08): the same housings */
+const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc", bpc: "pc" };   /* the business's back PC (the treatment room's, the kitchen's) too; the office's back office (SO-04) and the manager's PC (SO-08): the same housings */
 
 export function tabsFor(sim, id) {
-  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" || k === "techlaptop" || k === "patchpanel" || k === "jack" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
+  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" || k === "brouter" || k === "techlaptop" || k === "patchpanel" || k === "jack" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
   const T = {
     pc: [["cmd", "Command Prompt"], ["settings", "Network settings"], ["printers", "Printers"]],
     laptop: [["cmd", "Command Prompt"], ["wifi", "Wi-Fi"]],
@@ -17,6 +17,7 @@ export function tabsFor(sim, id) {
     modem: [["lights", "Lights"], ["status", "Status page"]],
     switch: [["lights", "Lights"]],
     mswitch: [["lights", "Lights"]],
+    brouter: [["lights", "Lights"]],
     techlaptop: [["cmd", "Serial terminal"], ["wcmd", "Command Prompt"], ["tftp", "TFTP server"]],   /* its serial terminal on the console cable, Windows' own prompt, and the TFTP server (SO-J5) */
     printer: [["panel", "Control panel"]],
     camera: [["web", "Web page"]],
@@ -25,7 +26,7 @@ export function tabsFor(sim, id) {
     phone: [["wifi", "Wi-Fi"]],
     isp: [["about", "About"]]
   }[k] || [];
-  return T.concat(P).map(function (t) { return { key: t[0], title: t[1] }; });
+  return T.filter(function (t) { return t[0] !== "printers" || !!sim.d[id].printer; }).concat(P).map(function (t) { return { key: t[0], title: t[1] }; });
 }
 
 /* the portable cable tester's reading for a cable (main at one end, remote at the other) */
@@ -48,12 +49,12 @@ export function cableName(sim, c, fromDev) {
   if (sim.d[other.dev].kind === "patchpanel") return /R$/.test(other.port) ? "Cable to the wall jack (its run goes back to the patch panel in the closet)" : "Patch cord to the patch panel (port " + other.port + ")";
   if (c.kind === "coax") return "Coax cable, wall outlet to the modem's CABLE IN";
   if (c.kind === "fibre") return "Fibre patch cord, " + me.port + " to the " + lowerFirst(sim.d[other.dev].label) + " (" + other.port + ")";
-  if (c.kind === "console") return fromDev === "tech" ? "Console cable to the managed switch (CONSOLE)" : "Console cable to your laptop (its USB serial adapter)";
+  if (c.kind === "console") return fromDev === "tech" ? "Console cable to the " + lowerFirst(sim.d[other.dev].label) + " (CONSOLE)" : "Console cable to your laptop (its USB serial adapter)";
   if (fromDev === "tech") return "Patch cable from your laptop's ETHERNET to the " + sim.d[other.dev].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }) + (/^\d+$/.test(other.port) ? " (port " + other.port + ")" : other.port ? " (" + other.port + ")" : "");
   if (other.dev === "tech") return "Patch cable to your laptop (its ETHERNET port)";
   if (other.dev === "rogue") return "Patch cable to a box not on the diagram (" + other.port + ")";
   if (fromDev === "rogue") return "Patch cable to the 5-port switch (port " + other.port + ")";
-  return "Patch cable to the " + sim.d[other.dev].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }).replace(/^isp$/, "ISP") + (/^\d$/.test(other.port) ? " (port " + other.port + ")" : other.port ? " (" + (sim.d[other.dev].kind === "injector" ? printedPort(sim.d[other.dev], other.port) : other.port) + ")" : "");   /* an injector's ports by the names printed on it */
+  return "Patch cable to the " + sim.d[other.dev].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }).replace(/^isp$/, "ISP") + (/^\d+$/.test(other.port) ? " (port " + other.port + ")" : other.port ? " (" + (sim.d[other.dev].kind === "injector" ? printedPort(sim.d[other.dev], other.port) : other.port) + ")" : "");   /* an injector's ports by the names printed on it */
 }
 
 /* what you see when you look at one end of a cable */
@@ -89,7 +90,7 @@ export function page(sim, id, key) {
   if (key === "physical") {
     const cables = sim.cablesOf(id).map(function (c) {
       const end = c.a.dev === id ? "a" : "b", me = c[end], far = c[end === "a" ? "b" : "a"], pp = x.kind === "patchpanel", toPanelBack = sim.d[far.dev].kind === "patchpanel" && /R$/.test(far.port);
-      let acts = c.kind === "coax" ? ["look", "tighten"] : c.kind === "console" ? ["look", "reseat", "unplug"] : c.kind === "fibre" ? ["look", "polarity"] : ["look", "reseat", "unplug", "test", "replace"].concat(sim.net.site === "office" ? ["crossover"] : []);   /* the office's van carries crossover cables too */
+      let acts = c.kind === "coax" ? ["look", "tighten"] : c.kind === "console" ? ["look", "reseat", "unplug"] : c.kind === "fibre" ? ["look", "polarity"] : ["look", "reseat", "unplug", "test", "replace"].concat(sim.net.site ? ["crossover"] : []);   /* the van for the office and the business carries crossover cables too */
       if (pp && /R$/.test(me.port)) acts = ["look", "test"];                     /* a run punched down at the back of the panel */
       else if (pp) acts = acts.concat(["repatch"]);                               /* a patch cord in the panel's front */
       else if (x.kind === "jack") acts = ["look", "test", "tone"];
@@ -173,14 +174,28 @@ export function page(sim, id, key) {
     }
     return { kind: "lights-ports", title: "Lights", ports: rows, note: "Unmanaged: no console and no settings. Read the lights: green is 1 Gb/s, amber is 10/100 Mb/s." + (x.labelText ? " Its label: " + x.labelText + "." : ""), facts: { page: id + "-lights", ports: rows } };
   }
-  if (id === "pc" && key === "settings") {
-    const a = sim.addr("pc"), f = x.ifaces[0], c = sim.cableAt("pc", f.port), sp = sim.speed(c);
+  if (x.kind === "pc" && key === "settings") {   /* every PC's, not only the front desk's */
+    const a = sim.addr(id), f = x.ifaces[0], c = sim.cableAt(id, f.port), sp = c ? sim.speed(c) : 0;
     const rows = [["Ethernet", a ? "Connected" : "Not connected (unplugged)"], ["IP assignment", f.cfg.mode === "dhcp" ? "Automatic (DHCP)" : "Manual"], ["DNS server assignment", f.cfg.dnsMode === "static" ? "Manual" : "Automatic (DHCP)"],
       ["Link speed (Receive/Transmit)", sp ? sp + "/" + sp + " (Mbps)" : "--"], ["IPv4 address", a ? a.ip : "--"], ["IPv4 DNS servers", a && a.dns.length ? a.dns.join(", ") : "--"], ["Physical address (MAC)", f.mac.toUpperCase()]];
     rows.splice(4, 0, ["Speed & duplex", "Auto negotiation" + (x.maxMbps ? " (a 10/" + x.maxMbps + " Mbps adapter)" : "")]);
     const st = f.cfg.mode === "static", dns = st ? (f.cfg.dns || []) : [];
     return { kind: "rows", title: "Network settings", rows: rows, speedTest: true, ipForm: { mode: f.cfg.mode, ip: st ? f.cfg.ip : "", mask: st ? f.cfg.mask : "", gw: st ? f.cfg.gw || "" : "", dns1: dns[0] || "", dns2: dns[1] || "" },
-      facts: { page: "pc-settings", speed: sp, connected: !!a, mode: f.cfg.mode, ip: st ? f.cfg.ip : a && a.ip, mask: st ? f.cfg.mask : a && a.mask, gw: st ? f.cfg.gw : a && a.gw } };
+      facts: { page: id === "pc" ? "pc-settings" : id + "-settings", speed: sp, connected: !!a, mode: f.cfg.mode, ip: st ? f.cfg.ip : a && a.ip, mask: st ? f.cfg.mask : a && a.mask, gw: st ? f.cfg.gw : a && a.gw } };
+  }
+  if (x.kind === "brouter" && key === "lights") {   /* the business router: its status lights, and a light for each port with a cable (copper, then the two SFP slots) */
+    const on = sim.on(id), rows = [], con = sim.cablesOf(id).find(function (c) { return c.kind === "console"; });
+    for (let i = 0; i < 10; i++) {
+      const port = "Gi0/" + i, c = sim.cableAt(id, port); if (!c) continue;
+      const o = c.a.dev === id && c.a.port === port ? c.b : c.a, up = sim.cableUp(c);
+      rows.push({ port: "GE 0/" + i + (i >= 8 ? " (SFP)" : ""), who: "the " + lowerFirst(sim.d[o.dev].label) + (c.kind === "fibre" ? " (fibre)" : ""), state: up ? "on, green: link up" : "off", up: up, speed: up ? 1000 : 0 });
+    }
+    const act = on && rows.some(function (r) { return r.up; });
+    return { kind: "lights-ports", title: "Lights", ports: rows,
+      lights: [{ name: "PWR", state: on ? "on" : "off", text: on ? "on, green" : "off", mean: "power is on" }, { name: "SYS", state: on ? "on" : "off", text: on ? "on, green" : "off", mean: "the router has started" },
+        { name: "ACT", state: act ? "on" : "off", text: act ? "on, green" : "off", mean: "traffic on its ports" }, { name: "ALM", state: "off", text: "off", mean: "an alarm (a fan or power fault)" }],
+      note: "A router's ports come from the box shut down, and each one's settings and address are on its command line. Reach it from your laptop's serial terminal on the console cable" + (con ? " (plugged into its CON port now)" : "") + ", or over the network once it has an address. A port's light is green when it has a link: ask the router (show ip interface brief) whether the port is up and what address it has.",
+      facts: { page: id + "-lights", ports: rows } };
   }
   if (id === "pc" && key === "printers") {
     const pr = x.printer;

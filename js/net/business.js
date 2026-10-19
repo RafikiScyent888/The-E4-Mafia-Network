@@ -39,15 +39,18 @@ export const BUSINESS_RUN = { closet: { counter: 16, office: 24, guest: 14, back
 export const BUSINESS_FIXED = { modem: ["closet", "on the closet shelf, where the provider's line comes in"], router: ["closet", "on the closet shelf, beside the modem"], mswitch: ["closet", "in the closet rack"], brouter: ["closet", "in the closet rack, above the switch"] };
 /* where things sit: the logical diagram (x, y) and the floor plan (px, py) */
 export const BUSINESS_LAYOUT = {
+  /* the diagram: the provider's line across the top, the business router under it, the closet switch fanning out to the
+     floor, your laptop left of the switch so its console line to either never crosses another device. The plan: the
+     closet in two columns (the provider's gear on the left, the business's own on the right), each name clear of the next */
   isp: { x: 55, y: 80 },
-  modem: { x: 236, y: 80, px: 120, py: 120, room: "closet" },
-  router: { x: 420, y: 80, px: 120, py: 210, room: "closet", lab: "above" },
-  rtr: { x: 420, y: 200, px: 230, py: 120, room: "closet", lab: "right" },
-  msw: { x: 560, y: 300, px: 230, py: 210, room: "closet", lab: "right" },
-  tech: { x: 760, y: 430, px: 120, py: 300, room: "closet" },
-  pc: { x: 300, y: 440, px: 470, py: 140, room: "counter" },
-  mgr: { x: 740, y: 170, px: 820, py: 150, room: "office", lab: "left" },
-  printer: { x: 540, y: 450, px: 560, py: 200, room: "counter" },
+  modem: { x: 230, y: 80, px: 115, py: 105, room: "closet" },
+  router: { x: 680, y: 80, px: 115, py: 205, room: "closet", lab: "above" },
+  rtr: { x: 440, y: 180, px: 245, py: 105, room: "closet", lab: "right" },
+  msw: { x: 560, y: 300, px: 245, py: 205, room: "closet", lab: "right" },
+  tech: { x: 240, y: 290, px: 115, py: 295, room: "closet" },
+  pc: { x: 300, y: 440, px: 420, py: 130, room: "counter" },
+  mgr: { x: 735, y: 170, px: 820, py: 150, room: "office" },
+  printer: { x: 540, y: 440, px: 560, py: 140, room: "counter" },
   bpc: { x: 110, y: 440, px: 820, py: 400, room: "back" }
 };
 export const BUSINESS_ROOM_BOX = { closet: [30, 30, 300, 370], counter: [300, 30, 640, 270], office: [640, 30, 980, 270], guest: [300, 270, 660, 520], back: [660, 270, 980, 520] };

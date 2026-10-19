@@ -18,6 +18,7 @@ import * as SURF from "../../assets/models/surface.js";
 import * as GEAR from "../../assets/models/home-gear.js";
 import * as END from "../../assets/models/endpoints.js";
 import * as OFF from "../../assets/models/office-gear.js";
+import * as BIZ from "../../assets/models/business-gear.js";
 import { cableFrom } from "../../assets/models/cables.js";
 import { setLed, COL } from "../../assets/models/parts.js";
 import { stateKey } from "../net/physical.js";
@@ -34,6 +35,8 @@ const SETUP = {
     views: [["Ports close-up", { focus: "panel:Ports", view: [0.12, 0.22, 1] }]] },
   msw: { build: function (o) { return OFF.managedSwitch({ plugged: o.plugged, console: o.console, sfp: o.sfp || [null, null, null, null], sfpBail: o.sfpBail, sfpText: o.sfpText, sfpBare: o.sfpBare }); }, view: [0.42, 0.42, 1], light: [0.5, 1.3, 1.0], frame: [-250, 0, -140, 250, 50, 260],
     views: [["Front close-up", { focus: "panel:Front", view: [0.06, 0.12, 1], light: [0.3, 1.2, 1.0] }], ["Fibre slots", { view: [0.12, 0.2, 1], frame: [64, 2, 125, 148, 44, 178], light: [0.3, 1.2, 1.0] }], ["Console port", { view: [0.2, 0.2, 1], frame: [150, 0, 125, 215, 50, 175], light: [0.3, 1.2, 1.0] }], ["Rear", { view: [0.5, 0.3, -1], frame: [-40, 0, -150, 250, 50, -110], light: [0.5, 1.3, -1.0] }]] },
+  brouter: { build: function (o) { return BIZ.businessRouter({ plugged: o.plugged, lights: o.lights, console: o.console, sfp: o.sfp || [null, null], sfpLights: [false, false] }); }, view: [0.4, 0.42, 1], light: [0.5, 1.3, 1.0], frame: [-245, 0, -150, 245, 50, 300],
+    views: [["Front close-up", { focus: "panel:Front", view: [0.06, 0.12, 1], light: [0.3, 1.2, 1.0] }], ["Ports close-up", { view: [0.04, 0.1, 1], frame: [-12, 2, 150, 136, 34, 162], light: [0.3, 1.2, 1.0] }], ["Console port", { view: [0.2, 0.2, 1], frame: [-42, 0, 145, 2, 48, 190], light: [0.3, 1.2, 1.0] }], ["Fibre slots", { view: [0.12, 0.2, 1], frame: [-104, 0, 145, -38, 46, 190], light: [0.3, 1.2, 1.0] }], ["Rear", { focus: "panel:Rear", view: [0.3, 0.25, -1], light: [0.5, 1.3, -1.0] }]] },
   mesh: { build: function (o) { return GEAR.meshNode(o.weak ? "weak" : undefined); }, view: [-0.75, 0.3, -1], light: [-0.6, 1.3, -0.9], frame: [-70, 0, -110, 70, 160, 70],
     views: [["Front light", { view: [0.5, 0.25, 1], light: [0.5, 1.2, 1.0] }]] },
   pc: { build: function () { return END.desktopPC(); }, view: [0.75, 0.42, -1.15], light: [0.6, 1.3, -1.0], frame: [-115, 0, -250, 115, 270, 195],

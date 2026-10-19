@@ -418,7 +418,36 @@ CO.push(async () => {
   await led(p, "SO-J10 back office switch SFP1 (the link up)", "SFP1", "link", "green");
   await ctx.close();
 });
-const RUN = process.env.ONLY === "office" ? CO : C.concat(CO);
+/* Level 3, build mode: the business router drawn as the simulation says. SB-J1 racked with the console cable in CON: PWR and SYS
+   lit, ALM dark, its copper ports empty and dark. SB-J1 done: GE 0/0 (the modem) and GE 0/1 (the closet switch) with their plugs
+   in and their lights lit, GE 0/2 empty and dark, ACT lit, the SFP slots' LNK lights dark. ONLY=business runs just these. */
+const CB = [];
+CB.push(async () => {
+  const { p, ctx } = await office("SB-J1", 5201, 2);
+  await physical(p, "rtr", "Front close-up");
+  await led(p, "SB-J1 business router PWR", null, "PWR", "green");
+  await led(p, "SB-J1 business router SYS", null, "SYS", "green");
+  await led(p, "SB-J1 business router ALM", null, "ALM", "off");
+  await led(p, "SB-J1 business router ACT (no links yet)", null, "ACT", "off");
+  await physical(p, "rtr", "Ports close-up");   /* a port's light is a few pixels across from the whole front: read them close up */
+  for (const port of ["Gi0/0", "Gi0/1", "Gi0/2"]) { const q = await plugAt(p, port); check(!q.missing && q.plug === false, "SB-J1 business router: " + port + " is empty before the swap " + JSON.stringify(q)); await led(p, "SB-J1 business router " + port + " link", port, "link", "off"); }
+  const k = await plugAt(p, "CONSOLE"); check(!k.missing && k.plug && k.off < 1, "SB-J1 business router: the console cable is in CON " + JSON.stringify(k));
+  await ctx.close();
+});
+CB.push(async () => {
+  const { p, ctx } = await office("SB-J1", 5202);
+  await physical(p, "rtr", "Ports close-up");
+  for (const port of ["Gi0/0", "Gi0/1"]) { const q = await plugAt(p, port); check(!q.missing && q.plug && q.off < 1, "SB-J1 business router: a cable is in " + port + " " + JSON.stringify(q)); await led(p, "SB-J1 business router " + port + " link", port, "link", "green"); }
+  const e = await plugAt(p, "Gi0/2"); check(!e.missing && e.plug === false, "SB-J1 business router: Gi0/2 is empty " + JSON.stringify(e));
+  await led(p, "SB-J1 business router Gi0/2 link", "Gi0/2", "link", "off");
+  await physical(p, "rtr", "Front close-up");
+  await led(p, "SB-J1 business router ACT", null, "ACT", "green");
+  await led(p, "SB-J1 business router GE 0/8 LNK (no module)", null, "GE 0/8 LNK", "off");
+  const f = await plugAt(p, "Gi0/8"); check(!f.missing && f.plug === false, "SB-J1 business router: the SFP slot GE 0/8 is empty " + JSON.stringify(f));
+  check(/BUSINESS ROUTER, MODEL: BR-4200/.test(await p.$eval(".m3d-says", (x) => x.textContent)), "SB-J1 business router: the words give what's printed on its front");
+  await ctx.close();
+});
+const RUN = process.env.ONLY === "office" ? CO : process.env.ONLY === "business" ? CB : C.concat(CO, CB);
 for (const c of RUN) { try { await c(); } catch (e) { bad.push("crashed: " + e.message.split("\n")[0]); } }
 
 /* without WebGL: the still and the words, no errors */

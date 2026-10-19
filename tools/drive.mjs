@@ -48,11 +48,17 @@ const labelsClear = (p, which) => p.evaluate((which) => {
   const svg = document.getElementById(which), S = svg.getBoundingClientRect(), box = (el) => el.getBoundingClientRect();
   const ov = (a, b) => a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5;
   const pl = [...svg.querySelectorAll(which === "net" ? "text.pl" : "text.ns, text.rl")], others = [...svg.querySelectorAll(which === "net" ? "text.nl, text.ns, rect.tile" : "rect.tile")], out = [];
+  const off = (t) => { const b = box(t); if (b.left < S.left - 1 || b.right > S.right + 1 || b.top < S.top - 1 || b.bottom > S.bottom + 1) out.push('"' + t.textContent + '" off the diagram'); };
   pl.forEach((t, i) => {
-    const b = box(t); if (b.left < S.left - 1 || b.right > S.right + 1 || b.top < S.top - 1 || b.bottom > S.bottom + 1) out.push('"' + t.textContent + '" off the diagram');
+    const b = box(t); off(t);
     others.forEach((o) => { if (ov(b, box(o))) out.push('"' + t.textContent + '" on ' + (o.tagName === "rect" ? "a tile" : '"' + o.textContent + '"')); });
     pl.slice(i + 1).forEach((o) => { if (ov(b, box(o))) out.push('"' + t.textContent + '" on "' + o.textContent + '"'); });
   });
+  /* the diagram's device names and addresses too (19 October 2026): on the diagram, clear of every other device's name and tile */
+  if (which === "net") {
+    const names = [...svg.querySelectorAll("text.nl, text.ns")], tiles = [...svg.querySelectorAll("rect.tile")];
+    names.forEach((t, i) => { off(t); tiles.forEach((o) => { if (o.parentNode !== t.parentNode && ov(box(t), box(o))) out.push('"' + t.textContent + '" on a tile'); }); names.slice(i + 1).forEach((o) => { if (o.parentNode !== t.parentNode && ov(box(t), box(o))) out.push('"' + t.textContent + '" on "' + o.textContent + '"'); }); });
+  }
   return { n: pl.length, out: out };
 }, which);
 const T = (p, f) => p.evaluate(f);
@@ -1051,7 +1057,7 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
 }
 
 /* the small office complete (18 October 2026: its 10 work orders and 15 tickets all built): with every ticket solved and every work
-   order but the last done, finishing the last one finishes the level; the small business is built later, and says so */
+   order but the last done, finishing the last one finishes the level and opens the small business (19 October 2026) */
 if (!process.env.ONLY || process.env.ONLY === "office") {
   const { LEVELS } = await import("../js/desk/levels.js");
   const net = { t: {}, solved: Object.fromEntries(LEVELS[0].tickets.concat(LEVELS[1].tickets).map((id) => [id, 1])) };
@@ -1068,16 +1074,128 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
     await p.evaluate((id) => { const c = window.__e4b; c.openJob(id, true, 2026); const J = c.T; J.def.solve(J.v, J.sim).forEach((a) => c.act(a)); }, lastJob);
     await p.click("#doCheck"); await p.waitForTimeout(150);   /* the real button: it's what counts a job done */
     const box = await p.$eval("#check", (n) => n.textContent);
-    check(/Level 2 finished/.test(box) && /Small business is still being built/.test(box), tag + lastJob + "'s done box says Level 2 is finished, and the small business is still being built");
+    check(/Level 2 finished/.test(box) && /The small business is open: level 3/.test(box), tag + lastJob + "'s done box says Level 2 is finished, and the small business is open");
     check(!/on the way/.test(box), tag + "and no longer says more is on the way");
     await p.goto(base + "index.html"); await p.waitForTimeout(350);
     const L2 = await p.$eval('#left [data-level="2"]', (n) => n.textContent), L3 = await p.$eval('#left [data-level="3"]', (n) => n.textContent);
     check(/Finished: 15 of 15 tickets, 10 of 10 work orders/.test(L2), tag + "Level 2 says finished, 15 of 15 tickets and 10 of 10 work orders (" + L2 + ")");
-    check(/built later/.test(L3), tag + "Level 3 says it's built later (" + L3 + ")");
+    check(/^Level 3 · Small business0 of \d+ work orders done · more work orders and its tickets on the way$/.test(L3) && !(await p.$eval('#left [data-level="3"]', (n) => n.parentNode.classList.contains("locked"))), tag + "Level 3 is open, counts its work orders, and says more is on the way (" + L3 + ")");
     await p.click('#left [data-level="2"]'); await p.waitForTimeout(60);
     check(!/on the way|built later/i.test(await p.$eval("#queue", (n) => n.textContent)), tag + "the desk's queue for the small office says nothing more is coming");
   } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
   await ctx.close();
+}
+
+/* Level 3, the small business (19 October 2026): the lock (the small office not finished, then finished), then SB-J1 and SB-J2
+   done entirely through the page, every step as a student takes it: the Place and Lay forms, the Pull buttons in the runs table,
+   the serial terminal on the router's and the switch's console, each PC's Command Prompt. Along the way, what the page shows:
+   the router's prompt, passwords hidden, its Lights and Physical tabs, NAT's translations, the trunk, both drawings */
+if (!process.env.ONLY || process.env.ONLY === "business") {
+  const { LEVELS } = await import("../js/desk/levels.js");
+  const solvedTo = (n) => ({ t: {}, solved: Object.fromEntries(LEVELS.slice(0, n).flatMap((L) => L.tickets).map((id) => [id, 1])) });
+  const doneTo = (n) => Object.fromEntries(LEVELS.slice(0, n).flatMap((L) => L.jobs).map((id) => [id, 1]));
+  async function zpage(file, o) {
+    const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
+    await ctx.addInitScript((o) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify(o.net)); localStorage.setItem("e4-build-v1", JSON.stringify(o.build)); sessionStorage.setItem("seeded", "1"); } }, o);
+    const p = await ctx.newPage(); p.setDefaultTimeout(5000); p.on("pageerror", (e) => errs.push("business " + file + ": " + e.message));
+    await p.goto(base + file); await p.waitForTimeout(350);
+    if (plant) await p.evaluate(plant);
+    return { p, ctx };
+  }
+  const lv = (p, n) => p.$eval('#left [data-level="' + n + '"]', (b) => ({ text: b.textContent, locked: b.parentNode.classList.contains("locked"), dashed: getComputedStyle(b).borderStyle === "dashed", lock: !!b.querySelector('.lk[aria-hidden="true"]') }));
+  /* the small office not finished: Level 3 locked, three ways; finished: open, and the desk links its work orders into Build */
+  {
+    const { p, ctx } = await zpage("build.html", { net: solvedTo(1), build: { j: {}, done: doneTo(1) } }); const tag = "levels, the small office not finished: ";
+    try {
+      const L = await lv(p, 3);
+      check(L.locked && L.lock && L.dashed && /Locked: opens when Small office is finished/.test(L.text), tag + "Level 3 is locked, marked three ways");
+      await p.click('#left [data-level="3"]'); await p.waitForTimeout(60);
+      check(await p.$$eval("#queue button.locked", (l) => l.length >= 2 && l.every((b) => b.getAttribute("aria-disabled") === "true")), tag + "its work orders are listed, locked");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+    await ctx.close();
+  }
+  {
+    const { p, ctx } = await zpage("index.html", { net: solvedTo(2), build: { j: {}, done: doneTo(2) } }); const tag = "levels, the small office finished: ";
+    try {
+      check(!(await lv(p, 3)).locked, tag + "Level 3 is open on the Ticket Desk");
+      await p.click('#left [data-level="3"]'); await p.waitForTimeout(60);
+      check((await p.$$('#left a[href="build.html#job=SB-J1"]')).length === 1, tag + "the desk links the small business's work orders into Build");
+      await p.click('#left a[href="build.html#job=SB-J1"]'); await p.waitForTimeout(400);
+      check((await BJ(p, () => window.__e4b.T.def.id)) === "SB-J1" && /Level 3 · Small business/.test(await p.$eval("#labtitle", (n) => n.textContent)), tag + "the link opens SB-J1 in Build, titled Level 3 · Small business");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+    await ctx.close();
+  }
+  /* one step of a solution, the way a student takes it on the page */
+  const step = async (p, a) => {
+    if (a.t === "place") return place(p, a.dev, a.room);
+    if (a.t === "lay") return lay(p, a.a.dev, a.a.port, a.b.dev, a.b.port);
+    if (a.t === "pull") { const i = await p.evaluate((id) => window.__e4b.T.sim.net.cables.findIndex((c) => c.id === id), a.cable); check(i >= 0, "the cable to pull, " + a.cable + ", is in the runs table"); await p.click("#runs tbody tr:nth-child(" + (i + 1) + ") button"); await p.waitForTimeout(40); return; }
+    if (a.t === "cmd" && a.cli) { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== "tech") await dev(p, "tech"); if (!(await p.$('.win-tabs button[aria-selected="true"]:text-is("Serial terminal")'))) await tab(p, "Serial terminal"); return type(p, a.line); }
+    if (a.t === "cmd") { await dev(p, a.dev); await tab(p, "Command Prompt"); return type(p, a.line); }
+    throw new Error("no page step for " + JSON.stringify(a));
+  };
+  const promptNow = (p) => p.$eval(".term .prompt", (n) => n.textContent);
+  for (const job of ["SB-J1", "SB-J2"].filter((k) => !process.env.JOB || k === process.env.JOB)) for (const seed of [11, 2025, 777777]) {
+    const { p, ctx } = await zpage("build.html", { net: solvedTo(2), build: { current: job, j: { [job]: { seed } }, done: doneTo(2) } });
+    const tag = "business " + job + " " + seed + ": ";
+    try {
+      const plan = await BJ(p, () => window.__e4b.T.sim.net.plan), rooms = await BJ(p, () => window.__e4b.T.sim.net.roomNames);
+      check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed && /Level 3 · Small business/.test(await p.$eval("#labtitle", (n) => n.textContent)), tag + "opens the job on the business asked for, under Level 3");
+      check(await p.$$eval("#bmRoom option", (l) => l.map((o) => o.textContent).join("|")) === Object.values(rooms).join("|"), tag + "the Place form lists the business's own rooms (" + Object.values(rooms).join(", ") + ")");
+      const lim = await p.$eval(".limits", (n) => n.textContent);
+      check([plan.rtHost, plan.rtSecret, plan.rtConsole].concat(job === "SB-J2" ? [plan.swHost, plan.swSecret, plan.swConsole, plan.vlans.staff.name, plan.vlans.staff.gw] : [plan.lanGw]).every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the business's records the job needs");
+      await checkJob(p);
+      check((await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do");
+      const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
+      if (job === "SB-J1") {
+        check(!(await p.$('#plan [data-d="rtr"]')) && /Business router/.test(await p.$eval(".tray", (n) => n.textContent)), tag + "the business router starts in its box, off the plan");
+        await place(p, "rtr", "counter"); check(/Not placed/.test(await p.$eval("#bmPmsg", (n) => n.textContent)), tag + "the router has its place in the closet rack: anywhere else is refused");
+        await step(p, sol[0]);
+        check((await p.getAttribute('#plan [data-d="rtr"] use', "href")) === "#p-brouter" && !!(await p.$('#devtabs [data-d="rtr"]')), tag + "unboxed: on the plan with its own icon, and a device button");
+        await step(p, sol[1]);
+        check(/Console: connected/.test(await p.$eval("#runs", (n) => n.textContent)), tag + "the console cable is in the runs table, connected");
+        await step(p, sol[2]); check((await promptNow(p)) === "Router>", tag + "Enter wakes the router's console: Router>");
+        let k = 3;
+        for (; k < sol.length && sol[k].t === "cmd" && sol[k].cli; k++) await step(p, sol[k]);
+        check((await promptNow(p)) === plan.rtHost + "#", tag + "the router's command line took every line: its prompt is " + plan.rtHost + "#");
+        check(!/% Invalid|% Incomplete|% Ambiguous/.test(await term(p)), tag + "no line was refused");
+        for (; k < sol.length; k++) await step(p, sol[k]);
+        await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8");
+        check(/Reply from 8\.8\.8\.8/.test(await term(p)), tag + "the " + (await BJ(p, () => window.__e4b.T.sim.d.pc.label)) + " pings out through the new router");
+        const pcIp = await BJ(p, () => window.__e4b.T.sim.addr("pc").ip);
+        await step(p, { t: "cmd", dev: "tech", cli: true, line: "show ip nat translations" });
+        check(new RegExp(pcIp.replace(/\./g, "\\.") + ":\\d+").test(await term(p)), tag + "show ip nat translations lists the PC's address, translated");
+        await dev(p, "rtr"); await tab(p, "Lights");
+        const L = await p.$eval(".win-body", (n) => n.innerText);
+        check(/GE 0\/0[\s\S]*cable modem/.test(L) && /GE 0\/1[\s\S]*closet switch/.test(L) && /PWR\s*on/.test(L), tag + "the router's Lights tab: power on, GE 0/0 to the modem, GE 0/1 to the closet switch");
+        await p.click("#vLog"); await p.waitForTimeout(40);
+        check(new RegExp(plan.lanGw.replace(/\./g, "\\.")).test(await p.$eval('#net [data-d="rtr"]', (n) => n.textContent)), tag + "the logical diagram shows the router's inside address");
+        await p.click("#vPhy");
+      } else {
+        check(!(await p.$('#devtabs [data-d="router"]')) && !(await p.$('#plan [data-d="router"]')), tag + "the provider's router is gone: no device button, not on the plan");
+        for (const a of sol) {
+          await step(p, a);
+          if (a.t === "cmd" && a.line === plan.swConsole) check((await p.getAttribute(".term .cmdin", "type")) === "password" || /#|>$/.test(await promptNow(p)), tag + "the console password is typed hidden");
+        }
+        check(!/% Invalid|% Incomplete|% Ambiguous/.test(await term(p)), tag + "no line was refused on the router");
+        await step(p, { t: "cmd", dev: "tech", cli: true, line: "show ip interface brief" });
+        check(new RegExp(plan.lanPort.replace(/\//g, "\\/") + "\\." + plan.vlans.staff.id + "\\s+" + plan.vlans.staff.gw.replace(/\./g, "\\.")).test(await term(p)), tag + "show ip interface brief lists the staff subinterface at its gateway");
+        await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ipconfig");
+        check(new RegExp(plan.vlans.staff.net.replace(/\.0$/, "").replace(/\./g, "\\.") + "\\.").test(await term(p)), tag + "the PC has a staff address");
+        const pr = await BJ(p, () => window.__e4b.T.sim.d.printer.ifaces[0].cfg.ip);
+        await type(p, "ping " + pr); check(new RegExp("Reply from " + pr.replace(/\./g, "\\.")).test(await term(p)), tag + "the PC on the staff VLAN reaches the printer on the old network, through the router");
+      }
+      const t = await checkJob(p), n = await BJ(p, () => window.__e4b.T.def.reqs.length);
+      check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
+      await p.click("#vLog"); await p.waitForTimeout(60);
+      const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished business's logical diagram: every port name and device name on it, clear of each other and every tile" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(40);
+      const fp = await labelsClear(p, "plan"); check(fp.n > 0 && !fp.out.length, tag + "the finished business's floor plan: all " + fp.n + " names of devices and rooms on it, clear of each other and of every tile" + (fp.out.length ? " (" + fp.out.join("; ") + ")" : ""));
+      await p.reload(); await p.waitForTimeout(350);
+      check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)) && /done 1×|Done 1×/.test(await p.$eval('#queue [data-j="' + job + '"]', (n) => n.textContent)), tag + "still done after a reload, and the list counts it");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+    await ctx.close();
+  }
 }
 
 console.log(errs.length ? "PAGE ERRORS\n" + [...new Set(errs)].join("\n") : "no page errors");

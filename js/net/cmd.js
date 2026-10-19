@@ -143,7 +143,7 @@ function serial(sim, id, raw) {
   sim.cli = sim.cli || {};
   const tgt = consoleTarget(sim, id);
   let st = sim.cli[id];
-  if (!tgt) return { out: "(Nothing answers on COM3: the console cable isn't joined to a powered switch's CONSOLE port.)\n", facts: { cmd: "serial", connected: false }, serial: true };
+  if (!tgt) return { out: "(Nothing answers on COM3: the console cable isn't joined to a powered switch's or router's CONSOLE port.)\n", facts: { cmd: "serial", connected: false }, serial: true };
   sync(sim, tgt);
   if (!st || st.sw !== tgt) st = sim.cli[id] = { S: SW.session(sim.d[tgt].sw, opts(sim, tgt, "console")), sw: tgt, via: "console" };
   const r = SW.exec(st.S, raw); st.prompt = r.prompt;

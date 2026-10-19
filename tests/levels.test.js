@@ -16,12 +16,22 @@ test("a level still being built is never finished, however much of it is done: t
   assert.equal(built(L), false);
   assert.equal(finished(L, P), false, "doing everything built so far doesn't finish it");
 });
-test("the small office is complete: 10 work orders and 15 tickets, all built; doing them all finishes it, and the small business is built later", function () {
+test("the small office is complete: 10 work orders and 15 tickets, all built; doing them all finishes it", function () {
   const L = LEVELS[1];
   assert.equal(L.jobs.length, 10); assert.equal(L.tickets.length, 15); assert.equal(L.planned, undefined, "a complete level carries no planned");
   assert.equal(built(L), true);
   assert.equal(finished(L, all(1)), false, "nothing of it done yet");
   assert.equal(finished(L, all(2)), true);
-  assert.equal(LEVELS[2].later, true);
   assert.match(lockText(3, all(1)), /\(15 tickets and 10 work orders to go\)/);
+});
+
+test("the small business goes live stage by stage: open once the small office is finished, never finished before all 25 exist", function () {
+  const L = LEVELS[2];
+  assert.equal(L.later, undefined); assert.equal(L.planned, 25, "10 work orders and 15 tickets, as planned");
+  assert.deepEqual(L.jobs.slice(0, 2), ["SB-J1", "SB-J2"]);
+  assert.equal(isOpen(3, all(1)), false, "locked while the small office isn't finished");
+  assert.equal(isOpen(3, all(2)), true, "open once it is");
+  assert.equal(built(L), L.jobs.length + L.tickets.length >= 25);
+  assert.equal(finished(L, all(3)), built(L), "everything built so far done: finished only once all 25 exist");
+  assert.equal(LEVELS[3].later, true, "the campus is built later");
 });

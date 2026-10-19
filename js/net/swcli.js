@@ -646,13 +646,23 @@ function match(list, w) {
   return m.length === 1 ? { one: m[0] } : m.length ? { many: m } : { none: true };
 }
 const caret = function (prompt, raw, pos) { return " ".repeat(prompt.length + pos) + "^"; };
+/* a global command typed in a sub-mode (interface, line, VLAN...) is run as a global command, and you're back in global
+   configuration, as on the real thing: nothing runs until a line parses, so trying it there is safe */
 function run(S, raw) {
+  const r = run1(S, raw);
+  if (!r.none || /^(user|priv|config|login|gone)$/.test(S.mode)) return r;
+  const was = { mode: S.mode, ifs: S.ifs, line: S.line, vl: S.vl, pool: S.pool, acl: S.acl };
+  S.mode = "config"; S.ifs = null; S.line = null; S.vl = null; S.pool = null; S.acl = null;
+  const r2 = run1(S, raw); if (!r2.none) return r2;
+  Object.assign(S, was); return r;
+}
+function run1(S, raw) {
   const line = raw.replace(/\s+$/, ""), tokens = line.trim().split(/\s+/).filter(Boolean);
   if (!tokens.length) return { lines: [] };
   let list = treeOf(S)[S.mode], i = 0, pos = line.indexOf(tokens[0]);
   while (i < tokens.length) {
     const r = match(list, tokens[i]);
-    if (r.none) return { lines: [caret(promptOf(S), line, pos), "% Invalid input detected at '^' marker."] };
+    if (r.none) return { lines: [caret(promptOf(S), line, pos), "% Invalid input detected at '^' marker."], none: true };
     if (r.many) return { lines: ["% Ambiguous command:  \"" + line.trim() + "\""] };
     const c = r.one, h = c[2];
     if (typeof h === "function") return { lines: h(S, tokens.slice(i + 1), line) || [] };

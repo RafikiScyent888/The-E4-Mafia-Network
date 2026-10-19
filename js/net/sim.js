@@ -6,6 +6,7 @@
    (progress is saved as the list of actions). */
 import { rng, hash, ip2n, n2ip, sameSubnet, isIp, isApipa, isPublic, isPrivate, isLoopback, broadcast, network, maskBits } from "./util.js";
 import { reload as reloadSwitch, duplexEnds, carries, ownAddrs } from "./swcli.js";
+import * as RT from "./rtcli.js";
 
 /* each radio has its own hardware address: the 5 GHz one is the next number up */
 function bump(m) { const p = m.split("-"); p[5] = ((parseInt(p[5], 16) + 1) & 255).toString(16).padStart(2, "0"); return p.join("-"); }
@@ -68,6 +69,9 @@ export const FIXED_ROOM = { modem: ["living", "by the cable outlet: there's one,
 const RUN = { office: { living: 14, kitchen: 18, garage: 12, porch: 38, upstairs: 20, landing: 18 }, living: { kitchen: 10, garage: 22, porch: 20, upstairs: 15, landing: 8 }, kitchen: { garage: 16, porch: 14, upstairs: 22, landing: 14 }, garage: { porch: 30, upstairs: 28, landing: 24 }, porch: { upstairs: 32, landing: 22 }, upstairs: { landing: 6 } };
 export function runLength(a, b, net) { if (a === b) return 3; const T = (net && net.runs) || RUN; return (T[a] && T[a][b]) || (T[b] && T[b][a]) || 40; }   /* net: the office has its own rooms and runs */
 export const COPPER_MAX = 100;
+/* the business router's ports as printed on it ("Gi0/0") and as its command line names them ("GigabitEthernet0/0") */
+const RT_IF = function (port) { const m = /^Gi0\/(\d)$/.exec(port || ""); return m ? "GigabitEthernet0/" + m[1] : null; };
+const RT_PORT = function (n) { return n.split(".")[0].replace("GigabitEthernet", "Gi"); };
 
 export class Sim {
   constructor(net) {
@@ -130,6 +134,7 @@ export class Sim {
       const fx = this.d[(e === c.a ? c.b : c.a).dev], top = Math.min((fx && fx.maxMbps) || 1000, c.cond === "damaged" ? 100 : 1000);
       if (p.speed !== "auto" && +p.speed > top) return false;   /* a speed forced above what the far end (or the cable) can run: no link */
     }
+    for (const e of [c.a, c.b]) { const x = this.d[e.dev]; if (x && x.kind === "brouter") { const ph = RT_IF(e.port); if (!ph || x.sw.ifs[ph].shutdown) return false; } }   /* a router's port shut down: no link */
     if (!this.pairsMeet(c)) return false;                   /* both ends transmitting on the same pair (TX/RX transposed): no link */
     const ij = [c.a, c.b].find(function (e) { return this.d[e.dev] && this.d[e.dev].kind === "injector"; }, this);
     if (ij) {  /* an injector passes the data pairs straight through: the link is end to end */
@@ -339,6 +344,12 @@ export class Sim {
         cr.tagged.forEach(function (v) { t[v] = this.vnode(end.dev, v); }, this);
         return { u: cr.untagged != null ? this.vnode(end.dev, cr.untagged) : null, t: t };
       }
+      if (x && x.kind === "brouter") {   /* a routed port: untagged to the port itself (or its native subinterface), each subinterface's tag to that subinterface */
+        const ph = RT_IF(end.port), r = x.sw; if (!ph || !r.ifs[ph] || r.ifs[ph].shutdown) return { u: null, t: {} };
+        let u = this.rtNode(end.dev, ph); const t = {};
+        Object.keys(r.subs).forEach(function (n) { const f = r.subs[n]; if (n.split(".")[0] !== ph || !f.vlan || f.shutdown) return; if (f.native) u = this.rtNode(end.dev, n); else t[f.vlan] = this.rtNode(end.dev, n); }, this);
+        return { u: u, t: t };
+      }
       return { u: this.nodeOf(end.dev, end.port), t: {} };
     }.bind(this);
     const a = side(c.a, c.b), b = side(c.b, c.a);
@@ -392,6 +403,7 @@ export class Sim {
     for (const id in this.d) {
       const x = this.d[id];
       if (x.kind === "router" || x.kind === "rogue") { if ((dom.has(id + ":lan") && this.on(id) && x.lan.ip === ip) || (id === "router" && this.guestOn() && dom.has("router:guest") && x.guest.lan.ip === ip)) out.push(id); continue; }
+      if (x.kind === "brouter") { if (this.on(id) && this.rtIfFor(id, ip, dom)) out.push(id); continue; }
       if (x.kind === "mswitch") { if (this.on(id)) { if (this.mgmtAddrs(id).some(function (o) { return o.ip === ip && dom.has(this.vnode(id, o.vlan)); }, this)) out.push(id); } continue; }
       if (!x.ifaces) continue;
       if (!dom.has(id)) continue;
@@ -399,8 +411,8 @@ export class Sim {
     }
     return out;
   }
-  macOf(id) { const x = this.d[id]; if (x.kind === "router" || x.kind === "rogue" || x.kind === "mswitch") return x.mac; return x.ifaces[0].mac; }
-  ttlOf(id) { const k = this.d[id].kind; return k === "pc" || k === "laptop" ? 128 : k === "mswitch" ? 255 : 64; }
+  macOf(id) { const x = this.d[id]; if (x.kind === "router" || x.kind === "rogue" || x.kind === "mswitch") return x.mac; if (x.kind === "brouter") return x.sw.mac.replace(/[^0-9a-f]/gi, "").replace(/(..)(?!$)/g, "$1-"); return x.ifaces[0].mac; }
+  ttlOf(id) { const k = this.d[id].kind; return k === "pc" || k === "laptop" ? 128 : k === "mswitch" || k === "brouter" ? 255 : 64; }
 
   /* DHCP servers a client's request reaches */
   dhcpServers(id) {
@@ -410,10 +422,32 @@ export class Sim {
       if ((s.kind === "router" || s.kind === "rogue") && this.on(sid) && s.dhcp && s.dhcp.on && dom.has(sid + ":lan")) out.push(sid);
     }
     if (this.guestOn() && dom.has("router:guest")) out.push("router:guest");   /* the guest network has its own pool, on its own subnet */
+    for (const rid in this.d) {   /* the business router: each interface on this broadcast domain with a pool for its network ("rtr@GigabitEthernet0/0.10") */
+      if (this.d[rid].kind !== "brouter" || !this.on(rid)) continue;
+      const R = this.rtView(rid), live = this.rtLive(rid);
+      RT.allIfs(R).forEach(function (n) { const a = RT.addrOf(R, n, live); if (a && RT.rtStatus(R, n)[1] === "up" && dom.has(this.rtNode(rid, n)) && RT.poolFor(R, a.ip, a.mask)) out.push(rid + "@" + n); }, this);
+    }
     return out;
   }
+  /* the business router's offer from the pool for an interface's network: the client's own address back if it's still free,
+     else the lowest free one. Like the real server it checks an address isn't answering first: one in use by a device set by
+     hand (an address nobody excluded) goes on its conflict list and is skipped */
+  rtOffer(key, mac) {
+    const [rid, n] = key.split("@"), x = this.d[rid], R = x.sw, a = RT.addrOf(R, n, this.rtLive(rid)), P = RT.poolFor(R, a.ip, a.mask); if (!P) return null;
+    x.leases = x.leases || []; x.conflicts = x.conflicts || [];
+    const taken = new Set(x.leases.filter(function (l) { return l.mac !== mac; }).map(function (l) { return l.ip; })), dom = this.domain(this.rtNode(rid, n));
+    const free = RT.poolAddrs(R, P.name).filter(function (ip) { return !taken.has(ip) && ip !== a.ip; });
+    const mine = x.leases.find(function (l) { return l.mac === mac && l.pool === P.name; });
+    if (mine && free.indexOf(mine.ip) >= 0) return { ip: mine.ip, pool: P };
+    for (const ip of free) {
+      const o = this.owners(ip, dom).filter(function (d) { const k = this.d[d]; return d !== rid && !(k.ifaces && k.ifaces[0].mac === mac); }, this);
+      if (o.length) { if (!x.conflicts.some(function (c) { return c.ip === ip; })) x.conflicts.push({ ip: ip, how: "Ping" }); continue; }
+      return { ip: ip, pool: P };
+    }
+    return null;
+  }
   /* a DHCP server by its key: a router's LAN side ("router", "rogue") or the router's guest network ("router:guest") */
-  srv(key) { return key === "router:guest" ? this.d.router.guest : this.d[key]; }
+  srv(key) { if (key.indexOf("@") > 0) return this.d[key.split("@")[0]]; return key === "router:guest" ? this.d.router.guest : this.d[key]; }
   guestOn() { const r = this.d.router; return !!(r && r.guest && r.guest.on && this.on("router")); }
   inGuest(ip) { const g = this.d.router && this.d.router.guest; return !!(g && ip && sameSubnet(ip, g.lan.ip, g.lan.mask)); }
   /* the lowest free address in a server's pool (reservations kept for their owners) */
@@ -439,12 +473,16 @@ export class Sim {
     let ans = null, server = null;
     const wins = (this.net.extra && this.net.extra.rogueWins) || [];
     const order = servers.slice().sort(function (a, b) { const ra = this.srv(a).kind === "rogue", rb = this.srv(b).kind === "rogue"; return wins.indexOf(id) >= 0 ? (rb - ra) : (ra - rb); }.bind(this));   /* whoever answers first: a rogue server beats the router for the devices it is quicker to */
-    for (const sid of order) { const ip = this.offer(sid, f.mac, f.lease && f.lease.server === this.srv(sid).lan.ip ? f.lease.ip : null); if (ip) { ans = ip; server = sid; break; } }
+    for (const sid of order) {
+      if (sid.indexOf("@") > 0) { const o = this.rtOffer(sid, f.mac); if (o) { ans = o.ip; server = sid; this.rtLease(sid, x, f, o); break; } continue; }
+      const ip = this.offer(sid, f.mac, f.lease && f.lease.server === this.srv(sid).lan.ip ? f.lease.ip : null); if (ip) { ans = ip; server = sid; break; }
+    }
     if (!ans) {
       if (!f.apipa) f.apipa = "169.254." + (1 + hash(f.mac) % 254) + "." + (1 + hash(f.mac + "x") % 254);
       f.lease = null;
       return { result: servers.length ? "no-offer" : "timeout", servers: servers };
     }
+    if (server.indexOf("@") > 0) { f.apipa = null; return { result: "lease", ip: ans, server: server }; }
     const s = this.srv(server);
     s.leases = s.leases.filter(function (l) { return l.mac !== f.mac; });
     s.leases.push({ mac: f.mac, ip: ans, name: x.label, host: x.host || x.label.replace(/\s+/g, "-").toUpperCase() });
@@ -453,8 +491,16 @@ export class Sim {
     f.apipa = null;
     return { result: "lease", ip: ans, server: server };
   }
+  /* a lease from the business router: what its pool says (its mask, its default router, its DNS servers), right or wrong */
+  rtLease(key, x, f, o) {
+    const [rid, n] = key.split("@"), r = this.d[rid], a = RT.addrOf(r.sw, n, this.rtLive(rid)), P = o.pool;
+    r.leases = r.leases.filter(function (l) { return l.mac !== f.mac; });
+    r.leases.push({ mac: f.mac, ip: o.ip, pool: P.name, name: x.label, host: x.host || x.label.replace(/\s+/g, "-").toUpperCase() });
+    f.lease = { ip: o.ip, mask: P.mask, gw: P.router[0] || null, dns: P.dns.slice(), server: a.ip, obtained: this.n, hours: P.lease === "infinite" ? 0 : P.lease[0] * 24 + (P.lease[1] || 0), domain: P.domain || null };
+  }
   release(id) {
     const f = this.d[id].ifaces[0];
+    for (const rid in this.d) if (this.d[rid].kind === "brouter" && this.d[rid].leases) this.d[rid].leases = this.d[rid].leases.filter(function (l) { return l.mac !== f.mac; });
     if (f.lease) { const s = Object.values(this.d).concat(this.d.router && this.d.router.guest ? [this.d.router.guest] : []).find(function (v) { return (v.kind === "router" || v.kind === "rogue") && v.lan.ip === f.lease.server; }); if (s) s.leases = s.leases.filter(function (l) { return l.mac !== f.mac; }); }
     f.lease = null; f.apipa = null;
   }
@@ -478,7 +524,7 @@ export class Sim {
 
   /* ------------------------------------------------------------ reaching an address */
   /* the path a packet from a device takes to an address, without sending it */
-  route(id, dst) {
+  route(id, dst, proto) {
     const a = this.addr(id);
     if (!a) return { fail: "no-link" };
     if (isLoopback(dst)) return { local: true, owner: [id], hops: [] };
@@ -498,6 +544,7 @@ export class Sim {
     }
     /* through a router */
     const gwId = owners[0], g = this.d[gwId];
+    if (g.kind === "brouter") return this.routeBR(id, a, dst, gwId, dom, proto);
     if (g.kind === "router" && this.inGuest(a.ip) && this.guestOn()) {   /* from the guest network: the internet yes; the home network only if the router allows it */
       if (sameSubnet(dst, g.lan.ip, g.lan.mask) || dst === this.d.modem.mgmt) {
         if (g.guest.isolate) return { fail: "blocked", via: gwId, addr: a, hops: [g.guest.lan.ip] };
@@ -521,10 +568,10 @@ export class Sim {
   /* can this device send a reply to an address on its own LAN? */
   canReply(id, to, dom) {
     const x = this.d[id];
-    if (x.kind === "router" || x.kind === "rogue" || (!x.ifaces && x.kind !== "mswitch")) return true;
+    if (x.kind === "router" || x.kind === "rogue" || x.kind === "brouter" || (!x.ifaces && x.kind !== "mswitch")) return true;
     const b = this.addr(id); if (!b) return false;
     if (sameSubnet(b.ip, to, b.mask)) return true;
-    return !!(b.gw && sameSubnet(b.ip, b.gw, b.mask) && this.owners(b.gw, dom).some((g) => this.d[g].kind === "router" || this.d[g].kind === "rogue"));   /* the router hands it back across the LAN */
+    return !!(b.gw && sameSubnet(b.ip, b.gw, b.mask) && this.owners(b.gw, dom).some((g) => this.d[g].kind === "router" || this.d[g].kind === "rogue" || this.d[g].kind === "brouter"));   /* the router hands it back across the LAN */
   }
   /* the quality of the first hop: Wi-Fi loss and delay */
   hop(id) {
@@ -537,6 +584,82 @@ export class Sim {
     const e = c.a.dev === "msw" ? c.a : c.b; if (!/^\d+$/.test(e.port)) return false;
     const n = swPort(e.port), p = this.d.msw.sw.ports[n], lk = this.switchLinks("msw")[n];
     return !!(p && lk && duplexEnds(p, lk).mismatch);
+  }
+
+  /* ------------------------------------------------------------ the business router (BR-4200: rtcli.js) */
+  /* each of its interfaces (a port, a subinterface) is a node of its own on layer 2 */
+  rtNode(id, n) { return id + "@" + n; }
+  /* what its ports see at the far end, worked out without storing anything */
+  routerLinks(id) {
+    const L = {};
+    RT.RT_PORTS.forEach(function (n) { const c = this.cableAt(id, RT_PORT(n)); if (!c || c.kind === "console") return; const v = c.kind === "cat6" && this.panelEnd(c) ? this.viaPanel(c) : c; if (!v) return; const far = v.a.dev === id ? v.b : v.a; L[n] = { up: this.cableUp(c), far: far.dev }; }, this);
+    return L;
+  }
+  syncRouter(id) { const x = this.d[id]; if (!x || x.kind !== "brouter") return null; x.sw.links = this.routerLinks(id); x.sw.uptime = x.sw.uptimeFixed || (2 + this.n) + " minutes"; return x.sw; }
+  /* the router as it runs now, for working things out: its configuration with its links fresh (a copy: a check changes nothing) */
+  rtView(id) { return Object.assign({}, this.d[id].sw, { links: this.routerLinks(id) }); }
+  /* the provider's side: the interface cabled to the modem, the modem in sync, and its address (handed out by the provider to
+     "ip address dhcp", or set by hand: it must be the address the provider gave the business) */
+  rtWan(id, R) {
+    R = R || this.rtView(id);
+    const n = RT.RT_PORTS.find(function (k) { return R.links[k] && R.links[k].far === "modem"; }); if (!n) return null;
+    const f = R.ifs[n], up = R.links[n].up && !f.shutdown && this.modemSynced(), isp = this.net.isp;
+    return { iface: n, up: up, lease: up && f.dhcp ? { ip: isp.wanIp, mask: isp.mask || "255.255.255.0", gw: isp.gw } : null, ok: up && (f.dhcp || (f.ip === isp.wanIp && f.mask === (isp.mask || "255.255.255.0"))) };
+  }
+  /* what the router's command line asks the network: the provider's lease, its leases, its translations, its hit counts */
+  rtLive(id) {
+    const self = this, x = this.d[id];
+    return function (k, n) {
+      if (k === "wan") { const w = self.rtWan(id); return w && w.iface === n ? w.lease : null; }
+      if (k === "leases") return (x.leases || []).slice();
+      if (k === "nat") return (x.xlate || []).slice();
+      if (k === "hits") return x.hits || {};
+      if (k === "clear-nat") { x.xlate = []; return null; }
+      if (k === "clear-dhcp") { x.leases = []; return null; }
+      if (k === "clear-hits") { x.hits = {}; return null; }
+      return null;
+    };
+  }
+  /* the router's interface with this address that a device in this broadcast domain reaches (up, its address set) */
+  rtIfFor(id, ip, dom, R) {
+    R = R || this.rtView(id); const live = this.rtLive(id);
+    return RT.allIfs(R).find(function (n) { const a = RT.addrOf(R, n, live); return a && a.ip === ip && RT.rtStatus(R, n)[1] === "up" && dom.has(this.rtNode(id, n)); }, this) || null;
+  }
+  /* a packet from a device, through the router: in on the interface the device's gateway is, checked against the access list
+     in on that interface; routed by the longest match; out through the access list out on the way-out interface; NAT to the
+     provider. The reply has to come back the same way, through the same lists the other way round (access lists remember
+     nothing). acls: each list line a packet matched, for the hit counts when the traffic is really sent */
+  routeBR(id, a, dst, rid, dom, proto) {
+    const R = this.rtView(rid), live = this.rtLive(rid), P = proto || { proto: "icmp" }, acls = [];
+    const inIf = this.rtIfFor(rid, a.gw, dom, R); if (!inIf) return { fail: "gateway-unreachable", addr: a, next: a.gw };
+    const pass = function (n, dir, pk) { const f = RT.allIfs(R).indexOf(n) >= 0 ? (n.indexOf(".") > 0 ? R.subs[n] : R.ifs[n]) : null, L = f && (dir === "in" ? f.aclIn : f.aclOut); if (!L) return true; const v = RT.aclVerdict(R, L, pk); if (!v.missing) acls.push([L, v.line]); return v.permit; };
+    const req = Object.assign({}, P, { src: a.ip, dst: dst }), rep = Object.assign({}, P, { src: dst, dst: a.ip, port: P.sport, sport: P.port });
+    const gwIp = a.gw, base = { via: rid, addr: a, inIf: inIf, acls: acls };
+    if (!pass(inIf, "in", req)) return Object.assign({ fail: "blocked", hops: [gwIp], acl: { iface: inIf, dir: "in" } }, base);
+    /* to one of the router's own addresses */
+    const own = RT.allIfs(R).find(function (n) { const x = RT.addrOf(R, n, live); return x && x.ip === dst && RT.rtStatus(R, n)[1] === "up"; });
+    if (own) return pass(inIf, "out", rep) ? Object.assign({ local: true, owner: [rid], next: dst, hops: [dst], routed: own !== inIf }, base) : Object.assign({ fail: "no-reply", hops: [gwIp] }, base);
+    const rt = RT.lookup(R, dst, live);
+    if (!rt) return Object.assign({ fail: "net-unreachable", hops: [gwIp], why: "no-route" }, base);
+    const outIf = rt.iface, w = this.rtWan(rid, R);
+    if (!pass(outIf, "out", req)) return Object.assign({ fail: "blocked", hops: [gwIp], acl: { iface: outIf, dir: "out" } }, base);
+    if (w && outIf === w.iface) {   /* towards the provider */
+      if (!w.ok) return Object.assign({ fail: "net-unreachable", hops: [gwIp], why: "wan" }, base);
+      if (!isPublic(dst)) return Object.assign({ fail: "beyond", hops: [gwIp, this.net.isp.gw] }, base);
+      const fin = (inIf.indexOf(".") > 0 ? R.subs[inIf] : R.ifs[inIf]).nat, fout = R.ifs[outIf].nat;
+      const rule = R.nat.find(function (x) { return x.iface === outIf && RT.aclVerdict(R, x.list, { proto: "ip", src: a.ip, dst: dst }).permit && R.acls[x.list]; });
+      if (isPrivate(a.ip) && !(fin === "inside" && fout === "outside" && rule && rule.overload)) return Object.assign({ fail: "no-nat", hops: [gwIp, this.net.isp.gw], why: !rule ? "no rule" : fin !== "inside" ? "inside" : fout !== "outside" ? "outside" : "overload" }, base);   /* a private source the provider won't route: no reply ever comes */
+      if (!pass(outIf, "in", Object.assign({}, rep, { dst: this.net.isp.wanIp })) || !pass(inIf, "out", rep)) return Object.assign({ fail: "no-reply", hops: [gwIp, this.net.isp.gw, this.net.isp.core, dst] }, base);
+      return Object.assign({ internet: true, nat: { inside: a.ip, global: this.net.isp.wanIp }, hops: [gwIp, this.net.isp.gw, this.net.isp.core, dst] }, base);
+    }
+    /* out onto another of the business's own networks */
+    const odom = this.domain(this.rtNode(rid, outIf)), next = rt.nh || dst, owners = this.owners(next, odom).filter(function (o) { return o !== rid; });
+    if (!owners.length) return Object.assign({ fail: "no-reply", hops: [gwIp], why: "arp" }, base);   /* the router's ARP for it goes unanswered: Request timed out */
+    if (rt.nh) return Object.assign({ fail: "beyond", hops: [gwIp, rt.nh] }, base);
+    const back = owners.filter(function (o) { return this.canReply(o, a.ip, odom); }, this);
+    if (!back.length) return Object.assign({ fail: "no-reply", hops: [gwIp, dst], why: "their gateway" }, base);
+    if (!pass(outIf, "in", rep) || !pass(inIf, "out", rep)) return Object.assign({ fail: "no-reply", hops: [gwIp, dst], why: "reply blocked" }, base);
+    return Object.assign({ local: false, routed: true, owner: back, outIf: outIf, next: dst, hops: [gwIp, dst] }, base);
   }
 
   /* ------------------------------------------------------------ names */

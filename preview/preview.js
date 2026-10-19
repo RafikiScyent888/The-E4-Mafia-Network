@@ -13,6 +13,7 @@ import * as CAB from "../assets/models/cables.js";
 import * as END from "../assets/models/endpoints.js";
 import * as TOOL from "../assets/models/tools.js";
 import * as OFF from "../assets/models/office-gear.js";
+import * as BIZ from "../assets/models/business-gear.js";
 
 /* how a cable lies on the bench behind its plug: [x, y, dz] back from the jacket's end, dropping to the bench */
 const RUN_L = [[0, -0.6, 8], [0, -2.0, 18], [-3, -2.55, 34], [-14, -2.55, 62], [-36, -2.55, 100], [-64, -2.55, 140]];
@@ -111,6 +112,21 @@ const MODELS = [
   { id: "console", view: [0.1, 0.62, 1], light: [0.4, 1.3, 0.9], frame: [-220, 0, -100, 480, 120, 470], group: "Small office (level 2)", name: "Console cable and serial adapters", build: function () { return OFF.consoleKit(); },
     photo: "From your photo of the console cable (11 October 2026).",
     shows: ["The grey console cable: its RJ45 in the switch's CONSOLE port, the cord coiled on the bench", "Its DB-9 (female: the computer end) joined to the USB serial adapter's DB-9 (male), metal hoods with knurled thumbscrews", "The adapter's grey cord to its USB-C plug in the laptop", "A USB-A serial adapter lying in front, for a computer without USB-C", "The photo's captions are left off the parts; a console runs at 9600 baud by default (the caption's 115200 is not the default)", "The switch's brand mark in the photo is left off"] },
+  { id: "br", view: [0.42, 0.28, 1], light: [0.5, 1.3, 1.0], frame: [-250, 0, -160, 250, 50, 300], group: "Small business (level 3)", name: "Business router (BR-4200)", build: function () { return BIZ.businessRouter(); },
+    photo: "From your photo of the router in its rack, front (19 October 2026). The photo shows the front only: the rear and sides follow the usual design and are for you to check.",
+    shows: ["The slate-blue 1U face: the vent at the left; PWR, SYS, ACT and ALM lights (ALM amber, off) and the recessed RESET", "WAN 0/8 and 0/9: two fibre (SFP) slots stacked, orange multimode cords in both, their link and activity lights, the yellow strip under them", "CON: the console port, the USB console port under it", "Eight copper gigabit ports, GE 0/0 to 0/7 on the yellow strip, yellow and blue patch cables in six, the long vent above them", "USB 0 and USB 1; the power section: the rocker, the AC inlet, PSU and FAN lights, the fan", "Not in the photo, drawn as usual: the rear (vents, the ground stud, the labels with the serial number and MAC address covered) and the sides (vents, rack ears)", "The photo's brand mark and series name are left off: BUSINESS ROUTER and MODEL: BR-4200, our own"] },
+  { id: "br-front", focus: "panel:Front", view: [0.06, 0.1, 1], light: [0.3, 1.2, 1.0], group: "Small business (level 3)", name: "Business router, front close-up", build: function () { return BIZ.businessRouter(); },
+    photo: "The same router, close in on its front.",
+    shows: ["Every port named as the command line names it: GigabitEthernet0/0 to 0/7 (copper), 0/8 and 0/9 (fibre)"] },
+  { id: "br-rear", view: [0.5, 0.3, -1], light: [0.5, 1.3, -1.0], frame: [-40, 0, -170, 250, 50, -130], group: "Small business (level 3)", name: "Business router, rear (not in the photo)", build: function () { return BIZ.businessRouter(); },
+    photo: "Not in your photo: drawn as such a router's rear usually is, for you to check.",
+    shows: ["Three vents, the brass ground stud, the regulatory label and the MAC label (covered)"] },
+  { id: "ap", stage: "none", view: [0.3, -0.42, 1], light: [0.4, -1.2, 0.8], frame: [-180, -60, -180, 180, 30, 180], group: "Small business (level 3)", name: "Ceiling access point, as photographed", build: function () { return BIZ.ceilingAP(); },
+    photo: "From your photo of the access point on the ceiling (19 October 2026), seen from below as in the photo.",
+    shows: ["The white disc with its rounded edge, the light ring round the middle (blue: on the network)", "On its metal mounting plate under the ceiling tile, the white cable coming in over the plate", "The photo's centre mark (a brand's) is left off"] },
+  { id: "ap-top", stage: "none", view: [0.2, 1, 0.3], light: [0.3, 1.3, 0.6], frame: [-110, -40, -110, 110, 10, 110], group: "Small business (level 3)", name: "Ceiling access point, its top (not in the photo)", build: function () { return BIZ.ceilingAP({ mounted: false, cable: false }); },
+    photo: "Not in your photo: its top, drawn as such an access point's usually is, for you to check.",
+    shows: ["The recessed port bay: ETH (PoE IN), the one network port, powered over its cable; the RESET pinhole", "The four lugs that twist into the mounting plate; the label (MAC and serial covered)"] },
   { id: "pc", view: "back3", light: [0.6, 1.3, -1.0], frame: [-115, 0, -250, 115, 270, 195], group: "Devices on the network", name: "Desktop PC", build: END.desktopPC,
     photo: "From your photo of the desktop PC's back, cables plugged in as photographed.",
     shows: ["The brushed I/O plate with every port standing on end, as in a tower: Wi-Fi antenna connectors, DP (x2), HDMI, USB 3.2 (x4), USB-C, USB 2.0, LAN, and six audio jacks", "The Ethernet cable plugged in, link light on, running down to the bench", "The fan behind its wire guard, VENTILATION printed above and beside it", "MADE IN TAIWAN and the MAC sticker with its barcode", "The PSU's honeycomb face, its I/O switch, the mains cord plugged in, PSU (1000W) printed beside it", "The model label PC MODEL: XTR-5800 with its regulatory marks; serial and MAC covered"],

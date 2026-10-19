@@ -1687,6 +1687,50 @@ business is still being built.
     The plants found two gaps in the tests, both closed: keys travelling in a
     copy into startup, and a cord into an empty back port of the panel.
 
+## Level 3, the small business: groundwork (branch `save/level3`, not live)
+
+The owner, 19 October 2026: **"Do 3, then 4, and 5."** The Network+ (V9)
+objectives were read from the doc the same day (unchanged) and shown to the
+owner with the plan for Level 3 (10 work orders, 15 tickets) and the
+photographs the new 3D models need (a business router, a ceiling access
+point). Nothing of Level 3 is linked from the site yet. Built so far, every
+piece node-tested (`tests/business-cli.test.js`, `tests/business-sim.test.js`;
+`npm test` 316):
+- **The managed switch's VLANs** (`swcli.js`): VLAN mode (`vlan 10`, `name`),
+  access ports (a missing VLAN is made, with the real message), trunks
+  (allowed lists: a bare list replaces, `add`/`remove`/`except`/`all`/`none`;
+  native VLAN; `nonegotiate`), DTP worked out with the far end (`operMode`:
+  access, trunk, dynamic auto, dynamic desirable), `interface vlan N` up only
+  while a port that's up carries the VLAN, `show vlan brief`, `show interfaces
+  trunk`, `show interfaces gi0/N switchport`, VLANs in the file and back. A
+  switch saved before VLANs came reads as from the box (`fix`).
+- **The parser serves more than one device** (`registerOS`): the switch and the
+  business router, each with its tree, prompts, configuration keys, factory
+  state and running configuration. A global command typed in a sub-mode runs as
+  a global command, as on the real thing.
+- **The business router BR-4200** (`rtcli.js`, our own unbranded name until the
+  owner's photographs give the model): routed ports shut from the box;
+  subinterfaces (`encapsulation dot1Q` before the address); static and default
+  routes, longest match; DHCP pools and excluded addresses; standard, extended
+  and named access lists (first match, the implicit deny); NAT inside/outside,
+  PAT and static NAT; `show ip route`, `ip interface brief`, `ip dhcp
+  binding/pool`, `ip nat translations`, `access-lists`, `lldp neighbors`.
+- **The simulation** (`sim.js`): layer 2 by VLAN (`linkEdges`: untagged at each
+  end, tagged where both ends carry the VLAN; a native mismatch joins two VLANs);
+  links end to end through the patch panel and through a PoE injector
+  (`viaInjector`, which passes tagged frames); routing through the router
+  (`routeBR`: the access list in, the longest match, the list out, NAT to the
+  provider, the reply back through the same lists); the router's own traffic
+  (`routeFromRouter`); DHCP from its pools with the conflict check; the business
+  access point (`bap`: each SSID on its own VLAN, `joinssid`); LLDP (`lldpOf`).
+  Checks never change the network (tested).
+- **Commands** (`cmd.js`): the console, SSH and Telnet reach the router; pings
+  through it come back with the TTL one less and count on access list lines and
+  NAT translations; tracert through it, blocked or not.
+- **Before going live**, the full Level 2 drive and AAA must be run again on
+  this branch: it changes the switch's parser and the simulation the small
+  office runs on.
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

@@ -99,7 +99,7 @@ export function exec(sim, id, line, win) {
 function consoleTarget(sim, id) {
   const c = sim.cablesOf(id).find(function (k) { return k.kind === "console"; });
   if (!c || !sim.cableUp(c)) return null;
-  const far = c.a.dev === id ? c.b.dev : c.a.dev; return sim.d[far].kind === "mswitch" ? far : null;
+  const far = c.a.dev === id ? c.b.dev : c.a.dev; return sim.d[far].kind === "mswitch" || sim.d[far].kind === "brouter" ? far : null;
 }
 /* what a switch's own ping reaches: anything that answers (Windows computers don't, by default) */
 function reachFrom(sim, sw) {
@@ -114,7 +114,7 @@ function tftpFrom(sim, sw) {
     if (r.fail || !r.local) return { err: "Timed out" };
     const x = sim.d[r.owner[0]], srv = x && x.tftp;
     if (!srv || !srv.on) return { err: "Timed out" };
-    const from = sim.addr(sw).ip, f = { name: name, text: text, bytes: text.length, from: from, which: o.which, unsaved: !!o.unsaved, at: sim.n };
+    const from = r.src || sim.addr(sw).ip, f = { name: name, text: text, bytes: text.length, from: from, which: o.which, unsaved: !!o.unsaved, at: sim.n };
     srv.files = srv.files.filter(function (g) { return g.name.toLowerCase() !== name.toLowerCase(); }).concat([f]);
     srv.log.push("Write request from " + from + " for " + name + ": received " + text.length + " bytes");
     return { ok: true };
@@ -129,22 +129,25 @@ function tftpGetFrom(sim, sw) {
     if (r.fail || !r.local) return { err: "Timed out" };
     const x = sim.d[r.owner[0]], srv = x && x.tftp;
     if (!srv || !srv.on) return { err: "Timed out" };
-    const f = srv.files.find(function (g) { return g.name.toLowerCase() === String(name).toLowerCase(); }), from = sim.addr(sw).ip;
+    const f = srv.files.find(function (g) { return g.name.toLowerCase() === String(name).toLowerCase(); }), from = r.src || sim.addr(sw).ip;
     if (!f) { srv.log.push("Read request from " + from + " for " + name + ": file not found"); return { err: "No such file or directory" }; }
     srv.log.push("Read request from " + from + " for " + f.name + ": sent " + f.text.length + " bytes");
-    return { text: f.text };
+    return { text: f.text, via: r.outIf || null };
   };
 }
+/* a session on a switch or the business router: the callbacks it needs from the network */
+function opts(sim, tgt, via) { const o = { via: via, reach: reachFrom(sim, tgt), tftp: tftpFrom(sim, tgt), tftpGet: tftpGetFrom(sim, tgt) }; if (sim.d[tgt].kind === "brouter") o.live = sim.rtLive(tgt); return o; }
+const sync = function (sim, id) { return sim.d[id].kind === "brouter" ? sim.syncRouter(id) : sim.syncSwitch(id); };
 const lines = function (L) { return L.length ? L.join("\n") + "\n" : ""; };
 function serial(sim, id, raw) {
   sim.cli = sim.cli || {};
   const tgt = consoleTarget(sim, id);
   let st = sim.cli[id];
   if (!tgt) return { out: "(Nothing answers on COM3: the console cable isn't joined to a powered switch's CONSOLE port.)\n", facts: { cmd: "serial", connected: false }, serial: true };
-  sim.syncSwitch(tgt);
-  if (!st || st.sw !== tgt) st = sim.cli[id] = { S: SW.session(sim.d[tgt].sw, { via: "console", reach: reachFrom(sim, tgt), tftp: tftpFrom(sim, tgt), tftpGet: tftpGetFrom(sim, tgt) }), sw: tgt, via: "console" };
+  sync(sim, tgt);
+  if (!st || st.sw !== tgt) st = sim.cli[id] = { S: SW.session(sim.d[tgt].sw, opts(sim, tgt, "console")), sw: tgt, via: "console" };
   const r = SW.exec(st.S, raw); st.prompt = r.prompt;
-  const dup = dupAddr(sim, tgt); if (dup && st.dup !== dup) { st.dup = dup; r.out = r.out.concat([dup]); }   /* once a session, as the console log shows it */
+  const dup = sim.d[tgt].kind === "mswitch" && dupAddr(sim, tgt); if (dup && st.dup !== dup) { st.dup = dup; r.out = r.out.concat([dup]); }   /* once a session, as the console log shows it */
   const sl = sfpLog(sim, tgt), sk = sl.join("|"); if (sl.length && st.sfp !== sk) { st.sfp = sk; r.out = r.out.concat(sl); }
   return { out: lines(r.out), facts: { cmd: "serial", dev: id, connected: true, mode: st.S.mode, line: raw.trim(), out: r.out.join("\n"), asked: !!r.secret }, secret: !!r.secret, cli: true, keep: r.keep };   /* asked: the switch is asking for a password next */
 }
@@ -155,7 +158,7 @@ function remote(sim, id, raw, k) {
     if (A.step === "user") { A.user = raw.trim(); A.step = "pass"; A.secret = true; st.ask = "Password: "; return { out: "", facts: { cmd: st.via }, secret: true, cli: true }; }
     const ok = st.via === "ssh" ? sw.sw.vty.login === "local" && SW.pwOk(sw.sw.users[A.user], raw) : A.local ? SW.pwOk(sw.sw.users[A.user], raw) : SW.pwOk(sw.sw.vty.password, raw);
     if (ok) {
-      const S = SW.session(sw.sw, { via: "vty", reach: reachFrom(sim, st.sw), tftp: tftpFrom(sim, st.sw), tftpGet: tftpGetFrom(sim, st.sw) }); S.mode = "user"; S.pending = null;
+      const S = SW.session(sw.sw, opts(sim, st.sw, "vty")); S.mode = "user"; S.pending = null;
       st.S = S; st.auth = null; st.ask = null; st.prompt = SW.promptOf(S);
       const m = st.via === "ssh" ? SW.motd(sw.sw) : [];   /* over SSH the message of the day comes once you're in; Telnet showed it before the password */
       return { out: m.length ? lines(m.concat([""])) : st.via === "ssh" ? "" : "\n", facts: { cmd: st.via, dev: id, login: true, host: st.host, user: A.user }, cli: true };
@@ -164,7 +167,7 @@ function remote(sim, id, raw, k) {
     if (A.tries >= 3) { delete sim.cli[k]; return { out: st.via === "ssh" ? A.user + "@" + st.host + ": Permission denied (password).\n" : "% Bad passwords\n\nConnection to host lost.\n", facts: { cmd: st.via, dev: id, login: false, denied: true, user: A.user } }; }
     return { out: st.via === "ssh" ? "Permission denied, please try again.\n" : "% Login invalid\n", facts: { cmd: st.via, dev: id, denied: true, user: A.user }, secret: true, cli: true };
   }
-  sim.syncSwitch(st.sw);
+  sync(sim, st.sw);
   const r = SW.exec(st.S, raw);
   if (st.S.mode === "gone") { delete sim.cli[k]; return { out: lines(r.out.filter(function (l) { return !/con0 is now available|Press RETURN/.test(l); })).replace(/\n+$/, "\n") + (st.via === "ssh" ? "Connection to " + st.host + " closed.\n" : "\nConnection to host lost.\n"), facts: { cmd: st.via, closed: true } }; }
   st.prompt = r.prompt;
@@ -206,7 +209,7 @@ function ssh(sim, id, args, k) {
   if (rt.fail === "no-link" || rt.fail === "no-route") return { out: "ssh: connect to host " + host + " port 22: Network is unreachable\n", facts: Object.assign(facts, { ok: false, why: "unreachable" }) };
   if (rt.fail || !rt.local) return { out: "ssh: connect to host " + host + " port 22: Connection timed out\n", facts: Object.assign(facts, { ok: false, why: "timeout" }) };
   const who = sim.turn(id, host, rt.owner), x = sim.d[who];   /* two devices on one address take turns */
-  if (x.kind !== "mswitch") return { out: x.kind === "pc" || x.kind === "laptop" ? "ssh: connect to host " + host + " port 22: Connection timed out\n" : "ssh: connect to host " + host + " port 22: Connection refused\n", facts: Object.assign(facts, { ok: false, why: "no-ssh" }) };
+  if (x.kind !== "mswitch" && x.kind !== "brouter") return { out: x.kind === "pc" || x.kind === "laptop" ? "ssh: connect to host " + host + " port 22: Connection timed out\n" : "ssh: connect to host " + host + " port 22: Connection refused\n", facts: Object.assign(facts, { ok: false, why: "no-ssh" }) };
   const v = x.sw.vty;
   if (!x.sw.rsa || !/^(ssh|all)$/.test(v.transport)) return { out: "ssh: connect to host " + host + " port 22: Connection refused\n", facts: Object.assign(facts, { ok: false, why: "refused" }) };
   if (x.sw.rsa < 768) return { out: "Protocol major versions differ: 2 vs. 1\n", facts: Object.assign(facts, { ok: false, why: "v1" }) };
@@ -231,7 +234,7 @@ function telnet(sim, id, args, k) {
   const rt = sim.route(id, host);
   if (rt.fail || !rt.local) return { out: fail, facts: Object.assign(facts, { ok: false, why: "unreachable" }) };
   const who = rt.owner[0], x = sim.d[who];
-  if (x.kind !== "mswitch" || !/^(telnet|all)$/.test(x.sw.vty.transport)) return { out: fail, facts: Object.assign(facts, { ok: false, why: "refused" }) };
+  if ((x.kind !== "mswitch" && x.kind !== "brouter") || !/^(telnet|all)$/.test(x.sw.vty.transport)) return { out: fail, facts: Object.assign(facts, { ok: false, why: "refused" }) };
   const v = x.sw.vty;
   if (!v.login || (v.login === "password" && !v.password)) return { out: "\nPassword required, but none set\n\nConnection to host lost.\n", facts: Object.assign(facts, { ok: false, why: "no-login" }) };
   sim.cli = sim.cli || {};

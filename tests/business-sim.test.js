@@ -118,3 +118,39 @@ test("working things out changes nothing: route() and the DHCP server list leave
   s.route("guest", "8.8.8.8"); s.route("staff", "192.168.40.2"); s.dhcpServers("staff"); s.rtView("rtr"); s.owners("192.168.10.1", s.domain(s.homeNode("staff")));
   assert.equal(JSON.stringify(s.net), before);
 });
+
+/* ---------------------------------------------------------------- the router's own terminal */
+import * as CMD from "../js/net/cmd.js";
+function withTech() {
+  const n = net();
+  n.devices.tech = { id: "tech", kind: "techlaptop", label: "Your laptop", on: true, os: "windows", user: "tech", ifaces: [{ name: "Ethernet", type: "eth", port: "ETH", mac: "aa-00-00-00-00-09", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }], tftp: { on: true, root: "C:\\TFTP-Root", files: [], log: [] } };
+  n.cables.push({ id: "c-con", kind: "console", a: { dev: "tech", port: "USB-C", seated: true }, b: { dev: "rtr", port: "CONSOLE", seated: true }, length: 1.8 }, cab("c-tech", "msw", "4", "tech", "ETH"));
+  return new Sim(n);
+}
+const ser = function (s, line) { return CMD.exec(s, "tech", line).out; };
+
+test("your laptop's console reaches the router: its prompts, its ping, its TFTP copy out over a VLAN", () => {
+  const s = withTech(); cli(s, "msw", SWITCH.concat(["interface gi0/4", "switchport mode access", "switchport access vlan 10"])); cli(s, "rtr", ROUTER); s.dhcp("staff", "t"); s.dhcp("tech", "t");
+  ser(s, ""); assert.equal(CMD.prompt(s, "tech"), "Router>");
+  ser(s, "enable"); assert.equal(CMD.prompt(s, "tech"), "Router#");
+  assert.match(ser(s, "ping 192.168.10.11"), /!!!!!\nSuccess rate is 100 percent/, "the printer answers the router's ping");
+  assert.match(ser(s, "ping 192.168.10.12"), /\.\.\.\.\.\nSuccess rate is 0 percent/, "a Windows PC's firewall drops it, as always");
+  assert.match(ser(s, "ping 8.8.8.8"), /Success rate is 100 percent/, "out to the provider from its own address");
+  const lap = s.d.tech.ifaces[0].lease.ip;
+  ser(s, "copy running-config tftp:"); ser(s, lap); const out = ser(s, "");
+  assert.match(out, /bytes copied/, out);
+  assert.equal(s.d.tech.tftp.files[0].name, "router-confg");
+  assert.match(s.d.tech.tftp.log[0], /^Write request from 192\.168\.10\.1 for router-confg/, "it came from the router's address on the VLAN your laptop is on");
+  assert.match(ser(s, "show ip dhcp binding"), new RegExp(lap.replace(/\./g, "\\.")), "your laptop's lease is in the router's bindings");
+});
+
+test("SSH from a staff PC to the router, once it has a name, a domain, keys and a local login", () => {
+  const s = withTech(); cli(s, "msw", SWITCH); cli(s, "rtr", ROUTER.concat(["hostname SB-RTR", "ip domain-name clinic.lan", "crypto key generate rsa modulus 2048", "username admin secret Adm1n!", "line vty 0 4", "login local", "transport input ssh"])); s.dhcp("staff", "t");
+  const a = CMD.exec(s, "staff", "ssh admin@192.168.10.1"); assert.match(a.out, /Permanently added '192\.168\.10\.1'|^$/);
+  assert.equal(CMD.prompt(s, "staff"), "admin@192.168.10.1's password: ");
+  CMD.exec(s, "staff", "Adm1n!"); assert.equal(CMD.prompt(s, "staff"), "SB-RTR>");
+  assert.match(CMD.exec(s, "staff", "show ip interface brief").out, /GigabitEthernet0\/0\.10\s+192\.168\.10\.1/);
+  CMD.exec(s, "staff", "exit"); assert.match(CMD.prompt(s, "staff"), /^C:\\Users\\/);
+  const g = built(); g.d.rtr.sw.vty.transport = "ssh";
+  assert.match(CMD.exec(g, "guest", "ssh admin@192.168.40.1").out, /Connection refused/, "no keys yet: refused");
+});

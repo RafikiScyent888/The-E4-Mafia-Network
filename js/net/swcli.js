@@ -452,7 +452,7 @@ function tftpGetAsk(S, into, raw) {
 function tftpLoad(S, p) {
   const url = "tftp://" + p.host + "/" + p.file, r = S.tftpGet ? S.tftpGet(p.host, p.file) : { err: "Timed out" };
   if (!r || r.err) return ["Accessing " + url + "..."].concat(r && r.err === "Timed out" ? ["....."] : [], ["%Error opening " + url + " (" + ((r && r.err) || "Timed out") + ")"]);
-  const n = r.text.length, secs = 0.02 + n / 48000, out = ["Accessing " + url + "...", "Loading " + p.file + " from " + p.host + " (via " + (S.via1 || "Vlan1") + "): !", "[OK - " + n + " bytes]", "", n + " bytes copied in " + secs.toFixed(3) + " secs (" + Math.round(n / secs) + " bytes/sec)"];
+  const n = r.text.length, secs = 0.02 + n / 48000, out = ["Accessing " + url + "...", "Loading " + p.file + " from " + p.host + " (via " + (r.via || S.via1 || "Vlan1") + "): !", "[OK - " + n + " bytes]", "", n + " bytes copied in " + secs.toFixed(3) + " secs (" + Math.round(n / secs) + " bytes/sec)"];
   if (p.into === "startup") { S.sw.startup = bootFrom(S.sw, r.text); return out; }
   applyText(S.sw, r.text, false);
   return out.concat(["%SYS-5-CONFIG_I: Configured from " + url + " by " + (S.via === "console" ? "console" : "vty0")]);

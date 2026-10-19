@@ -525,6 +525,7 @@ export class Sim {
   /* ------------------------------------------------------------ reaching an address */
   /* the path a packet from a device takes to an address, without sending it */
   route(id, dst, proto) {
+    if (this.d[id] && this.d[id].kind === "brouter") return this.routeFromRouter(id, dst, proto);
     const a = this.addr(id);
     if (!a) return { fail: "no-link" };
     if (isLoopback(dst)) return { local: true, owner: [id], hops: [] };
@@ -660,6 +661,30 @@ export class Sim {
     if (!back.length) return Object.assign({ fail: "no-reply", hops: [gwIp, dst], why: "their gateway" }, base);
     if (!pass(outIf, "in", rep) || !pass(inIf, "out", rep)) return Object.assign({ fail: "no-reply", hops: [gwIp, dst], why: "reply blocked" }, base);
     return Object.assign({ local: false, routed: true, owner: back, outIf: outIf, next: dst, hops: [gwIp, dst] }, base);
+  }
+
+  /* a packet the router sends itself (its ping, a TFTP copy): out by its own routing table, from the way-out interface's
+     address. The reply comes in through that interface's access list in (what the router sends isn't checked going out) */
+  routeFromRouter(rid, dst, proto) {
+    if (!this.on(rid)) return { fail: "no-link" };
+    const R = this.rtView(rid), live = this.rtLive(rid), acls = [];
+    const own = RT.allIfs(R).find(function (n) { const a = RT.addrOf(R, n, live); return a && a.ip === dst && RT.rtStatus(R, n)[1] === "up"; });
+    if (own || isLoopback(dst)) return { local: true, owner: [rid], hops: [], src: dst };
+    const rt = RT.lookup(R, dst, live); if (!rt) return { fail: "no-route" };
+    const outIf = rt.iface, oa = RT.addrOf(R, outIf, live), src = oa ? oa.ip : null, w = this.rtWan(rid, R);
+    const rep = Object.assign({}, proto || { proto: "icmp" }, { src: dst, dst: src });
+    const inOk = function (n, pk) { const f = n.indexOf(".") > 0 ? R.subs[n] : R.ifs[n]; if (!f || !f.aclIn) return true; const v = RT.aclVerdict(R, f.aclIn, pk); if (!v.missing) acls.push([f.aclIn, v.line]); return v.permit; };
+    if (w && outIf === w.iface) {
+      if (!w.ok) return { fail: "net-unreachable", src: src };
+      if (!isPublic(dst)) return { fail: "beyond", src: src, hops: [this.net.isp.gw] };
+      return inOk(outIf, rep) ? { internet: true, src: src, outIf: outIf, hops: [this.net.isp.gw, this.net.isp.core, dst], acls: acls } : { fail: "no-reply", src: src, acls: acls };
+    }
+    const odom = this.domain(this.rtNode(rid, outIf)), next = rt.nh || dst, owners = this.owners(next, odom).filter(function (o) { return o !== rid; });
+    if (!owners.length) return { fail: "host-unreachable", src: src, next: next };
+    if (rt.nh) return { fail: "beyond", src: src, hops: [rt.nh] };
+    const back = owners.filter(function (o) { return this.canReply(o, src, odom); }, this);
+    if (!back.length || !inOk(outIf, rep)) return { fail: "no-reply", src: src, acls: acls };
+    return { local: true, owner: back, src: src, outIf: outIf, hops: [dst], acls: acls };
   }
 
   /* ------------------------------------------------------------ names */

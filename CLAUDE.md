@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (19 October 2026): Level 2 (the small office) is going live stage by stage; live so far: the level lock, work orders SO-J1 to SO-J5, tickets SO-01 to SO-15 with the office's records on each, the managed switch, the closet rack and patch panel, SFP modules and fibre, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05", "Level 2, tickets SO-06, SO-07 and SO-09", "Level 2, ticket SO-08", "Level 2, ticket SO-10" and "Level 2: the office's records on office tickets; tickets SO-11 to SO-15" below.**
+**Status (19 October 2026): Level 2 (the small office) is complete and live: the level lock, work orders SO-J1 to SO-J10, tickets SO-01 to SO-15 with the office's records on each, the managed switch, the closet rack and patch panel, SFP modules and fibre, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05", "Level 2, tickets SO-06, SO-07 and SO-09", "Level 2, ticket SO-08", "Level 2, ticket SO-10", "Level 2: the office's records on office tickets; tickets SO-11 to SO-15" and "Level 2: work orders SO-J6 to SO-J10, the small office complete" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
 from the Under the Hood tile (decision 6). See "The real site" below. The owner, 11
 October 2026: **"Build it like the preview you gave me just keep the layout
@@ -888,7 +888,8 @@ can't open early. The queues say "More work orders and tickets are on the
 way"; with everything built so far done, the done box says "That's
 everything on the small office so far", and Level 3's lock panel says the
 small office is still being built. Set `planned` to the real total, or drop
-it, when the last stage lands.
+it, when the last stage lands. (Dropped for the small office on 19 October
+2026, with SO-J10.)
 
 **What stage 1 added:**
 - `js/net/office.js`: the office template (six businesses, the closet, front
@@ -1542,8 +1543,146 @@ and SO-10 with the rack and patch panel in the Physical tab.
     off the ticket (105 failing checks) and SO-11 to SO-15 left off the desk,
     both caught.
 
-Next: five extra work orders (SO-J6 to J10), then `planned` set to the real
-total.
+### Level 2: work orders SO-J6 to SO-J10, the small office complete: live 19 October 2026
+
+The five extra work orders, as the small-office preview named them ("a failed
+switch rebuilt from its backup, a new hire's desk, the printer moved, the cable
+map, a fibre link to the back office"). Each starts from the one before it done,
+as SO-J1 to SO-J5 do. With them the small office has all its 10 work orders and
+15 tickets, so `planned` is gone from `js/desk/levels.js`: finishing every
+ticket and work order finishes Level 2, and the done box says the small
+business is still being built.
+
+- **SO-J6, a failed switch, rebuilt from its backup.** The switch died
+  overnight; the replacement (the same model, `sw.unit` 2, so its SSH keys
+  differ) is in its box, and the office manager pulled the old one's cables.
+  The backup from SO-J5 is on your laptop.
+  - Lines: the replacement racked with your laptop on its console; it runs the
+    backup line for line (causes: still factory; in the startup configuration
+    but never reloaded; a part not as the backup has it, named); the router and
+    both desks on the ports the backup sets up for them; SSH from the front desk
+    PC works again (no keys: a file never carries them; the PC remembers the old
+    key); saved; your laptop unplugged and the spares shut; the office runs.
+  - The front desk PC holds the old switch's key (`knownHosts`), so SSH prints
+    OpenSSH's warning. The lesson: check the warning's fingerprint against
+    `show crypto key mypubkey rsa`, then `ssh-keygen -R`.
+  - Other right ways: copy into startup-config and reload (answer no when it
+    asks to save, or the factory settings are saved over the backup); your
+    laptop on the router's LAN 2.
+- **The switch takes a configuration back from a file** (`js/net/swcli.js`):
+  `copy tftp: running-config` merges the file's lines in as commands (an
+  interface the file doesn't shut keeps its state); `copy tftp: startup-config`
+  replaces what's saved, as a switch starting from it would have it (an
+  interface the file names comes up unless it says shutdown), keeping the keys
+  saved before. Prompts and errors as the real thing: the server, the source
+  file, the destination; "Accessing ...", "Loading ... (via Vlan1): !",
+  "[OK - n bytes]", "%SYS-5-CONFIG_I"; "No such file or directory", "Timed
+  out". The TFTP server logs each read. Hashes stay hashes: `enable secret 5`,
+  `username ... secret 5`, `password 7` keep what the file had, and `pwOk`
+  checks a typed password against a plain or hashed one everywhere a password
+  is checked.
+- **SO-J7, a new hire's desk.** A PC in its box (`hire`), its desk in the
+  open-plan office, the run 12 m. Lines: at the desk, cabled to the switch
+  (straight into the router is the near miss); its port open and named as the
+  records say (`plan.desc.hire`, from a stream of its own); online and
+  printing; every other spare still shut and your laptop unplugged; saved; the
+  backup refreshed (it goes stale the moment the change is saved); everything
+  else still works. A range opened instead of the one port is caught.
+- **SO-J8, the printer moved.** Staff moved it to the manager's office; the
+  cabler's new 22 m run is in a spare port (shut). The old run is still in
+  port 3, ending at the open-plan office's empty wall jack (`ojack`). Lines:
+  the printer back online; its new port 100 Mb/s full duplex; every port's
+  description true (the old port still named for the printer is the near
+  miss); the old port shut with the spares; saved; the backup refreshed;
+  everyone else still online. Laying the printer's run into port 3, where its
+  settings already are, passes too.
+- **SO-J9, the cable map.** The cablers redid the cabling: every run (the
+  front desk, the printer, the new hire, both empty wall jacks) is punched down
+  at the back of a new patch panel, the old 8-port switch is gone, nothing is
+  patched, and there's no map. Lines: every desk patched through the panel to
+  the switch and online; each desk on the port set up for it; the cable map
+  right for every run, the empty jacks too; the spares still shut; saved and
+  backed up (nothing on the switch needs to change). The tone and the probe
+  find each run; the runs table doesn't say which back port a run is on
+  (`endLabel`); the Lay form offers only the panel's front ports, and the
+  simulation refuses a cord into the back. A patch cord in the rack is 0.5 m.
+  `onMsw` follows a path through the panel.
+- **SO-J10, a fibre link to the back office.** The meeting room becomes the
+  back office: a second managed switch in its box (`bsw`, with a place of its
+  own: `fixed` on the device), its PC (`mpc`), and the installer's OM2 run.
+  Both switches' SFP slots are empty; the van has 1000BASE-SX, 1000BASE-LX and
+  a 10GBASE-SR SFP+. Lines: the fibre link up (causes: in its box, the run not
+  plugged in, an SFP+ in an SFP slot, a single-mode module on the multimode
+  run, two different modules, the closet's port shut); the closet's fibre port
+  open and named (`plan.desc.fibre`); the back office PC online and printing;
+  the new switch named (`plan.bswHost`), its enable secret and console
+  password the office's; both switches saved; the closet switch's backup
+  refreshed; everything else still works. The console cable is 1.8 m: your
+  laptop has to go to the back office.
+  - The simulation: a fibre run is laid between two SFP slots that hold
+    modules (OM2 multimode, the run's length plus 9 m the long way round); an
+    empty slot takes a module from the van ("Put in a ... module", build mode
+    only; the tickets keep their swaps).
+- **On the build page:** the patch panel, the wall jacks, the back office
+  switch and PC, and the new hire's PC have device buttons; the cable map form
+  (`js/desk/cablemapui.js`, now with its own note) shows on a job with
+  `cablemap: true`; the build engine takes the tone, the probe, cords moved, the
+  map, modules and the LC pair, as the Ticket Desk's does.
+- **The Ticket Desk's queue** says nothing more is coming once a level's
+  tickets are all built.
+- **The drawings, found by AAA on SO-J10's finished office:**
+  - On the floor plan the printer, moved to the manager's office, sat on the
+    room's name (4.84:1), and your laptop, carried to the back office, sat on
+    the back office switch's label (1.01:1). The meeting room is wider now
+    (`OFFICE_ROOM_BOX`: the open-plan office 300 to 660, the meeting room 660
+    to 980), its devices laid out for four: the switch above, its PC, the wall
+    jack and your laptop in a row (your laptop's spot there is its `alt`).
+    Build mode keeps each room's whole name clear of the devices it places
+    (`MANAGER'S OFFICE` is wider than the 140 units it used to keep).
+  - A first version also sized each device's space on the plan by its name's
+    width. The drive's new floor-plan check found it put the old 8-port switch
+    on top of the router in the closet, SO-J1 to SO-J8, and AAA never saw it
+    (text painted over text still measures dark on light). That sizing is gone:
+    every device keeps the same 88-unit space as before.
+  - On the logical diagram a port's name goes where it's clear of every
+    device's label and tile and every port name already placed, measured as
+    drawn: the near side of its line, the far side, further along, or on the
+    line past its dot. "CONSOLE" had run off the right edge.
+  - Build mode drew the logical diagram while it was hidden behind the floor
+    plan, where nothing can be measured, so the port-marker fix did nothing
+    there. Both pages now draw it again when it's shown.
+- **Checks:**
+  - `npm test`: 284.
+  - The full drive: 3,401 checks. Each work order is done entirely through the
+    page on three offices: SO-J6 88 checks (the changed key's fingerprint
+    read off the warning and matched to `show crypto key mypubkey rsa`),
+    SO-J7 70, SO-J8 67, SO-J9 73 (every run found with the tone and the
+    probe), SO-J10 83 with the small office finished; then both drawings of
+    every finished office work order (60 checks, below).
+  - The drive checks both drawings of every finished office work order as
+    painted (`labelsClear` in `tools/drive.mjs`): on the logical diagram every
+    port name inside the diagram and clear of every device's label and tile and
+    every other port name; on the floor plan every device's and room's name
+    clear of each other and of every tile. Shown to fail on three plants: the
+    name-width sizing put back ("Router" on "Old 8-port switch", SO-J1), the
+    room-name space back at 140 ("MANAGER'S OFFICE" on a tile, SO-J8), and the
+    redraw-on-show taken out ("CONSOLE" and "USB-C" off the diagram, "SFP1" on
+    "Managed switch", SO-J10). The port-name search taken out fails it too.
+  - AAA: 24 new states (SO-J6 6, SO-J7 4, SO-J8 4, SO-J9 4, SO-J10 6). The
+    whole set, 165 states and 357,552 text runs, passes (run in two halves,
+    19 October 2026). After the name-width sizing came out, the 46 build-mode
+    office and level states were run again: all pass, 123,608 text runs.
+    - The meeting room put back as it was is caught (1.01:1 "Back office
+      switch", on the finished office's floor plan).
+    - AAA can't see the logical diagram's port names going off the edge or a
+      name painted over another's: those plants pass it, and the drive's
+      drawing check above catches them.
+  - `node tools/models.mjs`: 141. A new SO-J10 case found a module put into an
+    empty slot wasn't drawn until a fibre went in (the 3D view took any plug
+    out of a port the sim calls empty): a bare module now stays.
+  - Plants, all caught: Node 30 new; page 14 new; models 2 new and 2 re-aimed.
+    The plants found two gaps in the tests, both closed: keys travelling in a
+    copy into startup, and a cord into an empty back port of the panel.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

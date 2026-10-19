@@ -173,6 +173,7 @@ function openDevice(id) {
 function setView(phy) {
   $("net").toggleAttribute("hidden", phy); $("plan").toggleAttribute("hidden", !phy);   /* SVG elements have no .hidden property: set the attribute */
   $("vLog").setAttribute("aria-pressed", String(!phy)); $("vPhy").setAttribute("aria-pressed", String(phy));
+  if (!phy && ctx.T) renderDiagram();   /* drawn while hidden, nothing could be measured: drawn again now it's shown */
   if (phy) plates($("plan"), ".rl, .ns", "#f4f6fb");
 }
 function setTime(step) { $("steps").toggleAttribute("hidden", !step); $("tLive").setAttribute("aria-pressed", String(!step)); $("tStep").setAttribute("aria-pressed", String(step)); }

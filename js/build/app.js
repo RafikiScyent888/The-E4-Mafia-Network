@@ -304,6 +304,7 @@ function openDevice(id) {
 function setView(phy) {
   $("net").toggleAttribute("hidden", phy); $("plan").toggleAttribute("hidden", !phy);
   $("vLog").setAttribute("aria-pressed", String(!phy)); $("vPhy").setAttribute("aria-pressed", String(phy));
+  if (ctx.T) renderDiagram();   /* drawn while hidden, nothing could be measured: drawn again now it's shown, so markers and port names keep off the labels */
   plates(phy ? $("plan") : $("net"), phy ? ".rl, .ns" : ".nl, .ns, .pl", phy ? "#f4f6fb" : null);
 }
 function replateAll() { if (!ctx.T) return; if (!$("net").hasAttribute("hidden")) plates($("net"), ".nl, .ns, .pl"); if (!$("plan").hasAttribute("hidden")) plates($("plan"), ".rl, .ns", "#f4f6fb"); }

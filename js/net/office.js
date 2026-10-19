@@ -36,23 +36,24 @@ export const OFFICE_LAYOUT = {
   router: { x: 420, y: 80, px: 120, py: 210, room: "closet", lab: "above" },
   switch: { x: 230, y: 280, px: 230, py: 210, room: "closet", lab: "left" },
   msw: { x: 560, y: 280, px: 230, py: 120, room: "closet", lab: "right" },
-  tech: { x: 760, y: 420, px: 120, py: 300, room: "closet" },   /* below and right of the switch, so the console cable runs clear of both labels */
+  tech: { x: 760, y: 420, px: 120, py: 300, room: "closet", alt: { meeting: { px: 932, py: 460, x: 790, y: 420, lab: "left" } } },   /* below and right of the switch, so the console cable runs clear of both labels; carried to the back office (SO-J10), its own spot there */
   pc: { x: 300, y: 440, px: 470, py: 140, room: "front" },
   printer: { x: 540, y: 440, px: 520, py: 400, room: "open" },
   /* the back office's switch and desk, in what was the meeting room, when a ticket puts them there (SO-04) */
-  meet: { x: 740, y: 170, px: 850, py: 355, room: "meeting", lab: "left" },
-  mpc: { x: 740, y: 40, px: 920, py: 455, room: "meeting", lab: "left" },
+  meet: { x: 740, y: 170, px: 820, py: 345, room: "meeting", lab: "left" },
+  mpc: { x: 740, y: 40, px: 730, py: 460, room: "meeting", lab: "left" },
   /* the new cabling (SO-08): the patch panel in the closet rack (on the floor plan only: the logical diagram has no panel),
    the manager's PC, and the meeting room's empty wall jack */
   pp: { px: 230, py: 210, room: "closet" },   /* where the old 8-port switch stood: the installer took it away */
   mgr: { x: 740, y: 170, px: 820, py: 150, room: "manager", lab: "left" },
-  mjack: { px: 870, py: 400, room: "meeting" },
+  mjack: { px: 838, py: 460, room: "meeting" },
   /* the back office on its own managed switch, over fibre (SO-10): where the old 5-port stood in SO-04 */
-  bsw: { x: 740, y: 170, px: 850, py: 355, room: "meeting", lab: "left" },
-  ojack: { px: 650, py: 470, room: "open" },   /* SO-14: the open-plan jack the printer was moved away from */
+  bsw: { x: 740, y: 170, px: 820, py: 345, room: "meeting", lab: "left" },
+  ojack: { px: 610, py: 470, room: "open" },   /* SO-14: the open-plan jack the printer was moved away from */
   hire: { x: 110, y: 440, px: 400, py: 460, room: "open" }   /* SO-J7: the new hire's desk in the open-plan office */
 };
-export const OFFICE_ROOM_BOX = { closet: [30, 30, 300, 370], front: [300, 30, 640, 270], open: [300, 270, 760, 520], manager: [640, 30, 980, 270], meeting: [760, 270, 980, 520] };
+/* the meeting room is wide enough for the back office (SO-J10): its switch above, its PC, the wall jack and your laptop in a row */
+export const OFFICE_ROOM_BOX = { closet: [30, 30, 300, 370], front: [300, 30, 640, 270], open: [300, 270, 660, 520], manager: [640, 30, 980, 270], meeting: [660, 270, 980, 520] };
 
 /* the address plan for the office's next step (SO-J4): its /24 split by hand into a block per group, each group's
    head count drawn from its own random stream so the rest of the office is drawn exactly as before */

@@ -39,7 +39,7 @@ const office = function (sim) { return sim.net.site === "office"; };
 const layOf = function (sim) { return office(sim) ? OFFICE_LAYOUT : LAYOUT; };
 function pos(sim, id) {
   const L = Object.assign({}, layOf(sim)[id]);
-  if (office(sim)) return L;
+  if (office(sim)) { const alt = L.alt && L.alt[sim.net.rooms[id]]; if (alt && alt.x != null) Object.assign(L, { x: alt.x, y: alt.y, lab: alt.lab || L.lab }); return L; }   /* a device carried to another room can sit elsewhere on the diagram too (your laptop at the back office's switch) */
   if (id === "laptop" && sim.net.rooms.laptop === "living") Object.assign(L, { x: 770, y: 150, px: 610, py: 235 });
   if (id === "laptop" && sim.net.rooms.laptop === "kitchen") Object.assign(L, { px: 640, py: 360 });
   return L;
@@ -51,14 +51,15 @@ const ROOM_BOX = { office: [30, 30, 420, 300], living: [420, 30, 760, 300], gara
 function planSpots(sim, ids) {
   const out = {}, taken = [], LAY = layOf(sim), BOX = office(sim) ? OFFICE_ROOM_BOX : ROOM_BOX;
   if (!sim.net.extra.build) { for (const id of ids) { const p = pos(sim, id); out[id] = { px: p.px, py: p.py }; } return out; }   /* the tickets' houses are drawn exactly as laid out */
+  const off = office(sim);
   const box = function (x, y) { return [x - 44, y - 26, x + 44, y + 54]; };
   const clear = function (b) { return taken.every(function (t) { return b[2] < t[0] || b[0] > t[2] || b[3] < t[1] || b[1] > t[3]; }); };
-  const usual = function (id) { const p = pos(sim, id), room = sim.net.rooms[id]; return p.px != null && room !== "upstairs" && (!LAY[id].room || LAY[id].room === room || (id === "laptop" && (room === "living" || room === "kitchen"))) ? p : null; };   /* upstairs is laid out afresh: it's split in two */
+  const usual = function (id) { const p = pos(sim, id), room = sim.net.rooms[id], alt = LAY[id].alt && LAY[id].alt[room]; if (alt) return alt; return p.px != null && room !== "upstairs" && (!LAY[id].room || LAY[id].room === room || (id === "laptop" && (room === "living" || room === "kitchen"))) ? p : null; };   /* upstairs is laid out afresh: it's split in two; alt: a device's own spot in another room */
   for (const id of ids) { const p = usual(id); if (p && clear(box(p.px, p.py))) { out[id] = { px: p.px, py: p.py }; taken.push(box(p.px, p.py)); } }
   for (const id of ids) {
     if (out[id]) continue;
-    const R = BOX[sim.net.rooms[id]] || BOX[Object.keys(BOX)[0]];
-    taken.push([R[0], R[1], R[0] + 140, R[1] + 42]);   /* the room's name, top left */
+    const R = BOX[sim.net.rooms[id]] || BOX[Object.keys(BOX)[0]], rn = off ? String((sim.net.roomNames || {})[sim.net.rooms[id]] || "") : "";
+    taken.push([R[0], R[1], R[0] + Math.max(140, rn.length * 11.2 + 14), R[1] + 42]);   /* the room's name, top left */
     let spot = null;
     for (let y = R[1] + 44; y <= R[3] - 56 && !spot; y += 26) for (let x = R[0] + 50; x <= R[2] - 50 && !spot; x += 30) if (clear(box(x, y))) spot = { px: x, py: y };
     taken.pop();
@@ -138,14 +139,31 @@ export function drawLogical(svg, sim, o) {
       let off = (dy2 > 0.5 ? (below(e[0]) ? R + 56 : R + 24) : R + 12) + (k && deg[e[0]] > 2 ? 22 : 0);   /* the second cable's port on a busy device: further along, clear of the first's */
       let px = D.x + dx2 * off, py = D.y + dy2 * off;
       for (let g = 0; onLabel(px, py) && g < 30 && off + 4 < L / 2; g++) { off += 4; px = D.x + dx2 * off; py = D.y + dy2 * off; }   /* slide along its line until it's clear of every label */
+      if (e[2]) {
+        /* the port's name, measured as drawn: where the near end's rule puts it if that's clear (across: above the line, the far end's
+           below, so two never collide; up or down: beside it); else the other side of the line; else both again further along; else on the
+           line itself. Clear
+           means on the diagram and off every device's label and tile and every port name already placed. The dot goes with it */
+        const t = mk("text", { class: "pl" }); t.textContent = e[2]; gp.appendChild(t);
+        const ov = function (b, q) { return b.x < q.x + q.w && b.x + b.width > q.x && b.y < q.y + q.h && b.y + b.height > q.y; };
+        const placed = [].slice.call(gp.querySelectorAll("text.pl")).filter(function (x) { return x !== t; }).map(function (x) { try { const b = x.getBBox(); return { x: b.x, y: b.y, w: b.width, h: b.height }; } catch (er) { return null; } }).filter(Boolean);
+        const tiles = ids.map(function (id) { return { x: P[id].x - R, y: P[id].y - R, w: 2 * R, h: 2 * R }; });
+        const put = function (o, flip) {
+          const qx = D.x + dx2 * o, qy = D.y + dy2 * o; let tx, ty, anc;
+          if (flip === "on") { t.setAttribute("x", qx + dx2 * 20); t.setAttribute("y", qy + dy2 * 20 + 5); t.setAttribute("text-anchor", "middle"); return [qx, qy]; }   /* on its own line just past its dot, on its plate, like a label on the cable */
+          if (Math.abs(dy2) < 0.5) { tx = qx; ty = (e[1] === 1) !== flip ? qy - 15 : qy + 27; anc = dx2 > 0 ? "start" : "end"; }
+          else { let side = Math.abs(dx2) < 0.2 ? 1 : Math.sign(dx2); if (flip) side = -side; tx = qx + side * 18; ty = qy + 5; anc = side > 0 ? "start" : "end"; }
+          t.setAttribute("x", tx); t.setAttribute("y", ty); t.setAttribute("text-anchor", anc); return [qx, qy];
+        };
+        const clear = function (q) { let b; try { b = t.getBBox(); } catch (er) { return true; } if (!b.width) return true; return !onLabel(q[0], q[1]) && b.x >= -4 && b.x + b.width <= 828 && !boxes.some(function (z) { return ov(b, z); }) && !placed.some(function (z) { return ov(b, z); }) && !tiles.some(function (z) { return ov(b, z); }); };
+        let at = null;
+        for (let o = off; o + 4 < L / 2 && !at; o += 8) for (const flip of [false, true]) { const q = put(o, flip); if (clear(q)) { at = q; break; } }
+        for (let o = off; o + 4 < L / 2 && !at; o += 8) { const q = put(o, "on"); if (clear(q)) at = q; }   /* neither side clear anywhere: on the line itself */
+        if (!at) at = put(off, false);   /* nowhere clear: where the rule puts it */
+        px = at[0]; py = at[1];
+      }
       if (l.up) gp.appendChild(mk("circle", { cx: px, cy: py, r: 6, class: "pd pd-up" }));
       else gp.appendChild(mk("rect", { x: px - 6, y: py - 6, width: 12, height: 12, transform: "rotate(45 " + px + " " + py + ")", class: "pd pd-down" }));
-      if (e[2]) {
-        let tx, ty, anc;
-        if (Math.abs(dy2) < 0.5) { tx = px; ty = e[1] === 1 ? py - 15 : py + 27; anc = dx2 > 0 ? "start" : "end"; }   /* across: the near end's label above the line, the far end's below, so two never collide (easier reading widens them) */
-        else { const side = Math.abs(dx2) < 0.2 ? 1 : Math.sign(dx2); tx = px + side * 18; ty = py + 5; anc = side > 0 ? "start" : "end"; }
-        const t = mk("text", { x: tx, y: ty, "text-anchor": anc, class: "pl" }); t.textContent = e[2]; gp.appendChild(t);
-      }
     });
   }
   plates(svg, ".nl, .ns, .pl");
@@ -222,7 +240,7 @@ export function drawPlan(svg, sim, o) {
 function officeRooms() {
   const B = OFFICE_ROOM_BOX, r = function (k) { const b = B[k]; return '<rect class="room" x="' + b[0] + '" y="' + b[1] + '" width="' + (b[2] - b[0]) + '" height="' + (b[3] - b[1]) + '"/>'; };
   return r("closet") + r("front") + r("manager") + r("open") + r("meeting") + '<rect class="room" x="30" y="370" width="270" height="150"/>' +
-    '<path class="door" d="M300 300v40M220 370h50M640 200v40M760 420v40M420 270h40M120 520h60"/><rect class="plate" x="26" y="108" width="14" height="24"/>';
+    '<path class="door" d="M300 300v40M220 370h50M640 200v40M660 420v40M420 270h40M120 520h60"/><rect class="plate" x="26" y="108" width="14" height="24"/>';
 }
 function officeNames() {
   return '<text class="rl" x="46" y="60">NETWORK CLOSET</text><text class="rl" x="316" y="60">FRONT DESK</text><text class="rl" x="656" y="60">MANAGER\'S OFFICE</text>' +

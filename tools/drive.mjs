@@ -40,6 +40,21 @@ const dev = async (p, id) => { await p.click('#devtabs [data-d="' + id + '"]'); 
 const tab = async (p, name) => { await p.click('.win-tabs button:text-is("' + name + '")'); await p.waitForTimeout(40); };
 const type = async (p, line) => { await p.fill(".term .cmdin", line); await p.press(".term .cmdin", "Enter"); await p.waitForTimeout(40); };
 const term = (p) => p.$eval(".term pre", (n) => n.textContent);
+/* a drawing as painted on screen. The logical diagram ("net"): every port name on the diagram, clear of every device's tile
+   and label and every other port name (measured from the painted boxes, so a diagram drawn while hidden, where nothing can be
+   measured, shows). The floor plan ("plan"): every device's name and every room's name on the plan, clear of each other and
+   of every tile. AAA can't see these: text painted over text still measures as dark on light */
+const labelsClear = (p, which) => p.evaluate((which) => {
+  const svg = document.getElementById(which), S = svg.getBoundingClientRect(), box = (el) => el.getBoundingClientRect();
+  const ov = (a, b) => a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5;
+  const pl = [...svg.querySelectorAll(which === "net" ? "text.pl" : "text.ns, text.rl")], others = [...svg.querySelectorAll(which === "net" ? "text.nl, text.ns, rect.tile" : "rect.tile")], out = [];
+  pl.forEach((t, i) => {
+    const b = box(t); if (b.left < S.left - 1 || b.right > S.right + 1 || b.top < S.top - 1 || b.bottom > S.bottom + 1) out.push('"' + t.textContent + '" off the diagram');
+    others.forEach((o) => { if (ov(b, box(o))) out.push('"' + t.textContent + '" on ' + (o.tagName === "rect" ? "a tile" : '"' + o.textContent + '"')); });
+    pl.slice(i + 1).forEach((o) => { if (ov(b, box(o))) out.push('"' + t.textContent + '" on "' + o.textContent + '"'); });
+  });
+  return { n: pl.length, out: out };
+}, which);
 const T = (p, f) => p.evaluate(f);
 
 /* each ticket: what to look at, the fix through the page, the proof, and a tempting wrong fix */
@@ -1023,6 +1038,10 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
       t = await checkJob(p);
       const n = await BJ(p, () => window.__e4b.T.def.reqs.length);
       check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
+      await p.click("#vLog"); await p.waitForTimeout(60);
+      const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished office's logical diagram: all " + pn.n + " port names on it, clear of every label, tile and other port name" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(40);
+      const fp = await labelsClear(p, "plan"); check(fp.n > 0 && !fp.out.length, tag + "the finished office's floor plan: all " + fp.n + " names of devices and rooms on it, clear of each other and of every tile" + (fp.out.length ? " (" + fp.out.join("; ") + ")" : ""));
       await p.reload(); await p.waitForTimeout(350);
       check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)) && /done 1×|Done 1×/.test(await p.$eval('#queue [data-j="' + job + '"]', (n) => n.textContent)), tag + "still done after a reload, and the list counts it");
       if (job === "SO-J2") check(new RegExp("1 of " + LEVELS[1].jobs.length + " work orders done").test((await lv(p, 2)).text) && !/on the way/.test((await lv(p, 2)).text), tag + "the level counts its work orders, and says nothing more is coming (" + (await lv(p, 2)).text + ")");

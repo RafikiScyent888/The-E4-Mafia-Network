@@ -177,3 +177,18 @@ test("a ceiling access point on a trunk: the staff network and the guest network
   const u = new Sim(JSON.parse(JSON.stringify(n))); u.d.inj.power = false; cli(u, "msw", SWITCH); cli(u, "rtr", ROUTER);
   assert.equal(u.aps().filter((a) => a.id === "ap").length, 0, "no power down its cable: no Wi-Fi at all");
 });
+
+test("pings through the router: the TTL one less, Windows PCs still silent, the hit counts and NAT translations made", () => {
+  const s = built([], ["ip access-list extended GUEST-IN", "deny ip 192.168.40.0 0.0.0.255 192.168.10.0 0.0.0.255", "permit ip any any", "exit", "interface g0/0.40", "ip access-group GUEST-IN in"]);
+  const p = CMD.exec(s, "staff", "ping 192.168.40.1").out; assert.match(p, /Reply from 192\.168\.40\.1: bytes=32 time.* TTL=255/, p);
+  const pr = CMD.exec(s, "guest", "ping 192.168.10.11").out; assert.match(pr, /Request timed out\./); assert.doesNotMatch(pr, /Reply from/);
+  const sp = CMD.exec(s, "staff", "ping 192.168.10.11").out; assert.match(sp, /TTL=64/, "the printer on its own VLAN: no router in the way");
+  const ip = CMD.exec(s, "guest", "ping 8.8.8.8").out; assert.match(ip, /Reply from 8\.8\.8\.8/);
+  assert.deepEqual(s.d.rtr.hits, { "GUEST-IN": { 0: 4, 1: 4 } });
+  assert.equal(s.d.rtr.xlate.length, 1); assert.match(s.d.rtr.xlate[0].ig, /^198\.51\.100\.77:/); assert.match(s.d.rtr.xlate[0].il, /^192\.168\.40\.2:/);
+  const S = C.session(s.d.rtr.sw, { live: s.rtLive("rtr") }); ["", "enable"].forEach((l) => C.exec(S, l));
+  assert.match(C.exec(S, "show access-lists").out.join("\n"), /10 deny ip 192\.168\.40\.0 0\.0\.0\.255 192\.168\.10\.0 0\.0\.0\.255 \(4 matches\)\n    20 permit ip any any \(4 matches\)/);
+  assert.match(C.exec(S, "show ip nat translations").out.join("\n"), /icmp 198\.51\.100\.77:1\s+192\.168\.40\.2:1\s+8\.8\.8\.8:1\s+8\.8\.8\.8:1/);
+  const nr = built([], ["interface g0/1", "no ip address dhcp", "ip address 198.51.100.77 255.255.255.0"]);
+  assert.match(CMD.exec(nr, "staff", "ping 8.8.8.8").out, /Reply from 192\.168\.10\.1: Destination net unreachable\./, "the router has no route: it says so");
+});

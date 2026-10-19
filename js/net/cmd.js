@@ -325,7 +325,7 @@ function attempt(sim, id, ip, rt, i, R, phase) {
   if (rt.fail === "no-link" || rt.fail === "no-route") return { line: "PING: transmit failed. General failure.", got: false, counted: false };
   if (rt.fail === "host-unreachable" || rt.fail === "gateway-unreachable") return { line: "Reply from " + rt.addr.ip + ": Destination host unreachable.", got: false, counted: true };
   if (rt.fail === "net-unreachable") return { line: "Reply from " + rt.hops[0] + ": Destination net unreachable.", got: false, counted: true };
-  if (rt.fail === "no-reply") { sim.arp[id][ip] = sim.macOf(rt.owner[0]); return { line: "Request timed out.", got: false, counted: false }; }   /* it answered the ARP; its reply is what never comes */
+  if (rt.fail === "no-reply") { if (rt.via && rt.addr && rt.addr.gw) sim.arp[id][rt.addr.gw] = sim.macOf(rt.via); else if (rt.owner) sim.arp[id][ip] = sim.macOf(rt.owner[0]); return { line: "Request timed out.", got: false, counted: false }; }   /* it answered the ARP (or the router did, for another network); the reply is what never comes */
   if (rt.fail) return { line: "Request timed out.", got: false, counted: false };
   const h = sim.hop(id);
   let loss = h.loss, base = h.base;
@@ -340,6 +340,13 @@ function attempt(sim, id, ip, rt, i, R, phase) {
     return { line: "Reply from " + ip + ": bytes=32 time" + (t < 1 ? "<1ms" : "=" + t + "ms") + " TTL=" + sim.ttlOf(who), got: true, counted: true, t: t, who: who };
   }
   const gw = rt.addr.gw; if (gw) sim.arp[id][gw] = sim.macOf(rt.via);
+  if (rt.routed) {   /* through the business router to another of the business's networks: one hop, so the TTL comes back one less */
+    const who = rt.owner[0], k = sim.d[who].kind;
+    if (k === "pc" || k === "laptop") return { line: "Request timed out.", got: false, counted: false, who: who };   /* Windows Firewall, as on any network */
+    if (lostAt(i, loss, phase)) return { line: "Request timed out.", got: false, counted: false };
+    const t = 1 + base + Math.floor(R() * 3);
+    return { line: "Reply from " + ip + ": bytes=32 time" + (t < 1 ? "<1ms" : "=" + t + "ms") + " TTL=" + (sim.ttlOf(who) - 1), got: true, counted: true, t: t, who: who };
+  }
   if (lostAt(i, loss, phase)) return { line: "Request timed out.", got: false, counted: false };
   const t = (rt.modem ? 2 : 12) + base + Math.floor(R() * 9) + (loss > 0.05 ? Math.floor(R() * 220) : 0);
   return { line: "Reply from " + ip + ": bytes=32 time=" + t + "ms TTL=" + (rt.modem ? 63 : 56), got: true, counted: true, t: t };
@@ -379,7 +386,15 @@ function ping(sim, id, args) {
   facts.kind = rt.fail || (rt.local ? "local" : rt.internet ? "internet" : "ok");
   facts.local = !!rt.local; facts.internet = !!rt.internet;
   sim.lastTrace = trace(sim, id, ip, rt, got > 0);
+  routerCount(sim, rt, n, ip);
   return { out: lines.join("\n") + "\n", facts: facts };
+}
+/* traffic really sent through the business router: each access list line it matched counts (show access-lists), and a
+   translation is made for each conversation to the provider (show ip nat translations) */
+function routerCount(sim, rt, n, ip) {
+  const x = rt && rt.via && sim.d[rt.via]; if (!x || x.kind !== "brouter") return;
+  (rt.acls || []).forEach(function (h) { if (h[1] < 0) return; x.hits = x.hits || {}; const L = x.hits[h[0]] = x.hits[h[0]] || {}; L[h[1]] = (L[h[1]] || 0) + n; });
+  if (rt.nat) { x.xlate = x.xlate || []; const k = 1 + (x.xlate.length % 32); x.xlate.push({ proto: "icmp", ig: rt.nat.global + ":" + k, il: rt.nat.inside + ":" + k, ol: ip + ":" + k, og: ip + ":" + k }); if (x.xlate.length > 24) x.xlate.shift(); }
 }
 
 /* the packet's journey, hop by hop, for Step through */

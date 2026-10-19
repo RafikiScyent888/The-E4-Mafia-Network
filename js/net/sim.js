@@ -59,12 +59,17 @@ export function portsOf(x) {
   if (x.dual) return DUAL_PORTS;
   if (x.kind === "switch" && x.ports) return Array.from({ length: x.ports }, function (_, i) { return String(i + 1); });   /* the office's old switch has 8 */
   if (x.kind === "mswitch") return MSW_PORTS;
+  if (x.kind === "brouter") return RT_PORT_NAMES;
+  if (x.kind === "bap") return ["ETH"];
   if (x.kind === "techlaptop") return ["USB-C", "ETH"];
   if (x.kind === "jack") return ["JACK"];   /* the USB serial adapter for the console cable, and its own Ethernet port */
   return PORTS[x.kind] || [];
 }
 /* a console cable: your laptop's USB serial adapter to a switch's CONSOLE port */
-const consoleEnd = function (x, port) { return !!x && ((x.kind === "mswitch" && port === "CONSOLE") || (x.kind === "techlaptop" && port === "USB-C")); };
+const consoleEnd = function (x, port) { return !!x && (((x.kind === "mswitch" || x.kind === "brouter") && port === "CONSOLE") || (x.kind === "techlaptop" && port === "USB-C")); };
+/* an SFP slot: the managed switch's SFP1 to SFP4, the business router's Gi0/8 and Gi0/9 (printed WAN) */
+export const isSfpSlot = function (x, port) { return !!x && ((x.kind === "mswitch" && /^SFP\d$/.test(port)) || (x.kind === "brouter" && /^Gi0\/[89]$/.test(port))); };
+export const RT_PORT_NAMES = Array.from({ length: 10 }, function (_, i) { return "Gi0/" + i; }).concat(["CONSOLE"]);
 export const FIXED_ROOM = { modem: ["living", "by the cable outlet: there's one, in the living room"], camera: ["porch", "on its mount by the front door"] };
 const RUN = { office: { living: 14, kitchen: 18, garage: 12, porch: 38, upstairs: 20, landing: 18 }, living: { kitchen: 10, garage: 22, porch: 20, upstairs: 15, landing: 8 }, kitchen: { garage: 16, porch: 14, upstairs: 22, landing: 14 }, garage: { porch: 30, upstairs: 28, landing: 24 }, porch: { upstairs: 32, landing: 22 }, upstairs: { landing: 6 } };
 export function runLength(a, b, net) { if (a === b) return 3; const T = (net && net.runs) || RUN; return (T[a] && T[a][b]) || (T[b] && T[b][a]) || 40; }   /* net: the office has its own rooms and runs */
@@ -126,7 +131,7 @@ export class Sim {
     if (!c.a.seated || !c.b.seated || c.polarity === "flipped") return false;
     const mods = [c.a, c.b].map(function (e) { const x = this.d[e.dev], m = x && x.sfp && x.sfp[e.port]; return m ? SFP_MODULES[m] : null; }, this);
     if (!mods[0] || !mods[1] || mods.some(function (m) { return m.rate !== 1000 || m.fiber !== c.fiber; }) || mods[0].nm !== mods[1].nm) return false;
-    return [c.a, c.b].every(function (e) { const x = this.d[e.dev]; if (!this.on(e.dev)) return false; if (x.kind !== "mswitch") return true; const p = x.sw.ports[swPort(e.port)]; return !!p && !p.shutdown; }, this);
+    return [c.a, c.b].every(function (e) { const x = this.d[e.dev]; if (!this.on(e.dev)) return false; if (x.kind === "brouter") { const f = x.sw.ifs[RT_IF(e.port)]; return !!f && !f.shutdown; } if (x.kind !== "mswitch") return true; const p = x.sw.ports[swPort(e.port)]; return !!p && !p.shutdown; }, this);
   }
   cableUp(c) {
     if (!c) return false;
@@ -899,7 +904,7 @@ export class Sim {
       else if (this.cableAt(e[1].dev, e[1].port)) errs.push("The " + e[0].label + "'s " + (portName(e[0], e[1].port) === e[1].port ? "port " + e[1].port : portName(e[0], e[1].port)) + " already has a cable in it");
     }, this);
     if (errs.length) return { ok: false, errs: errs };
-    const slot = function (X, e) { return X.kind === "mswitch" && /^SFP\d$/.test(e.port); }, sa = slot(A, a), sb = slot(B, b);
+    const slot = function (X, e) { return isSfpSlot(X, e.port); }, sa = slot(A, a), sb = slot(B, b);
     if (sa !== sb) return { ok: false, errs: ["A fibre run joins two SFP slots; copper goes in the numbered ports"] };
     if (sa) {   /* the fibre's LC plug goes into a module: a slot with none takes no fibre */
       const empty = [[A, a], [B, b]].find(function (e) { return !(e[0].sfp && e[0].sfp[e[1].port]); });

@@ -13,7 +13,9 @@
 import { CORE, registerOS, pwOk, lldpTable } from "./swcli.js";
 
 const { CONFIG, EXEC_USER, EXEC_PRIV, SHOW, LINE, typed, pwText, hashish, ip4, isMask } = CORE;
-export const RT_PORTS = ["GigabitEthernet0/0", "GigabitEthernet0/1", "GigabitEthernet0/2"];
+/* its ten ports, as the model shows them: eight copper (0/0 to 0/7) and the two SFP slots printed WAN (0/8, 0/9) */
+export const RT_PORTS = Array.from({ length: 10 }, function (_, i) { return "GigabitEthernet0/" + i; });
+export const RT_SFP = ["GigabitEthernet0/8", "GigabitEthernet0/9"];
 const short = function (n) { return n.replace("GigabitEthernet", "Gi"); };
 const pad = function (s, n) { return (String(s) + " ".repeat(n)).slice(0, n); };
 
@@ -420,7 +422,7 @@ function rtIfDetail(r, n, live) {
   if (f.desc) L.push("  Description: " + f.desc);
   L.push(a ? "  Internet address is " + a.ip + "/" + bits(a.mask) : "  Internet address is not set");
   if (isSub(n)) L.push("  Encapsulation 802.1Q Virtual LAN, Vlan ID  " + (f.vlan || "(none)") + (f.native ? " (native)" : ""));
-  else L.push("  MTU 1500 bytes, BW 1000000 Kbit/sec, DLY 10 usec,", "  Full Duplex, 1000Mbps, media type is RJ45");
+  else L.push("  MTU 1500 bytes, BW 1000000 Kbit/sec, DLY 10 usec,", "  Full Duplex, 1000Mbps, media type is " + (RT_SFP.indexOf(n) >= 0 ? "SFP" : "RJ45"));
   if (f.aclIn || f.aclOut) L.push("  Inbound  access list is " + (f.aclIn || "not set"), "  Outgoing access list is " + (f.aclOut || "not set"));
   return L;
 }
@@ -471,7 +473,7 @@ function rtPing(S, a) {
 }
 
 const RT_SHOW = pick(SHOW, ["startup-config", "history", "clock", "users", "ssh", "crypto"]).concat([
-  ["version", "System hardware and software status", function (S) { const r = S.sw; return ["BR-4200 Network Operating System, Version 4.2.1", "", r.hostname + " uptime is " + r.uptime, "", "Model number: BR-4200 (3 x 10/100/1000 routed ports)", "Base MAC address: " + r.mac, "System serial number: " + r.serial, "", "System returned to ROM by " + (r.restart || "power-on"), "", "Configuration register: 0x2102"]; }],
+  ["version", "System hardware and software status", function (S) { const r = S.sw; return ["BR-4200 Network Operating System, Version 4.2.1", "", r.hostname + " uptime is " + r.uptime, "", "Model number: BR-4200 (8 x 10/100/1000 + 2 x SFP routed ports)", "Base MAC address: " + r.mac, "System serial number: " + r.serial, "", "System returned to ROM by " + (r.restart || "power-on"), "", "Configuration register: 0x2102"]; }],
   ["running-config", "Current operating configuration", function (S) { return rtRunning(S.sw); }],
   ["ip", "IP information", [
     ["interface", "IP interface status and configuration", [["brief", "Brief summary of IP status and configuration", function (S) { return rtBrief(S.sw, S.live); }]]],

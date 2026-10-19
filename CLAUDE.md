@@ -1730,6 +1730,31 @@ piece node-tested (`tests/business-cli.test.js`, `tests/business-sim.test.js`;
 - **Before going live**, the full Level 2 drive and AAA must be run again on
   this branch: it changes the switch's parser and the simulation the small
   office runs on.
+- **The owner's answers, 19 October 2026:**
+  - The photographs (the router's front in a rack, a sharper copy; the access
+    point on its ceiling plate) gave the models `businessRouter` and `ceilingAP`
+    (`assets/models/business-gear.js`, on `preview/models.html` under Small
+    business). The router's rear and sides and the access point's top aren't in
+    the photos and are drawn as usual: **"You can draw them and if I do not like
+    it. I will send you photos to the level of details and real world accuracy
+    that I am looking for."**
+  - **"Yes to the router question"**: the router has all ten ports the model
+    shows, numbered GigabitEthernet0/0 to 0/7 (copper) and 0/8 and 0/9 (the two
+    SFP slots printed WAN).
+  - **"Yes to the level 3 plans"**: six small businesses (a vet clinic, a dental
+    practice, a bakery café, a physio clinic, a bike shop, a bookshop café); 10
+    work orders (the new router online with NAT/PAT and DHCP; a staff VLAN with
+    its trunk and subinterface; guest Wi-Fi on a ceiling access point with an
+    access list; the back of house on a second switch over a trunk with its
+    allowed list and native VLAN; the cameras' VLAN and a port forward; then
+    hardening, a new department end to end, the printers' VLAN, a router rebuilt
+    from its backup, the provider's fixed address) and 15 tickets (the wrong
+    VLAN, a VLAN off the trunk, native mismatch, the wrong tag, a trunk that never
+    forms, a deleted VLAN, VLAN hopping, the pool's wrong gateway, a pool run out,
+    the printer's address handed out, an access list that blocks everything, one
+    applied the wrong way, a VLAN left out of NAT, the wrong default route, NAT
+    inside and outside swapped). Built stage by stage, each stage live once
+    verified.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

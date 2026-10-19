@@ -1812,6 +1812,56 @@ piece node-tested (`tests/business-cli.test.js`, `tests/business-sim.test.js`;
   house's rooms offered, the provider's router never collected; in 3D, every port
   lit, the power light dark, no plugs drawn. Each failed as it should.
 
+### Where work stopped, 19 October 2026 (the owner: "Stop for now", then "save everything that you are working for later")
+
+**Nothing of Level 3 is live.** `main` is unchanged. Two branches hold it:
+- **`save/level3`** = stage 1 (commit 6e2ab32): the business, SB-J1 and SB-J2,
+  everything above. Verified so far: `npm test` 326 of 326 (before the levels
+  test change: re-run), `ONLY=business node tools/drive.mjs` 118 checks pass,
+  `ONLY=business node tools/models.mjs` 25 pass, every plant listed above
+  caught. **Still to run before stage 1 goes live** (both were started and
+  stopped part way when the owner said stop; no results):
+  - `node tools/drive.mjs` in full (every level: the stronger drawing check and
+    the page changes reach Levels 1 and 2 too);
+  - AAA on the new states: `ONLY="business:,levels: desk,small business opens,small business's work orders" node tools/aaa.mjs tools/aaa-states.json`
+    (13 new "business:" states and the renamed level states);
+  - then `node tools/models.mjs` in full and `npm test`; then merge to `main`,
+    push, check the Pages run.
+- **`save/level3-stage2`** = stage 2 in progress, SB-J3 (guest Wi-Fi on the
+  ceiling access point), on top of stage 1. **Work in progress, not verified.**
+  - Done: `addGuestKit` (js/net/business.js: the access point and a PoE
+    injector boxed, the visitor's phone, `BUSINESS_SIGNAL`), the guest network's
+    records (`guestSsid`, `guestPw`, `apPort` 5, `apDesc`, `guestAcl`), the
+    diagram rearranged for them (the closet switch's name under it). The sim:
+    an access list in on an interface now sees DHCP's DISCOVER (a deny-only or
+    standard list of the guests' own network leaves guests on 169.254, as on the
+    real thing; `tests/business-sim.test.js` updated, 16 of 16 pass); the access
+    point's networks carry their password and joining checks the one typed
+    (`joinssid` with `pass`); the `apnet` action (the access point's web page:
+    add, update or remove a network, validated as a real one is); an access
+    point's own address found on its untagged side (`owners`). SB-J3 itself
+    (js/build/business.js): 12 lines, its solution passing on every business
+    tried; the VLAN, subinterface and pool checks shared with SB-J2.
+  - **The one failing test** (`SEEDS=20 node --test tests/business-jobs.test.js`,
+    9 of 10 pass): random work can `joinssid` a network name that doesn't
+    exist, and `joinssid` in `sim.js` then reads `ap.psk` of nothing. Fix: guard
+    `ap` before reading `ap.psk` in the `joinssid` case.
+  - **Still to build for stage 2:** the page. The access point's tabs (a "Web
+    page" with an address bar: the student finds its address from `show ip dhcp
+    binding` or `show lldp neighbors`, opens it from the manager's PC, then the
+    networks list and the add form) and its Physical tab (`ceilingAP`, its ring
+    lit from the sim); the visitor's phone's Wi-Fi tab for a business (the
+    networks it hears, a password box, `joinssid`; the current phone page reads
+    `sim.d.router.wifi`, which doesn't exist at the business); `ap` in the build
+    page's device order and the diagram's device list, its address under its
+    icon; then SB-J3's tempting-wrong-ways tests, the drive, models, AAA states,
+    plants, and go live.
+  - `tools/wip/`: the scripts used while building (run from the repo root):
+    `sbrun.mjs` (every business job: start, solve, check), `sb3net.mjs` (SB-J3's
+    network by hand), `l3geo.mjs` (both drawings measured at every solution step;
+    `ROOT=` a planted copy to calibrate), `l3shot.mjs` and `rtr3d.mjs`
+    (screenshots into `./wip-out/`). Not part of the site.
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

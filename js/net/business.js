@@ -13,12 +13,12 @@ import { newRouter } from "./rtcli.js";
 /* each business: its name, its tag (in every hostname), its manager, where it is, what its rooms are called, and what
    its staff, its guests and its back of house are */
 export const BUSINESSES = [
-  { name: "Harbor Lane Vet Clinic", tag: "HL", manager: "Nadia", street: "12 Harbor Lane", counter: "Reception", guest: "Waiting room", back: "Treatment rooms", backPc: "Treatment room PC", pc: "Reception PC" },
-  { name: "Bright Smile Dental", tag: "BSD", manager: "Owen", street: "48 Elm Street", counter: "Reception", guest: "Waiting room", back: "Surgery rooms", backPc: "Surgery PC", pc: "Reception PC" },
-  { name: "Golden Crust Bakery Café", tag: "GC", manager: "Rosa", street: "3 Market Square", counter: "Front counter", guest: "Café seating", back: "Kitchen", backPc: "Kitchen PC", pc: "Till PC" },
-  { name: "Eastside Physio Clinic", tag: "EP", manager: "Kofi", street: "77 East Road", counter: "Reception", guest: "Waiting room", back: "Treatment rooms", backPc: "Treatment room PC", pc: "Reception PC" },
-  { name: "Spoke & Chain Bike Shop", tag: "SC", manager: "Mei", street: "9 Canal Street", counter: "Shop counter", guest: "Shop floor", back: "Workshop", backPc: "Workshop PC", pc: "Counter PC" },
-  { name: "Chapter & Bean Bookshop Café", tag: "CB", manager: "Lars", street: "21 Library Row", counter: "Till", guest: "Café corner", back: "Stock room", backPc: "Stock room PC", pc: "Till PC" }
+  { name: "Harbor Lane Vet Clinic", tag: "HL", manager: "Nadia", street: "12 Harbor Lane", counter: "Reception", guest: "Waiting room", back: "Treatment rooms", backPc: "Treatment room PC", pc: "Reception PC", wifi: "HarborLane-Guest", wifiPw: "Paws&Relax25" },
+  { name: "Bright Smile Dental", tag: "BSD", manager: "Owen", street: "48 Elm Street", counter: "Reception", guest: "Waiting room", back: "Surgery rooms", backPc: "Surgery PC", pc: "Reception PC", wifi: "BrightSmile-Guest", wifiPw: "Smile*Wait33" },
+  { name: "Golden Crust Bakery Café", tag: "GC", manager: "Rosa", street: "3 Market Square", counter: "Front counter", guest: "Café seating", back: "Kitchen", backPc: "Kitchen PC", pc: "Till PC", wifi: "GoldenCrust-Guest", wifiPw: "Fresh!Bread12" },
+  { name: "Eastside Physio Clinic", tag: "EP", manager: "Kofi", street: "77 East Road", counter: "Reception", guest: "Waiting room", back: "Treatment rooms", backPc: "Treatment room PC", pc: "Reception PC", wifi: "Eastside-Guest", wifiPw: "Stretch#Wait7" },
+  { name: "Spoke & Chain Bike Shop", tag: "SC", manager: "Mei", street: "9 Canal Street", counter: "Shop counter", guest: "Shop floor", back: "Workshop", backPc: "Workshop PC", pc: "Counter PC", wifi: "SpokeChain-Guest", wifiPw: "Ride*Free44" },
+  { name: "Chapter & Bean Bookshop Café", tag: "CB", manager: "Lars", street: "21 Library Row", counter: "Till", guest: "Café corner", back: "Stock room", backPc: "Stock room PC", pc: "Till PC", wifi: "ChapterBean-Guest", wifiPw: "Read&Sip19" }
 ];
 const PREFIXES = ["192.168.10", "192.168.30", "192.168.60", "172.16.40"];
 const RANGES = [[100, 199], [50, 150], [120, 220], [60, 180]];
@@ -40,18 +40,23 @@ export const BUSINESS_FIXED = { modem: ["closet", "on the closet shelf, where th
 /* where things sit: the logical diagram (x, y) and the floor plan (px, py) */
 export const BUSINESS_LAYOUT = {
   /* the diagram: the provider's line across the top, the business router under it, the closet switch fanning out to the
-     floor, your laptop left of the switch so its console line to either never crosses another device. The plan: the
+     floor (its name under it, so the injector and the access point can sit to its right), your laptop left of the switch so
+     its console line to either never crosses another device. The plan: the
      closet in two columns (the provider's gear on the left, the business's own on the right), each name clear of the next */
   isp: { x: 55, y: 80 },
   modem: { x: 230, y: 80, px: 115, py: 105, room: "closet" },
   router: { x: 680, y: 80, px: 115, py: 205, room: "closet", lab: "above" },
   rtr: { x: 440, y: 180, px: 245, py: 105, room: "closet", lab: "right" },
-  msw: { x: 560, y: 300, px: 245, py: 205, room: "closet", lab: "right" },
+  msw: { x: 560, y: 300, px: 245, py: 205, room: "closet" },
   tech: { x: 240, y: 290, px: 115, py: 295, room: "closet" },
   pc: { x: 300, y: 440, px: 420, py: 130, room: "counter" },
-  mgr: { x: 735, y: 170, px: 820, py: 150, room: "office" },
-  printer: { x: 540, y: 440, px: 560, py: 140, room: "counter" },
-  bpc: { x: 110, y: 440, px: 820, py: 400, room: "back" }
+  mgr: { x: 735, y: 150, px: 820, py: 150, room: "office" },
+  printer: { x: 430, y: 440, px: 560, py: 140, room: "counter" },
+  bpc: { x: 110, y: 440, px: 820, py: 400, room: "back" },
+  /* SB-J3's: the access point on the waiting area's ceiling, its injector in the closet, the visitor's phone */
+  injector: { x: 720, y: 300, px: 245, py: 295, room: "closet", lab: "above" },
+  ap: { x: 720, y: 440, px: 420, py: 330, room: "guest" },
+  guest: { x: 560, y: 440, px: 540, py: 430, room: "guest" }
 };
 export const BUSINESS_ROOM_BOX = { closet: [30, 30, 300, 370], counter: [300, 30, 640, 270], office: [640, 30, 980, 270], guest: [300, 270, 660, 520], back: [660, 270, 980, 520] };
 
@@ -66,6 +71,29 @@ function closetSwitch(r, plan, desc) {
   lines.push("interface range gi0/5 - 23", "shutdown", "interface range gi0/25 - 28", "shutdown", "end", "copy running-config startup-config", "");
   lines.forEach(function (l) { exec(S, l); });
   return sw;
+}
+
+/* the Wi-Fi from an access point on each room's ceiling, heard in each room (2.4 GHz, 5 GHz; percent): the waiting area is
+   open plan, the closet behind two walls and a door */
+export const BUSINESS_SIGNAL = {
+  guest: { guest: [86, 76], counter: [62, 50], back: [56, 44], office: [40, 28], closet: [30, 18] },
+  counter: { counter: [86, 76], guest: [62, 50], office: [56, 44], back: [36, 22], closet: [44, 32] },
+  office: { office: [86, 76], counter: [56, 44], back: [56, 44], guest: [40, 28], closet: [26, 12] },
+  back: { back: [86, 76], guest: [56, 44], office: [56, 44], counter: [36, 22], closet: [20, 10] },
+  closet: { closet: [86, 76], counter: [44, 32], guest: [30, 18], office: [20, 10], back: [16, 6] }
+};
+/* what SB-J3 brings: the ceiling access point and a PoE injector in their boxes (the switch gives no power), and a visitor
+   waiting with their phone. From a stream of its own, so the business is drawn as before */
+export function addGuestKit(sim) {
+  const net = sim.net, r = rng(net.seed ^ 0x5a3c);
+  net.devices.ap = { id: "ap", kind: "bap", label: "Ceiling access point", sub: "AP-310", on: true, boxed: true, poe: true, draw: 9, mac: mac(r), ch24: 6, ch5: 36, ssids: [], host: net.client.tag + "-AP1",
+    ifaces: [{ name: "Ethernet", type: "eth", port: "ETH", mac: mac(r), cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] };
+  net.devices.injector = { id: "injector", kind: "injector", label: "PoE injector", on: true, boxed: true, power: true, std: "af" };
+  net.devices.guest = { id: "guest", kind: "phone", label: "Visitor's phone", sub: "Wi-Fi", on: true,
+    ifaces: [{ name: "Wi-Fi", type: "wifi", mac: mac(r), bands: [24, 5], secs: ["WPA2-Personal", "WPA3-Personal"], saved: { ssid: null }, cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] };
+  Object.assign(net.rooms, { ap: "closet", injector: "closet", guest: "guest" });
+  net.signal = BUSINESS_SIGNAL;
+  ["ap", "injector", "guest"].forEach(function (id) { sim.arp[id] = {}; });
 }
 
 export function makeBusiness(seed) {
@@ -91,6 +119,8 @@ export function makeBusiness(seed) {
       native: { id: V.native, name: "NATIVE-UNUSED" }, parking: { id: V.parking, name: "PARKING" }
     },
     vmask: "255.255.255.0",
+    /* the guest Wi-Fi (SB-J3): its name and password, the access point's switch port and its description, the guests' access list */
+    guestSsid: biz.wifi, guestPw: biz.wifiPw, apPort: "5", apDesc: "CEILING-AP", guestAcl: "GUEST-IN",
     /* the switch's port descriptions, by what's plugged in */
     desc: { "1": biz.pc.toUpperCase().replace(/[^A-Z0-9]+/g, "-"), "2": "MANAGER-PC", "3": "PRINTER", "4": biz.backPc.toUpperCase().replace(/[^A-Z0-9]+/g, "-"), "24": "UPLINK-ROUTER" }
   };

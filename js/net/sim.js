@@ -266,8 +266,8 @@ export class Sim {
     for (const id in this.d) {   /* a business access point (powered over its cable, its cable up): each of its networks on both radios, each on its own VLAN */
       const x = this.d[id]; if (x.kind !== "bap" || !this.on(id) || !this.cableUp(this.cableAt(id, "ETH"))) continue;
       (x.ssids || []).forEach(function (w, i) { const node = this.bapNode(id, w.vlan); let m = x.mac; for (let k = 0; k < i * 2; k++) m = bump(m);
-        out.push({ id: id, node: node, room: this.net.rooms[id], band: 24, ch: x.ch24 || 6, ssid: w.ssid, mac: m, sec: w.sec, gen: w.gen || 1, vlan: w.vlan, guest: !!w.guest });
-        out.push({ id: id, node: node, room: this.net.rooms[id], band: 5, ch: x.ch5 || 36, ssid: w.ssid, mac: bump(m), sec: w.sec, gen: w.gen || 1, vlan: w.vlan, guest: !!w.guest }); }, this);
+        out.push({ id: id, node: node, room: this.net.rooms[id], band: 24, ch: x.ch24 || 6, ssid: w.ssid, mac: m, sec: w.sec, gen: w.gen || 1, vlan: w.vlan, guest: !!w.guest, psk: w.psk });
+        out.push({ id: id, node: node, room: this.net.rooms[id], band: 5, ch: x.ch5 || 36, ssid: w.ssid, mac: bump(m), sec: w.sec, gen: w.gen || 1, vlan: w.vlan, guest: !!w.guest, psk: w.psk }); }, this);
     }
     const m = this.d.mesh;
     if (m && this.meshLink().ok) {   /* wired or wireless back to the router, it broadcasts the house's Wi-Fi */
@@ -336,7 +336,7 @@ export class Sim {
     }
     if (!best) return { connected: false, reason: "no-network", room: room };
     if (!this.canSec(f, best.ap.sec)) return { connected: false, reason: "security", ap: best.ap, signal: best.signal, room: room };
-    if (best.ap.sec !== "Open" && (!f.saved.passOk || (f.saved.gen || 1) !== (best.ap.gen || this.d.router.wifi.gen || 1))) return { connected: false, reason: "auth", ap: best.ap, signal: best.signal, room: room };   /* the password it has saved isn't the network's (any more) */
+    if (best.ap.sec !== "Open" && (!f.saved.passOk || (f.saved.gen || 1) !== (best.ap.gen || (this.d.router && this.d.router.wifi.gen) || 1))) return { connected: false, reason: "auth", ap: best.ap, signal: best.signal, room: room };   /* the password it has saved isn't the network's (any more) */
     const crowd = best.ap.band === 24 ? this.crowd(best.ap.ch, room) : 0;
     const weak = best.signal < 35 ? (35 - best.signal) / 60 : 0;
     const loss = Math.min(0.6, Math.max(0, (crowd - 0.35) * 0.55) + weak);
@@ -448,7 +448,7 @@ export class Sim {
       if (x.kind === "brouter") { if (this.on(id) && this.rtIfFor(id, ip, dom)) out.push(id); continue; }
       if (x.kind === "mswitch") { if (this.on(id)) { if (this.mgmtAddrs(id).some(function (o) { return o.ip === ip && dom.has(this.vnode(id, o.vlan)); }, this)) out.push(id); } continue; }
       if (!x.ifaces) continue;
-      if (!dom.has(id)) continue;
+      if (!dom.has(x.kind === "bap" ? this.bapNode(id, null) : id)) continue;   /* a business access point's own address is on its untagged side */
       const a = this.addr(id); if (a && a.ip === ip) out.push(id);
     }
     return out;
@@ -467,7 +467,10 @@ export class Sim {
     for (const rid in this.d) {   /* the business router: each interface on this broadcast domain with a pool for its network ("rtr@GigabitEthernet0/0.10") */
       if (this.d[rid].kind !== "brouter" || !this.on(rid)) continue;
       const R = this.rtView(rid), live = this.rtLive(rid);
-      RT.allIfs(R).forEach(function (n) { const a = RT.addrOf(R, n, live); if (a && RT.rtStatus(R, n)[1] === "up" && dom.has(this.rtNode(rid, n)) && RT.poolFor(R, a.ip, a.mask)) out.push(rid + "@" + n); }, this);
+      /* an access list in on the interface sees the DISCOVER too (from 0.0.0.0 to everyone, UDP 68 to 67): one that doesn't permit it
+         leaves the clients on 169.254, as on the real thing. Checked, never counted: a check changes nothing */
+      const discover = { proto: "udp", src: "0.0.0.0", dst: "255.255.255.255", sport: 68, port: 67 };
+      RT.allIfs(R).forEach(function (n) { const a = RT.addrOf(R, n, live), f = n.indexOf(".") > 0 ? R.subs[n] : R.ifs[n]; if (a && RT.rtStatus(R, n)[1] === "up" && dom.has(this.rtNode(rid, n)) && RT.poolFor(R, a.ip, a.mask) && (!f.aclIn || RT.aclVerdict(R, f.aclIn, discover).permit)) out.push(rid + "@" + n); }, this);
     }
     return out;
   }
@@ -789,8 +792,26 @@ export class Sim {
       }
       case "joinssid": {                                        /* join a business access point's network by name, with its password (the client's records give it) */
         const f = this.d[act.dev].ifaces[0], ap = this.aps().find(function (p) { return p.ssid === act.ssid; });
-        f.saved = ap ? (ap.sec === "Open" ? { ssid: ap.ssid, passOk: true, sec: "Open" } : { ssid: ap.ssid, passOk: act.pass !== false, gen: ap.gen }) : { ssid: act.ssid, passOk: false };
+        const pw = typeof act.pass === "string" ? act.pass === ap.psk : act.pass !== false;   /* typed on the phone: it must be the network's password */
+        f.saved = ap ? (ap.sec === "Open" ? { ssid: ap.ssid, passOk: true, sec: "Open" } : { ssid: ap.ssid, passOk: !!(ap && pw), gen: ap.gen }) : { ssid: act.ssid, passOk: false };
         this.release(act.dev); res = this.hasLink(act.dev) ? this.dhcp(act.dev, "join") : { result: "no-wifi" }; break;
+      }
+      case "apnet": {                                           /* the business access point's web page: a network saved (a new name adds one, a name it has updates it) or removed */
+        const x = this.d[act.dev], errs = []; if (!x || x.kind !== "bap") { res = { ok: false, errs: ["That isn't an access point"] }; break; }
+        if (act.remove != null) { const i = x.ssids.findIndex(function (w) { return w.ssid === act.remove; }); if (i < 0) { res = { ok: false, errs: ["There's no network called " + act.remove] }; break; } x.ssids.splice(i, 1); res = { ok: true }; break; }
+        const v = act.net || {}, ssid = String(v.ssid || "").trim(), sec = v.sec, psk = String(v.psk || ""), vl = String(v.vlan == null ? "" : v.vlan).trim();
+        if (!ssid || ssid.length > 32 || !/^[\x20-\x7e]+$/.test(ssid)) errs.push("A network name is 1 to 32 letters, digits or symbols");
+        if (["WPA2-Personal", "WPA2/WPA3", "WPA3-Personal", "Open"].indexOf(sec) < 0) errs.push("Choose the security");
+        if (sec !== "Open" && (psk.length < 8 || psk.length > 63)) errs.push("A WPA2 or WPA3 password is 8 to 63 characters");
+        if (vl && !(/^\d+$/.test(vl) && +vl >= 1 && +vl <= 4094)) errs.push("A VLAN ID is a number from 1 to 4094, or blank for the access point's own network");
+        if (errs.length) { res = { ok: false, errs: errs }; break; }
+        const was = x.ssids.find(function (w) { return w.ssid === ssid; });
+        if (!was && x.ssids.length >= 4) { res = { ok: false, errs: ["This access point broadcasts up to four networks"] }; break; }
+        const w = was || { ssid: ssid, gen: 0 };
+        if (!was || w.psk !== psk || w.sec !== sec) w.gen = (w.gen || 0) + 1;   /* a new password or security: every device has to join again */
+        Object.assign(w, { sec: sec, psk: sec === "Open" ? "" : psk, vlan: vl ? +vl : null });
+        if (!was) x.ssids.push(w);
+        res = { ok: true, ssid: ssid }; break;
       }
       case "pcprinter": { const ip = String(act.ip || "").trim(); if (!isIp(ip)) { res = { ok: false, errs: ["The printer port must be an IPv4 address"] }; break; } this.d.pc.printer.port = ip; res = { ok: true }; break; }
       case "client": res = this.setClient(act.dev, act.values); break;

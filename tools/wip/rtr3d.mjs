@@ -1,0 +1,18 @@
+import http from "node:http"; import fs from "node:fs"; import path from "node:path";
+const ROOT = new URL("../..", import.meta.url).pathname, OUT = "./wip-out/";
+const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".jpg": "image/jpeg" };
+const srv = http.createServer((q, r) => { const rel = decodeURIComponent(q.url.split("?")[0].split("#")[0]).slice(1) || "index.html"; fs.readFile(path.join(ROOT, rel), (e, b) => { r.writeHead(e ? 404 : 200, { "content-type": MIME[path.extname(rel)] || "application/octet-stream" }); r.end(e ? "" : b); }); }).listen(0);
+const pw = await import("/opt/node22/lib/node_modules/playwright/index.mjs"); const { chromium } = pw.default || pw;
+const B = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--headless=new", "--no-sandbox", "--use-gl=swiftshader", "--enable-unsafe-swiftshader"] });
+const ctx = await B.newContext({ viewport: { width: 900, height: 1000 }, reducedMotion: "reduce" });
+await ctx.addInitScript(() => { sessionStorage.setItem("e4-instructor", "1"); });
+const p = await ctx.newPage(); await p.goto("http://127.0.0.1:" + srv.address().port + "/build.html"); await p.waitForFunction(() => window.__e4b);
+const steps = +(process.argv[2] || 2), view = process.argv[3] || "Front close-up";
+await p.evaluate((n) => { const c = window.__e4b; c.openJob("SB-J1", true, 5201); const J = c.T; J.def.solve(J.v, J.sim).slice(0, n).forEach((a) => c.act(a)); }, steps);
+await p.click('#devtabs [data-d="rtr"]'); await p.click('.win-tabs button:text-is("Physical")'); await p.waitForTimeout(4000);
+await p.click('.m3d-bar button:text-is("' + view + '")'); await p.waitForTimeout(5000);
+await (await p.$("canvas.m3d-canvas")).screenshot({ path: OUT + "rtr3d-" + steps + ".png" });
+const pos = await p.evaluate(async () => { const THREE = await import("three"), m = await import("./js/desk/model3d.js"), d = m.debug(); d.render(); const out = {};
+  d.model.traverse((o) => { if (o.userData.kind === "led" && o.parent && /^port:Gi0\/[0-2]$/.test(o.parent.name)) { const v = new THREE.Vector3(); o.getWorldPosition(v); v.project(d.camera); const cv = document.querySelector("canvas.m3d-canvas"); out[o.parent.name + " " + o.userData.role] = [Math.round((v.x + 1) / 2 * cv.width), Math.round((1 - v.y) / 2 * cv.height), cv.width, cv.clientWidth]; } }); return out; });
+console.log(pos);
+await B.close(); srv.close();

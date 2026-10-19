@@ -6,11 +6,11 @@
    devices and the network as they really are. Each line is an ordered list of
    causes, as on the other levels, so Mason's third rung can strike the ones
    the network has ruled out and leave two. None of it ever says what to type. */
-import { makeBusiness } from "../net/business.js";
+import { makeBusiness, addGuestKit } from "../net/business.js";
 import { Sim } from "../net/sim.js";
 import { exec } from "../net/cmd.js";
 import { unsaved, pwOk, carries } from "../net/swcli.js";
-import { addrOf, rtStatus, poolFor, poolAddrs, aclVerdict, routes } from "../net/rtcli.js";
+import { addrOf, rtStatus, poolFor, poolAddrs, aclVerdict, routes, netOf } from "../net/rtcli.js";
 import { online } from "./jobs.js";
 import { ip2n } from "../net/util.js";
 
@@ -204,12 +204,16 @@ const SB1 = {
 };
 
 /* ---------------------------------------------------------------- SB-J2: the staff VLAN */
-const staff = function (v) { return v.plan.vlans.staff; };
-const subName = function (v) { return v.plan.lanPort + "." + staff(v).id; };
-function vlanCauses(sim, v) {
-  const sw = SW(sim), S = staff(v), vl = sw.vlans[S.id];
-  return [C("none", !vl, "The closet switch has no staff VLAN", "The staff VLAN exists.", "show vlan brief: no VLAN " + S.id + "."),
-    C("name", !!vl && vl.name !== S.name, "The staff VLAN isn't named as the records say", "It's named as the records say.", "show vlan brief: VLAN " + S.id + " is " + (vl ? vl.name : "") + ".")];
+/* the VLANs' lines are shared: SB-J2's staff VLAN and SB-J3's guest VLAN are checked the same way (k: "staff" or "guest") */
+const VL = function (v, k) { return v.plan.vlans[k || "staff"]; };
+const staff = function (v) { return VL(v, "staff"); };
+const subName = function (v, k) { return v.plan.lanPort + "." + VL(v, k).id; };
+const PEOPLE = { staff: "staff", guest: "guests" };
+function vlanCauses(sim, v, k) {
+  k = k || "staff";
+  const sw = SW(sim), S = VL(v, k), vl = sw.vlans[S.id];
+  return [C("none", !vl, "The closet switch has no " + k + " VLAN", "The " + k + " VLAN exists.", "show vlan brief: no VLAN " + S.id + "."),
+    C("name", !!vl && vl.name !== S.name, "The " + k + " VLAN isn't named as the records say", "It's named as the records say.", "show vlan brief: VLAN " + S.id + " is " + (vl ? vl.name : "") + ".")];
 }
 function trunkCauses(sim, v) {
   const sw = SW(sim), m = between(sim, "rtr", "msw"), port = m ? "GigabitEthernet0/" + m.far : null, p = port && sw.ports[port], c = port ? carries(sw, port, null) : null;
@@ -218,29 +222,33 @@ function trunkCauses(sim, v) {
     C("allowed", !!c && c.mode === "trunk" && c.tagged.indexOf(staff(v).id) < 0 && c.untagged !== staff(v).id, "The trunk doesn't carry the staff VLAN", "The trunk carries the staff VLAN.", "show interfaces trunk: VLAN " + staff(v).id + " isn't allowed and active on Gi0/" + (m ? m.far : "") + "."),
     C("native", !!c && c.mode === "trunk" && c.untagged !== 1, "The trunk's native VLAN isn't the one the old network still runs on", "Untagged frames still reach the old network.", "show interfaces trunk: native VLAN " + (p ? p.native : "") + ".")];
 }
-/* the staff VLAN's subinterface: the records' name, or failing that any subinterface on the inside port tagging the staff VLAN (its number is only a name) */
-const staffSub = function (R, v) {
-  const n = subName(v); if (R.subs[n]) return n;
-  return Object.keys(R.subs).find(function (k) { return k.split(".")[0] === v.plan.lanPort && R.subs[k].vlan === staff(v).id; }) || null;
+/* a VLAN's subinterface: the records' name, or failing that any subinterface on the inside port tagging that VLAN (its number is only a name) */
+const vlanSub = function (R, v, k) {
+  const n = subName(v, k); if (R.subs[n]) return n;
+  return Object.keys(R.subs).find(function (q) { return q.split(".")[0] === v.plan.lanPort && R.subs[q].vlan === VL(v, k).id; }) || null;
 };
-function subCauses(sim, v) {
-  const R = view(sim), S = staff(v), k = staffSub(R, v), n = k || subName(v), f = k ? R.subs[k] : null, any = Object.keys(R.subs).find(function (q) { return R.subs[q].vlan === S.id; });
-  return [C("none", !f && !any, "The router has no subinterface for the staff VLAN", "There's a subinterface for the staff VLAN.", "show ip interface brief on the router: no " + n + "."),
-    C("other", !f && !!any, "The staff VLAN's subinterface is on a port the switch isn't cabled to", "It's on the inside port.", "show ip interface brief: the staff VLAN is on " + any + "."),
-    C("tag", !!f && f.vlan !== S.id, "The subinterface doesn't tag the staff VLAN", "It tags the staff VLAN.", "show running-config: " + n + (f && f.vlan ? " has encapsulation dot1Q " + f.vlan : " has no encapsulation line") + "."),
-    C("addr", !!f && f.vlan === S.id && (f.ip !== S.gw || f.mask !== v.plan.vmask), "Its address isn't the staff network's gateway from the records", "Its address is the staff gateway.", "show ip interface brief: " + n + " is " + (f && f.ip ? f.ip : "unassigned") + "."),
+const staffSub = function (R, v) { return vlanSub(R, v, "staff"); };
+function subCauses(sim, v, k) {
+  k = k || "staff";
+  const R = view(sim), S = VL(v, k), q = vlanSub(R, v, k), n = q || subName(v, k), f = q ? R.subs[q] : null, any = Object.keys(R.subs).find(function (z) { return R.subs[z].vlan === S.id; });
+  return [C("none", !f && !any, "The router has no subinterface for the " + k + " VLAN", "There's a subinterface for the " + k + " VLAN.", "show ip interface brief on the router: no " + n + "."),
+    C("other", !f && !!any, "The " + k + " VLAN's subinterface is on a port the switch isn't cabled to", "It's on the inside port.", "show ip interface brief: the " + k + " VLAN is on " + any + "."),
+    C("tag", !!f && f.vlan !== S.id, "The subinterface doesn't tag the " + k + " VLAN", "It tags the " + k + " VLAN.", "show running-config: " + n + (f && f.vlan ? " has encapsulation dot1Q " + f.vlan : " has no encapsulation line") + "."),
+    C("addr", !!f && f.vlan === S.id && (f.ip !== S.gw || f.mask !== v.plan.vmask), "Its address isn't the " + k + " network's gateway from the records", "Its address is the " + k + " gateway.", "show ip interface brief: " + n + " is " + (f && f.ip ? f.ip : "unassigned") + "."),
     C("shut", !!f && rtStatus(R, n)[1] !== "up", "The subinterface is down", "It's up.", "show ip interface brief: " + n + " is down."),
-    C("nat", !!f && f.nat !== "inside", "The subinterface isn't NAT's inside, so staff never get out", "It's NAT's inside.", "show running-config: no ip nat inside on " + n + "."),
-    C("list", !!f && !RT(sim).nat.some(function (x) { return RT(sim).acls[x.list] && aclVerdict(RT(sim), x.list, { proto: "ip", src: S.net.replace(/\.0$/, ".50"), dst: "8.8.8.8" }).permit; }), "The NAT rule's access list doesn't take the staff network", "The staff network is translated too.", "show access-lists: the staff addresses match no permit in NAT's list.")];
+    C("nat", !!f && f.nat !== "inside", "The subinterface isn't NAT's inside, so " + PEOPLE[k] + " never get out", "It's NAT's inside.", "show running-config: no ip nat inside on " + n + "."),
+    C("list", !!f && !RT(sim).nat.some(function (x) { return RT(sim).acls[x.list] && aclVerdict(RT(sim), x.list, { proto: "ip", src: S.net.replace(/\.0$/, ".50"), dst: "8.8.8.8" }).permit; }), "The NAT rule's access list doesn't take the " + k + " network", "The " + k + " network is translated too.", "show access-lists: the " + k + " addresses match no permit in NAT's list.")];
 }
-function staffPoolCauses(sim, v) {
-  const r = RT(sim), S = staff(v), k = Object.keys(r.pools).find(function (q) { return r.pools[q].network === S.net && r.pools[q].mask === v.plan.vmask; }), P = k ? r.pools[k] : null;
-  const A = k ? poolAddrs(r, k) : [], gwOut = A.indexOf(S.gw) >= 0 || A.some(function (ip) { return ip2n(ip) <= ip2n(S.gw) + 9; });
-  return [C("pool", !P, "The router has no pool for the staff network", "There's a pool for the staff network.", "show ip dhcp pool: nothing for " + S.net + "/24."),
-    C("gw", !!P && P.router[0] !== S.gw, "The staff pool hands out the wrong gateway, or none", "It hands out the staff gateway.", "The staff pool's default-router is " + (P && P.router[0] || "not set") + "."),
-    C("dns", !!P && !(P.dns.length && P.dns.every(function (d) { return v.plan.dns.indexOf(d) >= 0; })), "The staff pool hands out no DNS servers, or not the provider's", "It hands out the provider's DNS servers.", "The staff pool's dns-server is " + (P && P.dns.join(" ") || "not set") + "."),
-    C("excl", !!P && gwOut, "The first ten staff addresses (the gateway's and the gear's) aren't kept back", "The first ten are excluded.", "show ip dhcp pool: the staff pool starts at its first address.")];
+function poolCauses(sim, v, k) {
+  k = k || "staff";
+  const r = RT(sim), S = VL(v, k), q = Object.keys(r.pools).find(function (z) { return r.pools[z].network === S.net && r.pools[z].mask === v.plan.vmask; }), P = q ? r.pools[q] : null;
+  const A = q ? poolAddrs(r, q) : [], gwOut = A.indexOf(S.gw) >= 0 || A.some(function (ip) { return ip2n(ip) <= ip2n(S.gw) + 9; });
+  return [C("pool", !P, "The router has no pool for the " + k + " network", "There's a pool for the " + k + " network.", "show ip dhcp pool: nothing for " + S.net + "/24."),
+    C("gw", !!P && P.router[0] !== S.gw, "The " + k + " pool hands out the wrong gateway, or none", "It hands out the " + k + " gateway.", "The " + k + " pool's default-router is " + (P && P.router[0] || "not set") + "."),
+    C("dns", !!P && !(P.dns.length && P.dns.every(function (d) { return v.plan.dns.indexOf(d) >= 0; })), "The " + k + " pool hands out no DNS servers, or not the provider's", "It hands out the provider's DNS servers.", "The " + k + " pool's dns-server is " + (P && P.dns.join(" ") || "not set") + "."),
+    C("excl", !!P && gwOut, "The first ten " + k + " addresses (the gateway's and the gear's) aren't kept back", "The first ten are excluded.", "show ip dhcp pool: the " + k + " pool starts at its first address.")];
 }
+const staffPoolCauses = function (sim, v) { return poolCauses(sim, v, "staff"); };
 function movedCauses(sim, v) {
   const sw = SW(sim), S = staff(v), rows = PCS.map(function (id) { const m = between(sim, id, "msw"); return { id: id, port: m ? "GigabitEthernet0/" + m.far : null }; });
   const notIn = rows.find(function (x) { return !x.port || carries(sw, x.port, null).untagged !== S.id; });
@@ -269,7 +277,7 @@ const SB2 = {
     "The staff PCs are on the closet switch's ports 1, 2 and 4.", "The router's and the switch's records are as before: router " + p.rtHost + " (secret " + p.rtSecret + ", console " + p.rtConsole + "); switch " + p.swHost + " (secret " + p.swSecret + ", console " + p.swConsole + ")."]; },
   reqs: [{
     id: "vlan", text: "The closet switch has the staff VLAN, named as the records say",
-    causes: vlanCauses,
+    causes: function (sim, v) { return vlanCauses(sim, v, "staff"); },
     ok: function (sim, v) { return "VLAN " + staff(v).id + " " + staff(v).name + " exists on the closet switch."; },
     rung1: function () { return "On the closet switch: show vlan brief."; },
     rung2: function () { return "A VLAN has to exist on a switch before the switch carries it anywhere; its name is for the people reading the configuration."; }
@@ -281,7 +289,7 @@ const SB2 = {
     rung2: function () { return "One cable carries several VLANs only as a trunk: each frame tagged with its VLAN, except the native VLAN's, sent untagged. A port left to negotiate stays an access port when the far end never asks."; }
   }, {
     id: "sub", text: "The router has the staff gateway on a subinterface, NAT'd like the rest",
-    causes: subCauses,
+    causes: function (sim, v) { return subCauses(sim, v, "staff"); },
     ok: function (sim, v) { return staffSub(view(sim), v) + " tags VLAN " + staff(v).id + " at " + staff(v).gw + ", NAT's inside, in NAT's list."; },
     rung1: function () { return "On the router: show ip interface brief, then show running-config for the subinterface and the NAT lines."; },
     rung2: function () { return "Router on a stick: one subinterface per VLAN on the trunk's port, each tagged with its VLAN and holding that VLAN's gateway. Each is a network of its own to NAT."; }
@@ -331,4 +339,213 @@ const SB2 = {
   }
 };
 
-export const BUSINESS_JOBS = [SB1, SB2];
+/* ---------------------------------------------------------------- SB-J3: guest Wi-Fi on a ceiling access point */
+const guest = function (v) { return VL(v, "guest"); };
+const roomOf = function (sim, r) { return "the " + String(sim.net.roomNames[r] || r).replace(/^[A-Z](?=[a-z])/, function (m) { return m.toLowerCase(); }); };
+const apAddr = function (sim) { const a = sim.on("ap") && sim.addr("ap"); return a && a.kind !== "apipa" ? a.ip : null; };
+const inNet = function (ip, net) { return !!ip && ip2n(ip) >= ip2n(net) && ip2n(ip) < ip2n(net) + 256; };
+/* the access point's way back to the switch: its cable, the injector's two ends, and the switch port it lands on */
+function apPath(sim) {
+  const c = sim.cableAt("ap", "ETH"), far = c && (c.a.dev === "ap" ? c.b : c.a), out = { cable: c, far: far, inj: !!far && far.dev === "injector", up: null, swPort: null };
+  if (out.inj) { const ci = sim.cableAt("injector", far.port === "PoE OUT" ? "DATA IN" : "PoE OUT"); out.up = ci ? (ci.a.dev === "injector" ? ci.b : ci.a) : null; }
+  else out.up = far;
+  if (out.up && out.up.dev === "msw" && /^\d+$/.test(out.up.port)) out.swPort = out.up.port;
+  return out;
+}
+/* can a guest reach an address: the visitor's phone when it's on the guest network, otherwise a guest's packet put to the
+   router's lists (in on the guest subinterface, out where it would leave) */
+function guestReaches(sim, v, ip) {
+  if (!ip) return false;
+  const g = sim.addr("guest");
+  if (g && g.kind !== "apipa" && inNet(g.ip, guest(v).net)) { const r = sim.route("guest", ip); return !!((r.local || r.routed) && !r.fail); }
+  const R = RT(sim), q = vlanSub(view(sim), v, "guest"); if (!q) return false;
+  const pk = { proto: "ip", src: guest(v).net.replace(/\.0$/, ".50"), dst: ip }, f = R.subs[q];
+  if (f.aclIn && !aclVerdict(R, f.aclIn, pk).permit) return false;
+  const outIf = Object.keys(R.subs).concat(Object.keys(R.ifs)).find(function (n) { const x = R.subs[n] || R.ifs[n]; return x.ip && x.mask && netOf(x.ip, x.mask) === netOf(ip, x.mask); });
+  const o = outIf && (R.subs[outIf] || R.ifs[outIf]);
+  return !(o && o.aclOut && !aclVerdict(R, o.aclOut, pk).permit);
+}
+function mountCauses(sim, v) {
+  const x = sim.d.ap, P = apPath(sim), inj = sim.d.injector, room = sim.net.rooms.ap;
+  const fromSwitch = !!P.cable && !P.inj, fromDataIn = P.inj && P.far.port === "DATA IN", noAdapter = P.inj && P.far.port === "PoE OUT" && !inj.power;
+  return [C("box", x.boxed, "The access point is still in its box", "It's out of its box.", "The ceiling access point is still in its box."),
+    C("room", !x.boxed && room !== "guest", "It isn't on the ceiling plate the records give it, over the guests", "It's on its plate in " + roomOf(sim, "guest") + ".", "The access point is in " + roomOf(sim, room) + "."),
+    C("cable", !x.boxed && !P.cable, "Nothing is plugged into the access point", "It's cabled.", "The access point's ETH port is empty."),
+    C("switch", fromSwitch, "Its cable comes straight from a port that gives no power: the closet switch has no PoE", "Its power comes from the injector.", "The access point is dark; its cable goes straight to the " + (P.far ? name(sim, P.far.dev) : "") + "."),
+    C("datain", fromDataIn, "Its cable is in the injector's DATA IN: the power comes out of the other port", "It's on the injector's power side.", "The access point is dark; its cable is in the injector's DATA IN."),
+    C("adapter", noAdapter, "The injector's own power adapter isn't plugged in", "The injector has power.", "The injector's POWER light is off."),
+    C("power", !!P.cable && !x.boxed && !sim.on("ap") && !fromSwitch && !fromDataIn && !noAdapter, "The access point gets no power down its cable", "It's powered over its cable.", "The access point's ring is dark.")];
+}
+function uplinkCauses(sim, v) {
+  const P = apPath(sim), sw = SW(sim), port = P.swPort ? "GigabitEthernet0/" + P.swPort : null, sp = port && sw.ports[port], want = v.plan.apPort;
+  return [C("power", !sim.on("ap"), "The access point isn't powered yet", "It's powered.", "The access point is dark."),
+    C("datain", sim.on("ap") && P.inj && !P.up, "Nothing is plugged into the injector's DATA IN: the access point has power but no network", "The injector's data side is cabled.", "The injector's DATA IN is empty."),
+    C("where", sim.on("ap") && !!P.up && P.up.dev !== "msw", "The injector's data side goes to the " + (P.up ? name(sim, P.up.dev) : "") + ", not the closet switch", "It goes back to the closet switch.", "The injector's DATA IN goes to the " + (P.up ? name(sim, P.up.dev) : "") + "."),
+    C("port", !!P.swPort && P.swPort !== want, "It's on a switch port the records keep for something else", "It's on the port the records give it.", "The access point's run is in the closet switch's port " + P.swPort + "."),
+    C("shut", !!sp && sp.shutdown, "The switch's port for it is shut down, as every spare is", "Its port is open.", "show interfaces status: Gi0/" + P.swPort + " disabled."),
+    C("desc", !!sp && !sp.shutdown && String(sp.desc || "").toUpperCase() !== v.plan.apDesc, "Its port isn't described as the records say", "Its port is described as the records say.", "show interfaces status: Gi0/" + P.swPort + "'s name is " + (sp && sp.desc ? sp.desc : "blank") + ".")];
+}
+function apTrunkCauses(sim, v) {
+  const P = apPath(sim), sw = SW(sim), port = P.swPort ? "GigabitEthernet0/" + P.swPort : null, c = port ? carries(sw, port, null) : null, G = guest(v);
+  const up = between(sim, "rtr", "msw"), uc = up ? carries(sw, "GigabitEthernet0/" + up.far, null) : null;
+  return [C("path", !port, "The access point isn't on a switch port yet", "It's on a switch port.", "The access point's run doesn't reach the closet switch."),
+    C("mode", !!c && c.mode !== "trunk", "Its port isn't a trunk: an access point never negotiates one, so the port stays an access port", "Its port is a trunk.", "show interfaces trunk: nothing for Gi0/" + P.swPort + "."),
+    C("allowed", !!c && c.mode === "trunk" && c.tagged.indexOf(G.id) < 0 && c.untagged !== G.id, "The trunk to it doesn't carry the guest VLAN", "It carries the guest VLAN.", "show interfaces trunk: VLAN " + G.id + " isn't allowed and active on Gi0/" + P.swPort + "."),
+    C("native", !!c && c.mode === "trunk" && c.untagged !== 1, "Its native VLAN isn't the old network's: the access point's own address has nowhere to come from", "Its untagged frames reach the old network.", "show interfaces trunk: Gi0/" + P.swPort + "'s native VLAN is " + (c ? c.untagged : "") + "."),
+    C("uplink", !!uc && uc.mode === "trunk" && uc.tagged.indexOf(G.id) < 0, "The trunk to the router doesn't carry the guest VLAN", "The trunk to the router carries it.", "show interfaces trunk: VLAN " + G.id + " isn't allowed and active on Gi0/" + (up ? up.far : "") + ".")];
+}
+function ssidCauses(sim, v) {
+  const x = sim.d.ap, p = v.plan, G = guest(v), w = (x.ssids || []).find(function (n) { return n.ssid === p.guestSsid; }), other = (x.ssids || []).find(function (n) { return n.ssid !== p.guestSsid; });
+  return [C("noaddr", !w && !apAddr(sim), "The access point has no address, so its web page can't be opened", "It has an address.", "show ip dhcp binding on the router: no lease for the access point."),
+    C("none", !w, "It broadcasts no network named as the records say", "Its network is named as the records say.", "The access point's page lists " + ((x.ssids || []).length ? (x.ssids || []).map(function (n) { return n.ssid; }).join(", ") : "no networks") + "."),
+    C("open", !!w && w.sec === "Open", "The guest network is open: anyone in range joins it, with no password", "It's secured.", "The access point's page: " + p.guestSsid + ", Open."),
+    C("wpa3", !!w && w.sec === "WPA3-Personal", "WPA3 only: the older phones the records mention can't join it", "WPA2 is allowed.", "The access point's page: " + p.guestSsid + ", WPA3-Personal only."),
+    C("pw", !!w && w.sec !== "Open" && w.psk !== p.guestPw, "Its password isn't the one in the records (the card in the waiting area)", "Its password is the records'.", "The visitors' card's password isn't accepted."),
+    C("untagged", !!w && !w.vlan, "It puts guests on the access point's own network, untagged: straight onto the business's old network", "It tags the guests' traffic.", "The access point's page: " + p.guestSsid + ", no VLAN."),
+    C("vlan", !!w && !!w.vlan && w.vlan !== G.id, "It tags the guest network with a different VLAN from the records'", "It tags the guest VLAN.", "The access point's page: " + p.guestSsid + ", VLAN " + (w ? w.vlan : "") + "."),
+    C("extra", !!w && !!other, "It also broadcasts a network the records don't have", "It broadcasts only the guest network.", "The access point's page also lists " + (other ? other.ssid : "") + ".")];
+}
+function visitorCauses(sim, v) {
+  const p = v.plan, G = guest(v), f = sim.d.guest.ifaces[0], l = sim.wifiLink("guest"), a = sim.addr("guest"), heard = sim.aps().filter(function (ap) { return ap.ssid === p.guestSsid; }).map(function (ap) { return sim.heardAt(ap, sim.net.rooms.guest); });
+  const joined = f.saved.ssid === p.guestSsid, ok = a && a.kind !== "apipa";
+  return [C("unjoined", !joined, "The visitor's phone hasn't joined the guest network", "It's joined to the guest network.", "The visitor's phone: " + (f.saved.ssid ? "joined to " + f.saved.ssid : "not connected") + "."),
+    C("range", joined && !(l && l.connected) && !(l && l.reason) && !(heard.length && Math.max.apply(null, heard) >= 20), "The guest network doesn't reach the visitor in " + roomOf(sim, "guest"), "The phone hears it.", "The visitor's phone: " + p.guestSsid + " isn't in range."),
+    C("auth", joined && !!l && !l.connected && l.reason === "auth", "The phone was given a password the guest network doesn't take", "The password was right.", "The visitor's phone: the password was rejected."),
+    C("addr", joined && !!l && l.connected && !ok, "The phone joined but got no address", "It has an address.", "The visitor's phone: " + (a ? a.ip : "no address") + "."),
+    C("lan", joined && ok && !inNet(a.ip, G.net), "The phone has an address from the business's own network, not the guests'", "It's on the guest network.", "The visitor's phone: " + (a ? a.ip : "") + "."),
+    C("net", joined && ok && inNet(a.ip, G.net) && !sim.route("guest", "203.0.113.80").internet, "The phone has a guest address but can't reach the internet", "It reaches the internet.", "The visitor's phone: no internet."),
+    C("dns", joined && ok && !online(sim, "guest"), "The phone reaches the internet but names don't look up", "Names look up.", "The visitor's phone: no website opens by name.")];
+}
+function apartCauses(sim, v) {
+  const pcIp = sim.addr("pc") && sim.addr("pc").ip, prIp = printerIp(sim), ip = apAddr(sim);
+  const q = vlanSub(view(sim), v, "guest"), routed = !!q && !!RT(sim).subs[q].ip;
+  return [C("none", !routed, "There's no guest network yet to keep apart", "The guest network is routed.", "Nothing on the router routes the guest VLAN yet."),
+    C("staff", guestReaches(sim, v, pcIp), "Guests reach the staff PCs: nothing between the two networks stops them", "Guests can't reach the staff PCs.", "From the guest network, the " + name(sim, "pc") + "'s address answers."),
+    C("printer", guestReaches(sim, v, prIp), "Guests reach the printer", "Guests can't reach the printer.", "From the guest network, the printer's address answers."),
+    C("switch", guestReaches(sim, v, v.plan.swIp), "Guests reach the closet switch's management address", "Guests can't reach the switch.", "From the guest network, the closet switch's address answers."),
+    C("ap", !!ip && guestReaches(sim, v, ip), "Guests reach the access point's own page", "Guests can't reach the access point's page.", "From the guest network, the access point's own address answers.")];
+}
+function staffStillCauses(sim, v) {
+  const down = PCS.find(function (id) { return !online(sim, id); }), ip = apAddr(sim), r = ip ? sim.route("mgr", ip) : null;
+  return [C("net", !!down, "The " + (down ? name(sim, down) : "") + " is offline", "Every staff PC is online.", "ping from the " + (down ? name(sim, down) : "") + ": no replies from the internet."),
+    C("print", !printOk(sim), "Staff can't print", "Staff print.", "Test pages from the " + name(sim, "pc") + " don't print."),
+    C("ap", !!r && !((r.local || r.routed) && !r.fail), "The manager's PC can't reach the access point's page", "The access point's page opens from the manager's PC.", "From the manager's PC the access point's address doesn't answer.")];
+}
+const SB3 = {
+  id: "SB-J3", level: "business", title: "Guest Wi-Fi: a ceiling access point, its own VLAN, kept away from the business",
+  already: ["staff", "saved", "swsaved"],
+  start(seed) {
+    const b = SB2.start(seed), sim = b.sim;
+    for (const a of SB2.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    addGuestKit(sim); sim.cli = {};   /* the access point and the injector arrived in their boxes; a visitor is waiting */
+    return { sim: sim, v: b.v };
+  },
+  brief(v, sim) { return { quote: "People waiting keep asking for the Wi-Fi password, and we won't give them ours. We've bought a ceiling access point; the plate is already up in " + roomOf(sim, "guest") + ". Give our visitors their own Wi-Fi, and make sure nobody on it can ever get near our computers, the printer or anything else of ours. There's someone waiting now who'd like to try it.", from: sim.net.client.manager + ", " + sim.net.client.name }; },
+  mason: "The access point puts the guests on their own VLAN, so its switch port is a trunk, and it takes its own address untagged on the old network. The router routes the guests out; an access list on their way in is what keeps them away from everything that's the business's.",
+  limits: function (v) { const G = guest(v), S = staff(v), p = v.plan;
+    return ["The business's plan: guests are VLAN " + G.id + ", named " + G.name + ", on " + G.net + "/24 with the gateway " + G.gw + " on the router's " + subName(v, "guest") + ". The first ten addresses are kept back. Their access list, in on that subinterface, is named " + p.guestAcl + ".",
+      "The guest Wi-Fi (on the card in the waiting area): " + p.guestSsid + ", password " + p.guestPw + ", WPA2 (WPA2/WPA3 is fine: older phones need WPA2).",
+      "The access point's run is on the closet switch's port " + p.apPort + ", described " + p.apDesc + ". The switch gives no power: a PoE injector from the van goes in the closet.",
+      "The access point takes its own address by DHCP, untagged, on the old network (" + p.lan + "/24). Its web page is at that address: open it from the manager's PC.",
+      "Staff are VLAN " + S.id + " on " + S.net + "/24. The router and switch records are as before: router " + p.rtHost + " (secret " + p.rtSecret + ", console " + p.rtConsole + "); switch " + p.swHost + " (secret " + p.swSecret + ", console " + p.swConsole + ")."]; },
+  reqs: [{
+    id: "mount", text: "The access point is on its ceiling plate over the guests, powered over its cable",
+    causes: mountCauses,
+    ok: function (sim) { return "It's on its plate in " + roomOf(sim, "guest") + ", powered by the injector."; },
+    rung1: function () { return "Look at the access point's Physical tab and its ring; then the Cable runs table: where does its cable come from?"; },
+    rung2: function () { return "A ceiling access point is powered down its network cable (PoE). A switch with no PoE needs an injector in between: data in on one side, data and power out on the other."; }
+  }, {
+    id: "uplink", text: "Its cable runs back to the closet switch, on the port the records give it, open and described",
+    causes: uplinkCauses,
+    ok: function (sim, v) { return "Its run reaches the closet switch's port " + v.plan.apPort + ", open and described."; },
+    rung1: function () { return "Follow the cable from the access point through the injector to the switch; then show interfaces status on the switch."; },
+    rung2: function () { return "Every spare port on this switch was shut down on purpose. Opening one for a new device, and naming it, is part of putting the device in."; }
+  }, {
+    id: "vlan", text: "The closet switch has the guest VLAN, named as the records say",
+    causes: function (sim, v) { return vlanCauses(sim, v, "guest"); },
+    ok: function (sim, v) { return "VLAN " + guest(v).id + " " + guest(v).name + " exists on the closet switch."; },
+    rung1: function () { return "On the closet switch: show vlan brief."; },
+    rung2: function () { return "A VLAN has to exist on a switch before the switch carries it anywhere; its name is for the people reading the configuration."; }
+  }, {
+    id: "trunk", text: "The access point's port is a trunk: the guest network tagged, the access point itself untagged on the old network",
+    causes: apTrunkCauses,
+    ok: function () { return "The access point's port is a trunk carrying the guest VLAN, native on the old network, and the trunk to the router carries the guest VLAN too."; },
+    rung1: function () { return "On the closet switch: show interfaces trunk, then show interfaces (the access point's port) switchport."; },
+    rung2: function () { return "An access point with several networks tags each one with its VLAN and sends its own traffic untagged. Its switch port has to carry all of them: a trunk, its native VLAN the one the access point's own address belongs to."; }
+  }, {
+    id: "sub", text: "The router has the guest gateway on a subinterface, NAT'd like the rest",
+    causes: function (sim, v) { return subCauses(sim, v, "guest"); },
+    ok: function (sim, v) { return vlanSub(view(sim), v, "guest") + " tags VLAN " + guest(v).id + " at " + guest(v).gw + ", NAT's inside, in NAT's list."; },
+    rung1: function () { return "On the router: show ip interface brief, then show running-config for the subinterfaces and the NAT lines."; },
+    rung2: function () { return "Each VLAN on the trunk gets its own subinterface on the router, tagged with its VLAN and holding that VLAN's gateway, and each is a network of its own to NAT."; }
+  }, {
+    id: "pool", text: "The router hands out guest addresses on the guest VLAN",
+    causes: function (sim, v) { return poolCauses(sim, v, "guest"); },
+    ok: function () { return "A pool for the guest network, with its gateway and the provider's DNS servers, the first ten kept back."; },
+    rung1: function () { return "On the router: show ip dhcp pool, and the pool's lines in show running-config."; },
+    rung2: function () { return "A DHCP server answers on the network its interface is on: the guest subinterface needs a pool for the guest network."; }
+  }, {
+    id: "ssid", text: "The access point broadcasts the guest network from the records, secured, on the guest VLAN",
+    causes: ssidCauses,
+    ok: function (sim, v) { return v.plan.guestSsid + " is on the air, WPA2, tagged VLAN " + guest(v).id + "."; },
+    rung1: function () { return "Find the access point's address (the router's DHCP bindings, or the switch's neighbours), then open its web page from the manager's PC."; },
+    rung2: function () { return "Each network an access point broadcasts has a name, a security setting with its password, and the VLAN its traffic is tagged with. Untagged, it lands on the access point's own network."; }
+  }, {
+    id: "visitor", text: "The visitor's phone joins the guest network and gets online",
+    causes: visitorCauses,
+    ok: function () { return "The visitor's phone is on the guest network, online, names and all."; },
+    rung1: function () { return "Open the visitor's phone: its Wi-Fi tab lists the networks it can hear."; },
+    rung2: function () { return "A phone joins a secured network with its password, then asks for an address on whatever network that puts it on."; }
+  }, {
+    id: "apart", text: "Guests can't reach the staff PCs, the printer, the switch or the access point's page",
+    causes: apartCauses,
+    ok: function () { return "From the guest network, nothing of the business's answers."; },
+    rung1: function () { return "On the router: show access-lists, and which interface each list is applied to, in which direction (show running-config)."; },
+    rung2: function () { return "A router routes between every network it's on unless something stops it. An access list in on the guests' interface is checked against every packet they send, first match wins, and anything not permitted is dropped."; }
+  }, {
+    id: "staff", text: "Staff still reach the internet, the printer and the access point's page",
+    causes: staffStillCauses,
+    ok: function () { return "Staff are online, print, and reach the access point's page."; },
+    rung1: function () { return "From a staff PC: ping out, print a test page, and ping the access point."; },
+    rung2: function () { return "An access list applied in the wrong place or direction can stop the wrong people. Each list should only see the traffic it's meant for."; }
+  }, L_SAVED_RT, {
+    id: "swsaved", text: "The switch's setup survives a power cut",
+    causes: swSavedCauses,
+    ok: function () { return "What's running on the closet switch is saved."; },
+    rung1: function () { return "On the closet switch: compare show running-config with show startup-config."; },
+    rung2: function () { return "Every device keeps its own startup configuration: saving the router saves nothing on the switch."; }
+  }],
+  solve(v) {
+    const p = v.plan, G = guest(v), S = staff(v), t = function (l) { return { t: "cmd", dev: "tech", line: l, cli: true }; }, w = "0.0.0.255";
+    return [{ t: "place", dev: "injector", room: "closet" }, { t: "place", dev: "ap", room: "guest" },
+      { t: "lay", a: E("msw", p.apPort), b: E("injector", "DATA IN") }, { t: "lay", a: E("injector", "PoE OUT"), b: E("ap", "ETH") },
+      { t: "pull", cable: "c-console-5" }, { t: "lay", a: E("tech", "USB-C"), b: E("msw", "CONSOLE") },   /* runs are numbered in the order they're laid: SB-J1 laid three, SB-J2 two */
+      t(""), t(p.swConsole), t("enable"), t(p.swSecret), t("configure terminal"), t("vlan " + G.id), t("name " + G.name), t("exit"),
+      t("interface gi0/" + p.apPort), t("description " + p.apDesc), t("switchport mode trunk"), t("switchport trunk allowed vlan 1," + G.id), t("no shutdown"), t("end"), t("copy running-config startup-config"), t(""),
+      { t: "pull", cable: "c-console-8" }, { t: "lay", a: E("tech", "USB-C"), b: E("rtr", "CONSOLE") },
+      t(""), t(p.rtConsole), t("enable"), t(p.rtSecret), t("configure terminal"),
+      t("interface " + subName(v, "guest")), t("encapsulation dot1Q " + G.id), t("ip address " + G.gw + " " + p.vmask), t("ip nat inside"), t("ip access-group " + p.guestAcl + " in"), t("exit"),
+      t("ip access-list extended " + p.guestAcl), t("permit udp any any eq bootps"), t("deny ip " + G.net + " " + w + " " + S.net + " " + w), t("deny ip " + G.net + " " + w + " " + p.lan + " " + w), t("permit ip " + G.net + " " + w + " any"), t("exit"),
+      t("ip dhcp excluded-address " + G.gw + " " + G.net.replace(/\.0$/, ".10")), t("ip dhcp pool " + G.name), t("network " + G.net + " " + p.vmask), t("default-router " + G.gw), t("dns-server " + p.dns.join(" ")), t("exit"),
+      t("access-list 1 permit " + G.net + " " + w), t("end"), t("copy running-config startup-config"), t(""),
+      { t: "apnet", dev: "ap", net: { ssid: p.guestSsid, sec: "WPA2-Personal", psk: p.guestPw, vlan: G.id } },
+      { t: "joinssid", dev: "guest", ssid: p.guestSsid, pass: p.guestPw }];
+  },
+  answer(v) {
+    const p = v.plan, G = guest(v), S = staff(v);
+    return ["Place the injector in the closet and the access point on its plate in the guest area; switch port " + p.apPort + " to the injector's DATA IN, its PoE OUT to the access point.",
+      "On the closet switch (console): vlan " + G.id + ", name " + G.name + "; interface gi0/" + p.apPort + ": description " + p.apDesc + ", switchport mode trunk, switchport trunk allowed vlan 1," + G.id + ", no shutdown; save.",
+      "On the router (console): interface " + subName(v, "guest") + ": encapsulation dot1Q " + G.id + ", ip address " + G.gw + " " + p.vmask + ", ip nat inside, ip access-group " + p.guestAcl + " in.",
+      "ip access-list extended " + p.guestAcl + ": permit udp any any eq bootps; deny ip " + G.net + " 0.0.0.255 " + S.net + " 0.0.0.255; deny ip " + G.net + " 0.0.0.255 " + p.lan + " 0.0.0.255; permit ip " + G.net + " 0.0.0.255 any.",
+      "The guest pool (first ten excluded, gateway, the provider's DNS) and access-list 1 permit " + G.net + " 0.0.0.255 for NAT; save.",
+      "The access point's address: show ip dhcp binding (or show lldp neighbors on the switch). Its page, from the manager's PC: the network " + p.guestSsid + ", WPA2-Personal, the records' password, VLAN " + G.id + ". Then join it from the visitor's phone."];
+  },
+  summary(v, sim) {
+    const G = guest(v);
+    return ["The access point is on its plate in " + roomOf(sim, "guest") + ", powered by the injector, on the closet switch's port " + v.plan.apPort + ": a trunk with the guest VLAN tagged and the access point itself on the old network.",
+      v.plan.guestSsid + " puts guests on VLAN " + G.id + ", " + G.net + "/24, routed by the router's " + subName(v, "guest") + " and NAT'd to the internet.",
+      "The guests' access list keeps them away from the staff network, the printer, the switch and the access point's page; staff still reach everything.", "Both devices are saved."];
+  }
+};
+
+export const BUSINESS_JOBS = [SB1, SB2, SB3];

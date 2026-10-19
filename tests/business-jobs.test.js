@@ -192,7 +192,8 @@ test("Mason on the business jobs: nothing for two failing checks, then where to 
 test("no help on the business jobs names the answer: no name, password, VLAN number or address", () => {
   for (const def of BUSINESS_JOBS) for (const s of seeds(def.id).slice(0, 30)) {
     const J = B.open(def, s), p = J.v.plan, sol = def.solve(J.v, J.sim);
-    const bad = [p.rtHost, p.rtSecret, p.rtConsole, p.swHost, p.swSecret, p.swConsole, p.user, p.userPw, p.vlans.staff.name, "dot1Q " + p.vlans.staff.id, "vlan " + p.vlans.staff.id];
+    const bad = [p.rtHost, p.rtSecret, p.rtConsole, p.swHost, p.swSecret, p.swConsole, p.user, p.userPw, p.vlans.staff.name, "dot1Q " + p.vlans.staff.id, "vlan " + p.vlans.staff.id,
+      p.guestSsid, p.guestPw, p.guestAcl, p.vlans.guest.name, "dot1Q " + p.vlans.guest.id, "vlan " + p.vlans.guest.id, p.apDesc];
     const said = [];
     for (let k = 0; k <= sol.length; k++) {
       for (let c = 0; c < 6; c++) { B.check(J); const m = B.mason(J); if (m) said.push(m.text, m.principle || "", ...(m.struck || []).map((x) => x.text + " " + x.why)); }
@@ -207,11 +208,11 @@ test("no help on the business jobs names the answer: no name, password, VLAN num
 test("random work on the business never breaks the checker; an unmet line always has two causes or more and replays exactly", () => {
   for (const def of BUSINESS_JOBS) for (const s of seeds(def.id).slice(0, 50)) {
     const J = B.open(def, s), p = J.v.plan, R = rng(s * 17 + 3), rooms = ["closet", "counter", "office", "back"];
-    const devs = ["rtr", "msw", "tech", "pc", "mgr", "bpc", "printer", "modem"].concat(J.sim.d.router ? ["router"] : []);
-    const P = { rtr: ["Gi0/0", "Gi0/1", "Gi0/2", "Gi0/7", "CONSOLE"], msw: ["1", "2", "4", "5", "24", "CONSOLE"], tech: ["USB-C", "ETH"], pc: ["NIC"], mgr: ["NIC"], bpc: ["NIC"], printer: ["NET"], modem: ["ETH"], router: ["LAN 1", "WAN"] };
+    const devs = ["rtr", "msw", "tech", "pc", "mgr", "bpc", "printer", "modem"].concat(J.sim.d.router ? ["router"] : [], J.sim.d.ap ? ["ap", "injector"] : []);
+    const P = { rtr: ["Gi0/0", "Gi0/1", "Gi0/2", "Gi0/7", "CONSOLE"], msw: ["1", "2", "4", "5", "24", "CONSOLE"], tech: ["USB-C", "ETH"], pc: ["NIC"], mgr: ["NIC"], bpc: ["NIC"], printer: ["NET"], modem: ["ETH"], router: ["LAN 1", "WAN"], ap: ["ETH"], injector: ["DATA IN", "PoE OUT"] };
     const LINES = ["", "enable", p.rtSecret, p.swSecret, p.rtConsole, p.swConsole, "configure terminal", "end", "exit", "interface gi0/0", "interface gi0/1", "interface gi0/1." + p.vlans.staff.id, "interface gi0/24", "interface gi0/2",
       "shutdown", "no shutdown", "ip address dhcp", "ip address " + p.lanGw + " " + p.mask, "ip nat inside", "ip nat outside", "encapsulation dot1Q " + p.vlans.staff.id, "switchport mode trunk", "switchport mode access", "switchport access vlan " + p.vlans.staff.id,
-      "vlan " + p.vlans.staff.id, "name STAFF", "ip dhcp pool X", "network " + p.lan + " " + p.mask, "default-router " + p.lanGw, "access-list 1 permit any", "ip nat inside source list 1 interface gi0/0 overload", "hostname X1",
+      "vlan " + p.vlans.staff.id, "name STAFF", "vlan " + p.vlans.guest.id, "interface gi0/5", "switchport trunk allowed vlan 1," + p.vlans.guest.id, "ip access-group GUEST-IN in", "ip access-list extended GUEST-IN", "deny ip any any", "permit ip any any", "ip dhcp pool X", "network " + p.lan + " " + p.mask, "default-router " + p.lanGw, "access-list 1 permit any", "ip nat inside source list 1 interface gi0/0 overload", "hostname X1",
       "copy running-config startup-config", "reload", "no", "show ip interface brief", "show ip nat translations", "show vlan brief", "?"];
     for (let k = 0; k < 40; k++) {
       const pick = R();
@@ -220,6 +221,7 @@ test("random work on the business never breaks the checker; an unmet line always
       else if (pick < 0.4) { const c = R.pick(J.sim.net.cables.filter((x) => x.kind !== "coax")); if (c) B.act(J, { t: "pull", cable: c.id }); }
       else if (pick < 0.85) B.act(J, cli(R.pick(LINES)));
       else if (pick < 0.88) B.act(J, { t: "power", dev: R.pick(["rtr", "msw"]) });
+      else if (pick < 0.9 && J.sim.d.ap) B.act(J, R() < 0.5 ? { t: "apnet", dev: "ap", net: { ssid: R.pick([p.guestSsid, "Test"]), sec: R.pick(["WPA2-Personal", "Open", "WPA3-Personal"]), psk: R.pick([p.guestPw, "short", "password123"]), vlan: R.pick(["", p.vlans.guest.id, 7]) } } : { t: "joinssid", dev: "guest", ssid: R.pick([p.guestSsid, "Test"]), pass: R.pick([p.guestPw, "nope-nope"]) });
       else B.act(J, { t: "cmd", dev: R.pick(["pc", "mgr", "bpc"]), line: R.pick(["ipconfig", "ipconfig /renew", "ping " + p.lanGw, "ping 8.8.8.8", "tracert 8.8.8.8"]) });
       for (const q of def.reqs) { const c = B.evaluate(q, J.sim, J.v); assert.ok(typeof c.ev === "string" && c.ev.length > 10, def.id + " " + q.id + ": empty evidence"); if (!c.ok) assert.ok(c.list.filter((x) => !x.skip).length >= 2, def.id + " " + q.id + ": a failing line needs two causes or more"); }
     }

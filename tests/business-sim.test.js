@@ -72,8 +72,18 @@ test("access lists: guests kept off staff, both ways, because an access list rem
   const g = s.route("guest", "192.168.10.12"); assert.equal(g.fail, "blocked"); assert.deepEqual(g.acls, [["GUEST-IN", 0]]);
   assert.equal(s.route("staff", "192.168.40.2").fail, "no-reply", "the guest's reply is denied coming in");
   const i = s.route("guest", "8.8.8.8"); assert.ok(i.internet); assert.deepEqual(i.acls, [["GUEST-IN", 1]]);
-  const d = built([], ["access-list 140 deny ip 192.168.40.0 0.0.0.255 192.168.10.0 0.0.0.255", "interface g0/0.40", "ip access-group 140 in"]);
-  const di = d.route("guest", "8.8.8.8"); assert.equal(di.fail, "blocked"); assert.deepEqual(di.acls, [["140", -1]], "no permit line: the implicit deny takes everything else");
+  /* no permit line: the implicit deny takes everything else. A guest holding its lease from before is blocked going anywhere;
+     one asking for an address gets none, because the DISCOVER is denied coming in too (from 0.0.0.0, so a standard list of the
+     guests' network doesn't permit it either) */
+  const d = built();
+  cli(d, "rtr", ["access-list 140 deny ip 192.168.40.0 0.0.0.255 192.168.10.0 0.0.0.255", "interface g0/0.40", "ip access-group 140 in"]);
+  const di = d.route("guest", "8.8.8.8"); assert.equal(di.fail, "blocked"); assert.deepEqual(di.acls, [["140", -1]]);
+  d.dhcp("guest", "t"); assert.equal(lease(d, "guest"), "apipa", "renewing under the list: no address");
+  const st = built([], ["access-list 41 permit 192.168.40.0 0.0.0.255", "interface g0/0.40", "ip access-group 41 in"]);
+  assert.equal(lease(st, "guest"), "apipa", "a standard list of the guests' own network doesn't permit the DISCOVER from 0.0.0.0");
+  assert.equal(lease(st, "staff"), "192.168.10.12", "the staff side has no list: untouched");
+  const ok = built([], ["ip access-list extended GUEST-IN", "permit udp any any eq bootps", "deny ip 192.168.40.0 0.0.0.255 192.168.10.0 0.0.0.255", "permit ip 192.168.40.0 0.0.0.255 any", "exit", "interface g0/0.40", "ip access-group GUEST-IN in"]);
+  assert.match(lease(ok, "guest"), /^192\.168\.40\./, "DHCP permitted by name: the guest gets its address");
   const o = built([], ["ip access-list extended GUEST-IN", "deny ip 192.168.40.0 0.0.0.255 192.168.10.0 0.0.0.255", "permit ip any any", "exit", "interface g0/0.40", "ip access-group GUEST-IN out"]);
   assert.ok(o.route("guest", "192.168.10.12").routed, "applied out, it only sees what goes towards the guests: the guests still reach staff");
 });

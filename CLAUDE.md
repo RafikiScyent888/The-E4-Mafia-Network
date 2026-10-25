@@ -5,6 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
+**Status (25 October 2026): Level 3 (the small business) goes live stage by stage: stage 1 (the business, its router and switch on the page, work orders SB-J1 and SB-J2) is verified and waiting on its last AAA states before it merges to `main`; the level opens once the small office is finished, with `planned: 25` until all its work orders and tickets exist. See "Level 3, the small business" below.**
 **Status (19 October 2026): Level 2 (the small office) is complete and live: the level lock, work orders SO-J1 to SO-J10, tickets SO-01 to SO-15 with the office's records on each, the managed switch, the closet rack and patch panel, SFP modules and fibre, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05", "Level 2, tickets SO-06, SO-07 and SO-09", "Level 2, ticket SO-08", "Level 2, ticket SO-10", "Level 2: the office's records on office tickets; tickets SO-11 to SO-15" and "Level 2: work orders SO-J6 to SO-J10, the small office complete" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
 from the Under the Hood tile (decision 6). See "The real site" below. The owner, 11
@@ -1836,7 +1837,10 @@ piece node-tested (`tests/business-cli.test.js`, `tests/business-sim.test.js`;
   (failing before the fix).
 - **Totals before going live:** `npm test` 327 of 327; `node tools/drive.mjs`
   in full 3,591 checks (every level; `ONLY=office` 647 and `ONLY=business` 130 of
-  them, both drawings of every finished work order in both fonts).
+  them, both drawings of every finished work order in both fonts); `node
+  tools/models.mjs` 162 checks; AAA on painted pixels, run in two halves side by
+  side (`tools/aaa.mjs` takes any states file): states 1 to 100 all pass, 101 to
+  178 still running when this was written.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

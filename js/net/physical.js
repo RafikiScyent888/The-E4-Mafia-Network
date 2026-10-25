@@ -29,7 +29,7 @@ const PORTS = {
   rack: Array.from({ length: 24 }, function (_, i) { return ["P" + (i + 1), String(i + 1)]; }),
   wallplate: [],
   /* the ceiling access point: its one port, in the bay on its top */
-  ceilingAP: [["ETH (PoE IN)", "ETH"]]
+  ceilingAP: [["ETH", "ETH"]]   /* "port:ETH" on the model; printed ETH (PoE IN) beside it */
 };
 /* what the installer wrote on the panel's tabs, from his map */
 const TAB = { front: "FRONT", open: "OPEN", manager: "MGR", meeting: "MEET" };

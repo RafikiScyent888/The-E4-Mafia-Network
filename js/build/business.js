@@ -406,15 +406,17 @@ function ssidCauses(sim, v) {
     C("extra", !!w && !!other, "It also broadcasts a network the records don't have", "It broadcasts only the guest network.", "The access point's page also lists " + (other ? other.ssid : "") + ".")];
 }
 function visitorCauses(sim, v) {
-  const p = v.plan, G = guest(v), f = sim.d.guest.ifaces[0], l = sim.wifiLink("guest"), a = sim.addr("guest"), heard = sim.aps().filter(function (ap) { return ap.ssid === p.guestSsid; }).map(function (ap) { return sim.heardAt(ap, sim.net.rooms.guest); });
-  const joined = f.saved.ssid === p.guestSsid, ok = a && a.kind !== "apipa";
+  const p = v.plan, G = guest(v), f = sim.d.guest.ifaces[0], l = sim.wifiLink("guest"), a = sim.addr("guest");
+  const joined = f.saved.ssid === p.guestSsid, ok = !!a && a.kind !== "apipa", on = joined && !!l && l.connected;
   return [C("unjoined", !joined, "The visitor's phone hasn't joined the guest network", "It's joined to the guest network.", "The visitor's phone: " + (f.saved.ssid ? "joined to " + f.saved.ssid : "not connected") + "."),
-    C("range", joined && !(l && l.connected) && !(l && l.reason) && !(heard.length && Math.max.apply(null, heard) >= 20), "The guest network doesn't reach the visitor in " + roomOf(sim, "guest"), "The phone hears it.", "The visitor's phone: " + p.guestSsid + " isn't in range."),
+    C("unseen", joined && !!l && !l.connected && l.reason === "no-network", "The visitor's phone can't see the guest network", "The phone sees it.", "The visitor's phone: " + p.guestSsid + " isn't in its list of networks."),
     C("auth", joined && !!l && !l.connected && l.reason === "auth", "The phone was given a password the guest network doesn't take", "The password was right.", "The visitor's phone: the password was rejected."),
-    C("addr", joined && !!l && l.connected && !ok, "The phone joined but got no address", "It has an address.", "The visitor's phone: " + (a ? a.ip : "no address") + "."),
-    C("lan", joined && ok && !inNet(a.ip, G.net), "The phone has an address from the business's own network, not the guests'", "It's on the guest network.", "The visitor's phone: " + (a ? a.ip : "") + "."),
-    C("net", joined && ok && inNet(a.ip, G.net) && !sim.route("guest", "203.0.113.80").internet, "The phone has a guest address but can't reach the internet", "It reaches the internet.", "The visitor's phone: no internet."),
-    C("dns", joined && ok && !online(sim, "guest"), "The phone reaches the internet but names don't look up", "Names look up.", "The visitor's phone: no website opens by name.")];
+    C("security", joined && !!l && !l.connected && l.reason === "security", "The phone can't use the guest network's security", "The phone can use its security.", "The visitor's phone: can't connect to this network."),
+    C("addr", on && !ok, "The phone joined but got no address", "It has an address.", "The visitor's phone: " + (a ? a.ip : "no address") + "."),
+    C("lan", on && ok && !inNet(a.ip, G.net), "The phone has an address from the business's own network, not the guests'", "It's on the guest network.", "The visitor's phone: " + (a ? a.ip : "") + "."),
+    C("net", on && ok && inNet(a.ip, G.net) && !sim.route("guest", "203.0.113.80").internet, "The phone has a guest address but can't reach the internet", "It reaches the internet.", "The visitor's phone: no internet."),
+    C("dns", on && ok && sim.route("guest", "203.0.113.80").internet && !online(sim, "guest"), "The phone reaches the internet but names don't look up", "Names look up.", "The visitor's phone: no website opens by name."),
+    C("off", joined && !online(sim, "guest"), "The visitor's phone isn't online", "It's online.", "The visitor's phone: no internet.")];   /* the last word: never met while the phone is offline, whatever the reason */
 }
 function apartCauses(sim, v) {
   const pcIp = sim.addr("pc") && sim.addr("pc").ip, prIp = printerIp(sim), ip = apAddr(sim);
@@ -444,7 +446,7 @@ const SB3 = {
   mason: "The access point puts the guests on their own VLAN, so its switch port is a trunk, and it takes its own address untagged on the old network. The router routes the guests out; an access list on their way in is what keeps them away from everything that's the business's.",
   limits: function (v) { const G = guest(v), S = staff(v), p = v.plan;
     return ["The business's plan: guests are VLAN " + G.id + ", named " + G.name + ", on " + G.net + "/24 with the gateway " + G.gw + " on the router's " + subName(v, "guest") + ". The first ten addresses are kept back. Their access list, in on that subinterface, is named " + p.guestAcl + ".",
-      "The guest Wi-Fi (on the card in the waiting area): " + p.guestSsid + ", password " + p.guestPw + ", WPA2 (WPA2/WPA3 is fine: older phones need WPA2).",
+      "The guest Wi-Fi (on the card in the waiting area): " + p.guestSsid + ", password " + p.guestPw + ", WPA2 (WPA2/WPA3 transition is fine: older phones need WPA2).",
       "The access point's run is on the closet switch's port " + p.apPort + ", described " + p.apDesc + ". The switch gives no power: a PoE injector from the van goes in the closet.",
       "The access point takes its own address by DHCP, untagged, on the old network (" + p.lan + "/24). Its web page is at that address: open it from the manager's PC.",
       "Staff are VLAN " + S.id + " on " + S.net + "/24. The router and switch records are as before: router " + p.rtHost + " (secret " + p.rtSecret + ", console " + p.rtConsole + "); switch " + p.swHost + " (secret " + p.swSecret + ", console " + p.swConsole + ")."]; },

@@ -13,7 +13,9 @@ const seeds = (id) => Array.from({ length: N }, (_, i) => 9000 + i * 7919 + id.l
 const E = (dev, port) => ({ dev, port });
 const cli = (line) => ({ t: "cmd", dev: "tech", line, cli: true });
 const line = (J, id) => B.evaluate(J.def.reqs.find((q) => q.id === id), J.sim, J.v);
-const run = (J, acts) => { for (const a of acts) { const r = B.act(J, a); assert.notEqual(r && r.result && r.result.ok, false, "refused: " + JSON.stringify(a) + " " + JSON.stringify(r && r.result)); } };
+/* runs are numbered in the order they're laid, so a case that lays one cable fewer gives the console cable another number:
+   pulling "the console cable" pulls whichever one is in */
+const run = (J, acts) => { for (let a of acts) { if (a.t === "pull" && /^c-console-/.test(a.cable)) { const c = J.sim.cablesOf("tech").find((x) => x.kind === "console"); if (c) a = Object.assign({}, a, { cable: c.id }); } const r = B.act(J, a); assert.notEqual(r && r.result && r.result.ok, false, "refused: " + JSON.stringify(a) + " " + JSON.stringify(r && r.result)); } };
 const swap = (acts, from, to) => acts.map((a) => (a.t === "cmd" && a.line === from ? Object.assign({}, a, { line: to }) : a));
 const drop = (acts, pred) => acts.filter((a) => !pred(a));
 /* a line put in straight after another (the first time it appears) */
@@ -160,6 +162,87 @@ test("SB-J2: other right ways pass: a subinterface numbered its own way, the tru
     acts = drop(acts, (a) => a.line === "switchport mode access");
     const J = tryIt(def, s, acts);
     for (const r of B.check(J).res) assert.ok(r.ok, "SB-J2 " + r.id + ", seed " + s + ": " + r.ev);
+  }
+});
+
+test("SB-J3: the tempting wrong ways fail the right line, for the right reason", () => {
+  const def = byId["SB-J3"];
+  for (const s of seeds("SB-J3").slice(0, 25)) {
+    const J0 = B.open(def, s), p = J0.v.plan, G = p.vlans.guest, S = p.vlans.staff, sol = def.solve(J0.v, J0.sim), T = (acts) => tryIt(def, s, acts);
+    const apnet = (net) => sol.map((a) => (a.t === "apnet" ? { t: "apnet", dev: "ap", net: Object.assign({}, a.net, net) } : a));
+    const w = "0.0.0.255", aclLines = ["permit udp any any eq bootps", "deny ip " + G.net + " " + w + " " + S.net + " " + w, "deny ip " + G.net + " " + w + " " + p.lan + " " + w, "permit ip " + G.net + " " + w + " any"];
+    /* the guests' list taken out whole: its header, its lines, and the exit that closes it (left behind, that exit would take the
+       router out of configuration mode and everything typed after it would be refused) */
+    const noAcl = (acts) => { const i = acts.findIndex((a) => a.line === "ip access-list extended " + p.guestAcl), j = acts.findIndex((a, k) => k > i && a.line === "exit"); return acts.filter((a, k) => k < i || k > j); };
+    /* power: straight off the switch, the injector the wrong way round, its adapter out */
+    let J = T(sol.map((a) => (a.t === "lay" && a.b.dev === "injector" ? { t: "lay", a: E("msw", p.apPort), b: E("ap", "ETH") } : a)).filter((a) => !(a.t === "lay" && a.a.dev === "injector")));
+    assert.equal(line(J, "mount").real.id, "switch", "straight off a switch with no PoE");
+    J = T(sol.map((a) => (a.t === "lay" && a.b.dev === "injector" ? { t: "lay", a: E("msw", p.apPort), b: E("injector", "PoE OUT") } : a.t === "lay" && a.a.dev === "injector" ? { t: "lay", a: E("injector", "DATA IN"), b: E("ap", "ETH") } : a)));
+    assert.equal(line(J, "mount").real.id, "datain", "the injector the wrong way round");
+    J = T(sol.concat([{ t: "injector", dev: "injector", values: { power: false } }]));
+    assert.equal(line(J, "mount").real.id, "adapter");
+    J = T(sol.map((a) => (a.t === "place" && a.dev === "ap" ? { t: "place", dev: "ap", room: "closet" } : a)));
+    assert.equal(line(J, "mount").real.id, "room", "the access point left in the closet");
+    /* the switch port */
+    J = T(drop(sol, (a) => a.line === "no shutdown"));
+    assert.equal(line(J, "uplink").real.id, "shut"); assert.equal(line(J, "visitor").ok, false);
+    J = T(swap(sol, "description " + p.apDesc, "description AP"));
+    assert.equal(line(J, "uplink").real.id, "desc");
+    J = T(sol.map((a) => (a.t === "lay" && a.b.dev === "injector" ? { t: "lay", a: E("msw", "6"), b: E("injector", "DATA IN") } : a)));
+    assert.equal(line(J, "uplink").real.id, "port", "the run in a port the records keep for something else");
+    /* the trunk */
+    J = T(drop(sol, (a) => a.line === "switchport mode trunk" && sol.indexOf(a) > sol.findIndex((x) => x.line === "interface gi0/" + p.apPort)));
+    assert.equal(line(J, "trunk").real.id, "mode", "left to negotiate: an access point never asks, so it's an access port");
+    J = T(swap(sol, "switchport trunk allowed vlan 1," + G.id, "switchport trunk allowed vlan 1"));
+    assert.equal(line(J, "trunk").real.id, "allowed"); assert.equal(line(J, "visitor").ok, false);
+    J = T(after(sol, "switchport trunk allowed vlan 1," + G.id, ["switchport trunk native vlan " + G.id]));
+    assert.equal(line(J, "trunk").real.id, "native");
+    J = T(after(sol, "no shutdown", ["interface gi0/24", "switchport trunk allowed vlan 1," + S.id]));   /* still in configuration mode: a line straight after a copy would answer its filename prompt */
+    assert.equal(line(J, "trunk").real.id, "uplink", "the trunk to the router doesn't carry the guest VLAN");
+    /* the access point's network */
+    J = T(apnet({ vlan: "" }));
+    assert.equal(line(J, "ssid").real.id, "untagged"); assert.equal(line(J, "visitor").real.id, "lan", "untagged: the visitor lands on the business's own network");
+    J = T(apnet({ sec: "Open", psk: "" }));
+    assert.equal(line(J, "ssid").real.id, "open");
+    J = T(apnet({ sec: "WPA3-Personal" }));
+    assert.equal(line(J, "ssid").real.id, "wpa3");
+    J = T(apnet({ psk: "Welcome123!" }));
+    assert.equal(line(J, "ssid").real.id, "pw"); assert.equal(line(J, "visitor").real.id, "auth", "the visitor types the card's password: rejected");
+    J = T(apnet({ vlan: G.id + 1 }));
+    assert.equal(line(J, "ssid").real.id, "vlan");
+    J = T(sol.slice(0, -1).concat([{ t: "apnet", dev: "ap", net: { ssid: "Test", sec: "Open", psk: "", vlan: "" } }], sol.slice(-1)));
+    assert.equal(line(J, "ssid").real.id, "extra", "a test network left on the air");
+    J = T(sol.map((a) => (a.t === "joinssid" ? Object.assign({}, a, { pass: p.guestPw.slice(0, -1) }) : a)));
+    assert.equal(line(J, "visitor").real.id, "auth");
+    /* the access list */
+    J = T(drop(noAcl(sol), (a) => a.line === "ip access-group " + p.guestAcl + " in"));
+    assert.equal(line(J, "apart").real.id, "staff", "no access list: guests reach the staff PCs"); assert.ok(line(J, "visitor").ok);
+    J = T(swap(sol, "ip access-group " + p.guestAcl + " in", "ip access-group " + p.guestAcl + " out"));
+    assert.equal(line(J, "visitor").real.id, "net", "applied out: it filters what comes back to the guests, internet replies too: an address, no internet");
+    J = T(drop(sol, (a) => a.line === "permit udp any any eq bootps"));
+    assert.equal(line(J, "visitor").real.id, "addr", "no permit for DHCP: the DISCOVER from 0.0.0.0 is dropped, so no address");
+    J = T(noAcl(sol).map((a) => (a.line === "ip access-group " + p.guestAcl + " in" ? Object.assign({}, a, { line: "ip access-group 41 in" }) : a)).concat([cli("configure terminal"), cli("access-list 41 permit " + G.net + " " + w), cli("end"), { t: "joinssid", dev: "guest", ssid: p.guestSsid, pass: p.guestPw }]));
+    assert.equal(line(J, "visitor").real.id, "addr", "a standard list of the guests' own network: it doesn't take the DISCOVER either");
+    J = T(swap(sol, "interface " + p.lanPort + "." + G.id, "interface " + p.lanPort + "." + S.id));
+    assert.equal(line(J, "staff").ok, false, "the guests' list put on the staff subinterface stops staff");
+    J = T(drop(sol, (a) => a.line === "ip nat inside" && sol.indexOf(a) > sol.findIndex((x) => x.line === "interface " + p.lanPort + "." + G.id)));
+    assert.equal(line(J, "sub").real.id, "nat"); assert.equal(line(J, "visitor").real.id, "net");
+    /* saving */
+    J = T(drop(sol, (a) => a.line === "copy running-config startup-config" && sol.indexOf(a) > sol.findIndex((x) => x.line === "interface " + p.lanPort + "." + G.id)));
+    assert.equal(line(J, "saved").real.id, "since"); assert.ok(line(J, "swsaved").ok);
+  }
+});
+
+test("SB-J3: other right ways pass: WPA2/WPA3, every VLAN left allowed, a DHCP line of its own, a list of another name", () => {
+  const def = byId["SB-J3"];
+  for (const s of seeds("SB-J3").slice(0, 25)) {
+    const J0 = B.open(def, s), p = J0.v.plan, G = p.vlans.guest, sol = def.solve(J0.v, J0.sim);
+    let acts = sol.map((a) => (a.t === "apnet" ? { t: "apnet", dev: "ap", net: Object.assign({}, a.net, { sec: "WPA2/WPA3-Personal" }) } : a));
+    acts = drop(acts, (a) => a.line === "switchport trunk allowed vlan 1," + G.id);
+    acts = swap(acts, "permit udp any any eq bootps", "permit udp any eq bootpc any eq bootps");
+    acts = acts.map((a) => (a.line ? Object.assign({}, a, { line: a.line.replace(p.guestAcl, "VISITORS") }) : a));
+    const J = tryIt(def, s, acts);
+    for (const r of B.check(J).res) assert.ok(r.ok, "SB-J3 " + r.id + ", seed " + s + ": " + r.ev);
   }
 });
 

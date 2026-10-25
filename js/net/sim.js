@@ -792,7 +792,7 @@ export class Sim {
       }
       case "joinssid": {                                        /* join a business access point's network by name, with its password (the client's records give it) */
         const f = this.d[act.dev].ifaces[0], ap = this.aps().find(function (p) { return p.ssid === act.ssid; });
-        const pw = typeof act.pass === "string" ? act.pass === ap.psk : act.pass !== false;   /* typed on the phone: it must be the network's password */
+        const pw = typeof act.pass === "string" ? !!ap && act.pass === ap.psk : act.pass !== false;   /* typed on the phone: it must be the network's password */
         f.saved = ap ? (ap.sec === "Open" ? { ssid: ap.ssid, passOk: true, sec: "Open" } : { ssid: ap.ssid, passOk: !!(ap && pw), gen: ap.gen }) : { ssid: act.ssid, passOk: false };
         this.release(act.dev); res = this.hasLink(act.dev) ? this.dhcp(act.dev, "join") : { result: "no-wifi" }; break;
       }
@@ -801,7 +801,7 @@ export class Sim {
         if (act.remove != null) { const i = x.ssids.findIndex(function (w) { return w.ssid === act.remove; }); if (i < 0) { res = { ok: false, errs: ["There's no network called " + act.remove] }; break; } x.ssids.splice(i, 1); res = { ok: true }; break; }
         const v = act.net || {}, ssid = String(v.ssid || "").trim(), sec = v.sec, psk = String(v.psk || ""), vl = String(v.vlan == null ? "" : v.vlan).trim();
         if (!ssid || ssid.length > 32 || !/^[\x20-\x7e]+$/.test(ssid)) errs.push("A network name is 1 to 32 letters, digits or symbols");
-        if (["WPA2-Personal", "WPA2/WPA3", "WPA3-Personal", "Open"].indexOf(sec) < 0) errs.push("Choose the security");
+        if (["WPA2-Personal", "WPA2/WPA3-Personal", "WPA3-Personal", "Open"].indexOf(sec) < 0) errs.push("Choose the security");
         if (sec !== "Open" && (psk.length < 8 || psk.length > 63)) errs.push("A WPA2 or WPA3 password is 8 to 63 characters");
         if (vl && !(/^\d+$/.test(vl) && +vl >= 1 && +vl <= 4094)) errs.push("A VLAN ID is a number from 1 to 4094, or blank for the access point's own network");
         if (errs.length) { res = { ok: false, errs: errs }; break; }

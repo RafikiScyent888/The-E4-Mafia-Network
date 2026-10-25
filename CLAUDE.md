@@ -1842,55 +1842,65 @@ piece node-tested (`tests/business-cli.test.js`, `tests/business-sim.test.js`;
   text runs, every one passing (run in two halves side by side: `tools/aaa.mjs`
   takes any states file, so states 1 to 100 and 101 to 178 ran at once).
 
-### Where work stopped, 19 October 2026 (the owner: "Stop for now", then "save everything that you are working for later")
+### Level 3, stage 2: SB-J3, guest Wi-Fi on the ceiling access point (branch `save/level3-stage2`, not live)
 
-**Nothing of Level 3 is live.** `main` is unchanged. Two branches hold it:
-- **`save/level3`** = stage 1 (commit 6e2ab32): the business, SB-J1 and SB-J2,
-  everything above. Verified so far: `npm test` 326 of 326 (before the levels
-  test change: re-run), `ONLY=business node tools/drive.mjs` 118 checks pass,
-  `ONLY=business node tools/models.mjs` 25 pass, every plant listed above
-  caught. **Still to run before stage 1 goes live** (both were started and
-  stopped part way when the owner said stop; no results):
-  - `node tools/drive.mjs` in full (every level: the stronger drawing check and
-    the page changes reach Levels 1 and 2 too);
-  - AAA on the new states: `ONLY="business:,levels: desk,small business opens,small business's work orders" node tools/aaa.mjs tools/aaa-states.json`
-    (13 new "business:" states and the renamed level states);
-  - then `node tools/models.mjs` in full and `npm test`; then merge to `main`,
-    push, check the Pages run.
-- **`save/level3-stage2`** = stage 2 in progress, SB-J3 (guest Wi-Fi on the
-  ceiling access point), on top of stage 1. **Work in progress, not verified.**
-  - Done: `addGuestKit` (js/net/business.js: the access point and a PoE
-    injector boxed, the visitor's phone, `BUSINESS_SIGNAL`), the guest network's
-    records (`guestSsid`, `guestPw`, `apPort` 5, `apDesc`, `guestAcl`), the
-    diagram rearranged for them (the closet switch's name under it). The sim:
-    an access list in on an interface now sees DHCP's DISCOVER (a deny-only or
-    standard list of the guests' own network leaves guests on 169.254, as on the
-    real thing; `tests/business-sim.test.js` updated, 16 of 16 pass); the access
-    point's networks carry their password and joining checks the one typed
-    (`joinssid` with `pass`); the `apnet` action (the access point's web page:
-    add, update or remove a network, validated as a real one is); an access
-    point's own address found on its untagged side (`owners`). SB-J3 itself
-    (js/build/business.js): 12 lines, its solution passing on every business
-    tried; the VLAN, subinterface and pool checks shared with SB-J2.
-  - **The one failing test** (`SEEDS=20 node --test tests/business-jobs.test.js`,
-    9 of 10 pass): random work can `joinssid` a network name that doesn't
-    exist, and `joinssid` in `sim.js` then reads `ap.psk` of nothing. Fix: guard
-    `ap` before reading `ap.psk` in the `joinssid` case.
-  - **Still to build for stage 2:** the page. The access point's tabs (a "Web
-    page" with an address bar: the student finds its address from `show ip dhcp
-    binding` or `show lldp neighbors`, opens it from the manager's PC, then the
-    networks list and the add form) and its Physical tab (`ceilingAP`, its ring
-    lit from the sim); the visitor's phone's Wi-Fi tab for a business (the
-    networks it hears, a password box, `joinssid`; the current phone page reads
-    `sim.d.router.wifi`, which doesn't exist at the business); `ap` in the build
-    page's device order and the diagram's device list, its address under its
-    icon; then SB-J3's tempting-wrong-ways tests, the drive, models, AAA states,
-    plants, and go live.
-  - `tools/wip/`: the scripts used while building (run from the repo root):
-    `sbrun.mjs` (every business job: start, solve, check), `sb3net.mjs` (SB-J3's
-    network by hand), `l3geo.mjs` (both drawings measured at every solution step;
-    `ROOT=` a planted copy to calibrate), `l3shot.mjs` and `rtr3d.mjs`
-    (screenshots into `./wip-out/`). Not part of the site.
+The owner's answers, 25 October 2026: getting into the access point's settings
+stays as built (**"Keep it that way"**: the student finds its address, then types
+it into a browser on the manager's PC), and so does the DHCP trap (**"Keep it that
+way"**: a guests' access list with no DHCP line leaves guests on 169.254, with
+Mason's hints pointing at it).
+- **The simulation:** `addGuestKit` (js/net/business.js: the access point and a
+  PoE injector boxed, the visitor's phone, `BUSINESS_SIGNAL`); the guest network's
+  records (`guestSsid`, `guestPw`, `apPort` 5, `apDesc`, `guestAcl`). An access list
+  in on an interface sees DHCP's DISCOVER. The access point's networks carry their
+  password and joining checks the one typed (`joinssid` with `pass`); `apnet` (add,
+  change or remove a network, validated as a real one is); an access point's own
+  address is on its untagged side (`owners`).
+- **SB-J3** (js/build/business.js): 12 lines; the VLAN, subinterface and pool
+  checks shared with SB-J2. Tempting wrong ways each fail their own line; other
+  right ways pass (`tests/business-jobs.test.js`).
+- **The page:**
+  - **A web browser on every business PC** (`browse` in js/net/pages.js, the
+    pane in js/desk/window.js): an address bar, then the page or the browser's own
+    words. The request goes through the simulation as TCP to port 443 (80 for
+    http://), so a VLAN with no way through or an access list stops it for the
+    real reason. Only the access point has a page: the router and switches refuse
+    (managed from their command lines), a Windows PC times out (its firewall), a
+    name isn't found. The page never changes the network (it reads the owner of
+    the address without taking a turn). No house or office PC has a browser.
+  - **The access point's page:** its name, model, address, uplink and clients;
+    its networks (name, security, VLAN tag, Remove); "Add or change a network"
+    (`apnet`), with the access point's own errors. It never shows a password.
+  - **Its address isn't given away:** the logical diagram shows "DHCP" under it.
+    The student reads it from `show ip dhcp binding` on the router (the one lease
+    on the old network) or the switch's LLDP neighbours.
+  - **The visitor's phone at the business:** the networks it hears, each with a
+    password box and Join (`joinssid`); "the password is wrong" when it is. (The
+    house's phone page read `sim.d.router.wifi`, which the business doesn't have.)
+  - **The access point's Physical tab:** `ceilingAP` drawn from the simulation, no
+    bench under it (`stage: "none"`). Its light ring: off with no power, amber with
+    power but no link on its uplink, blinking blue on the network with nothing set
+    up, blue while it broadcasts; the same in words. Views: Light ring, Port bay
+    (top). Its label's hardware address stays covered, as on every model.
+  - On the diagram it's "Access point" (its device label), in line with the
+    injector and the manager's PC; the visitor's phone sits clear of the printer's
+    address (the drive found both collisions, the second only with easier reading
+    on).
+- **Checks so far:** `npm test` 334 of 334 (`tests/business-page.test.js`: the
+  browser, the phone, the ring; 10 plants in a throwaway copy, all caught once two
+  gaps were closed: the no-change check now covers each computer's ARP table and
+  turns, and a house's and an office's PCs are held to having no browser).
+  `ONLY=business JOB=SB-J3 node tools/drive.mjs`: 74 checks on three businesses,
+  every step through the page (the address read from the router, the page opened
+  in the browser, a password too short refused, the network saved, a wrong
+  password on the phone refused, both drawings in both fonts).
+- **Still to do before going live:** AAA on the 8 new "business: SB-J3" states;
+  `ONLY=business node tools/models.mjs` (the ring sampled on the ring: blue, amber,
+  off, and blue with nothing set up); `python3 tools/plants-business-page.py` (9
+  page plants); then the full drive, AAA and models once more, and merge.
+- `tools/wip/`: scripts used while building (run from the repo root): `sbrun.mjs`,
+  `sb3net.mjs`, `sb3page.mjs` (SB-J3's page parts in Node), `l3geo.mjs`,
+  `l3shot.mjs`, `rtr3d.mjs`. Not part of the site.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

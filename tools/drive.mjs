@@ -1211,6 +1211,70 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
     } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
     await ctx.close();
   }
+  /* SB-J3 (stage 2): the guest Wi-Fi on the ceiling access point, through the page. The access point's address is found as a
+     student finds it (the router's DHCP bindings), its page opened in the manager's PC's web browser and the guest network added
+     with the page's own form; the visitor's phone joins by name with the password typed in (a wrong one first) */
+  const go = async (p, url) => { await p.fill('.browser input[name="url"]', url); await p.click(".browser .urlbar button"); await p.waitForTimeout(60); return p.$eval(".browser", (n) => n.textContent); };
+  for (const seed of !process.env.JOB || process.env.JOB === "SB-J3" ? [11, 2025, 777777] : []) {
+    const job = "SB-J3", { p, ctx } = await zpage("build.html", { net: solvedTo(2), build: { current: job, j: { [job]: { seed } }, done: doneTo(2) } });
+    const tag = "business " + job + " " + seed + ": ";
+    try {
+      const plan = await BJ(p, () => window.__e4b.T.sim.net.plan);
+      check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed, tag + "opens the job on the business asked for");
+      check(!(await p.$('#plan [data-d="ap"]')) && !(await p.$('#devtabs [data-d="ap"]')) && /access point/i.test(await p.$eval(".tray", (n) => n.textContent)), tag + "the access point starts in its box: off the plan, no device button");
+      await checkJob(p);
+      check((await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do");
+      await dev(p, "mgr"); await tab(p, "Web browser");
+      check(/Type an address/.test(await p.$eval(".browser", (n) => n.textContent)), tag + "the manager's PC has a web browser, its address bar empty");
+      let W = await go(p, plan.lanGw);
+      check(/refused to connect/.test(W) && /ERR_CONNECTION_REFUSED/.test(W), tag + "the router's address in the browser: refused (it's managed from its command line)");
+      const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
+      for (const a of sol) {
+        if (a.t === "apnet") {
+          await step(p, { t: "cmd", dev: "tech", cli: true, line: "show ip dhcp binding" });
+          const out = await term(p), pre = plan.lan.replace(/\.0$/, "."), ips = [...out.matchAll(/^(\d+\.\d+\.\d+\.\d+)\s/gm)].map((m) => m[1]).filter((ip) => ip.startsWith(pre));
+          check(!/% Invalid|% Incomplete|% Ambiguous/.test(out), tag + "no line was refused on the router");
+          const apIp = await BJ(p, () => window.__e4b.T.sim.addr("ap").ip);
+          check(ips.length === 1 && ips[0] === apIp, tag + "show ip dhcp binding on the router: one lease on the old network, the access point's (" + ips.join(", ") + ")");
+          check(!(await p.$eval('#net [data-d="ap"]', (n) => n.textContent)).includes(apIp), tag + "the logical diagram doesn't give the access point's address away");
+          await dev(p, "mgr"); await tab(p, "Web browser"); W = await go(p, ips[0]);
+          check(/Access point/.test(W) && /isn't broadcasting any network yet/.test(W), tag + "that address in the manager's PC's browser: the access point's page, no networks yet");
+          await p.fill('.webpage input[name="ssid"]', a.net.ssid); await p.selectOption('.webpage select[name="sec"]', a.net.sec);
+          await p.fill('.webpage input[name="psk"]', "short"); await p.fill('.webpage input[name="vlan"]', String(a.net.vlan));
+          await p.click('.webpage button[type="submit"]'); await p.waitForTimeout(60);
+          check(/Not saved: A WPA2 or WPA3 password is 8 to 63 characters/.test(await p.$eval(".webpage", (n) => n.textContent)), tag + "a password too short: not saved, and the page says why");
+          await p.fill('.webpage input[name="psk"]', a.net.psk); await p.click('.webpage button[type="submit"]'); await p.waitForTimeout(60);
+          W = await p.$eval(".webpage", (n) => n.textContent);
+          check(new RegExp("Saved: " + a.net.ssid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " is broadcasting, tagged VLAN " + a.net.vlan).test(W) && /VLAN \d+Remove/.test(W), tag + "Save: the guest network is listed, tagged");
+          continue;
+        }
+        if (a.t === "joinssid") {
+          await dev(p, "guest"); await tab(p, "Wi-Fi");
+          const li = () => p.locator(".pane .cabs li", { hasText: a.ssid });
+          check(await li().count() === 1, tag + "the visitor's phone hears the guest network");
+          await li().locator('input[name="pass"]').fill("not-the-password"); await li().locator("button").click(); await p.waitForTimeout(60);
+          check(/the password was refused/.test(await p.$eval(".pane", (n) => n.textContent)), tag + "a wrong password typed on the phone: refused");
+          await li().locator('input[name="pass"]').fill(a.pass); await li().locator("button").click(); await p.waitForTimeout(60);
+          W = await p.$eval(".pane", (n) => n.textContent);
+          check(/joined, address \d+\.\d+\.\d+\.\d+\. Internet: OK/.test(W) && /Connected to/.test(W), tag + "the guest password: joined, an address, the internet");
+          continue;
+        }
+        await step(p, a);
+      }
+      const t = await checkJob(p), n = await BJ(p, () => window.__e4b.T.def.reqs.length);
+      check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
+      await dev(p, "ap"); await tab(p, "Physical");
+      check(/light ring round its face: on, blue: on the network, broadcasting 1 network/.test(await p.$eval(".m3d-says", (n) => n.textContent)), tag + "the access point's Physical tab: its ring on, blue, broadcasting one network");
+      await p.click("#vLog"); await p.waitForTimeout(60);
+      const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished business's logical diagram: every name and port dot clear" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(40);
+      const fp = await labelsClear(p, "plan"); check(fp.n > 0 && !fp.out.length, tag + "the finished business's floor plan: every name clear" + (fp.out.length ? " (" + fp.out.join("; ") + ")" : ""));
+      await dysClear(p, tag + "the finished business");
+      await p.reload(); await p.waitForTimeout(350);
+      check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)), tag + "still done after a reload");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+    await ctx.close();
+  }
 }
 
 console.log(errs.length ? "PAGE ERRORS\n" + [...new Set(errs)].join("\n") : "no page errors");

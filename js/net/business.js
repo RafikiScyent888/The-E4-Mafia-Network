@@ -54,9 +54,9 @@ export const BUSINESS_LAYOUT = {
   printer: { x: 430, y: 440, px: 560, py: 140, room: "counter" },
   bpc: { x: 110, y: 440, px: 820, py: 400, room: "back" },
   /* SB-J3's: the access point on the waiting area's ceiling, its injector in the closet, the visitor's phone */
-  injector: { x: 720, y: 300, px: 245, py: 295, room: "closet", lab: "above" },
-  ap: { x: 720, y: 440, px: 420, py: 330, room: "guest" },
-  guest: { x: 560, y: 440, px: 540, py: 430, room: "guest" }
+  injector: { x: 735, y: 320, px: 245, py: 295, room: "closet", lab: "above" },   /* in line with the manager's PC and the access point, its name clear of the PC's address */
+  ap: { x: 735, y: 440, px: 420, py: 330, room: "guest" },
+  guest: { x: 580, y: 440, px: 540, py: 430, room: "guest" }   /* clear of the printer's address, with easier reading on too */
 };
 export const BUSINESS_ROOM_BOX = { closet: [30, 30, 300, 370], counter: [300, 30, 640, 270], office: [640, 30, 980, 270], guest: [300, 270, 660, 520], back: [660, 270, 980, 520] };
 
@@ -86,7 +86,7 @@ export const BUSINESS_SIGNAL = {
    waiting with their phone. From a stream of its own, so the business is drawn as before */
 export function addGuestKit(sim) {
   const net = sim.net, r = rng(net.seed ^ 0x5a3c);
-  net.devices.ap = { id: "ap", kind: "bap", label: "Ceiling access point", sub: "AP-310", on: true, boxed: true, poe: true, draw: 9, mac: mac(r), ch24: 6, ch5: 36, ssids: [], host: net.client.tag + "-AP1",
+  net.devices.ap = { id: "ap", kind: "bap", label: "Access point", sub: "AP-310", on: true, boxed: true, poe: true, draw: 9, mac: mac(r), ch24: 6, ch5: 36, ssids: [], host: net.client.tag + "-AP1",
     ifaces: [{ name: "Ethernet", type: "eth", port: "ETH", mac: mac(r), cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] };
   net.devices.injector = { id: "injector", kind: "injector", label: "PoE injector", on: true, boxed: true, power: true, std: "af" };
   net.devices.guest = { id: "guest", kind: "phone", label: "Visitor's phone", sub: "Wi-Fi", on: true,

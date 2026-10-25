@@ -46,7 +46,7 @@ function sample(p, jack, role) {
     let led = null;
     d.model.traverse((o) => { if (led || o.userData.kind !== "led") return; if (jack ? o.parent && o.parent.name === "port:" + jack && o.userData.role === role : o.userData.role === role) led = o; });
     if (!led) return { missing: true };
-    const v = new THREE.Vector3(); led.getWorldPosition(v); v.project(d.camera);
+    const v = new THREE.Vector3(); if (led.geometry && led.geometry.type === "TorusGeometry") led.localToWorld(v.set(led.geometry.parameters.radius, 0, 0)); else led.getWorldPosition(v); v.project(d.camera);   /* a light ring: a point on the ring, not its middle */
     const cv = document.querySelector("canvas.m3d-canvas"), x = Math.round((v.x + 1) / 2 * cv.width), y = Math.round((1 - v.y) / 2 * cv.height);
     const c2 = document.createElement("canvas"); c2.width = cv.width; c2.height = cv.height; const g = c2.getContext("2d"); g.drawImage(cv, 0, 0);
     const px = g.getImageData(x - 1, y - 1, 3, 3).data, out = [];
@@ -445,6 +445,36 @@ CB.push(async () => {
   await led(p, "SB-J1 business router GE 0/8 LNK (no module)", null, "GE 0/8 LNK", "off");
   const f = await plugAt(p, "Gi0/8"); check(!f.missing && f.plug === false, "SB-J1 business router: the SFP slot GE 0/8 is empty " + JSON.stringify(f));
   check(/BUSINESS ROUTER, MODEL: BR-4200/.test(await p.$eval(".m3d-says", (x) => x.textContent)), "SB-J1 business router: the words give what's printed on its front");
+  await ctx.close();
+});
+/* SB-J3: the ceiling access point's light ring as the simulation says, sampled on the ring: blue while it broadcasts the guest
+   network; blue (blinking, held steady for anyone who asks for less motion) on the network with nothing set up; amber with
+   power down its cable but its switch port shut; dark, and the plug out of ETH, when its cable is unplugged on the page */
+CB.push(async () => {
+  const { p, ctx } = await office("SB-J3", 5301);
+  await physical(p, "ap", "Light ring");
+  await led(p, "SB-J3 access point ring (broadcasting)", null, "ring", "blue");
+  check(/on, blue: on the network, broadcasting 1 network/.test(await p.$eval(".m3d-says", (x) => x.textContent)), "SB-J3 access point: the words say the ring is on, blue, broadcasting");
+  const k = await plugAt(p, "ETH"); check(!k.missing && k.plug && k.off < 1, "SB-J3 access point: its cable is in ETH " + JSON.stringify(k));
+  /* its switch port shut: the injector still powers it, but no link */
+  let n = await fine(p);
+  await p.evaluate(() => { const J = window.__e4b.T; J.sim.d.msw.sw.ports["GigabitEthernet0/" + J.v.plan.apPort].shutdown = true; });
+  await p.click('.win-tabs button:text-is("Physical")'); await settled(p, n);
+  n = await fine(p); await p.click('.m3d-bar button:text-is("Light ring")'); await settled(p, n);
+  await led(p, "SB-J3 access point ring (port shut)", null, "ring", "amber");
+  /* unplugged on the page: no power, the plug out */
+  n = await fine(p);
+  await p.click('.cabs li button:text-is("Unplug it")'); await settled(p, n);
+  n = await fine(p); await p.click('.m3d-bar button:text-is("Light ring")'); await settled(p, n);
+  await led(p, "SB-J3 access point ring (unplugged)", null, "ring", "off");
+  const k2 = await plugAt(p, "ETH"); check(!k2.missing && k2.plug && k2.off > 10, "SB-J3 access point: unplugged, the plug hangs out of ETH " + JSON.stringify(k2));
+  await ctx.close();
+});
+CB.push(async () => {
+  const { p, ctx } = await office("SB-J3", 5302, -2);   /* everything but its network and the visitor joining */
+  await physical(p, "ap", "Light ring");
+  await led(p, "SB-J3 access point ring (no networks yet)", null, "ring", "blue");
+  check(/blinking blue: on the network, but broadcasting nothing/.test(await p.$eval(".m3d-says", (x) => x.textContent)), "SB-J3 access point: the words say the ring blinks blue, nothing set up");
   await ctx.close();
 });
 const RUN = process.env.ONLY === "office" ? CO : process.env.ONLY === "business" ? CB : C.concat(CO, CB);

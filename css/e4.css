@@ -226,6 +226,13 @@ dialog.m3d-dialog .db { max-height: calc(100vh - 90px); }
 .cabs .nm { margin: 0 0 6px; font-weight: 700; }
 .acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .res { margin: 8px 0 0; padding: 6px 8px; background: var(--soft); border-radius: 6px; white-space: pre-wrap; }
+/* a business PC's web browser: the address bar, the page in its frame, or the browser's own words for why there's none */
+.browser .urlbar { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
+.browser .webpage { margin-top: 10px; padding: 10px 12px; border: 2px solid var(--line); border-radius: 8px; }
+.browser .nopage { margin-top: 10px; padding: 10px 12px; border: 2px dashed var(--line); border-radius: 8px; }
+.browser .nopage h3 { margin: 0 0 6px; }
+.browser .nopage p { margin: 0 0 6px; }
+.browser .nopage .code { margin: 0; font-family: Consolas, "DejaVu Sans Mono", monospace; color: var(--muted); font-size: 0.9rem; }
 
 /* the notebook */
 .notebook ol { margin: 0; padding: 8px 14px 6px 34px; }

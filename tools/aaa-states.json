@@ -987,5 +987,46 @@
   "name": "levels: build, the small business's work orders (more on the way)",
   "page": "build.html",
   "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS[0].tickets.concat(L.LEVELS[1].tickets).map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS[0].jobs.concat(L.LEVELS[1].jobs).map(id=>[id,1]))})); window.__e4b.openJob('SB-J1',true,4242);})()"
+ },
+ {
+  "name": "business: SB-J3 first check, the work order with the guest network's records",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J3',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; c.check(); document.getElementById('bm').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J3 the manager's PC's web browser, the router refusing",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J3',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; dev('mgr'); tab('Web browser'); go(p.lanGw);"
+ },
+ {
+  "name": "business: SB-J3 the access point's page in the browser, a password too short",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J3',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; for(const a of sol){ if(a.t==='apnet') break; c.act(a); } dev('mgr'); tab('Web browser'); go(J.sim.addr('ap').ip); const w=document.querySelector('.webpage form'); w.querySelector('[name=ssid]').value=p.guestSsid; w.querySelector('[name=sec]').value='WPA2-Personal'; w.querySelector('[name=psk]').value='short'; w.querySelector('[name=vlan]').value=String(p.vlans.guest.id); w.requestSubmit();"
+ },
+ {
+  "name": "business: SB-J3 done, the access point's page listing the guest network",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J3',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; for(const a of sol){ if(false) break; c.act(a); } c.check(); dev('mgr'); tab('Web browser'); go(J.sim.addr('ap').ip);"
+ },
+ {
+  "name": "business: SB-J3 the visitor's phone, a wrong password refused",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J3',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; for(const a of sol){ if(a.t==='joinssid') break; c.act(a); } dev('guest'); tab('Wi-Fi'); const f=document.querySelector('.pane .cabs li form'); f.querySelector('[name=pass]').value='not-the-password'; f.requestSubmit();"
+ },
+ {
+  "name": "business: SB-J3 done, the logical diagram, the visitor online",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J3',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; for(const a of sol){ if(false) break; c.act(a); } c.check(); document.getElementById('vLog').click(); dev('guest'); tab('Wi-Fi');"
+ },
+ {
+  "name": "business: SB-J3 done, the access point's 3D model and its light ring",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J3',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; for(const a of sol){ if(false) break; c.act(a); } c.check(); dev('ap'); tab('Physical');",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "business: SB-J3 the guests' access list with no DHCP line, Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J3',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; sol.filter(a=>!(a.t==='cmd'&&/eq bootps$/.test(a.line))).forEach(a=>c.act(a)); for(let i=0;i<5;i++) c.check(); document.getElementById('check').scrollIntoView();"
  }
 ]

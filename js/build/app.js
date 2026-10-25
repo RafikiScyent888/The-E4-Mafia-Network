@@ -22,7 +22,7 @@ import { cableMap } from "../desk/cablemapui.js";
 const KEY = "e4-build-v1";
 const ALL = JOBS.concat(OFFICE_JOBS, BUSINESS_JOBS);   /* every level's work orders */
 const DEFS = {}; ALL.forEach(function (d) { DEFS[d.id] = d; });
-const ORDER = ["modem", "router", "rtr", "switch", "pp", "msw", "bsw", "pc", "mgr", "bpc", "hire", "printer", "mpc", "ojack", "mjack", "tv", "injector", "injector2", "camera", "mesh", "phone", "laptop", "guest", "tech"];
+const ORDER = ["modem", "router", "rtr", "switch", "pp", "msw", "bsw", "pc", "mgr", "bpc", "hire", "printer", "mpc", "ojack", "mjack", "tv", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "tech"];
 const ROOM_ORDER = ["living", "office", "kitchen", "garage", "upstairs", "landing", "porch"];
 /* the site's own rooms, names and fixed places: a house, the small office or the small business */
 const roomsOf = function (sim) { return sim.net.roomNames ? Object.keys(sim.net.roomNames) : ROOM_ORDER; };

@@ -4,7 +4,7 @@
    viewer draws it, the same facts are written out in words under the
    model (so nothing depends on seeing colour), and the tests read it to
    prove each fault really shows on the model. */
-import { page } from "./pages.js";
+import { page, cableName } from "./pages.js";
 import { prompt } from "./cmd.js";
 import { POE, SFP_MODULES } from "./sim.js";
 
@@ -27,7 +27,9 @@ const PORTS = {
   injectorDual: [["DATA IN 1", "DATA IN"], ["DATA IN 2", "DATA IN 2"], ["DATA + POWER OUT 1", "PoE OUT"], ["DATA + POWER OUT 2", "PoE OUT 2"]],
   /* the closet rack (SO-08): the patch panel's 24 front jacks, "P1" to "P24" on the model; the wall jack has nothing in its front */
   rack: Array.from({ length: 24 }, function (_, i) { return ["P" + (i + 1), String(i + 1)]; }),
-  wallplate: []
+  wallplate: [],
+  /* the ceiling access point: its one port, in the bay on its top */
+  ceilingAP: [["ETH (PoE IN)", "ETH"]]
 };
 /* what the installer wrote on the panel's tabs, from his map */
 const TAB = { front: "FRONT", open: "OPEN", manager: "MGR", meeting: "MEET" };
@@ -36,7 +38,7 @@ const SAY_PORT = { brouter: function (p) { return p === "CONSOLE" ? "CON (consol
 
 export function physicalState(sim, id) {
   const x = sim.d[id]; if (!x) return null;
-  const model = x.kind === "patchpanel" ? "rack" : x.kind === "jack" ? "wallplate" : x.kind === "injector" ? (x.dual ? "injectorDual" : "injector") : x.kind === "mswitch" ? "msw" : x.kind === "brouter" ? "brouter" : x.kind === "techlaptop" ? "techlaptop" : x.kind === "switch" && x.ports === 8 ? "switch8" : MODEL_OF[id]; if (!model) return null;   /* build mode's PoE+ injector is the dual-port one; the office has the managed switch and an old 8-port */
+  const model = x.kind === "patchpanel" ? "rack" : x.kind === "jack" ? "wallplate" : x.kind === "injector" ? (x.dual ? "injectorDual" : "injector") : x.kind === "mswitch" ? "msw" : x.kind === "brouter" ? "brouter" : x.kind === "bap" ? "ceilingAP" : x.kind === "techlaptop" ? "techlaptop" : x.kind === "switch" && x.ports === 8 ? "switch8" : MODEL_OF[id]; if (!model) return null;   /* build mode's PoE+ injector is the dual-port one; the office has the managed switch and an old 8-port */
   const ports = [], leds = [], says = [], opts = {};
   /* the device an injector output powers right now (its PoE light lit), or null */
   const feeds = function (port) { const c = sim.cableAt(id, port); if (!c) return null; const o = c.a.dev === id ? c.b.dev : c.a.dev; return sim.d[o] && sim.d[o].poe && sim.on(o) && sim.poeSource(o) === x ? o : null; };
@@ -142,6 +144,16 @@ export function physicalState(sim, id) {
     if (tabs.length) says.push("Written on the panel's tabs: " + tabs.map(function (n) { return "port " + n + " " + opts.tabs[n]; }).join(", ") + ".");
     const back = sim.cablesOf(id).map(function (c) { const e = c.a.dev === id ? c.a : c.b; return /R$/.test(e.port) ? +e.port.slice(0, -1) : null; }).filter(function (n) { return n; }).sort(function (a, b) { return a - b; });
     says.push("At the back of the panel: runs punched down behind ports " + back.join(", ") + ". Nothing on them says where they go.");
+    return { id: id, model: model, label: x.label, ports: ports, leds: leds, opts: opts, says: says };
+  }
+  if (model === "ceilingAP") {   /* the ceiling access point: its light ring says power, its uplink and its networks (in words too) */
+    const c = sim.cableAt(id, "ETH"), up = on && !!c && sim.cableUp(c), n = (x.ssids || []).length, p0 = ports[0];
+    const ring = !on ? ["off", null, "off: no power (it takes its power down its cable)"] : !up ? ["on", "amber", "on, amber: it has power, but no link on its uplink"] : !n ? ["blinking", "blue", "blinking blue: on the network, but broadcasting nothing (no networks set up on it yet)"] : ["on", "blue", "on, blue: on the network, broadcasting " + n + (n === 1 ? " network" : " networks")];
+    L("ring", "Light ring", ring[0], ring[1]);
+    opts.cable = p0.plug !== "none";
+    says.push("The light ring round its face: " + ring[2] + ".");
+    says.push("ETH (PoE IN), in the bay on its top: " + (p0.plug === "none" ? "empty." : p0.plug === "out" ? "unplugged: the plug is out, hanging loose." : "plugged in: " + cableName(sim, c, id).replace(/^Patch cable/, "the cable") + "."));
+    says.push("Its label, on top: CEILING ACCESS POINT, 802.11ac Wave 2, 802.3af PoE. Its settings are on its own web page, at the address it's given.");
     return { id: id, model: model, label: x.label, ports: ports, leds: leds, opts: opts, says: says };
   }
   if (model === "wallplate") { says.push("A data/voice wall plate: nothing plugged into its ETHERNET or TELEPHONE jack. Its run goes back through the wall to the closet."); return { id: id, model: model, label: x.label, ports: ports, leds: leds, opts: opts, says: says }; }

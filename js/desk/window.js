@@ -14,7 +14,7 @@ function load3d() { return m3dLoad || (m3dLoad = import("./model3d.js").then(fun
 const terms = {};            /* device id (your laptop's Command Prompt: "tech/win") -> { node, out, input, hist, hi } for the open ticket */
 const physLog = {};          /* device id -> last physical result per cable end */
 const said = {};             /* device id -> last result of a page button (test page, speed test, rejoin) */
-export function forgetTerminals() { for (const k in terms) delete terms[k]; for (const k in physLog) delete physLog[k]; for (const k in said) delete said[k]; if (m3d) m3d.forget(); }
+export function forgetTerminals() { for (const k in terms) delete terms[k]; for (const k in physLog) delete physLog[k]; for (const k in said) delete said[k]; for (const k in browserAt) delete browserAt[k]; if (m3d) m3d.forget(); }
 
 export function renderWindow(host, ctx) {
   const T = ctx.T, id = ctx.open, tabs = tabsFor(T.sim, id);
@@ -83,7 +83,7 @@ function cmdPane(id, ctx, win) {
 }
 
 function pagePane(id, key, ctx, rerender) {
-  const T = ctx.T, P = page(T.sim, id, key), x = T.sim.d[id];
+  const T = ctx.T, P = page(T.sim, id, key, { url: browserAt[id] }), x = T.sim.d[id];
   const pane = el("div", { class: "pane" });
   if (id === "router" && key !== "physical") pane.appendChild(el("p", { class: "addr" }, "Router admin page · http://" + x.lan.ip + " · signed in as admin" + (x.admin && x.admin.gen === 1 ? ", with the password on the router's label" : "")));
   if (id === "modem" && key === "status") pane.appendChild(el("p", { class: "addr" }, "The modem's own page · http://192.168.100.1"));
@@ -96,6 +96,7 @@ function pagePane(id, key, ctx, rerender) {
     if (P.ipForm) pane.appendChild(ipForm(id, P.ipForm, ctx, rerender));
     if (P.speedTest) pane.appendChild(button(id, "speed", "Run a speed test", ctx, rerender, function () { const r = ctx.act({ t: "speed", dev: id }); const x = r && r.result; return x && x.ok ? "Speed test: " + x.down + " Mb/s down, " + x.up + " Mb/s up (the plan is " + x.plan + " Mb/s)." : "Speed test: can't reach the test server."; }));
     if (P.networks) pane.appendChild(networksList(id, P, ctx, rerender));
+    if (P.heard) pane.appendChild(heardList(id, P, ctx, rerender));
     if (P.admin) pane.appendChild(button(id, "admin", "Change the admin password", ctx, rerender, function () { const r = ctx.act({ t: "router", page: "admin", values: { newPassword: true } }); return r && r.result && r.result.ok ? "Saved: a new admin password for the router's pages, written down for the client. The one on the label no longer opens them." : "Not saved."; }));
     if (P.join) pane.appendChild(button(id, "join", "Join " + P.join + " (enter the password)", ctx, rerender, function () { const r = ctx.act({ t: "join", dev: id }); const f = r && r.facts; return f && f.ap ? "Joined " + P.join + ": address " + f.ip + ". Internet: " + (f.internet ? "OK" : "none") + "." : "Couldn't join " + P.join + "."; }));
     else if (said[id] && said[id].join) pane.appendChild(el("p", { class: "res", role: "status" }, said[id].join));   /* joined: the button goes, what happened stays */
@@ -134,7 +135,79 @@ function pagePane(id, key, ctx, rerender) {
   else if (P.kind === "form" && P.form === "rogue") pane.appendChild(rogueForm(P, ctx, rerender));
   else if (P.kind === "physical") pane.appendChild(physicalPane(id, P, ctx, rerender));
   else if (P.kind === "tftp") pane.appendChild(tftpPane(id, P, ctx, rerender));
+  else if (P.kind === "browser") pane.appendChild(browserPane(id, P, ctx, rerender));
   return pane;
+}
+
+/* a business PC's web browser: the address bar, then the page, or the browser's own words for why there's none */
+const browserAt = {};        /* device id -> the address last opened in its browser */
+function browserPane(id, P, ctx, rerender) {
+  const wrap = el("div", { class: "browser" });
+  const f = el("form", { class: "devform", novalidate: true }, el("div", { class: "urlbar" }, field("Address", "url", P.url, { inputmode: "url", spellcheck: "false" }), el("button", { class: "btn", type: "submit" }, "Go")));
+  f.addEventListener("submit", function (e) { e.preventDefault(); browserAt[id] = String(new FormData(f).get("url") || "").trim(); rerender(); });
+  wrap.appendChild(f);
+  if (P.status === "blank") wrap.appendChild(el("p", { class: "note" }, "Type an address and press Go. A device with a web page of its own shows it here."));
+  else if (P.status === "ap") wrap.appendChild(apPage(P, ctx, rerender));
+  else wrap.appendChild(el("div", { class: "nopage", role: "status" }, el("h3", null, P.head), el("p", null, P.text), el("p", { class: "code" }, P.code)));
+  return wrap;
+}
+/* the ceiling access point's own page: what it is, the networks it broadcasts (each on its VLAN), and adding or changing one */
+function apPage(P, ctx, rerender) {
+  const box = el("div", { class: "webpage" }, el("p", { class: "addr" }, P.title + " · " + P.shown));
+  const tb = el("tbody"); P.rows.forEach(function (r) { tb.appendChild(el("tr", null, el("th", { scope: "row" }, r[0]), el("td", null, r[1]))); });
+  box.appendChild(el("table", { class: "kv" }, tb));
+  box.appendChild(el("h3", { style: "margin-top:12px" }, "Wireless networks"));
+  if (!P.networks.length) box.appendChild(el("p", { class: "note" }, "None: this access point isn't broadcasting any network yet."));
+  else {
+    const rows = el("tbody");
+    P.networks.forEach(function (n) {
+      rows.appendChild(el("tr", null, el("td", null, n.ssid), el("td", null, n.sec === "Open" ? "Open (no password)" : n.sec), el("td", null, n.vlan ? "VLAN " + n.vlan : "None: untagged, on the access point's own network"),
+        el("td", null, el("button", { type: "button", class: "btn ghost small", "aria-label": "Remove the network " + n.ssid, onclick: function () { const x = ctx.act({ t: "apnet", dev: P.dev, remove: n.ssid }); ctx.flash = x && x.result && x.result.ok ? "Removed " + n.ssid + ": it isn't broadcast any more." : "Not removed."; rerender(); } }, "Remove"))));
+    });
+    box.appendChild(el("table", { class: "grid" }, el("thead", null, el("tr", null, el("th", { scope: "col" }, "Name (SSID)"), el("th", { scope: "col" }, "Security"), el("th", { scope: "col" }, "VLAN tag"), el("th", { scope: "col" }, ""))), rows));
+  }
+  const sec = el("select", { name: "sec" }); [["", "Choose the security"], ["WPA2-Personal", "WPA2-Personal"], ["WPA2/WPA3-Personal", "WPA2/WPA3-Personal (transition)"], ["WPA3-Personal", "WPA3-Personal"], ["Open", "Open (no password)"]].forEach(function (o) { sec.appendChild(el("option", { value: o[0] }, o[1])); });
+  const msg = el("p", { class: "msg", role: "status" });
+  const f = el("form", { class: "devform", novalidate: true, style: "margin-top:12px" }, el("fieldset", null, el("legend", null, "Add or change a network"),
+    el("div", { class: "row2" }, field("Name (SSID)", "ssid", "", { inputmode: "text", spellcheck: "false" }), el("label", { class: "f" }, "Security", sec)),
+    el("div", { class: "row2" }, field("Password", "psk", "", { inputmode: "text", spellcheck: "false" }), field("VLAN tag (blank: untagged)", "vlan", "", { inputmode: "numeric" })),
+    el("p", { class: "note", style: "margin:0" }, "A name already in the list is changed, not added. Up to four networks."),
+    el("div", { class: "acts" }, el("button", { class: "btn", type: "submit" }, "Save"))), msg);
+  f.addEventListener("submit", function (e) {
+    e.preventDefault(); const d = new FormData(f), t = function (k) { return String(d.get(k) || ""); };
+    const x = ctx.act({ t: "apnet", dev: P.dev, net: { ssid: t("ssid"), sec: t("sec"), psk: t("psk"), vlan: t("vlan").trim() } });
+    if (x && x.result && x.result.ok) { ctx.flash = "Saved: " + x.result.ssid + " is broadcasting" + (t("vlan").trim() ? ", tagged VLAN " + t("vlan").trim() : ", untagged") + "."; rerender(); }
+    else { msg.className = "msg err"; msg.textContent = "Not saved: " + ((x && x.result && x.result.errs) || []).join(". ") + "."; }
+  });
+  if (ctx.flash) { msg.className = "msg ok"; msg.textContent = ctx.flash; ctx.flash = null; }
+  box.appendChild(f);
+  return box;
+}
+/* a phone at the business: the networks it hears, each joined by name with the password typed in */
+function heardList(id, P, ctx, rerender) {
+  said[id] = said[id] || {};
+  const wrap = el("div", { style: "margin-top:12px" }, el("h3", null, "Networks it hears"));
+  if (!P.heard.length) wrap.appendChild(el("p", { class: "note" }, "None: no Wi-Fi network reaches it here."));
+  const ul = el("ul", { class: "cabs" });
+  P.heard.forEach(function (n) {
+    const li = el("li", null, el("p", { class: "nm" }, n.ssid), el("p", { style: "margin:0 0 6px" }, (n.open ? "Open: no password" : "Secured (" + n.sec + ")") + " · signal " + n.signal + "%" + (n.now ? " · connected" : "")));
+    if (!n.now) {
+      const pw = n.open ? null : el("input", { type: "text", name: "pass", autocomplete: "off", spellcheck: "false" });
+      const f = el("form", { class: "devform", novalidate: true }, pw ? el("label", { class: "f" }, "Password for " + n.ssid, pw) : null, el("div", { class: "acts" }, el("button", { class: "btn ghost small", type: "submit" }, "Join " + n.ssid)));
+      f.addEventListener("submit", function (e) {
+        e.preventDefault();
+        const r = ctx.act(n.open ? { t: "joinssid", dev: id, ssid: n.ssid } : { t: "joinssid", dev: id, ssid: n.ssid, pass: pw.value }), fx = r && r.facts, why = page(ctx.T.sim, id, "wifi").facts.reason;
+        said[id].heard = "Join " + n.ssid + ": " + (fx && fx.ap ? "joined, address " + fx.ip + (fx.apipa ? " (no address came; it gave itself this one)" : "") + ". Internet: " + (fx.internet ? "OK" : "none") + "." : why === "auth" ? "it didn't join: the password was refused." : why === "security" ? "it didn't join: this phone can't use that network's security." : "it didn't join.");
+        rerender();
+      });
+      li.appendChild(f);
+    }
+    ul.appendChild(li);
+  });
+  wrap.appendChild(ul);
+  const res = el("p", { class: "res", role: "status" }); if (said[id].heard) res.textContent = said[id].heard; else res.hidden = true;
+  wrap.appendChild(res);
+  return wrap;
 }
 
 /* your laptop's TFTP server: start or stop it, what it listens on, and the files it has been sent (each one opens to read) */

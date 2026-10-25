@@ -8,9 +8,9 @@ import { portName as printedPort, SFP_MODULES } from "./sim.js";
 const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc", bpc: "pc" };   /* the business's back PC (the treatment room's, the kitchen's) too; the office's back office (SO-04) and the manager's PC (SO-08): the same housings */
 
 export function tabsFor(sim, id) {
-  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" || k === "brouter" || k === "techlaptop" || k === "patchpanel" || k === "jack" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
+  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" || k === "brouter" || k === "techlaptop" || k === "patchpanel" || k === "jack" || k === "bap" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
   const T = {
-    pc: [["cmd", "Command Prompt"], ["settings", "Network settings"], ["printers", "Printers"]],
+    pc: [["cmd", "Command Prompt"], ["settings", "Network settings"], ["printers", "Printers"], ["browser", "Web browser"]],   /* a business PC's browser: how the ceiling access point's page is reached */
     laptop: [["cmd", "Command Prompt"], ["wifi", "Wi-Fi"]],
     router: [["status", "Status"], ["dhcp", "LAN & DHCP"], ["clients", "DHCP clients"], ["wifi", "Wi-Fi"], ["forward", "Port forwarding"]],
     rogue: [["admin", "Admin page"]],
@@ -26,7 +26,33 @@ export function tabsFor(sim, id) {
     phone: [["wifi", "Wi-Fi"]],
     isp: [["about", "About"]]
   }[k] || [];
-  return T.filter(function (t) { return t[0] !== "printers" || !!sim.d[id].printer; }).concat(P).map(function (t) { return { key: t[0], title: t[1] }; });
+  return T.filter(function (t) { return (t[0] !== "printers" || !!sim.d[id].printer) && (t[0] !== "browser" || sim.net.site === "business"); }).concat(P).map(function (t) { return { key: t[0], title: t[1] }; });
+}
+
+/* a business PC's web browser: the address typed, and what comes back. The request goes through the network as a real one does
+   (TCP to port 443, or 80 for http://), so a VLAN with no way through, or an access list, stops it for the real reason. Only the
+   ceiling access point has a page to open: the router and the switches are managed from their command line (their web servers
+   are off), and a Windows PC's firewall drops the connection. Its address is the student's to find: nothing here names it */
+export function browse(sim, id, url) {
+  const raw = String(url || "").trim(), facts = { page: id + "-browser", url: raw };
+  if (!raw) return { kind: "browser", url: "", status: "blank", facts: facts };
+  const m = /^(?:(https?):\/\/)?([^/:\s]+)(?::(\d{1,5}))?(\/\S*)?$/i.exec(raw), host = m ? m[2] : raw;
+  const scheme = m && m[1] ? m[1].toLowerCase() : "https", port = m && m[3] ? +m[3] : scheme === "http" ? 80 : 443;
+  const fail = function (status, head, text, code) { return { kind: "browser", url: raw, status: status, head: head, text: text, code: code, facts: Object.assign(facts, { host: host, ok: false, why: status }) }; };
+  if (!m || !isIp(host)) return fail("name", "This site can't be reached", host + "'s server IP address could not be found.", "DNS_PROBE_FINISHED_NXDOMAIN");
+  const rt = sim.route(id, host, { proto: "tcp", port: port, sport: 50123 });
+  if (rt.fail === "no-link") return fail("offline", "No internet", "This computer isn't connected to a network.", "ERR_INTERNET_DISCONNECTED");
+  if (rt.fail === "no-route") return fail("unreachable", "This site can't be reached", host + " is unreachable from this computer.", "ERR_ADDRESS_UNREACHABLE");
+  if (rt.fail || !rt.owner) return rt.internet ? fail("refused", "This site can't be reached", host + " refused to connect.", "ERR_CONNECTION_REFUSED") : fail("timeout", "This site can't be reached", host + " took too long to respond.", "ERR_CONNECTION_TIMED_OUT");
+  const who = rt.owner[0], x = sim.d[who];   /* two devices on one address: the first to answer (the page never changes the network to pick) */
+  if (x.kind === "pc" || x.kind === "laptop" || x.kind === "techlaptop") return fail("timeout", "This site can't be reached", host + " took too long to respond.", "ERR_CONNECTION_TIMED_OUT");
+  if (x.kind !== "bap" || (port !== 443 && port !== 80)) return fail("refused", "This site can't be reached", host + " refused to connect.", "ERR_CONNECTION_REFUSED");
+  const clients = Object.keys(sim.d).filter(function (k) { const l = sim.wifiLink(k); return l && l.connected && l.ap.id === who; }).length;
+  const name = x.host || "AP-" + x.mac.replace(/[^0-9a-f]/gi, "").slice(-6).toUpperCase();
+  return { kind: "browser", url: raw, status: "ap", dev: who, shown: "https://" + host + "/", title: "Access point · " + name,
+    rows: [["Device name", name], ["Model", "Ceiling access point"], ["IP address", host + " (from DHCP, untagged on its uplink)"], ["Uplink", "eth0 · 1 Gb/s · powered over its cable (PoE)"], ["Wi-Fi clients now", String(clients)]],
+    networks: (x.ssids || []).map(function (w) { return { ssid: w.ssid, sec: w.sec, vlan: w.vlan || null }; }),
+    facts: Object.assign(facts, { host: host, ok: true, ap: who, networks: (x.ssids || []).map(function (w) { return w.ssid; }) }) };
 }
 
 /* the portable cable tester's reading for a cable (main at one end, remote at the other) */
@@ -78,8 +104,9 @@ export function look(sim, cableId, end) {
   return s;
 }
 
-export function page(sim, id, key) {
+export function page(sim, id, key, opts) {
   const x = sim.d[id], r = sim.d.router;
+  if (key === "browser") return browse(sim, id, opts && opts.url);
   if (x.kind === "techlaptop" && key === "tftp") {   /* your laptop's TFTP server: what it listens on, and what it has been sent */
     const s = x.tftp, a = sim.addr(id);
     return { kind: "tftp", title: "TFTP server", on: s.on, root: s.root, addr: a && a.kind !== "apipa" ? a.ip : null, apipa: !!(a && a.kind === "apipa"), linked: sim.hasLink(id),
@@ -235,6 +262,14 @@ export function page(sim, id, key) {
     const m = x, a = sim.addr("mesh"), n = Object.keys(sim.d).filter(function (k) { const l = sim.wifiLink(k); return l && l.connected && l.ap.id === "mesh"; }).length, ml = sim.meshLink();
     const bh = ml.ok ? (ml.kind === "wired" ? "Wired (Ethernet), 1 Gb/s" : "5 GHz, good (signal " + ml.signal + "%, " + (ml.signal > 70 ? 866 : 400) + " Mb/s)") : ml.kind === "wifi" && sim.net.extra.build ? "Lost: the router's 5 GHz signal here is " + ml.signal + "%, too weak to hold a link (it needs 40%)" : "Lost: can't reach the router";
     return { kind: "rows", title: "Status", rows: [["Mode", ml.kind === "wired" ? "Access point (wired to the router)" : "Access point (wireless bridge to the router)"], ["Backhaul to the router", bh], ["2.4 GHz channel", String(sim.ch24()) + " (follows the router)"], ["Clients on this node", String(n)], ["IP address", a ? a.ip : "--"]], facts: { page: "mesh-status", backhaul: ml.ok, clients: n } };
+  }
+  if (x.kind === "phone" && key === "wifi" && sim.net.site === "business") {   /* a phone at the business: the networks it hears, each joined by name with its password typed in (the client gives visitors the guest one) */
+    const l = sim.wifiLink(id), a = sim.addr(id), up = !!(a && sim.route(id, "203.0.113.80").internet), f = x.ifaces[0];
+    const status = l && l.connected ? "Connected to " + l.ap.ssid + (l.band === 5 ? " (5 GHz)" : " (2.4 GHz)") + " · signal " + l.signal + "%" : l && l.reason === "auth" ? "Can't join " + l.ap.ssid + ": the password is wrong" : l && l.reason === "security" ? "Can't join " + l.ap.ssid + ": this phone doesn't support its security" : f.saved.ssid ? "Not connected: it can't hear " + f.saved.ssid + " here" : "Not connected";
+    const rows = [["Wi-Fi", status], ["IP address", a ? a.ip + (a.kind === "apipa" ? " (it gave itself this: no address came)" : "") : "--"], ["Router", a && a.gw || "--"], ["Internet", up ? "OK" : "No internet"]];
+    const nets = [], seen = {};
+    for (const ap of sim.aps()) { const sg = sim.heardAt(ap, sim.net.rooms[id]); if (sg < 15) continue; const k = ap.ssid + (ap.sec === "Open" ? "|open" : "|sec"); if (seen[k]) { seen[k].signal = Math.max(seen[k].signal, sg); continue; } seen[k] = { ssid: ap.ssid, open: ap.sec === "Open", sec: ap.sec, signal: sg, now: !!(l && l.connected && l.ap.ssid === ap.ssid) }; nets.push(seen[k]); }
+    return { kind: "rows", title: "Wi-Fi", rows: rows, heard: nets, facts: { page: id + "-wifi", internet: up, ip: a && a.ip, apipa: !!(a && a.kind === "apipa"), connected: !!(l && l.connected), reason: l && l.reason, heard: nets.map(function (n) { return n.ssid; }) } };
   }
   if (x.kind === "phone" && key === "wifi") {
     const l = sim.wifiLink(id), a = sim.addr(id), up = !!(a && sim.route(id, "203.0.113.80").internet);

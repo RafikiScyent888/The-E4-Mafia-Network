@@ -477,6 +477,43 @@ CB.push(async () => {
   check(/blinking blue: on the network, but broadcasting nothing/.test(await p.$eval(".m3d-says", (x) => x.textContent)), "SB-J3 access point: the words say the ring blinks blue, nothing set up");
   await ctx.close();
 });
+/* SB-J4: the back switch as the simulation says. Done: the trunk's plug in its port 24 and lit, the back PC's in port 1 and lit, a
+   spare empty and dark, the console back at the closet; the closet switch's end of the trunk (23) lit, the PC's old port (4) empty
+   and dark. Part way, the back switch set up but the closet end still a shut spare: the trunk's plug in, its light dark */
+CB.push(async () => {
+  const { p, ctx } = await office("SB-J4", 5401);
+  await physical(p, "bsw", "Front close-up");
+  const q1 = await plugAt(p, "1"); check(!q1.missing && q1.plug && q1.off < 1, "SB-J4 back switch: a cable is in port 1 " + JSON.stringify(q1));
+  await led(p, "SB-J4 back switch port 1 link", "1", "link", "green");
+  /* the lower row, read crouching: from above, port 24's light hides behind its own plug */
+  await physical(p, "bsw", "Lower row lights");
+  const q = await plugAt(p, "24"); check(!q.missing && q.plug && q.off < 1, "SB-J4 back switch: a cable is in port 24 " + JSON.stringify(q));
+  await led(p, "SB-J4 back switch port 24 link (Lower row lights)", "24", "link", "green");
+  const e = await plugAt(p, "2"); check(!e.missing && e.plug === false, "SB-J4 back switch: port 2 is empty " + JSON.stringify(e));
+  await led(p, "SB-J4 back switch port 2 link (Lower row lights)", "2", "link", "off");
+  await physical(p, "bsw", "Front close-up");
+  await led(p, "SB-J4 back switch SYSTEM", null, "SYSTEM", "green");
+  const k = await plugAt(p, "CONSOLE"); check(!k.missing && k.plug === false, "SB-J4 back switch: the console cable has gone back to the closet " + JSON.stringify(k));
+  await physical(p, "msw", "Front close-up");
+  const t = await plugAt(p, "23"); check(!t.missing && t.plug && t.off < 1, "SB-J4 closet switch: the trunk is in port 23 " + JSON.stringify(t));
+  await led(p, "SB-J4 closet switch port 23 link", "23", "link", "green");
+  await physical(p, "msw", "Lower row lights");
+  await led(p, "SB-J4 closet switch port 24 link (Lower row lights: the router's trunk)", "24", "link", "green");
+  const o = await plugAt(p, "4"); check(!o.missing && o.plug === false, "SB-J4 closet switch: the back PC's old port 4 is empty " + JSON.stringify(o));
+  await led(p, "SB-J4 closet switch port 4 link (Lower row lights)", "4", "link", "off");
+  await ctx.close();
+});
+CB.push(async () => {
+  const { p, ctx } = await office("SB-J4", 5402, 35);   /* up to the back switch saved: the closet end not yet opened */
+  check(await p.evaluate(() => { const s = window.__e4b.T.sim; return s.d.msw.sw.ports["GigabitEthernet0/23"].shutdown && !!s.cablesOf("tech").find((c) => c.kind === "console" && (c.a.dev === "bsw" || c.b.dev === "bsw")); }), "SB-J4 part way: the closet end is still shut, the console on the back switch");
+  await physical(p, "bsw", "Lower row lights");
+  const q = await plugAt(p, "24"); check(!q.missing && q.plug && q.off < 1, "SB-J4 part way, back switch: the trunk's plug is in port 24 " + JSON.stringify(q));
+  await led(p, "SB-J4 part way, back switch port 24 link (the closet end shut)", "24", "link", "off");
+  await physical(p, "bsw", "Front close-up");
+  await led(p, "SB-J4 part way, back switch port 1 link", "1", "link", "green");
+  const k = await plugAt(p, "CONSOLE"); check(!k.missing && k.plug && k.off < 1, "SB-J4 part way, back switch: the console cable is in CONSOLE " + JSON.stringify(k));
+  await ctx.close();
+});
 const RUN = process.env.ONLY === "office" ? CO : process.env.ONLY === "business" ? CB : C.concat(CO, CB);
 for (const c of RUN) { try { await c(); } catch (e) { bad.push("crashed: " + e.message.split("\n")[0]); } }
 

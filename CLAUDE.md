@@ -1921,6 +1921,69 @@ Mason's hints pointing at it).
   `sb3net.mjs`, `sb3page.mjs` (SB-J3's page parts in Node), `l3geo.mjs`,
   `l3shot.mjs`, `rtr3d.mjs`. Not part of the site.
 
+### Level 3, stage 3: SB-J4, the back of house on its own switch (25 October 2026)
+
+Built as the owner approved on 25 October 2026 ("Ok that works. thank you" to
+the plan: SB-J4 to SB-J10, then the 15 tickets, then Levels 4 and 5).
+- **The simulation:** `addBackSwitch` (js/net/business.js) brings a second
+  MSW-2800G in its box, a unit of its own (its own keys), with one place: its
+  shelf in the back room (the Place form takes it nowhere else, as with the
+  office's back office switch). The records: `bswHost`; `trunk` (the closet
+  switch's port 23 to the back switch's port 24, each end's description);
+  `backPort` 1. Trunks use the records' unused VLAN as native (`vlans.native`).
+- **SB-J4** (js/build/business.js), 8 lines:
+  - the back switch on its shelf, with the business's name and passwords
+  - the staff VLAN on it, named as the records say
+  - the trunk, both ends as the records say. Its causes: no cable, the wrong
+    ports, an end shut, an end not a trunk, an end left to negotiate (DTP),
+    the staff VLAN not carried, VLANs carried that the back doesn't use, the
+    two native VLANs differing, the native VLAN left at 1, the descriptions
+  - the back PC on the back switch: off its old run, on the records' port,
+    open, in the staff VLAN, described, a staff address, online, printing
+  - nothing left open: the new switch's spares, the closet's old port 4 and
+    its old description
+  - everything that worked still works
+  - each switch saved, each its own line
+- **How the trunk is judged:** each end is worked out as it negotiates with the
+  other (`carries` given the far end's mode). A back end left on dynamic auto
+  really does trunk with a closet end set to trunk, so it is its own cause
+  ("dtp"), not "not a trunk". No `ipconfig /renew` is needed: the PC stays in
+  the same VLAN and subnet and its lease is still good, so skipping it is not a
+  mistake. The rack line was dropped: the back switch can't be placed anywhere
+  else, so "in the wrong room" could never happen, and "still in its box" is
+  the first cause of every line that needs it.
+- **The walk-through's console cable numbers** come from the runs already laid
+  (`net.extra.runs`). The first test now plays every walk-through exactly as
+  written. The tests' helper swaps any console pull for whichever console cable
+  is in, so a wrong number was never seen in Node (a plant proved it, before
+  the change).
+- **Found and fixed on the way, for every level:**
+  - `interface range` takes a list, `gi0/2 - 23 , gi0/25 - 28` (single ports
+    too), as IOS does: the natural way to shut the back switch's spares.
+  - A refused cable names each device as it would be said mid-sentence ("The
+    back switch is still in its box", "Your laptop's USB-C …", "The ISP …").
+    Every business label read capitalised there ("The Closet switch's port …").
+  - **The logical diagram draws every line first, then keeps each port's name
+    and dot off every other cable's line** (a dot with room to see it is clear),
+    and each dot off every dot already drawn. With your laptop back in the
+    closet, the trunk's "23" sat just under the console line and the reception
+    PC's "1" on it, so either read as the console's.
+  - **The managed switch's 3D model has a "Lower row lights" view.** The lower
+    row's jacks are upside down with their lights under the plug, so from above
+    a plugged port's lights hide behind its own plug, as on the real thing
+    until you crouch. The back switch's trunk in port 24 was drawn lit but
+    couldn't be seen (and the closet switch's port 24, the router's trunk, since
+    SB-J1). The view is nearly level and from the right; the front close-up
+    stays as it was, for the top row.
+- **The page:** your laptop has a spot of its own on the diagram when it's
+  carried to the back room (right of the back PC's line, its name to its
+  right): at its closet spot its console line to the back switch was too short
+  to carry both port names, and "USB-C" sat on "Back switch".
+- `tools/wip/`: `sb4net.mjs` (the trunk by hand), `sb4cases.mjs` (what each
+  tempting wrong way fails), `sb4shot.mjs` (both drawings at three points, the
+  back switch's front), `ray24.mjs` (what sits between the camera and a port's
+  light). Not part of the site.
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

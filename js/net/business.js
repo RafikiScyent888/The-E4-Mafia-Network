@@ -48,7 +48,7 @@ export const BUSINESS_LAYOUT = {
   router: { x: 680, y: 80, px: 115, py: 205, room: "closet", lab: "above" },
   rtr: { x: 440, y: 180, px: 245, py: 105, room: "closet", lab: "right" },
   msw: { x: 560, y: 300, px: 245, py: 205, room: "closet" },
-  tech: { x: 240, y: 290, px: 115, py: 295, room: "closet" },
+  tech: { x: 240, y: 290, px: 115, py: 295, room: "closet", alt: { back: { x: 270, y: 330, lab: "right" } } },   /* carried to the back room (SB-J4): far enough from the back switch for its console line to carry both names, its own name to its right */
   pc: { x: 300, y: 440, px: 420, py: 130, room: "counter" },
   mgr: { x: 735, y: 150, px: 820, py: 150, room: "office" },
   printer: { x: 430, y: 440, px: 560, py: 140, room: "counter" },
@@ -56,7 +56,9 @@ export const BUSINESS_LAYOUT = {
   /* SB-J3's: the access point on the waiting area's ceiling, its injector in the closet, the visitor's phone */
   injector: { x: 735, y: 320, px: 245, py: 295, room: "closet", lab: "above" },   /* in line with the manager's PC and the access point, its name clear of the PC's address */
   ap: { x: 735, y: 440, px: 420, py: 352, room: "guest" },   /* on the plan, its tile's shadow clear of the room's name (AAA saw it under "SHOP FLOOR" on a phone) */
-  guest: { x: 580, y: 440, px: 540, py: 430, room: "guest" }   /* clear of the printer's address, with easier reading on too */
+  guest: { x: 580, y: 440, px: 540, py: 430, room: "guest" },   /* clear of the printer's address, with easier reading on too */
+  /* SB-J4's: the back of house's own switch, up at the left where the back PC's run comes in */
+  bsw: { x: 100, y: 215, px: 900, py: 330, room: "back" }
 };
 export const BUSINESS_ROOM_BOX = { closet: [30, 30, 300, 370], counter: [300, 30, 640, 270], office: [640, 30, 980, 270], guest: [300, 270, 660, 520], back: [660, 270, 980, 520] };
 
@@ -95,6 +97,14 @@ export function addGuestKit(sim) {
   net.signal = BUSINESS_SIGNAL;
   ["ap", "injector", "guest"].forEach(function (id) { sim.arp[id] = {}; });
 }
+/* what SB-J4 brings: a second switch for the back of house, in its box, the same model as the closet's. From a stream of its own,
+   so the business is drawn as before; its place is the back room's wall shelf */
+export function addBackSwitch(sim) {
+  const net = sim.net, r = rng(net.seed ^ 0x5b4d), sw = newSwitch({ mac: "00e0.4c" + [r.int(16, 255), r.int(0, 255), r.int(0, 255)].map(function (b) { return b.toString(16).padStart(2, "0"); }).join("").replace(/^(..)(....)$/, "$1.$2") });
+  sw.unit = 2;   /* a unit of its own: its keys differ from the closet switch's */
+  net.devices.bsw = { id: "bsw", kind: "mswitch", label: "Back switch", sub: "MSW-2800G", on: true, boxed: true, mac: mac(r), sw: sw, fixed: ["back", "in the " + String(net.roomNames.back).toLowerCase() + ", on its wall shelf"] };
+  net.rooms.bsw = "back"; sim.arp.bsw = {};
+}
 
 export function makeBusiness(seed) {
   const r = rng(seed ^ 0x3b17);
@@ -121,6 +131,8 @@ export function makeBusiness(seed) {
     vmask: "255.255.255.0",
     /* the guest Wi-Fi (SB-J3): its name and password, the access point's switch port and its description, the guests' access list */
     guestSsid: biz.wifi, guestPw: biz.wifiPw, apPort: "5", apDesc: "CEILING-AP", guestAcl: "GUEST-IN",
+    /* the back of house's own switch (SB-J4): its name, the trunk's port at each end and their descriptions, the back PC's port on it */
+    bswHost: biz.tag + "-BACK-SW1", trunk: { closet: "23", back: "24", closetDesc: "TRUNK-BACK-SW1", backDesc: "TRUNK-CLOSET-SW1" }, backPort: "1",
     /* the switch's port descriptions, by what's plugged in */
     desc: { "1": biz.pc.toUpperCase().replace(/[^A-Z0-9]+/g, "-"), "2": "MANAGER-PC", "3": "PRINTER", "4": biz.backPc.toUpperCase().replace(/[^A-Z0-9]+/g, "-"), "24": "UPLINK-ROUTER" }
   };

@@ -29,7 +29,9 @@ test("every business job starts with its work still to do, for the real reason; 
       if ((def.already || []).indexOf(r.id) >= 0) { assert.ok(r.ok, def.id + " " + r.id + " should be met before any work, seed " + s); continue; }
       assert.equal(r.ok, false, def.id + " " + r.id + " met before any work, seed " + s); assert.ok(r.ev && r.ev.length > 10);
     }
-    J = B.open(def, s); run(J, def.solve(J.v, J.sim)); c = B.check(J);
+    J = B.open(def, s);
+    for (const a of def.solve(J.v, J.sim)) { const r = B.act(J, a); assert.notEqual(r && r.result && r.result.ok, false, def.id + " seed " + s + ", the solution as written refused: " + JSON.stringify(a) + " " + JSON.stringify(r && r.result)); }   /* exactly as written: its console cables by their own numbers */
+    c = B.check(J);
     for (const r of c.res) assert.ok(r.ok, def.id + " " + r.id + " not met after the solution, seed " + s + ": " + r.ev);
     assert.equal(J.done, true);
   }
@@ -246,6 +248,99 @@ test("SB-J3: other right ways pass: WPA2/WPA3, every VLAN left allowed, a DHCP l
   }
 });
 
+/* SB-J4 is typed at two consoles: the back switch's, then the closet switch's. A line that appears at both is picked by where it falls */
+const sb4 = (sol) => { const at = sol.findIndex((a) => a.t === "lay" && a.b.dev === "msw" && a.b.port === "CONSOLE"); return { back: (l) => (a, k) => k < at && a.line === l, closet: (l) => (a, k) => k > at && a.line === l }; };
+const swapAt = (acts, where, to) => acts.map((a, k) => (where(a, k) ? Object.assign({}, a, { line: to }) : a));
+const dropAt = (acts, where) => acts.filter((a, k) => !where(a, k));
+
+test("SB-J4: the tempting wrong ways fail the right line, for the right reason", () => {
+  const def = byId["SB-J4"];
+  for (const s of seeds("SB-J4").slice(0, 25)) {
+    const J0 = B.open(def, s), p = J0.v.plan, S = p.vlans.staff, G = p.vlans.guest, N = p.vlans.native, Tr = p.trunk, sol = def.solve(J0.v, J0.sim), T = (acts) => tryIt(def, s, acts), at = sb4(sol);
+    const relay = (fn) => sol.map((a) => (a.t === "lay" && a.a.dev === "bpc" ? fn(a) : a));   /* the back PC's new run */
+    assert.equal(line(T([]), "lock").real.id, "box");
+    /* the trunk's two ends */
+    let J = T(swapAt(sol, at.closet("switchport trunk native vlan " + N.id), "switchport trunk native vlan 1"));
+    assert.equal(line(J, "trunk").real.id, "split", "native VLAN 1 at the closet end only"); assert.ok(line(J, "back").ok, "staff frames are tagged: they still cross");
+    J = T(dropAt(sol, (a) => a.line === "switchport trunk native vlan " + N.id));
+    assert.equal(line(J, "trunk").real.id, "native", "both ends left on VLAN 1"); assert.ok(line(J, "back").ok);
+    J = T(dropAt(sol, at.back("switchport trunk allowed vlan " + S.id)));
+    assert.equal(line(J, "trunk").real.id, "extra", "the back end allows every VLAN");
+    J = T(swapAt(sol, at.closet("switchport trunk allowed vlan " + S.id), "switchport trunk allowed vlan " + S.id + "," + G.id));
+    assert.equal(line(J, "trunk").real.id, "extra", "the guests' VLAN carried to the back room too");
+    J = T(swapAt(sol, at.closet("switchport trunk allowed vlan " + S.id), "switchport trunk allowed vlan " + G.id));
+    assert.equal(line(J, "trunk").real.id, "allowed"); assert.equal(line(J, "back").ok, false, "the staff VLAN never reaches the back PC");
+    J = T(dropAt(sol, at.back("switchport mode trunk")));
+    assert.equal(line(J, "trunk").real.id, "dtp", "the back end left dynamic: it trunks only because the closet end is a trunk"); assert.ok(line(J, "back").ok);
+    J = T(swapAt(sol, at.closet("switchport mode trunk"), "switchport mode dynamic desirable"));
+    assert.equal(line(J, "trunk").real.id, "dtp", "the closet end asks to trunk rather than being set as one");
+    J = T(dropAt(sol, (a) => a.line === "switchport mode trunk"));
+    assert.equal(line(J, "trunk").real.id, "mode", "both ends left dynamic auto: neither asks, so it's an access link"); assert.equal(line(J, "back").ok, false);
+    J = T(swapAt(sol, at.closet("description " + Tr.closetDesc), "description TRUNK"));
+    assert.equal(line(J, "trunk").real.id, "desc");
+    J = T(dropAt(sol, at.closet("no shutdown")));
+    assert.equal(line(J, "trunk").real.id, "shut", "the closet end was a spare: shut down"); assert.equal(line(J, "back").ok, false);
+    /* the closet's trunk to the router typed over: port 24 instead of the records' port for the back switch */
+    J = T(swapAt(sol, at.closet("interface gi0/" + Tr.closet), "interface gi0/24"));
+    assert.equal(line(J, "trunk").real.id, "shut"); assert.equal(line(J, "still").ok, false, "the router's trunk now carries only the staff VLAN");
+    assert.ok(line(J, "still").list.find((c) => c.id === "guest").on, "the guests are cut off too");
+    /* the cabling */
+    J = T(sol.map((a) => (a.t === "lay" && a.a.dev === "msw" && a.b.dev === "bsw" ? { t: "lay", a: E("msw", "22"), b: E("bsw", Tr.back) } : a)));
+    assert.equal(line(J, "trunk").real.id, "ports", "the run in a closet port the records don't give it");
+    J = T(sol.filter((a) => !(a.t === "lay" && a.a.dev === "msw" && a.b.dev === "bsw")));
+    assert.equal(line(J, "trunk").real.id, "cable");
+    J = T(sol.filter((a) => !(a.t === "pull" && a.cable === "c-msw-bpc") && !(a.t === "lay" && a.a.dev === "bpc")));
+    assert.equal(line(J, "back").real.id, "old", "the PC left on its long run to the closet");
+    J = T(relay((a) => ({ t: "lay", a: a.a, b: E("bsw", "2") })));
+    assert.equal(line(J, "back").real.id, "port");
+    /* the back switch */
+    J = T(dropAt(sol, at.back("switchport access vlan " + S.id)));
+    assert.equal(line(J, "back").real.id, "vlan");
+    J = T(dropAt(sol, at.back("description " + p.desc["4"])));
+    assert.equal(line(J, "back").real.id, "desc");
+    J = T(dropAt(sol, (a, k) => at.back("vlan " + S.id)(a, k) || at.back("name " + S.name)(a, k) || (k > 0 && a.line === "exit" && sol[k - 1].line === "name " + S.name)));
+    assert.equal(line(J, "vlan").real.id, "name", "never made: the access port creates it, named VLAN and its number"); assert.ok(line(J, "back").ok);
+    J = T(swapAt(sol, at.back("name " + S.name), "name OFFICE"));
+    assert.equal(line(J, "vlan").real.id, "name");
+    J = T(swapAt(sol, at.back("enable secret " + p.swSecret), "enable password " + p.swSecret));
+    assert.equal(line(J, "lock").real.id, "plain");
+    J = T(dropAt(sol, at.back("login")));
+    assert.equal(line(J, "lock").real.id, "conlogin");
+    J = T(swapAt(sol, at.back("hostname " + p.bswHost), "hostname BACKSW"));
+    assert.equal(line(J, "lock").real.id, "name");
+    /* spares */
+    J = T(dropAt(sol, (a, k) => a.line === "interface range gi0/25 - 28" || (a.line === "shutdown" && sol[k - 1].line === "interface range gi0/25 - 28")));
+    assert.equal(line(J, "spares").real.id, "back", "the back switch's fibre slots left open");
+    J = T(dropAt(sol, (a, k) => at.closet("interface gi0/4")(a, k) || at.closet("no description")(a, k) || (a.line === "shutdown" && sol[k - 1].line === "no description")));
+    assert.equal(line(J, "spares").real.id, "old", "the PC's old port in the closet left open");
+    J = T(dropAt(sol, at.closet("no description")));
+    assert.equal(line(J, "spares").real.id, "olddesc");
+    /* saving: each switch its own */
+    J = T(dropAt(sol, at.back("copy running-config startup-config")));
+    assert.equal(line(J, "bswsaved").real.id, "never"); assert.ok(line(J, "swsaved").ok);
+    J = T(dropAt(sol, at.closet("copy running-config startup-config")));
+    assert.equal(line(J, "swsaved").real.id, "since"); assert.ok(line(J, "bswsaved").ok);
+  }
+});
+
+test("SB-J4: other right ways pass: one range with a comma, names spelled out, no negotiation, the PC's port left to default, no renew", () => {
+  const def = byId["SB-J4"];
+  for (const s of seeds("SB-J4").slice(0, 25)) {
+    const J0 = B.open(def, s), p = J0.v.plan, Tr = p.trunk, sol = def.solve(J0.v, J0.sim);
+    let acts = dropAt(sol, (a, k) => a.line === "interface range gi0/25 - 28" || (a.line === "shutdown" && sol[k - 1].line === "interface range gi0/25 - 28"));
+    acts = swap(acts, "interface range gi0/2 - 23", "interface range gi0/2 - 23 , gi0/25 - 28");
+    const at2 = sb4(acts);
+    acts = swapAt(acts, at2.closet("interface gi0/" + Tr.closet), "interface GigabitEthernet0/" + Tr.closet);
+    acts = swap(acts, "interface gi0/" + Tr.back, "int g0/" + Tr.back);
+    acts = after(acts, "switchport trunk native vlan " + p.vlans.native.id, ["switchport nonegotiate"]);   /* the back end; the closet end below */
+    const at3 = sb4(acts), k = acts.findIndex((a, i) => at3.closet("switchport trunk native vlan " + p.vlans.native.id)(a, i));
+    acts = acts.slice(0, k + 1).concat([cli("switchport nonegotiate")], acts.slice(k + 1));
+    acts = drop(acts, (a) => a.line === "switchport mode access" || a.line === "ipconfig /renew");
+    const J = tryIt(def, s, acts);
+    for (const r of B.check(J).res) assert.ok(r.ok, "SB-J4 " + r.id + ", seed " + s + ": " + r.ev);
+  }
+});
+
 test("the business jobs replay exactly, and undo takes back the last line typed", () => {
   for (const def of BUSINESS_JOBS) for (const s of seeds(def.id).slice(0, 30)) {
     const J = B.open(def, s), sol = def.solve(J.v, J.sim), half = Math.floor(sol.length / 2);
@@ -276,7 +371,8 @@ test("no help on the business jobs names the answer: no name, password, VLAN num
   for (const def of BUSINESS_JOBS) for (const s of seeds(def.id).slice(0, 30)) {
     const J = B.open(def, s), p = J.v.plan, sol = def.solve(J.v, J.sim);
     const bad = [p.rtHost, p.rtSecret, p.rtConsole, p.swHost, p.swSecret, p.swConsole, p.user, p.userPw, p.vlans.staff.name, "dot1Q " + p.vlans.staff.id, "vlan " + p.vlans.staff.id,
-      p.guestSsid, p.guestPw, p.guestAcl, p.vlans.guest.name, "dot1Q " + p.vlans.guest.id, "vlan " + p.vlans.guest.id, p.apDesc];
+      p.guestSsid, p.guestPw, p.guestAcl, p.vlans.guest.name, "dot1Q " + p.vlans.guest.id, "vlan " + p.vlans.guest.id, p.apDesc,
+      p.bswHost, p.trunk.closetDesc, p.trunk.backDesc, p.desc["4"], p.vlans.native.name, "vlan " + p.vlans.native.id];
     const said = [];
     for (let k = 0; k <= sol.length; k++) {
       for (let c = 0; c < 6; c++) { B.check(J); const m = B.mason(J); if (m) said.push(m.text, m.principle || "", ...(m.struck || []).map((x) => x.text + " " + x.why)); }
@@ -291,12 +387,13 @@ test("no help on the business jobs names the answer: no name, password, VLAN num
 test("random work on the business never breaks the checker; an unmet line always has two causes or more and replays exactly", () => {
   for (const def of BUSINESS_JOBS) for (const s of seeds(def.id).slice(0, 50)) {
     const J = B.open(def, s), p = J.v.plan, R = rng(s * 17 + 3), rooms = ["closet", "counter", "office", "back"];
-    const devs = ["rtr", "msw", "tech", "pc", "mgr", "bpc", "printer", "modem"].concat(J.sim.d.router ? ["router"] : [], J.sim.d.ap ? ["ap", "injector"] : []);
-    const P = { rtr: ["Gi0/0", "Gi0/1", "Gi0/2", "Gi0/7", "CONSOLE"], msw: ["1", "2", "4", "5", "24", "CONSOLE"], tech: ["USB-C", "ETH"], pc: ["NIC"], mgr: ["NIC"], bpc: ["NIC"], printer: ["NET"], modem: ["ETH"], router: ["LAN 1", "WAN"], ap: ["ETH"], injector: ["DATA IN", "PoE OUT"] };
+    const devs = ["rtr", "msw", "tech", "pc", "mgr", "bpc", "printer", "modem"].concat(J.sim.d.router ? ["router"] : [], J.sim.d.ap ? ["ap", "injector"] : [], J.sim.d.bsw ? ["bsw"] : []);
+    const P = { rtr: ["Gi0/0", "Gi0/1", "Gi0/2", "Gi0/7", "CONSOLE"], msw: ["1", "2", "4", "5", "23", "24", "CONSOLE"], tech: ["USB-C", "ETH"], pc: ["NIC"], mgr: ["NIC"], bpc: ["NIC"], printer: ["NET"], modem: ["ETH"], router: ["LAN 1", "WAN"], ap: ["ETH"], injector: ["DATA IN", "PoE OUT"], bsw: ["1", "2", "23", "24", "CONSOLE"] };
     const LINES = ["", "enable", p.rtSecret, p.swSecret, p.rtConsole, p.swConsole, "configure terminal", "end", "exit", "interface gi0/0", "interface gi0/1", "interface gi0/1." + p.vlans.staff.id, "interface gi0/24", "interface gi0/2",
       "shutdown", "no shutdown", "ip address dhcp", "ip address " + p.lanGw + " " + p.mask, "ip nat inside", "ip nat outside", "encapsulation dot1Q " + p.vlans.staff.id, "switchport mode trunk", "switchport mode access", "switchport access vlan " + p.vlans.staff.id,
       "vlan " + p.vlans.staff.id, "name STAFF", "vlan " + p.vlans.guest.id, "interface gi0/5", "switchport trunk allowed vlan 1," + p.vlans.guest.id, "ip access-group GUEST-IN in", "ip access-list extended GUEST-IN", "deny ip any any", "permit ip any any", "ip dhcp pool X", "network " + p.lan + " " + p.mask, "default-router " + p.lanGw, "access-list 1 permit any", "ip nat inside source list 1 interface gi0/0 overload", "hostname X1",
-      "copy running-config startup-config", "reload", "no", "show ip interface brief", "show ip nat translations", "show vlan brief", "?"];
+      "interface gi0/23", "switchport trunk native vlan " + p.vlans.native.id, "switchport trunk native vlan 1", "switchport trunk allowed vlan " + p.vlans.staff.id, "switchport mode dynamic desirable", "switchport nonegotiate", "interface range gi0/2 - 23 , gi0/25 - 28",
+      "copy running-config startup-config", "reload", "no", "show ip interface brief", "show ip nat translations", "show vlan brief", "show interfaces trunk", "?"];
     for (let k = 0; k < 40; k++) {
       const pick = R();
       if (pick < 0.1) B.act(J, { t: "place", dev: R.pick(devs), room: R.pick(rooms) });

@@ -62,7 +62,7 @@ function planSpots(sim, ids) {
   const off = office(sim);
   const box = function (x, y) { return [x - 44, y - 26, x + 44, y + 54]; };
   const clear = function (b) { return taken.every(function (t) { return b[2] < t[0] || b[0] > t[2] || b[3] < t[1] || b[1] > t[3]; }); };
-  const usual = function (id) { const p = pos(sim, id), room = sim.net.rooms[id], alt = LAY[id].alt && LAY[id].alt[room]; if (alt) return alt; return p.px != null && room !== "upstairs" && (!LAY[id].room || LAY[id].room === room || (id === "laptop" && (room === "living" || room === "kitchen"))) ? p : null; };   /* upstairs is laid out afresh: it's split in two; alt: a device's own spot in another room */
+  const usual = function (id) { const p = pos(sim, id), room = sim.net.rooms[id], alt = LAY[id].alt && LAY[id].alt[room]; if (alt && alt.px != null) return alt; return p.px != null && room !== "upstairs" && (!LAY[id].room || LAY[id].room === room || (id === "laptop" && (room === "living" || room === "kitchen"))) ? p : null; };   /* upstairs is laid out afresh: it's split in two; alt: a device's own spot in another room (one with no spot on the plan is placed there afresh) */
   for (const id of ids) { const p = usual(id); if (p && clear(box(p.px, p.py))) { out[id] = { px: p.px, py: p.py }; taken.push(box(p.px, p.py)); } }
   for (const id of ids) {
     if (out[id]) continue;
@@ -135,33 +135,52 @@ export function drawLogical(svg, sim, o) {
   gn.querySelectorAll(".nd").forEach(function (g) { const p = P[g.dataset.d]; g.querySelectorAll(".nl, .ns").forEach(function (t) { let b; try { b = t.getBBox(); } catch (e) { return; } if (b.width) boxes.push({ x: p.x + b.x, y: p.y + b.y, w: b.width, h: b.height }); }); });
   const onLabel = function (x, y) { return boxes.some(function (b) { return x + 9 > b.x - 3 && x - 9 < b.x + b.w + 3 && y + 9 > b.y - 3 && y - 9 < b.y + b.h + 3; }); };
   const onPortName = function (x, y) { return [].slice.call(gp.querySelectorAll("text.pl")).some(function (t) { let b; try { b = t.getBBox(); } catch (er) { return false; } return x + 8 > b.x - 4 && x - 8 < b.x + b.width + 4 && y + 8 > b.y - 2 && y - 8 < b.y + b.height + 2; }); };
-  const seen = {};
-  for (const l of links) {
+  /* the dots already drawn, as painted: a dot 6 across its middle and its ring 1 more; a diamond reaches 8.5 and its ring 1 more */
+  const painted = function () { return [].slice.call(gp.querySelectorAll(".pd")).map(function (x) { const round = x.hasAttribute("cx"), cx = round ? +x.getAttribute("cx") : +x.getAttribute("x") + 6, cy = round ? +x.getAttribute("cy") : +x.getAttribute("y") + 6, r = round ? 7 : 9.5; return { x: cx - r, y: cy - r, w: 2 * r, h: 2 * r }; }); };
+  /* a dot never sits on another: two lines leaving a device a few degrees apart carry their dots on until they part (the back switch's
+     trunk and your laptop's console line reached the closet switch 9 degrees apart, their dots on each other) */
+  const onDots = function (x, y, up) { const r = up ? 7 : 9.5; return painted().some(function (z) { return x - r < z.x + z.w + 2 && x + r > z.x - 2 && y - r < z.y + z.h + 2 && y + r > z.y - 2; }); };
+  const seen = {}, runs = [];
+  for (const l of links) {   /* every line first, so each port's name and dot can be kept off every other cable's line */
     const A0 = P[l.a], B0 = P[l.b]; if (!A0 || !B0) continue;
     const n = many[pair(l)], k = seen[pair(l)] = (seen[pair(l)] == null ? 0 : seen[pair(l)] + 1), sh = k * 30;   /* the first stays where it always ran; the next one runs beside it */
     const L0 = Math.hypot(B0.x - A0.x, B0.y - A0.y), nx = -(B0.y - A0.y) / L0, ny = (B0.x - A0.x) / L0, sg = l.a < l.b ? 1 : -1;
     const ea = deg[l.a] > deg[l.b] ? 0.4 : 1, eb = deg[l.b] > deg[l.a] ? 0.4 : 1;
     const A = Object.assign({}, A0, { x: A0.x + nx * sh * sg * ea, y: A0.y + ny * sh * sg * ea }), B = Object.assign({}, B0, { x: B0.x + nx * sh * sg * eb, y: B0.y + ny * sh * sg * eb });
     const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy), ux = dx / L, uy = dy / L;
-    gl.appendChild(mk("line", { x1: A.x + ux * R, y1: A.y + uy * R, x2: B.x - ux * R, y2: B.y - uy * R, class: "lk lk-" + l.kind + (l.up ? "" : " lk-down") }));
+    const run = { l: l, k: k, A: A, B: B, L: L, ux: ux, uy: uy, x1: A.x + ux * R, y1: A.y + uy * R, x2: B.x - ux * R, y2: B.y - uy * R };
+    gl.appendChild(mk("line", { x1: run.x1, y1: run.y1, x2: run.x2, y2: run.y2, class: "lk lk-" + l.kind + (l.up ? "" : " lk-down"), "data-cable": l.cable || "wifi-" + l.b }));
+    runs.push(run);
+  }
+  /* does a box (x, y, width, height) touch a line? (the line clipped to the box: Liang-Barsky) */
+  const crosses = function (b, s) {
+    const dx = s.x2 - s.x1, dy = s.y2 - s.y1, P4 = [-dx, dx, -dy, dy], Q4 = [s.x1 - b.x, b.x + b.width - s.x1, s.y1 - b.y, b.y + b.height - s.y1]; let t0 = 0, t1 = 1;
+    for (let i = 0; i < 4; i++) { if (P4[i] === 0) { if (Q4[i] < 0) return false; continue; } const r = Q4[i] / P4[i]; if (P4[i] < 0) { if (r > t1) return false; if (r > t0) t0 = r; } else { if (r < t0) return false; if (r < t1) t1 = r; } }
+    return true;
+  };
+  for (const run of runs) {
+    const l = run.l, k = run.k, A = run.A, B = run.B, L = run.L, ux = run.ux, uy = run.uy;
     if (l.kind === "wifi") continue;
+    /* on another cable's line, a port's name or dot reads as that cable's (SB-J4: the trunk's "23" under your laptop's console line) */
+    const onLine = function (b) { return runs.some(function (s) { return s !== run && crosses(b, s); }); };
+    const dotOnLine = function (x, y) { const r = (l.up ? 7 : 9.5) + 3; return onLine({ x: x - r, y: y - r, width: 2 * r, height: 2 * r }); };   /* a dot clear of every other line, with room to see it is */
     [[l.a, 1, l.pa, A], [l.b, -1, l.pb, B]].forEach(function (e) {
       const D = e[3], dx2 = ux * e[1], dy2 = uy * e[1];
       let off = (dy2 > 0.5 ? (below(e[0]) ? R + 56 : R + 24) : R + 12) + (k && deg[e[0]] > 2 ? 22 : 0);   /* the second cable's port on a busy device: further along, clear of the first's */
       let px = D.x + dx2 * off, py = D.y + dy2 * off;
-      for (let g = 0; (onLabel(px, py) || (!e[2] && onPortName(px, py))) && g < 30 && off + 4 < L / 2; g++) { off += 4; px = D.x + dx2 * off; py = D.y + dy2 * off; }   /* slide along its line until it's clear of every label (a dot with no name: of every port name too) */
+      for (let g = 0; (onLabel(px, py) || (!e[2] && onPortName(px, py)) || onDots(px, py, l.up) || dotOnLine(px, py)) && g < 40 && off + 4 < L / 2; g++) { off += 4; px = D.x + dx2 * off; py = D.y + dy2 * off; }   /* slide along its line until it's clear of every label and every dot (a dot with no name: of every port name too) */
       if (e[2]) {
         /* the port's name, measured as drawn: where the near end's rule puts it if that's clear (across: above the line, the far end's
            below, so two never collide; up or down: beside it); else the other side of the line; else both again further along; else on the
            line itself. Clear
            means on the diagram and off every device's label and tile and every port name already placed. The dot goes with it */
-        const t = mk("text", { class: "pl" }); t.textContent = e[2]; gp.appendChild(t);
+        const t = mk("text", { class: "pl", "data-cable": l.cable || "" }); t.textContent = e[2]; gp.appendChild(t);
         const ov = function (b, q) { return b.x < q.x + q.w && b.x + b.width > q.x && b.y < q.y + q.h && b.y + b.height > q.y; };
         const placed = [].slice.call(gp.querySelectorAll("text.pl")).filter(function (x) { return x !== t; }).map(function (x) { try { const b = x.getBBox(); return { x: b.x, y: b.y, w: b.width, h: b.height }; } catch (er) { return null; } }).filter(Boolean);
         const tiles = ids.map(function (id) { return { x: P[id].x - R, y: P[id].y - R, w: 2 * R, h: 2 * R }; });
         /* the dots already drawn, and this port's own: a dot is drawn over whatever is under it, so neither may sit on the name's plate
            (with easier reading on, port 1's own dot sat on the bottom of its "1") */
-        const dots = [].slice.call(gp.querySelectorAll(".pd")).map(function (x) { const round = x.hasAttribute("cx"), cx = round ? +x.getAttribute("cx") : +x.getAttribute("x") + 6, cy = round ? +x.getAttribute("cy") : +x.getAttribute("y") + 6, r = round ? 7 : 9.5; return { x: cx - r, y: cy - r, w: 2 * r, h: 2 * r }; });   /* as painted: a dot 6 across its middle and its ring 1 more; a diamond reaches 8.5 and its ring 1 more */
+        const dots = painted();
         const plate = function () { let b; try { b = t.getBBox(); } catch (er) { return null; } return b.width ? { x: b.x - 4, y: b.y - 2, width: b.width + 8, height: b.height + 4 } : null; };
         const dotAt = function (q) { const r = l.up ? 7 : 9.5; return { x: q[0] - r, y: q[1] - r, w: 2 * r, h: 2 * r }; };
         const onDot = function (q) { const pb = plate(); return !!pb && (ov(pb, dotAt(q)) || dots.some(function (z) { return ov(pb, z); })); };
@@ -172,15 +191,15 @@ export function drawLogical(svg, sim, o) {
           else { let side = Math.abs(dx2) < 0.2 ? 1 : Math.sign(dx2); if (flip) side = -side; tx = qx + side * 18; ty = qy + 5; anc = side > 0 ? "start" : "end"; }
           t.setAttribute("x", tx); t.setAttribute("y", ty); t.setAttribute("text-anchor", anc); return [qx, qy];
         };
-        const clear = function (q) { let b; try { b = t.getBBox(); } catch (er) { return true; } if (!b.width) return true; const d = dotAt(q), db = { x: d.x - 4, y: d.y - 2, width: d.w + 8, height: d.h + 4 }; return !onLabel(q[0], q[1]) && b.x >= -4 && b.x + b.width <= 828 && !boxes.some(function (z) { return ov(b, z); }) && !placed.some(function (z) { return ov(b, z) || ov(db, z); }) && !tiles.some(function (z) { return ov(b, z); }) && !onDot(q); };
+        const clear = function (q) { let b; try { b = t.getBBox(); } catch (er) { return true; } if (!b.width) return true; const d = dotAt(q), db = { x: d.x - 4, y: d.y - 2, width: d.w + 8, height: d.h + 4 }; return !onLabel(q[0], q[1]) && b.x >= -4 && b.x + b.width <= 828 && !boxes.some(function (z) { return ov(b, z); }) && !placed.some(function (z) { return ov(b, z) || ov(db, z); }) && !tiles.some(function (z) { return ov(b, z); }) && !onDot(q) && !onDots(q[0], q[1], l.up) && !dotOnLine(q[0], q[1]) && !onLine({ x: b.x + 1, y: b.y + 1, width: b.width - 2, height: b.height - 2 }); };
         let at = null;
         for (let o = off; o + 4 < L / 2 && !at; o += 8) for (const flip of [false, true]) { const q = put(o, flip); if (clear(q)) { at = q; break; } }
         for (let o = off; o + 4 < L / 2 && !at; o += 8) { const q = put(o, "on"); if (clear(q)) at = q; }   /* neither side clear anywhere: on the line itself */
         if (!at) at = put(off, false);   /* nowhere clear: where the rule puts it */
         px = at[0]; py = at[1];
       }
-      if (l.up) gp.appendChild(mk("circle", { cx: px, cy: py, r: 6, class: "pd pd-up" }));
-      else gp.appendChild(mk("rect", { x: px - 6, y: py - 6, width: 12, height: 12, transform: "rotate(45 " + px + " " + py + ")", class: "pd pd-down" }));
+      if (l.up) gp.appendChild(mk("circle", { cx: px, cy: py, r: 6, class: "pd pd-up", "data-cable": l.cable || "" }));
+      else gp.appendChild(mk("rect", { x: px - 6, y: py - 6, width: 12, height: 12, transform: "rotate(45 " + px + " " + py + ")", class: "pd pd-down", "data-cable": l.cable || "" }));
     });
   }
   plates(svg, ".nl, .ns, .pl");

@@ -1028,5 +1028,51 @@
   "name": "business: SB-J3 the guests' access list with no DHCP line, Mason's third rung",
   "page": "build.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J3',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; sol.filter(a=>!(a.t==='cmd'&&/eq bootps$/.test(a.line))).forEach(a=>c.act(a)); for(let i=0;i<5;i++) c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J4 first check, the work order with the back switch's and the trunk's records",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J4',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const set=(id,v)=>{const e=document.getElementById(id); e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));}; const kb=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='bsw'&&a.b.port==='CONSOLE'), kc=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='msw'&&a.b.port==='CONSOLE'); c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J4 the back switch's place: the closet refused, the Place form says where it goes",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J4',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const set=(id,v)=>{const e=document.getElementById(id); e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));}; const kb=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='bsw'&&a.b.port==='CONSOLE'), kc=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='msw'&&a.b.port==='CONSOLE'); set('bmDev','bsw'); set('bmRoom','closet'); document.getElementById('bmPlace').click(); document.getElementById('bmPmsg').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J4 the console cable laid from the closet to the back switch: refused, 1.8 m",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J4',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const set=(id,v)=>{const e=document.getElementById(id); e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));}; const kb=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='bsw'&&a.b.port==='CONSOLE'), kc=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='msw'&&a.b.port==='CONSOLE'); sol.slice(0,kb-1).forEach(a=>c.act(a)); set('bmAd','tech'); set('bmAp','USB-C'); set('bmBd','bsw'); set('bmBp','CONSOLE'); document.getElementById('bmLay').click(); document.getElementById('bmLmsg').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J4 your laptop at the back switch: its console from the box, the logical diagram",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J4',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const set=(id,v)=>{const e=document.getElementById(id); e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));}; const kb=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='bsw'&&a.b.port==='CONSOLE'), kc=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='msw'&&a.b.port==='CONSOLE'); sol.slice(0,kb+2).forEach(a=>c.act(a)); document.getElementById('vLog').click(); dev('tech'); tab('Serial terminal');"
+ },
+ {
+  "name": "business: SB-J4 your laptop at the back switch: the floor plan",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J4',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const set=(id,v)=>{const e=document.getElementById(id); e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));}; const kb=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='bsw'&&a.b.port==='CONSOLE'), kc=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='msw'&&a.b.port==='CONSOLE'); sol.slice(0,kb+2).forEach(a=>c.act(a)); document.getElementById('vPhy').click();"
+ },
+ {
+  "name": "business: SB-J4 native VLAN 1 at the closet end, Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J4',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const set=(id,v)=>{const e=document.getElementById(id); e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));}; const kb=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='bsw'&&a.b.port==='CONSOLE'), kc=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='msw'&&a.b.port==='CONSOLE'); sol.forEach((a,k)=>c.act(k>kc&&a.line==='switchport trunk native vlan '+p.vlans.native.id?Object.assign({},a,{line:'switchport trunk native vlan 1'}):a)); for(let i=0;i<5;i++) c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J4 done, the logical diagram, the closet switch's trunk shown",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J4',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const set=(id,v)=>{const e=document.getElementById(id); e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));}; const kb=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='bsw'&&a.b.port==='CONSOLE'), kc=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='msw'&&a.b.port==='CONSOLE'); sol.forEach(a=>c.act(a)); c.act({t:'cmd',dev:'tech',line:'show interfaces trunk',cli:true}); c.check(); document.getElementById('vLog').click(); dev('tech'); tab('Serial terminal');"
+ },
+ {
+  "name": "business: SB-J4 done, the floor plan with the back switch",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J4',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const set=(id,v)=>{const e=document.getElementById(id); e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));}; const kb=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='bsw'&&a.b.port==='CONSOLE'), kc=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='msw'&&a.b.port==='CONSOLE'); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('vPhy').click(); dev('bsw');"
+ },
+ {
+  "name": "business: SB-J4 done, the back switch's 3D model",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J4',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const set=(id,v)=>{const e=document.getElementById(id); e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));}; const kb=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='bsw'&&a.b.port==='CONSOLE'), kc=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='msw'&&a.b.port==='CONSOLE'); sol.forEach(a=>c.act(a)); c.check(); dev('bsw'); tab('Physical');",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
  }
 ]

@@ -61,7 +61,14 @@ const labelsClear = (p, which) => p.evaluate((which) => {
     /* and the port dots (25 October 2026): a dot is drawn over whatever is under it, so it never sits on a port name or a device's
        name (with easier reading on, port 1's own dot sat on the bottom of its "1": AAA 4.98:1) */
     const txt = [...svg.querySelectorAll("text.pl, text.nl, text.ns")];
-    svg.querySelectorAll(".pd").forEach((d) => { const b = box(d); txt.forEach((t) => { if (ov(b, box(t))) out.push('a port dot on "' + t.textContent + '"'); }); });
+    const pds = [...svg.querySelectorAll(".pd")];
+    pds.forEach((d, i) => { const b = box(d); txt.forEach((t) => { if (ov(b, box(t))) out.push('a port dot on "' + t.textContent + '"'); }); pds.slice(i + 1).forEach((e) => { if (ov(b, box(e))) out.push("two port dots on each other"); }); });   /* nor on another dot: two dots on each other can't be told apart (SB-J4's trunk and console, 25 October 2026) */
+    /* nor a port's name or dot on another cable's line: it reads as that cable's (SB-J4: the trunk's "23" under the console line) */
+    const lines = [...svg.querySelectorAll("line.lk")].map((n) => ({ c: n.dataset.cable, x1: +n.getAttribute("x1"), y1: +n.getAttribute("y1"), x2: +n.getAttribute("x2"), y2: +n.getAttribute("y2") }));
+    const crosses = (b, s) => { const dx = s.x2 - s.x1, dy = s.y2 - s.y1, P4 = [-dx, dx, -dy, dy], Q4 = [s.x1 - b.x, b.x + b.width - s.x1, s.y1 - b.y, b.y + b.height - s.y1]; let t0 = 0, t1 = 1; for (let i = 0; i < 4; i++) { if (P4[i] === 0) { if (Q4[i] < 0) return false; continue; } const r = Q4[i] / P4[i]; if (P4[i] < 0) { if (r > t1) return false; if (r > t0) t0 = r; } else { if (r < t0) return false; if (r < t1) t1 = r; } } return t0 < t1; };
+    const shrink = (b) => ({ x: b.x + 1, y: b.y + 1, width: b.width - 2, height: b.height - 2 });
+    svg.querySelectorAll("text.pl").forEach((t) => { const b = shrink(t.getBBox()); lines.forEach((s) => { if (s.c !== t.dataset.cable && crosses(b, s)) out.push('"' + t.textContent + '" on another cable\'s line'); }); });
+    pds.forEach((d) => { const b = shrink(d.getBBox()); lines.forEach((s) => { if (s.c !== d.dataset.cable && crosses(b, s)) out.push("a port dot on another cable's line"); }); });
   }
   return { n: pl.length, out: out };
 }, which);
@@ -1265,6 +1272,59 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
       await dev(p, "ap"); await tab(p, "Physical");
       check(/light ring round its face: on, blue: on the network, broadcasting 1 network/.test(await p.$eval(".m3d-says", (n) => n.textContent)), tag + "the access point's Physical tab: its ring on, blue, broadcasting one network");
+      await p.click("#vLog"); await p.waitForTimeout(60);
+      const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished business's logical diagram: every name and port dot clear" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(40);
+      const fp = await labelsClear(p, "plan"); check(fp.n > 0 && !fp.out.length, tag + "the finished business's floor plan: every name clear" + (fp.out.length ? " (" + fp.out.join("; ") + ")" : ""));
+      await dysClear(p, tag + "the finished business");
+      await p.reload(); await p.waitForTimeout(350);
+      check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)), tag + "still done after a reload");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+    await ctx.close();
+  }
+  /* SB-J4 (stage 3): the back of house on its own switch, joined to the closet switch by a trunk. The new switch set up at its own
+     console in the back room (the console cable only reaches a switch in the same room), then the closet end, then the PC moved */
+  for (const seed of !process.env.JOB || process.env.JOB === "SB-J4" ? [11, 2025, 777777] : []) {
+    const job = "SB-J4", { p, ctx } = await zpage("build.html", { net: solvedTo(2), build: { current: job, j: { [job]: { seed } }, done: doneTo(2) } });
+    const tag = "business " + job + " " + seed + ": ";
+    try {
+      const plan = await BJ(p, () => window.__e4b.T.sim.net.plan), S = plan.vlans.staff, N = plan.vlans.native, Tr = plan.trunk;
+      check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed, tag + "opens the job on the business asked for");
+      check(!(await p.$('#plan [data-d="bsw"]')) && !(await p.$('#devtabs [data-d="bsw"]')) && /Back switch/.test(await p.$eval(".tray", (n) => n.textContent)), tag + "the back switch starts in its box: off the plan, no device button");
+      const lim = await p.$eval(".limits", (n) => n.textContent);
+      check([plan.bswHost, plan.swSecret, plan.swConsole, Tr.closetDesc, Tr.backDesc, S.name, N.name, plan.desc["4"]].every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the records the job needs: the new switch's name, the trunk's ports and descriptions, its VLANs");
+      await checkJob(p);
+      check((await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do");
+      await place(p, "bsw", "closet"); check(/goes in the .*wall shelf/.test(await p.$eval("#bmPmsg", (n) => n.textContent)), tag + "the back switch has its place in the back room: the closet is refused, and the form says where it goes");
+      const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
+      const at = (f) => sol.findIndex(f), cBack = at((a) => a.t === "lay" && a.b.dev === "bsw" && a.b.port === "CONSOLE"), cCloset = at((a) => a.t === "lay" && a.b.dev === "msw" && a.b.port === "CONSOLE");
+      for (let k = 0; k < sol.length; k++) {
+        const a = sol[k];
+        if (k === cBack - 1) {   /* before your laptop is carried there: its console cable from the closet is too short for the back room */
+          await lay(p, "tech", "USB-C", "bsw", "CONSOLE");
+          check(/1\.8 m long: your laptop has to be in the same room/.test(await p.$eval("#bmLmsg", (n) => n.textContent).catch(() => "")), tag + "the console cable laid from the closet to the back switch: refused, it's 1.8 m");
+        }
+        await step(p, a);
+        if (k === 0) check((await p.getAttribute('#plan [data-d="bsw"] use', "href")) === "#p-mswitch" && !!(await p.$('#devtabs [data-d="bsw"]')), tag + "unboxed: on the plan as a managed switch, with a device button");
+        if (k === cBack + 1) check((await promptNow(p)) === "Switch>", tag + "Enter wakes the new switch's console: Switch>, from the box, no password");
+        if (k === cBack + 1) {
+          await p.click("#vLog"); await p.waitForTimeout(60);
+          const mid = await labelsClear(p, "net"); check(mid.n > 0 && !mid.out.length, tag + "your laptop at the back switch: the logical diagram's names and port dots all clear" + (mid.out.length ? " (" + mid.out.join("; ") + ")" : ""));
+          await dysClear(p, tag + "your laptop at the back switch");
+          await p.click("#vPhy"); await p.waitForTimeout(40);
+        }
+        if (k === cCloset - 3) check((await promptNow(p)) === plan.bswHost + "#" && !/% Invalid|% Incomplete|% Ambiguous/.test(await term(p)), tag + "the back switch took every line: its prompt is " + plan.bswHost + "#");
+      }
+      check(!/% Invalid|% Incomplete|% Ambiguous/.test(await term(p)), tag + "no line was refused on the closet switch");
+      await step(p, { t: "cmd", dev: "tech", cli: true, line: "show interfaces trunk" });
+      const tr = await term(p);
+      check(new RegExp("Gi0/" + Tr.closet + "\\s+on\\s+802\\.1q\\s+trunking\\s+" + N.id).test(tr) && new RegExp("Gi0/" + Tr.closet + "\\s+" + S.id + "\\s*$", "m").test(tr), tag + "show interfaces trunk on the closet switch: Gi0/" + Tr.closet + " trunking, native VLAN " + N.id + ", only VLAN " + S.id + " allowed");
+      await dev(p, "bpc"); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8");
+      check(/Reply from 8\.8\.8\.8/.test(await term(p)), tag + "the back PC pings out over the trunk");
+      const t = await checkJob(p), n = await BJ(p, () => window.__e4b.T.def.reqs.length);
+      check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
+      await dev(p, "bsw"); await tab(p, "Physical"); await p.waitForTimeout(400);
+      check(/port/i.test(await p.$eval(".m3d-says", (n) => n.textContent).catch(() => "")), tag + "the back switch's Physical tab: drawn, its ports in words");
       await p.click("#vLog"); await p.waitForTimeout(60);
       const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished business's logical diagram: every name and port dot clear" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
       await p.click("#vPhy"); await p.waitForTimeout(40);

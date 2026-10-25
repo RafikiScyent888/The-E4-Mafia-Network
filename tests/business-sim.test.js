@@ -245,3 +245,14 @@ test("two managed switches with addresses on other VLANs, joined: neighbour disc
   assert.ok(s.route("msw", "10.9.9.3").local, "management VLAN 99 carried over the trunk between them");
   s.syncSwitch("msw"); assert.equal(s.d.msw.sw.links["GigabitEthernet0/23"].lldp.id, "BACK");
 });
+
+test("a cable refused says why, with each device named as it would be mid-sentence", () => {
+  const n = net();
+  n.devices.boxsw = { id: "boxsw", kind: "mswitch", label: "Back switch", on: true, boxed: true, mac: "00e0.4c01.0002", sw: C.newSwitch() };
+  const sim = new Sim(n), errs = (a, b) => sim.lay(a, b).errs;
+  assert.deepEqual(errs({ dev: "boxsw", port: "1" }, { dev: "msw", port: "5" }), ["The back switch is still in its box: place it first"]);
+  assert.deepEqual(errs({ dev: "msw", port: "99" }, { dev: "rtr", port: "Gi0/5" }), ["The managed switch has no port 99"]);
+  assert.deepEqual(errs({ dev: "msw", port: "1" }, { dev: "rtr", port: "Gi0/5" }), ["The managed switch's port 1 already has a cable in it"]);
+  assert.deepEqual(errs({ dev: "staff", port: "NIC" }, { dev: "staff", port: "NIC" }), ["Both ends are on the staff PC: a cable joins two devices"]);
+  assert.deepEqual(errs({ dev: "isp", port: "x" }, { dev: "boxsw", port: "1" }), ["The ISP has no port x", "The back switch is still in its box: place it first"], "a name in capitals stays in capitals");
+});

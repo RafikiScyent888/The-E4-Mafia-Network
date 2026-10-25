@@ -1,6 +1,6 @@
 import subprocess, shutil, sys, os, tempfile
-# SB-J3's page parts, planted one at a time in a throwaway copy of this checkout (the real one never holds a planted defect),
-# each run through the SB-J3 drive: every one must make it fail.
+# Level 3's page parts, planted one at a time in a throwaway copy of this checkout (the real one never holds a planted defect),
+# each run through its work order's drive (SB-J3 unless the plant names another): every one must make it fail.
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 PLANTS = [
  ("the diagram gives the access point's address away", "js/desk/draw.js", 'if (x.kind === "bap") return "DHCP";', 'if (x.kind === "bap") return x.ifaces[0].lease ? x.ifaces[0].lease.ip : "DHCP";'),
@@ -12,10 +12,17 @@ PLANTS = [
  ("no web browser at the business", "js/net/pages.js", '(t[0] !== "browser" || sim.net.site === "business")', '(t[0] !== "browser" || sim.net.site === "office")'),
  ("the address bar opens nothing", "js/desk/window.js", 'browserAt[id] = String(new FormData(f).get("url") || "").trim(); rerender();', 'rerender();'),
  ("the ring's words never say broadcasting", "js/net/physical.js", ': ["on", "blue", "on, blue: on the network, broadcasting " + n', ': ["on", "blue", "blinking blue: on the network, but broadcasting nothing " + n'),
+ ("SB-J4: port names and dots allowed on other cables' lines", "js/desk/draw.js", "&& !onDot(q) && !onDots(q[0], q[1], l.up) && !dotOnLine(q[0], q[1]) && !onLine({ x: b.x + 1, y: b.y + 1, width: b.width - 2, height: b.height - 2 }); };", "&& !onDot(q); };", "SB-J4"),
+ ("SB-J4: every port dot drawn twice, one on the other", "js/desk/draw.js", 'if (l.up) gp.appendChild(mk("circle", { cx: px, cy: py, r: 6, class: "pd pd-up", "data-cable": l.cable || "" }));', 'if (l.up) { gp.appendChild(mk("circle", { cx: px, cy: py, r: 6, class: "pd pd-up", "data-cable": l.cable || "" })); gp.appendChild(mk("circle", { cx: px + 5, cy: py, r: 6, class: "pd pd-up", "data-cable": l.cable || "" })); }', "SB-J4"),
+ ("SB-J4: your laptop has no spot of its own in the back room", "js/net/business.js", ', alt: { back: { x: 270, y: 330, lab: "right" } } },', ' },', "SB-J4"),
+ ("SB-J4: the back switch goes anywhere", "js/net/sim.js", "const fx = x.fixed || (this.net.fixed || FIXED_ROOM)[x.kind];", "const fx = x.id === \"bsw\" ? null : x.fixed || (this.net.fixed || FIXED_ROOM)[x.kind];", "SB-J4"),
+ ("SB-J4: the console cable reaches the next room", "js/net/sim.js", "if (ca && this.net.rooms[a.dev] !== this.net.rooms[b.dev]) return", "if (false) return", "SB-J4"),
+ ("SB-J4: the back switch has no device button", "js/build/app.js", '"pp", "msw", "bsw", "pc",', '"pp", "msw", "pc",', "SB-J4"),
 ]
 only = sys.argv[1:]
 caught = 0; run = 0
-for name, f, a, b in PLANTS:
+for plant in PLANTS:
+    name, f, a, b = plant[:4]; job = plant[4] if len(plant) > 4 else "SB-J3"
     if only and not any(o in name for o in only): continue
     tmp = tempfile.mkdtemp(prefix="sb3page-")
     try:
@@ -23,7 +30,7 @@ for name, f, a, b in PLANTS:
         p = os.path.join(tmp, f); src = open(p).read()
         if src.count(a) != 1: print("PLANT DID NOT APPLY · " + name + " · " + str(src.count(a))); continue
         open(p, "w").write(src.replace(a, b))
-        r = subprocess.run(["node", "tools/drive.mjs"], cwd=tmp, env=dict(os.environ, ONLY="business", JOB="SB-J3"), capture_output=True, text=True, timeout=1500)
+        r = subprocess.run(["node", "tools/drive.mjs"], cwd=tmp, env=dict(os.environ, ONLY="business", JOB=job), capture_output=True, text=True, timeout=1500)
         out = r.stdout.strip().splitlines()
         fails = [l for l in out if l.startswith("business") or l.startswith("PAGE ERRORS")]
         run += 1; caught += bool(r.returncode)

@@ -71,6 +71,9 @@ const consoleEnd = function (x, port) { return !!x && (((x.kind === "mswitch" ||
 export const isSfpSlot = function (x, port) { return !!x && ((x.kind === "mswitch" && /^SFP\d$/.test(port)) || (x.kind === "brouter" && /^Gi0\/[89]$/.test(port))); };
 export const RT_PORT_NAMES = Array.from({ length: 10 }, function (_, i) { return "Gi0/" + i; }).concat(["CONSOLE"]);
 export const FIXED_ROOM = { modem: ["living", "by the cable outlet: there's one, in the living room"], camera: ["porch", "on its mount by the front door"] };
+/* a device's name mid-sentence: "the back switch", "the manager's PC", "the PoE injector", "the ISP", "your laptop" */
+const theDev = function (x) { return /^your /i.test(x.label) ? x.label.toLowerCase() : "the " + x.label.replace(/^[A-Z](?=[a-z']*(\s|$))/, function (m) { return m.toLowerCase(); }); };
+const cap = function (s) { return s[0].toUpperCase() + s.slice(1); };
 const RUN = { office: { living: 14, kitchen: 18, garage: 12, porch: 38, upstairs: 20, landing: 18 }, living: { kitchen: 10, garage: 22, porch: 20, upstairs: 15, landing: 8 }, kitchen: { garage: 16, porch: 14, upstairs: 22, landing: 14 }, garage: { porch: 30, upstairs: 28, landing: 24 }, porch: { upstairs: 32, landing: 22 }, upstairs: { landing: 6 } };
 export function runLength(a, b, net) { if (a === b) return 3; const T = (net && net.runs) || RUN; return (T[a] && T[a][b]) || (T[b] && T[b][a]) || 40; }   /* net: the office has its own rooms and runs */
 export const COPPER_MAX = 100;
@@ -913,7 +916,7 @@ export class Sim {
     const x = this.d[id];
     if (!x) return { ok: false, errs: ["No such device"] };
     if (!(this.net.roomNames ? this.net.roomNames[room] : SIGNAL[room])) return { ok: false, errs: ["There's no room called " + room] };
-    const fx = x.fixed || (this.net.fixed || FIXED_ROOM)[x.kind]; if (fx && fx[0] !== room) return { ok: false, errs: ["The " + x.label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }) + " goes " + fx[1]] };
+    const fx = x.fixed || (this.net.fixed || FIXED_ROOM)[x.kind]; if (fx && fx[0] !== room) return { ok: false, errs: [cap(theDev(x)) + " goes " + fx[1]] };
     if (!x.boxed && this.cablesOf(id).some(function (c) { return c.kind !== "coax"; }) && this.net.rooms[id] !== room) return { ok: false, errs: ["Pull its cables out first: it's still cabled where it is"] };
     x.boxed = false; this.net.rooms[id] = room;
     return { ok: true, room: room };
@@ -922,11 +925,11 @@ export class Sim {
   lay(a, b) {
     const errs = [], A = this.d[a && a.dev], B = this.d[b && b.dev];
     if (!A || !B) return { ok: false, errs: ["Choose a device and a port for each end"] };
-    if (a.dev === b.dev) return { ok: false, errs: ["Both ends are on the " + A.label + ": a cable joins two devices"] };
+    if (a.dev === b.dev) return { ok: false, errs: ["Both ends are on " + theDev(A) + ": a cable joins two devices"] };
     [[A, a], [B, b]].forEach(function (e) {
-      if (e[0].boxed) errs.push("The " + e[0].label + " is still in its box: place it first");
-      else if (portsOf(e[0]).indexOf(e[1].port) < 0) errs.push("The " + e[0].label + " has no port " + e[1].port);
-      else if (this.cableAt(e[1].dev, e[1].port)) errs.push("The " + e[0].label + "'s " + (portName(e[0], e[1].port) === e[1].port ? "port " + e[1].port : portName(e[0], e[1].port)) + " already has a cable in it");
+      if (e[0].boxed) errs.push(cap(theDev(e[0])) + " is still in its box: place it first");
+      else if (portsOf(e[0]).indexOf(e[1].port) < 0) errs.push(cap(theDev(e[0])) + " has no port " + e[1].port);
+      else if (this.cableAt(e[1].dev, e[1].port)) errs.push(cap(theDev(e[0])) + "'s " + (portName(e[0], e[1].port) === e[1].port ? "port " + e[1].port : portName(e[0], e[1].port)) + " already has a cable in it");
     }, this);
     if (errs.length) return { ok: false, errs: errs };
     const slot = function (X, e) { return isSfpSlot(X, e.port); }, sa = slot(A, a), sb = slot(B, b);

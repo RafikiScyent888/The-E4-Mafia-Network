@@ -99,13 +99,16 @@ export function vlanText(list) {
 }
 const isSvi = function (n) { return /^Vlan\d+$/.test(n); };
 const sviOf = function (sw, n) { return n === "Vlan1" ? sw.vlan1 : sw.svis[n.slice(4)]; };
-/* "gi0/13 - 24", "gi0/13-24", "gi0/1 - 4 , gi0/9" (one span is enough here) */
+/* "gi0/13 - 24", "gi0/13-24", "gi0/2 - 23 , gi0/25 - 28", "gi0/1 - 4 , gi0/9": spans and single ports, as IOS takes them */
 function ifRange(rest) {
-  const s = rest.join(" ").toLowerCase().replace(/\s+/g, " ");
-  const m = /^g[a-z]*\s?0\/(\d+)\s?-\s?(\d+)$/.exec(s);
-  if (!m) return null;
-  const a = +m[1], b = +m[2]; if (a < 1 || b > COPPER + SFP || a > b) return null;
-  const out = []; for (let k = a; k <= b; k++) out.push("GigabitEthernet0/" + k); return out;
+  const parts = rest.join(" ").toLowerCase().replace(/\s+/g, " ").split(","), out = [];   /* each part names its own type */
+  for (const part of parts) {
+    const m = /^\s?g[a-z]*\s?0\/(\d+)(?:\s?-\s?(\d+))?\s?$/.exec(part);
+    if (!m) return null;
+    const a = +m[1], b = m[2] == null ? a : +m[2]; if (a < 1 || b > COPPER + SFP || a > b) return null;
+    for (let k = a; k <= b; k++) if (out.indexOf("GigabitEthernet0/" + k) < 0) out.push("GigabitEthernet0/" + k);
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------ the command tree */

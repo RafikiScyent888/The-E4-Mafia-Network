@@ -6,7 +6,7 @@
    devices and the network as they really are. Each line is an ordered list of
    causes, as on the other levels, so Mason's third rung can strike the ones
    the network has ruled out and leave two. None of it ever says what to type. */
-import { makeBusiness, addGuestKit } from "../net/business.js";
+import { makeBusiness, addGuestKit, addBackSwitch } from "../net/business.js";
 import { Sim } from "../net/sim.js";
 import { exec } from "../net/cmd.js";
 import { unsaved, pwOk, carries } from "../net/swcli.js";
@@ -553,4 +553,179 @@ const SB3 = {
   }
 };
 
-export const BUSINESS_JOBS = [SB1, SB2, SB3];
+/* ---------------------------------------------------------------- SB-J4: the back of house on its own switch, over a trunk */
+const BSW = function (sim) { return sim.d.bsw.sw; };
+const port = function (n) { return "GigabitEthernet0/" + n; };
+/* the trunk between the two switches: the cable, the port at each end, and what each end carries */
+function trunkLink(sim) {
+  const m = sim.d.bsw && between(sim, "msw", "bsw");
+  if (!m) return null;
+  const cp = SW(sim).ports[port(m.me)], bp = BSW(sim).ports[port(m.far)], dtp = function (x) { return { mode: x.mode, nonegotiate: x.nonegotiate }; };   /* each end runs as it negotiates with the other */
+  return { cable: m.cable, closet: m.me, back: m.far, cc: carries(SW(sim), port(m.me), dtp(bp)), bc: carries(BSW(sim), port(m.far), dtp(cp)), cp: cp, bp: bp };
+}
+/* the back switch has one place, its shelf in the back room (the Place form takes it nowhere else), so its box is the
+   first cause of every line that needs it, as with the office's back office switch */
+function lockCausesB(sim, v) {
+  const sw = BSW(sim), con = sw.con, p = v.plan, box = sim.d.bsw.boxed;
+  return [C("box", box, "The back switch is still in its box", "It's out of its box.", "The back switch is still in its box."),
+    C("factory", sw.hostname === "Switch", "It still has its factory name", "It has a name of its own.", "Its prompt still says Switch."),
+    C("name", sw.hostname !== p.bswHost, "It has a name, but not the one in the business's records", "Its name is the records'.", "Its prompt says " + sw.hostname + "."),
+    C("nosecret", !sw.enableSecret && !sw.enablePassword, "Anyone at its console can type enable and change anything", "Privileged mode is protected.", "enable goes straight to privileged mode, with no password."),
+    C("plain", !sw.enableSecret && !!sw.enablePassword, "Only an enable password is set: it sits in the configuration as plain text", "An enable secret is set, stored as a hash.", "show running-config shows the enable password in plain text."),
+    C("secret", !!sw.enableSecret && !pwOk(sw.enableSecret, p.swSecret), "An enable secret is set, but not the business's", "The enable secret is the business's.", "The business's enable secret doesn't open privileged mode."),
+    C("conpw", !con.password, "Its console line has no password", "The console line has a password.", "line con 0 has no password."),
+    C("conlogin", !!con.password && !con.login, "Its console line has a password, but never asks for it", "The console line asks for its password.", "Log out of its console, press RETURN: it goes straight in."),
+    C("conwrong", !!con.password && !pwOk(con.password, p.swConsole), "Its console asks for a password, but not the business's", "The console password is the business's.", "The business's console password isn't accepted.")];
+}
+function vlanCausesB(sim, v) {
+  const S = staff(v), vl = BSW(sim).vlans[S.id];
+  return [C("box", sim.d.bsw.boxed, "The back switch is still in its box", "It's out of its box.", "The back switch is still in its box."),
+    C("none", !vl, "The back switch has no staff VLAN", "The staff VLAN exists on it.", "show vlan brief on the back switch: no VLAN " + S.id + "."),
+    C("name", !!vl && vl.name !== S.name, "Its staff VLAN isn't named as the records say", "It's named as the records say.", "show vlan brief on the back switch: VLAN " + S.id + " is " + (vl ? vl.name : "") + ".")];
+}
+function trunkCausesB(sim, v) {
+  const p = v.plan, T = p.trunk, S = staff(v), N = p.vlans.native, L = trunkLink(sim);
+  const ends = L ? [["closet switch's", L.closet, L.cc, L.cp, T.closetDesc], ["back switch's", L.back, L.bc, L.bp, T.backDesc]] : [];
+  const notTrunk = ends.find(function (e) { return e[2].mode !== "trunk"; }), dtp = !notTrunk && ends.find(function (e) { return e[3].mode !== "trunk"; });
+  const noStaff = ends.find(function (e) { return e[2].mode === "trunk" && e[2].tagged.indexOf(S.id) < 0 && e[2].untagged !== S.id; });
+  const extra = ends.find(function (e) { return e[2].mode === "trunk" && e[2].tagged.some(function (x) { return x !== S.id; }); });
+  const nat = ends.find(function (e) { return e[2].mode === "trunk" && e[3].native !== N.id; }), split = !!L && L.cp.native !== L.bp.native;
+  const desc = ends.find(function (e) { return String(e[3].desc || "").toUpperCase() !== e[4]; });
+  return [C("box", sim.d.bsw.boxed, "The back switch is still in its box", "It's out of its box.", "The back switch is still in its box."),
+    C("cable", !L, "No cable joins the closet switch to the back switch", "The two switches are cabled.", "Nothing from the closet switch reaches the back switch."),
+    C("ports", !!L && (L.closet !== T.closet || L.back !== T.back), "The run between them isn't on the ports the records give it", "It's on the records' ports.", "The run is in the closet switch's port " + (L ? L.closet : "") + " and the back switch's port " + (L ? L.back : "") + "."),
+    C("shut", !!L && (L.cp.shutdown || L.bp.shutdown), "One end of the run is in a port that's shut down", "Both ends are open.", "show interfaces status: Gi0/" + (L ? (L.cp.shutdown ? L.closet + " on the closet switch" : L.back + " on the back switch") : "") + " disabled."),
+    C("mode", !!notTrunk, "The " + (notTrunk ? notTrunk[0] : "") + " end isn't a trunk, so only one VLAN crosses", "Both ends trunk.", "show interfaces trunk on the " + (notTrunk ? notTrunk[0].replace(/'s$/, "") : "") + ": nothing for Gi0/" + (notTrunk ? notTrunk[1] : "") + "."),
+    C("dtp", !!dtp, "The " + (dtp ? dtp[0] : "") + " end is left to negotiate: it trunks only while the two ends agree to, and the records set both ends as trunks", "Both ends are set as trunks.", "show interfaces Gi0/" + (dtp ? dtp[1] : "") + " switchport on the " + (dtp ? dtp[0].replace(/'s$/, "") : "") + ": administrative mode dynamic."),
+    C("allowed", !!noStaff, "The " + (noStaff ? noStaff[0] : "") + " end doesn't carry the staff VLAN", "Both ends carry the staff VLAN.", "show interfaces trunk on the " + (noStaff ? noStaff[0].replace(/'s$/, "") : "") + ": VLAN " + S.id + " isn't allowed and active on Gi0/" + (noStaff ? noStaff[1] : "") + "."),
+    C("extra", !!extra, "The " + (extra ? extra[0] : "") + " end carries VLANs the back of house doesn't use", "Both ends carry only the staff VLAN.", "show interfaces trunk on the " + (extra ? extra[0].replace(/'s$/, "") : "") + ": Gi0/" + (extra ? extra[1] + " allows " + extra[2].tagged.join(",") : "") + "."),
+    C("split", split, "The two ends' native VLANs differ: untagged frames from one land in the other's VLAN", "Both ends have the same native VLAN.", "show interfaces trunk: native VLAN " + (L ? L.cp.native : "") + " at the closet switch, " + (L ? L.bp.native : "") + " at the back switch."),
+    C("native", !split && !!nat, "The trunk's native VLAN is the default, not the unused one the records give trunks", "Its native VLAN is the records' unused one.", "show interfaces trunk: native VLAN " + (L ? L.cp.native : "") + "."),
+    C("desc", !!desc, "The " + (desc ? desc[0] : "") + " end isn't described as the records say", "Both ends are described as the records say.", "show interfaces status on the " + (desc ? desc[0].replace(/'s$/, "") : "") + ": Gi0/" + (desc ? desc[1] + "'s name is " + (desc[3].desc || "blank") : "") + ".")];
+}
+function backCauses(sim, v) {
+  const p = v.plan, S = staff(v), m = sim.d.bsw && between(sim, "bpc", "bsw"), old = between(sim, "bpc", "msw"), sp = m && BSW(sim).ports[port(m.far)], c = m ? carries(BSW(sim), port(m.far), null) : null, a = sim.addr("bpc");
+  const staffAddr = !!a && a.kind !== "apipa" && inNet(a.ip, S.net);
+  return [C("old", !!old, "The " + name(sim, "bpc") + " is still on the closet switch's long run", "It's off the closet switch.", "The " + name(sim, "bpc") + "'s cable still goes back to the closet switch."),
+    C("cable", !m, "The " + name(sim, "bpc") + " isn't cabled to the back switch", "It's on the back switch.", "Nothing joins the " + name(sim, "bpc") + " to the back switch."),
+    C("port", !!m && m.far !== p.backPort, "It's on a back switch port the records keep for something else", "It's on the records' port.", "The " + name(sim, "bpc") + " is in the back switch's port " + (m ? m.far : "") + "."),
+    C("shut", !!sp && sp.shutdown, "Its port on the back switch is shut down", "Its port is open.", "show interfaces status on the back switch: Gi0/" + (m ? m.far : "") + " disabled."),
+    C("vlan", !!c && c.untagged !== S.id, "Its port isn't in the staff VLAN", "Its port is in the staff VLAN.", "show vlan brief on the back switch: Gi0/" + (m ? m.far : "") + " isn't in VLAN " + S.id + "."),
+    C("desc", !!sp && String(sp.desc || "").toUpperCase() !== p.desc["4"], "Its port isn't described as the records say", "Its port is described as the records say.", "show interfaces status on the back switch: Gi0/" + (m ? m.far : "") + "'s name is " + (sp && sp.desc ? sp.desc : "blank") + "."),
+    C("renew", !!m && !staffAddr, "It has no staff address: it hasn't asked again since it moved, or its way to the router is broken", "It has a staff address.", "ipconfig on the " + name(sim, "bpc") + ": " + (a ? a.ip : "no address") + "."),
+    C("net", staffAddr && !online(sim, "bpc"), "It has a staff address but isn't online", "It's online.", "ping from the " + name(sim, "bpc") + ": no replies from the internet."),
+    C("print", !printOk(sim, "bpc"), "It can't reach the printer", "It prints.", "Test pages from the " + name(sim, "bpc") + " don't print.")];
+}
+function sparesCausesB(sim, v) {
+  const p = v.plan, sw = BSW(sim), used = [p.backPort, p.trunk.back], live = Object.keys(sw.ports).filter(function (n) { const k = n.replace("GigabitEthernet0/", ""); return used.indexOf(k) < 0 && !sw.ports[n].shutdown; });
+  const o = SW(sim).ports[port("4")], inUse = !!sim.cableAt("msw", "4");
+  return [C("box", sim.d.bsw.boxed, "The back switch is still in its box", "It's out of its box.", "The back switch is still in its box."),
+    C("back", live.length > 0, "Ports on the back switch with nothing in them are live: anyone can plug in there", "Its spare ports are shut.", "show interfaces status on the back switch: " + live.slice(0, 3).map(function (n) { return n.replace("GigabitEthernet", "Gi"); }).join(", ") + (live.length > 3 ? " and more" : "") + " not disabled."),
+    C("old", !inUse && !o.shutdown, "The closet switch's old port for the " + name(sim, "bpc") + " is empty but still open", "The old port is shut.", "show interfaces status on the closet switch: Gi0/4 is notconnect, not disabled."),
+    C("olddesc", !inUse && String(o.desc || "").toUpperCase() === p.desc["4"], "The closet switch's old port is still described as the " + name(sim, "bpc") + "'s", "The old port's description is gone.", "show interfaces status on the closet switch: Gi0/4 is still named " + o.desc + ".")];
+}
+function stillCausesB(sim, v) {
+  const down = ["pc", "mgr"].find(function (id) { return !online(sim, id); }), ip = apAddr(sim), r = ip ? sim.route("mgr", ip) : null;
+  return [C("net", !!down, "The " + (down ? name(sim, down) : "") + " is offline", "The other staff PCs are online.", "ping from the " + (down ? name(sim, down) : "") + ": no replies from the internet."),
+    C("print", !printOk(sim), "The " + name(sim, "pc") + " can't print", "It prints.", "Test pages from the " + name(sim, "pc") + " don't print."),
+    C("guest", !online(sim, "guest"), "The visitor's phone is offline: the guest network stopped working", "Guests are online.", "The visitor's phone: no internet."),
+    C("ap", !!r && !((r.local || r.routed) && !r.fail), "The manager's PC can't reach the access point's page", "The access point's page opens from the manager's PC.", "From the manager's PC the access point's address doesn't answer.")];
+}
+const SB4 = {
+  id: "SB-J4", level: "business", title: "The back of house on its own switch: a trunk between two switches",
+  already: ["still", "swsaved"],
+  start(seed) {
+    const b = SB3.start(seed), sim = b.sim;
+    for (const a of SB3.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    addBackSwitch(sim); sim.cli = {};   /* the second switch came in its box; the back PC is still on its long run to the closet */
+    return { sim: sim, v: b.v };
+  },
+  brief(v, sim) { return { quote: "We're putting more computers in the " + String(sim.net.roomNames.back).toLowerCase() + ". The installer says one cable back to the closet and a switch in there is the way, not a long run for every machine. The switch came this week, the same as the one in the closet. Move our " + name(sim, "bpc") + " onto it, on the staff network like the rest.", from: sim.net.client.manager + ", " + sim.net.client.name }; },
+  mason: "Between two switches the trunk is only as good as its two ends agreeing: the same mode, the same VLANs allowed, the same native VLAN. Set up the new switch at its own console first, then the closet end, then move the PC.",
+  limits: function (v, sim) { const p = v.plan, S = staff(v), N = p.vlans.native, T = p.trunk; return ["The business's records: the back switch is " + p.bswHost + ", with the closet switch's enable secret (" + p.swSecret + ") and console password (" + p.swConsole + ").",
+    "The trunk: the closet switch's port " + T.closet + " (described " + T.closetDesc + ") to the back switch's port " + T.back + " (described " + T.backDesc + "). It carries only the staff VLAN (" + S.id + ", " + S.name + "). Trunks here use VLAN " + N.id + " (" + N.name + ") as their native VLAN, never VLAN 1.",
+    "The " + name(sim, "bpc") + " goes on the back switch's port " + p.backPort + ", described " + p.desc["4"] + ", in the staff VLAN. The closet switch's port 4 is free once it moves.",
+    "Spare ports are shut, on the new switch too. Your laptop's console cable is 1.8 m: it reaches a switch in the same room."]; },
+  reqs: [{
+    id: "lock", text: "The back switch is on its shelf, with the business's name and passwords",
+    causes: lockCausesB,
+    ok: function () { return "The back switch is named as the records say, its enable secret and console password the business's."; },
+    rung1: function (v, sim) { return sim.d.bsw.boxed ? "The box tray, then the Place form." : "At the back switch's own console: the prompt, then show running-config."; },
+    rung2: function (v, sim) { return sim.d.bsw.boxed ? "A device goes on its mount before anything is cabled to it; a switch in the room it serves keeps every run there short." : "A switch from its box has no name and no passwords: anyone who reaches its console owns it until you set them."; }
+  }, {
+    id: "vlan", text: "The back switch has the staff VLAN, named as the records say",
+    causes: vlanCausesB,
+    ok: function () { return "The staff VLAN exists on the back switch, named as the records say."; },
+    rung1: function () { return "On the back switch: show vlan brief."; },
+    rung2: function () { return "Each switch keeps its own list of VLANs: a VLAN made on the closet switch doesn't exist on the new one until it's made there too."; }
+  }, {
+    id: "trunk", text: "A trunk joins the two switches, both ends set as the records say",
+    causes: trunkCausesB,
+    ok: function () { return "The run is a trunk at both ends, carrying only the staff VLAN, the records' unused VLAN native at both ends, each end described."; },
+    rung1: function () { return "show interfaces trunk at both switches, side by side; show interfaces (the trunk's port) switchport for how each end was set."; },
+    rung2: function () { return "A trunk carries the VLANs both ends allow. Its native VLAN is sent untagged, so both ends must agree on it, and one that carries nothing keeps strays out. An end left to negotiate trunks only while the other end asks."; }
+  }, {
+    id: "back", text: "The back PC is on the back switch, on the staff VLAN, online and printing",
+    causes: backCauses,
+    ok: function (sim) { return "The " + name(sim, "bpc") + " is on the back switch's records port, in the staff VLAN, with a staff address, online and printing."; },
+    rung1: function () { return "On the back switch: show vlan brief and show interfaces status. On the PC: ipconfig, then ping out and print."; },
+    rung2: function () { return "A PC moved to another switch is on whatever VLAN its new port is in, and only finds out when it asks again for an address."; }
+  }, {
+    id: "spares", text: "Nothing is left open: the new switch's spare ports and the closet's old port are shut",
+    causes: sparesCausesB,
+    ok: function () { return "The back switch's spare ports are shut, and the closet switch's old port is shut with its old description gone."; },
+    rung1: function () { return "show interfaces status on both switches: look for ports that are notconnect rather than disabled."; },
+    rung2: function () { return "An empty port that's open is a way in for whoever plugs into it. A port a device has left is a spare again."; }
+  }, {
+    id: "still", text: "Everything that worked still works",
+    causes: stillCausesB,
+    ok: function () { return "The other staff PCs, the printer, the guest network and the access point's page all still work."; },
+    rung1: function () { return "Ping out from the other PCs and the visitor's phone; open the access point's page from the manager's PC."; },
+    rung2: function () { return "Changing the closet switch can break what was already on it: the trunk to the router carries the staff and guest VLANs, and nothing about it needs to change."; }
+  }, {
+    id: "bswsaved", text: "The back switch's setup survives a power cut",
+    causes: function (sim) { return [C("box", sim.d.bsw.boxed, "The back switch is still in its box", "It's out of its box.", "The back switch is still in its box.")].concat(savedCauses(sim, "bsw")); },
+    ok: function () { return "What's running on the back switch is saved."; },
+    rung1: function () { return "On the back switch: compare show running-config with show startup-config."; },
+    rung2: function () { return "Each switch keeps its own startup configuration: saving one saves nothing on the other."; }
+  }, {
+    id: "swsaved", text: "The closet switch's setup survives a power cut",
+    causes: swSavedCauses,
+    ok: function () { return "What's running on the closet switch is saved."; },
+    rung1: function () { return "On the closet switch: compare show running-config with show startup-config."; },
+    rung2: function () { return "Each switch keeps its own startup configuration: saving one saves nothing on the other."; }
+  }],
+  solve(v, sim) {
+    const p = v.plan, S = staff(v), N = p.vlans.native, T = p.trunk, t = function (l) { return { t: "cmd", dev: "tech", line: l, cli: true }; };
+    const runs = sim ? sim.net.extra.runs || 0 : 9;   /* runs are numbered in the order they're laid: SB-J1 to SB-J3 laid nine, the last the console to the router */
+    return [{ t: "place", dev: "bsw", room: "back" }, { t: "pull", cable: "c-msw-bpc" },
+      { t: "lay", a: E("msw", T.closet), b: E("bsw", T.back) }, { t: "lay", a: E("bpc", "NIC"), b: E("bsw", p.backPort) },
+      { t: "pull", cable: "c-console-" + runs }, { t: "place", dev: "tech", room: "back" }, { t: "lay", a: E("tech", "USB-C"), b: E("bsw", "CONSOLE") },
+      t(""), t("enable"), t("configure terminal"), t("hostname " + p.bswHost), t("enable secret " + p.swSecret), t("line console 0"), t("password " + p.swConsole), t("login"), t("exit"),
+      t("vlan " + S.id), t("name " + S.name), t("exit"),
+      t("interface gi0/" + p.backPort), t("description " + p.desc["4"]), t("switchport mode access"), t("switchport access vlan " + S.id),
+      t("interface gi0/" + T.back), t("description " + T.backDesc), t("switchport mode trunk"), t("switchport trunk allowed vlan " + S.id), t("switchport trunk native vlan " + N.id),
+      t("interface range gi0/2 - 23"), t("shutdown"), t("interface range gi0/25 - 28"), t("shutdown"), t("end"), t("copy running-config startup-config"), t(""),
+      { t: "pull", cable: "c-console-" + (runs + 3) }, { t: "place", dev: "tech", room: "closet" }, { t: "lay", a: E("tech", "USB-C"), b: E("msw", "CONSOLE") },   /* the trunk, the PC's run, then the console */
+      t(""), t(p.swConsole), t("enable"), t(p.swSecret), t("configure terminal"),
+      t("interface gi0/" + T.closet), t("description " + T.closetDesc), t("switchport mode trunk"), t("switchport trunk allowed vlan " + S.id), t("switchport trunk native vlan " + N.id), t("no shutdown"),
+      t("interface gi0/4"), t("no description"), t("shutdown"), t("end"), t("copy running-config startup-config"), t(""),
+      { t: "cmd", dev: "bpc", line: "ipconfig /renew" }];
+  },
+  answer(v) {
+    const p = v.plan, S = staff(v), N = p.vlans.native, T = p.trunk;
+    return ["Place the back switch on its shelf in the back room. Pull the back PC's long run; lay the closet switch's port " + T.closet + " to the back switch's port " + T.back + ", and the back PC to the back switch's port " + p.backPort + ".",
+      "Take your laptop to the back room, console cable to the back switch: hostname " + p.bswHost + ", enable secret and console password (the business's), vlan " + S.id + " name " + S.name + ".",
+      "Its port " + p.backPort + ": description " + p.desc["4"] + ", switchport mode access, switchport access vlan " + S.id + ". Its port " + T.back + ": description " + T.backDesc + ", switchport mode trunk, switchport trunk allowed vlan " + S.id + ", switchport trunk native vlan " + N.id + ". Shut ports 2 to 23 and 25 to 28; save.",
+      "Back in the closet, on the closet switch: interface gi0/" + T.closet + ": description " + T.closetDesc + ", switchport mode trunk, switchport trunk allowed vlan " + S.id + ", switchport trunk native vlan " + N.id + ", no shutdown. interface gi0/4: no description, shutdown. Save.",
+      "On the back PC: ipconfig /renew."];
+  },
+  summary(v, sim) {
+    const p = v.plan, S = staff(v), N = p.vlans.native;
+    return ["The back switch " + BSW(sim).hostname + " is on its shelf in " + roomOf(sim, "back") + ", locked with the business's passwords, its spare ports shut.",
+      "One trunk joins it to the closet switch, carrying only the staff VLAN (" + S.id + "), with VLAN " + N.id + " native at both ends.",
+      "The " + name(sim, "bpc") + " is on it, in the staff VLAN, online and printing; the closet switch's old port is shut. Both switches are saved."];
+  }
+};
+
+export const BUSINESS_JOBS = [SB1, SB2, SB3, SB4];

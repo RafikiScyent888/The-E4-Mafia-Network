@@ -89,6 +89,12 @@ test("ports: shut and no shut, a forced speed the far end doesn't match, descrip
   assert.match(type(S, ["show interfaces status | include Gi0/2 "]).all[0], /Front desk printer\s+connected/);
   type(S, ["configure terminal", "interface range gi0/13 - 24", "shutdown", "end"]);
   assert.equal(Object.keys(sw.ports).filter((n) => sw.ports[n].shutdown).length, 12);
+  /* a list: each part names its own type; a single port is a part too */
+  type(S, ["configure terminal", "interface range gi0/3 - 4 , gi0/7, gi0/25 - 28", "shutdown", "end"]);
+  assert.deepEqual(["3", "4", "7", "25", "26", "27", "28"].map((k) => sw.ports["GigabitEthernet0/" + k].shutdown), [true, true, true, true, true, true, true]);
+  assert.equal(Object.keys(sw.ports).filter((n) => sw.ports[n].shutdown).length, 19);
+  type(S, ["configure terminal"]);
+  for (const bad of ["interface range gi0/3 - 4 , 7", "interface range gi0/3 - 4 ,", "interface range gi0/9 - 5", "interface range gi0/27 - 29"]) assert.match(C.exec(S, bad).out[0], /Invalid input/, bad);
 });
 
 test("the switch's own address goes on VLAN 1; SSH needs a name and a domain before its keys", () => {

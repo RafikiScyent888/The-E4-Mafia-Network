@@ -2015,7 +2015,10 @@ the plan: SB-J4 to SB-J10, then the 15 tickets, then Levels 4 and 5).
       models plants each run in a throwaway copy.
   - **Totals before going live:** `npm test` 338 of 338; `node tools/drive.mjs`
     in full 3,735 checks (`ONLY=business` 274); `node tools/models.mjs` 188
-    checks. One run of `node tools/models.mjs` alongside the full drive failed
+    checks; AAA on painted pixels, all 195 states and 445,642 text runs passing
+    (in four parts, two at a time, each under the two-hour limit for a
+    background run; SB-J4's 9 states measured again after the last drawing
+    change). One run of `node tools/models.mjs` alongside the full drive failed
     HOME-05's DS blink (it samples 12 times, 230 ms apart, and a loaded machine
     stalls the render loop); run alone it passed.
 - `tools/wip/`: `sb4net.mjs` (the trunk by hand), `sb4cases.mjs` (what each

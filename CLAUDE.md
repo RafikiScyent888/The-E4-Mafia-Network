@@ -1892,18 +1892,26 @@ Mason's hints pointing at it).
     injector and the manager's PC; the visitor's phone sits clear of the printer's
     address (the drive found both collisions, the second only with easier reading
     on).
-- **Checks so far:** `npm test` (`tests/business-page.test.js`: the browser, the
-  phone, the ring, the DHCP trap's hints (failing on the old ones); 10 plants in a throwaway copy, all caught once two
-  gaps were closed: the no-change check now covers each computer's ARP table and
-  turns, and a house's and an office's PCs are held to having no browser).
-  `ONLY=business JOB=SB-J3 node tools/drive.mjs`: 74 checks on three businesses,
-  every step through the page (the address read from the router, the page opened
-  in the browser, a password too short refused, the network saved, a wrong
-  password on the phone refused, both drawings in both fonts).
-- **Still to do before going live:** AAA on the 8 new "business: SB-J3" states;
-  `ONLY=business node tools/models.mjs` (the ring sampled on the ring: blue, amber,
-  off, and blue with nothing set up); `python3 tools/plants-business-page.py` (9
-  page plants); then the full drive, AAA and models once more, and merge.
+- **Checks:**
+  - `npm test` 335 of 335. `tests/business-page.test.js`: the browser, the phone,
+    the ring, the DHCP trap's hints (failing on the old ones); 10 plants in a
+    throwaway copy, all caught once two gaps were closed (the no-change check now
+    covers each computer's ARP table and turns, and a house's and an office's PCs
+    are held to having no browser).
+  - `ONLY=business JOB=SB-J3 node tools/drive.mjs`: 74 checks on three
+    businesses, every step through the page: the address read from the router,
+    the page opened in the browser, a password too short refused, the network
+    saved, a wrong password on the phone refused, both drawings in both fonts.
+    `python3 tools/plants-business-page.py`: 9 page plants, each run in a
+    throwaway copy through that drive, all caught.
+  - `ONLY=business node tools/models.mjs` 33: the ring sampled on the ring (blue
+    broadcasting, amber with its port shut, dark unplugged, blue with nothing set
+    up) and the plug out of ETH once unplugged. It found the plug never moving
+    (the port was listed as "ETH (PoE IN)", the model's is "ETH"); a ring planted
+    to ignore the simulation is caught.
+  - AAA on the 8 "business: SB-J3" states, 23,668 text runs, all passing. It found
+    the access point's tile shadowing "SHOP FLOOR" on the plan on a phone with
+    easier reading on (6.04:1); its spot is lower now.
 - `tools/wip/`: scripts used while building (run from the repo root): `sbrun.mjs`,
   `sb3net.mjs`, `sb3page.mjs` (SB-J3's page parts in Node), `l3geo.mjs`,
   `l3shot.mjs`, `rtr3d.mjs`. Not part of the site.

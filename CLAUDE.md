@@ -1859,6 +1859,12 @@ Mason's hints pointing at it).
 - **SB-J3** (js/build/business.js): 12 lines; the VLAN, subinterface and pool
   checks shared with SB-J2. Tempting wrong ways each fail their own line; other
   right ways pass (`tests/business-jobs.test.js`).
+  - **Mason on the DHCP trap:** with the visitor joined but no address, the
+    visitor line's rung 1 points at what's applied where the guests' traffic comes
+    in and what it has counted (`show ip interface`, `show access-lists`); rung 2
+    gives the principle (a phone with no address asks with a broadcast from
+    0.0.0.0 to UDP port 67; an access list ends with a deny you never see). Neither
+    names the list, the line to add or any address; otherwise the general hints.
 - **The page:**
   - **A web browser on every business PC** (`browse` in js/net/pages.js, the
     pane in js/desk/window.js): an address bar, then the page or the browser's own
@@ -1886,8 +1892,8 @@ Mason's hints pointing at it).
     injector and the manager's PC; the visitor's phone sits clear of the printer's
     address (the drive found both collisions, the second only with easier reading
     on).
-- **Checks so far:** `npm test` 334 of 334 (`tests/business-page.test.js`: the
-  browser, the phone, the ring; 10 plants in a throwaway copy, all caught once two
+- **Checks so far:** `npm test` (`tests/business-page.test.js`: the browser, the
+  phone, the ring, the DHCP trap's hints (failing on the old ones); 10 plants in a throwaway copy, all caught once two
   gaps were closed: the no-change check now covers each computer's ARP table and
   turns, and a house's and an office's PCs are held to having no browser).
   `ONLY=business JOB=SB-J3 node tools/drive.mjs`: 74 checks on three businesses,

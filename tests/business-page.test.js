@@ -99,3 +99,18 @@ test("the access point's light ring follows the simulation, and its words say th
     assert.match(physicalState(J.sim, "ap").says[0], /amber: it has power, but no link/);
   }
 });
+
+test("the DHCP trap: a guests' access list with no DHCP line leaves the visitor with no address, and Mason's hints point there", () => {
+  for (const s of seeds.slice(0, 12)) {
+    const J = B.open(SB3, s), p = J.v.plan, sol = SB3.solve(J.v, J.sim).filter((a) => !(a.t === "cmd" && /eq bootps$/.test(a.line)));
+    for (const a of sol) B.act(J, a);
+    const a = J.sim.addr("guest"), q = SB3.reqs.find((r) => r.id === "visitor"), c = B.evaluate(q, J.sim, J.v);
+    assert.ok(!a || a.kind === "apipa", "no address for the visitor, seed " + s);
+    assert.equal(c.real && c.real.id, "addr", "the line says it joined but got no address, seed " + s);
+    const r1 = q.rung1(J.v, J.sim), r2 = q.rung2(J.v, J.sim);
+    assert.match(r1, /show access-lists/); assert.match(r2, /UDP port 67/);
+    for (const x of [p.guestAcl, "bootps", "permit", p.guestPw, p.vlans.guest.net]) assert.ok(r1.indexOf(x) < 0 && r2.indexOf(x) < 0, "a hint names " + x + ", seed " + s);
+    /* with the line in, the hints go back to the general ones */
+    const K = solved(s); assert.doesNotMatch(q.rung1(K.v, K.sim), /access-lists/);
+  }
+});

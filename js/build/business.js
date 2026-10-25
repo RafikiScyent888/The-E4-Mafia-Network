@@ -340,6 +340,8 @@ const SB2 = {
 };
 
 /* ---------------------------------------------------------------- SB-J3: guest Wi-Fi on a ceiling access point */
+/* the visitor's phone joined, with no address to show for it */
+const noLease = function (sim) { const l = sim.wifiLink("guest"), a = sim.addr("guest"); return !!(l && l.connected) && (!a || a.kind === "apipa"); };
 const guest = function (v) { return VL(v, "guest"); };
 const roomOf = function (sim, r) { return "the " + String(sim.net.roomNames[r] || r).replace(/^[A-Z](?=[a-z])/, function (m) { return m.toLowerCase(); }); };
 const apAddr = function (sim) { const a = sim.on("ap") && sim.addr("ap"); return a && a.kind !== "apipa" ? a.ip : null; };
@@ -496,8 +498,9 @@ const SB3 = {
     id: "visitor", text: "The visitor's phone joins the guest network and gets online",
     causes: visitorCauses,
     ok: function () { return "The visitor's phone is on the guest network, online, names and all."; },
-    rung1: function () { return "Open the visitor's phone: its Wi-Fi tab lists the networks it can hear."; },
-    rung2: function () { return "A phone joins a secured network with its password, then asks for an address on whatever network that puts it on."; }
+    /* joined but no address (the DHCP trap the owner kept, 25 October 2026): the hints point at what the guests' first message meets */
+    rung1: function (v, sim) { return noLease(sim) ? "The phone's first message goes in at the router's guest subinterface: look at what's applied there, and what it has counted (show ip interface, show access-lists)." : "Open the visitor's phone: its Wi-Fi tab lists the networks it can hear."; },
+    rung2: function (v, sim) { return noLease(sim) ? "A phone with no address asks for one with a broadcast from 0.0.0.0 to UDP port 67. Anything checking what comes in from the guests sees that request before any other traffic, and an access list ends with a deny you never see." : "A phone joins a secured network with its password, then asks for an address on whatever network that puts it on."; }
   }, {
     id: "apart", text: "Guests can't reach the staff PCs, the printer, the switch or the access point's page",
     causes: apartCauses,

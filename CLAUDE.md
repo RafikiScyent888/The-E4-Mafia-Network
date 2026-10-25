@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (25 October 2026): Level 3 (the small business) goes live stage by stage: stage 1 (the business, its router and switch on the page, work orders SB-J1 and SB-J2) and stage 2 (SB-J3, guest Wi-Fi on a ceiling access point: the access point's page through a business PC's web browser, the visitor's phone, the ring in 3D) are live; the level opens once the small office is finished, with `planned: 25` until all its work orders and tickets exist. See "Level 3, the small business" below.**
+**Status (25 October 2026): Level 3 (the small business) goes live stage by stage: stage 1 (the business, its router and switch on the page, work orders SB-J1 and SB-J2) and stage 2 (SB-J3, guest Wi-Fi on a ceiling access point: the access point's page through a business PC's web browser, the visitor's phone, the ring in 3D) and stage 3 (SB-J4, the back of house on its own switch over a trunk with its allowed list and native VLAN) are live; the level opens once the small office is finished, with `planned: 25` until all its work orders and tickets exist. See "Level 3, the small business" below.**
 **Status (19 October 2026): Level 2 (the small office) is complete and live: the level lock, work orders SO-J1 to SO-J10, tickets SO-01 to SO-15 with the office's records on each, the managed switch, the closet rack and patch panel, SFP modules and fibre, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05", "Level 2, tickets SO-06, SO-07 and SO-09", "Level 2, ticket SO-08", "Level 2, ticket SO-10", "Level 2: the office's records on office tickets; tickets SO-11 to SO-15" and "Level 2: work orders SO-J6 to SO-J10, the small office complete" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
 from the Under the Hood tile (decision 6). See "The real site" below. The owner, 11
@@ -1986,6 +1986,38 @@ the plan: SB-J4 to SB-J10, then the 15 tickets, then Levels 4 and 5).
   carried to the back room (right of the back PC's line, its name to its
   right): at its closet spot its console line to the back switch was too short
   to carry both port names, and "USB-C" sat on "Back switch".
+- **Checks:**
+  - `tests/business-jobs.test.js`: SB-J4's tempting wrong ways each fail their
+    own line for their own cause, and other right ways pass (one range with a
+    comma, names spelled out, `switchport nonegotiate` at both ends, the PC's
+    port left to default, no renew). The help checks now cover the back
+    switch's name, the trunk's descriptions and the native VLAN.
+    `tests/business-sim.test.js`: the refusals' wording. `tests/office.test.js`:
+    range lists.
+  - `ONLY=business JOB=SB-J4 node tools/drive.mjs`: 80 checks on three
+    businesses, every step through the page. They cover the closet refused for
+    the back switch, the console cable refused from the closet (1.8 m),
+    `Switch>` from the box, the back switch taking every line, the closet's
+    `show interfaces trunk`, the back PC pinging out, and both drawings in both
+    fonts, with your laptop at the back switch and when it's done.
+  - The drive's drawing check now also fails on two port dots on each other,
+    and on a port name or dot on another cable's line (each line, name and dot
+    carries its cable's id).
+  - `ONLY=business node tools/models.mjs`: the back switch's lights and plugs
+    as the simulation says, done and part way (port 24 dark while the closet
+    end is shut), the lower row read from its own view.
+  - Plants, each shown to fail:
+    - `python3 tools/plants-business-node.py`: 13, all caught (one missed at
+      first, the walk-through's console numbers, until the first test played
+      walk-throughs as written).
+    - `python3 tools/plants-business-page.py SB-J4`: 6 page plants, all caught.
+    - `python3 tools/plants-business-models.py`: 4, all caught. The page and
+      models plants each run in a throwaway copy.
+  - **Totals before going live:** `npm test` 338 of 338; `node tools/drive.mjs`
+    in full 3,735 checks (`ONLY=business` 274); `node tools/models.mjs` 188
+    checks. One run of `node tools/models.mjs` alongside the full drive failed
+    HOME-05's DS blink (it samples 12 times, 230 ms apart, and a loaded machine
+    stalls the render loop); run alone it passed.
 - `tools/wip/`: `sb4net.mjs` (the trunk by hand), `sb4cases.mjs` (what each
   tempting wrong way fails), `sb4shot.mjs` (both drawings at three points, the
   back switch's front), `ray24.mjs` (what sits between the camera and a port's

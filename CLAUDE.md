@@ -1687,7 +1687,7 @@ business is still being built.
     The plants found two gaps in the tests, both closed: keys travelling in a
     copy into startup, and a cord into an empty back port of the panel.
 
-## Level 3, the small business: groundwork (branch `save/level3`, not live)
+## Level 3, the small business: groundwork (stage 1 live 25 October 2026)
 
 The owner, 19 October 2026: **"Do 3, then 4, and 5."** The Network+ (V9)
 objectives were read from the doc the same day (unchanged) and shown to the
@@ -1727,9 +1727,9 @@ piece node-tested (`tests/business-cli.test.js`, `tests/business-sim.test.js`;
 - **Commands** (`cmd.js`): the console, SSH and Telnet reach the router; pings
   through it come back with the TTL one less and count on access list lines and
   NAT translations; tracert through it, blocked or not.
-- **Before going live**, the full Level 2 drive and AAA must be run again on
-  this branch: it changes the switch's parser and the simulation the small
-  office runs on.
+- **Before going live**, the full Level 2 drive and AAA had to be run again on
+  this branch, since it changes the switch's parser and the simulation the small
+  office runs on. Done for stage 1, 25 October 2026 (below).
 - **The owner's answers, 19 October 2026:**
   - The photographs (the router's front in a rack, a sharper copy; the access
     point on its ceiling plate) gave the models `businessRouter` and `ceilingAP`
@@ -1811,6 +1811,32 @@ piece node-tested (`tests/business-cli.test.js`, `tests/business-sim.test.js`;
   the router's Lights empty, the home router's icon, the colliding layout, a
   house's rooms offered, the provider's router never collected; in 3D, every port
   lit, the power light dark, no plugs drawn. Each failed as it should.
+
+### Level 3, stage 1: finishing checks and two fixes (25 October 2026)
+
+- **Port dots kept off names.** With easier reading on, port 1's own dot on the
+  business's logical diagram sat on the bottom of its "1" (AAA 4.98:1, SB-J1 and
+  SB-J2 done): the larger font reached down to the dot. A port's name is now
+  placed clear of its own dot and every dot already drawn, and its dot clear of
+  every name already placed; a name on its line moves on past its dot; a dot with
+  no name slides off port names. Dots are measured as painted: a round dot 7 from
+  its middle (6 and its 1 ring), a diamond 9.5. A first version measured them a
+  unit bigger and pushed SO-J10's "CONSOLE" off the diagram, which the full drive
+  caught; at the painted size it sits where it always did.
+- **The drive's drawing check** (`labelsClear` in `tools/drive.mjs`) now finds a
+  dot on any name, and `dysClear` measures both drawings of every finished office
+  and business work order again with easier reading on. Both failed on the old
+  code, in both fonts.
+- **A link through a PoE injector** (found building stage 2, fixed here first:
+  Level 1's porch camera sits behind one). The simulation joined the cables either
+  side of an injector checking only the device-side cable, so a shut switch port,
+  or a plug out on the switch side, still let traffic through. The injector's link
+  now sees the far port too (`cableUp`), and a path through it is up only if every
+  cable on it is (`edges`). Tested both ways in `tests/business-sim.test.js`
+  (failing before the fix).
+- **Totals before going live:** `npm test` 327 of 327; `node tools/drive.mjs`
+  in full 3,591 checks (every level; `ONLY=office` 647 and `ONLY=business` 130 of
+  them, both drawings of every finished work order in both fonts).
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

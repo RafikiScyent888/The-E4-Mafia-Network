@@ -160,9 +160,9 @@ export function drawLogical(svg, sim, o) {
         const tiles = ids.map(function (id) { return { x: P[id].x - R, y: P[id].y - R, w: 2 * R, h: 2 * R }; });
         /* the dots already drawn, and this port's own: a dot is drawn over whatever is under it, so neither may sit on the name's plate
            (with easier reading on, port 1's own dot sat on the bottom of its "1") */
-        const dots = [].slice.call(gp.querySelectorAll(".pd")).map(function (x) { const cx = x.hasAttribute("cx") ? +x.getAttribute("cx") : +x.getAttribute("x") + 6, cy = x.hasAttribute("cy") ? +x.getAttribute("cy") : +x.getAttribute("y") + 6; return { x: cx - 9, y: cy - 9, w: 18, h: 18 }; });
+        const dots = [].slice.call(gp.querySelectorAll(".pd")).map(function (x) { const round = x.hasAttribute("cx"), cx = round ? +x.getAttribute("cx") : +x.getAttribute("x") + 6, cy = round ? +x.getAttribute("cy") : +x.getAttribute("y") + 6, r = round ? 7 : 9.5; return { x: cx - r, y: cy - r, w: 2 * r, h: 2 * r }; });   /* as painted: a dot 6 across its middle and its ring 1 more; a diamond reaches 8.5 and its ring 1 more */
         const plate = function () { let b; try { b = t.getBBox(); } catch (er) { return null; } return b.width ? { x: b.x - 4, y: b.y - 2, width: b.width + 8, height: b.height + 4 } : null; };
-        const dotAt = function (q) { return { x: q[0] - 8, y: q[1] - 8, w: 16, h: 16 }; };
+        const dotAt = function (q) { const r = l.up ? 7 : 9.5; return { x: q[0] - r, y: q[1] - r, w: 2 * r, h: 2 * r }; };
         const onDot = function (q) { const pb = plate(); return !!pb && (ov(pb, dotAt(q)) || dots.some(function (z) { return ov(pb, z); })); };
         const put = function (o, flip) {
           const qx = D.x + dx2 * o, qy = D.y + dy2 * o; let tx, ty, anc;

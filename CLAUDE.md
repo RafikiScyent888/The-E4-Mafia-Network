@@ -1968,6 +1968,13 @@ the plan: SB-J4 to SB-J10, then the 15 tickets, then Levels 4 and 5).
     and each dot off every dot already drawn. With your laptop back in the
     closet, the trunk's "23" sat just under the console line and the reception
     PC's "1" on it, so either read as the console's.
+    - Where lines crowd too close for that, it relaxes step by step. First it
+      looks in its own half of its line clear of every name, tile and dot. If
+      that half is all taken, it looks further along its line, its dot still
+      before the far end's own. Only then does it use the default spot.
+    - The first full drive found the printer's "3" on the reception PC's "1"
+      at the closet switch's corner in SB-J1 to SB-J3. The "1", kept off the
+      printer's line, had taken the spot the "3" fell back to.
   - **The managed switch's 3D model has a "Lower row lights" view.** The lower
     row's jacks are upside down with their lights under the plug, so from above
     a plugged port's lights hide behind its own plug, as on the real thing
@@ -1982,7 +1989,8 @@ the plan: SB-J4 to SB-J10, then the 15 tickets, then Levels 4 and 5).
 - `tools/wip/`: `sb4net.mjs` (the trunk by hand), `sb4cases.mjs` (what each
   tempting wrong way fails), `sb4shot.mjs` (both drawings at three points, the
   back switch's front), `ray24.mjs` (what sits between the camera and a port's
-  light). Not part of the site.
+  light), `l3labels.mjs` (a finished business job's port names as placed, and
+  a picture). Not part of the site.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

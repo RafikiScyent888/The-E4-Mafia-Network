@@ -167,7 +167,7 @@ export function drawLogical(svg, sim, o) {
     [[l.a, 1, l.pa, A], [l.b, -1, l.pb, B]].forEach(function (e) {
       const D = e[3], dx2 = ux * e[1], dy2 = uy * e[1];
       let off = (dy2 > 0.5 ? (below(e[0]) ? R + 56 : R + 24) : R + 12) + (k && deg[e[0]] > 2 ? 22 : 0);   /* the second cable's port on a busy device: further along, clear of the first's */
-      let px = D.x + dx2 * off, py = D.y + dy2 * off;
+      let px = D.x + dx2 * off, py = D.y + dy2 * off; const off0 = off;
       for (let g = 0; (onLabel(px, py) || (!e[2] && onPortName(px, py)) || onDots(px, py, l.up) || dotOnLine(px, py)) && g < 40 && off + 4 < L / 2; g++) { off += 4; px = D.x + dx2 * off; py = D.y + dy2 * off; }   /* slide along its line until it's clear of every label and every dot (a dot with no name: of every port name too) */
       if (e[2]) {
         /* the port's name, measured as drawn: where the near end's rule puts it if that's clear (across: above the line, the far end's
@@ -191,10 +191,17 @@ export function drawLogical(svg, sim, o) {
           else { let side = Math.abs(dx2) < 0.2 ? 1 : Math.sign(dx2); if (flip) side = -side; tx = qx + side * 18; ty = qy + 5; anc = side > 0 ? "start" : "end"; }
           t.setAttribute("x", tx); t.setAttribute("y", ty); t.setAttribute("text-anchor", anc); return [qx, qy];
         };
-        const clear = function (q) { let b; try { b = t.getBBox(); } catch (er) { return true; } if (!b.width) return true; const d = dotAt(q), db = { x: d.x - 4, y: d.y - 2, width: d.w + 8, height: d.h + 4 }; return !onLabel(q[0], q[1]) && b.x >= -4 && b.x + b.width <= 828 && !boxes.some(function (z) { return ov(b, z); }) && !placed.some(function (z) { return ov(b, z) || ov(db, z); }) && !tiles.some(function (z) { return ov(b, z); }) && !onDot(q) && !onDots(q[0], q[1], l.up) && !dotOnLine(q[0], q[1]) && !onLine({ x: b.x + 1, y: b.y + 1, width: b.width - 2, height: b.height - 2 }); };
-        let at = null;
-        for (let o = off; o + 4 < L / 2 && !at; o += 8) for (const flip of [false, true]) { const q = put(o, flip); if (clear(q)) { at = q; break; } }
-        for (let o = off; o + 4 < L / 2 && !at; o += 8) { const q = put(o, "on"); if (clear(q)) at = q; }   /* neither side clear anywhere: on the line itself */
+        const clear = function (q) { let b; try { b = t.getBBox(); } catch (er) { return true; } if (!b.width) return true; const d = dotAt(q), db = { x: d.x - 4, y: d.y - 2, width: d.w + 8, height: d.h + 4 }; return !onLabel(q[0], q[1]) && b.x >= -4 && b.x + b.width <= 828 && !boxes.some(function (z) { return ov(b, z); }) && !placed.some(function (z) { return ov(b, z) || ov(db, z); }) && !tiles.some(function (z) { return ov(b, z); }) && !onDot(q) && !onDots(q[0], q[1], l.up) && (!strict || (!dotOnLine(q[0], q[1]) && !onLine({ x: b.x + 1, y: b.y + 1, width: b.width - 2, height: b.height - 2 }))); };
+        let at = null, strict = true;
+        /* first clear of every other cable's line too, in its own half of its line; where lines crowd too close for that (three meeting at
+           a switch's corner), clear of every name, tile and dot as before; and where a short line's half is all taken (its dot on the
+           switch's own name), further along its line, its dot still before the far end's own (the printer's "3" at the closet switch, 25 October 2026). A crowded corner never ends with one name on another */
+        for (const [st, from, to] of [[true, off, L / 2], [false, off0, L / 2], [false, off0, L - R - 26]]) {
+          strict = st;
+          for (let o = from; o + 4 < to && !at; o += 8) for (const flip of [false, true]) { const q = put(o, flip); if (clear(q)) { at = q; break; } }
+          for (let o = from; o + 4 < to && !at; o += 8) { const q = put(o, "on"); if (clear(q)) at = q; }   /* neither side clear anywhere: on the line itself */
+          if (at) break;
+        }
         if (!at) at = put(off, false);   /* nowhere clear: where the rule puts it */
         px = at[0]; py = at[1];
       }

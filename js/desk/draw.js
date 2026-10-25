@@ -133,6 +133,7 @@ export function drawLogical(svg, sim, o) {
   const boxes = [];
   gn.querySelectorAll(".nd").forEach(function (g) { const p = P[g.dataset.d]; g.querySelectorAll(".nl, .ns").forEach(function (t) { let b; try { b = t.getBBox(); } catch (e) { return; } if (b.width) boxes.push({ x: p.x + b.x, y: p.y + b.y, w: b.width, h: b.height }); }); });
   const onLabel = function (x, y) { return boxes.some(function (b) { return x + 9 > b.x - 3 && x - 9 < b.x + b.w + 3 && y + 9 > b.y - 3 && y - 9 < b.y + b.h + 3; }); };
+  const onPortName = function (x, y) { return [].slice.call(gp.querySelectorAll("text.pl")).some(function (t) { let b; try { b = t.getBBox(); } catch (er) { return false; } return x + 8 > b.x - 4 && x - 8 < b.x + b.width + 4 && y + 8 > b.y - 2 && y - 8 < b.y + b.height + 2; }); };
   const seen = {};
   for (const l of links) {
     const A0 = P[l.a], B0 = P[l.b]; if (!A0 || !B0) continue;
@@ -147,7 +148,7 @@ export function drawLogical(svg, sim, o) {
       const D = e[3], dx2 = ux * e[1], dy2 = uy * e[1];
       let off = (dy2 > 0.5 ? (below(e[0]) ? R + 56 : R + 24) : R + 12) + (k && deg[e[0]] > 2 ? 22 : 0);   /* the second cable's port on a busy device: further along, clear of the first's */
       let px = D.x + dx2 * off, py = D.y + dy2 * off;
-      for (let g = 0; onLabel(px, py) && g < 30 && off + 4 < L / 2; g++) { off += 4; px = D.x + dx2 * off; py = D.y + dy2 * off; }   /* slide along its line until it's clear of every label */
+      for (let g = 0; (onLabel(px, py) || (!e[2] && onPortName(px, py))) && g < 30 && off + 4 < L / 2; g++) { off += 4; px = D.x + dx2 * off; py = D.y + dy2 * off; }   /* slide along its line until it's clear of every label (a dot with no name: of every port name too) */
       if (e[2]) {
         /* the port's name, measured as drawn: where the near end's rule puts it if that's clear (across: above the line, the far end's
            below, so two never collide; up or down: beside it); else the other side of the line; else both again further along; else on the
@@ -157,14 +158,20 @@ export function drawLogical(svg, sim, o) {
         const ov = function (b, q) { return b.x < q.x + q.w && b.x + b.width > q.x && b.y < q.y + q.h && b.y + b.height > q.y; };
         const placed = [].slice.call(gp.querySelectorAll("text.pl")).filter(function (x) { return x !== t; }).map(function (x) { try { const b = x.getBBox(); return { x: b.x, y: b.y, w: b.width, h: b.height }; } catch (er) { return null; } }).filter(Boolean);
         const tiles = ids.map(function (id) { return { x: P[id].x - R, y: P[id].y - R, w: 2 * R, h: 2 * R }; });
+        /* the dots already drawn, and this port's own: a dot is drawn over whatever is under it, so neither may sit on the name's plate
+           (with easier reading on, port 1's own dot sat on the bottom of its "1") */
+        const dots = [].slice.call(gp.querySelectorAll(".pd")).map(function (x) { const cx = x.hasAttribute("cx") ? +x.getAttribute("cx") : +x.getAttribute("x") + 6, cy = x.hasAttribute("cy") ? +x.getAttribute("cy") : +x.getAttribute("y") + 6; return { x: cx - 9, y: cy - 9, w: 18, h: 18 }; });
+        const plate = function () { let b; try { b = t.getBBox(); } catch (er) { return null; } return b.width ? { x: b.x - 4, y: b.y - 2, width: b.width + 8, height: b.height + 4 } : null; };
+        const dotAt = function (q) { return { x: q[0] - 8, y: q[1] - 8, w: 16, h: 16 }; };
+        const onDot = function (q) { const pb = plate(); return !!pb && (ov(pb, dotAt(q)) || dots.some(function (z) { return ov(pb, z); })); };
         const put = function (o, flip) {
           const qx = D.x + dx2 * o, qy = D.y + dy2 * o; let tx, ty, anc;
-          if (flip === "on") { t.setAttribute("x", qx + dx2 * 20); t.setAttribute("y", qy + dy2 * 20 + 5); t.setAttribute("text-anchor", "middle"); return [qx, qy]; }   /* on its own line just past its dot, on its plate, like a label on the cable */
+          if (flip === "on") { t.setAttribute("text-anchor", "middle"); for (let s = 20; s <= 80; s += 4) { t.setAttribute("x", qx + dx2 * s); t.setAttribute("y", qy + dy2 * s + 5); if (!onDot([qx, qy])) break; } return [qx, qy]; }   /* on its own line just past its dot, on its plate, like a label on the cable */
           if (Math.abs(dy2) < 0.5) { tx = qx; ty = (e[1] === 1) !== flip ? qy - 15 : qy + 27; anc = dx2 > 0 ? "start" : "end"; }
           else { let side = Math.abs(dx2) < 0.2 ? 1 : Math.sign(dx2); if (flip) side = -side; tx = qx + side * 18; ty = qy + 5; anc = side > 0 ? "start" : "end"; }
           t.setAttribute("x", tx); t.setAttribute("y", ty); t.setAttribute("text-anchor", anc); return [qx, qy];
         };
-        const clear = function (q) { let b; try { b = t.getBBox(); } catch (er) { return true; } if (!b.width) return true; return !onLabel(q[0], q[1]) && b.x >= -4 && b.x + b.width <= 828 && !boxes.some(function (z) { return ov(b, z); }) && !placed.some(function (z) { return ov(b, z); }) && !tiles.some(function (z) { return ov(b, z); }); };
+        const clear = function (q) { let b; try { b = t.getBBox(); } catch (er) { return true; } if (!b.width) return true; const d = dotAt(q), db = { x: d.x - 4, y: d.y - 2, width: d.w + 8, height: d.h + 4 }; return !onLabel(q[0], q[1]) && b.x >= -4 && b.x + b.width <= 828 && !boxes.some(function (z) { return ov(b, z); }) && !placed.some(function (z) { return ov(b, z) || ov(db, z); }) && !tiles.some(function (z) { return ov(b, z); }) && !onDot(q); };
         let at = null;
         for (let o = off; o + 4 < L / 2 && !at; o += 8) for (const flip of [false, true]) { const q = put(o, flip); if (clear(q)) { at = q; break; } }
         for (let o = off; o + 4 < L / 2 && !at; o += 8) { const q = put(o, "on"); if (clear(q)) at = q; }   /* neither side clear anywhere: on the line itself */

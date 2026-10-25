@@ -156,6 +156,9 @@ export class Sim {
     if (ij) {  /* an injector passes the data pairs straight through: the link is end to end */
       const o = this.cableAt(ij.dev, POE_PAIR[ij.port]);   /* the cable in the same pair's other port */
       if (!o || o === c || !o.a.seated || !o.b.seated || o.cond === "crushed") return false;
+      const fe = o.a.dev === ij.dev ? o.b : o.a, fx = this.d[fe.dev];   /* and the port on the far side open: a shut switch or router port is no link, through the injector or not */
+      if (fx && fx.kind === "mswitch") { const p = fx.sw.ports[swPort(fe.port)]; if (!p || p.shutdown) return false; }
+      if (fx && fx.kind === "brouter") { const ph = RT_IF(fe.port); if (!ph || fx.sw.ifs[ph].shutdown) return false; }
       return [c.a, c.b, o.a, o.b].filter(function (e) { return e.dev !== ij.dev; }).every(function (e) { return this.on(e.dev); }, this);
     }
     return this.on(c.a.dev) && this.on(c.b.dev);
@@ -360,6 +363,7 @@ export class Sim {
       let c = c0;
       if (c0.kind === "cat6" && this.panelEnd(c0)) c = this.viaPanel(c0);   /* patched through a panel: one link, end to end */
       if (c && [c.a, c.b].some(function (x) { return this.d[x.dev] && this.d[x.dev].kind === "injector"; }, this)) { c = this.viaInjector(c); if (!c) continue; }   /* through a PoE injector too: it passes every frame, tagged or not */
+      if (c.via && c.via.some(function (id) { const k = this.cable(id); return !k || !this.cableUp(k); }, this)) continue;   /* a path is up only if every cable along it is: a shut switch port or a plug out on the far side of the injector stops it */
       if (c.via) { const k = c.via.slice().sort().join("+"); if (seen.has(k)) continue; seen.add(k); }
       this.linkEdges(c, e);
     }

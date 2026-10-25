@@ -176,6 +176,19 @@ test("a ceiling access point on a trunk: the staff network and the guest network
   assert.equal(lease(t, "phone"), "apipa", "VLAN 40 left off the access point's trunk port: the guest network has no way out");
   const u = new Sim(JSON.parse(JSON.stringify(n))); u.d.inj.power = false; cli(u, "msw", SWITCH); cli(u, "rtr", ROUTER);
   assert.equal(u.aps().filter((a) => a.id === "ap").length, 0, "no power down its cable: no Wi-Fi at all");
+  /* the far side of the injector down: nothing gets through it, though the access point still has power and still broadcasts */
+  const v = new Sim(JSON.parse(JSON.stringify(n))); cli(v, "msw", SWITCH.concat(["interface gi0/5", "switchport mode trunk", "switchport trunk allowed vlan 1,10,40", "shutdown"])); cli(v, "rtr", ROUTER);
+  v.apply({ t: "joinssid", dev: "phone", ssid: "CLINIC-GUEST" });
+  assert.equal(v.cableUp(v.cable("c-inj-out")), false, "the access point's switch port shut: no link at the access point, through the injector");
+  assert.notEqual(lease(v, "phone") && lease(v, "phone").slice(0, 8), "192.168.", "and no address for the phone");
+  const x = new Sim(JSON.parse(JSON.stringify(n))); cli(x, "msw", SWITCH.concat(["interface gi0/5", "switchport mode trunk", "switchport trunk allowed vlan 1,10,40"])); cli(x, "rtr", ROUTER);
+  x.cable("c-inj-in").b.seated = false;
+  x.apply({ t: "joinssid", dev: "phone", ssid: "CLINIC-GUEST" });
+  assert.ok(x.on("ap"), "the injector's DATA IN plug out: the access point still has power");
+  assert.equal(x.cableUp(x.cable("c-inj-out")), false, "but no link: the injector passes the data pairs straight through");
+  assert.notEqual(lease(x, "phone") && lease(x, "phone").slice(0, 8), "192.168.", "and no address for the phone");
+  /* and the far side's guard in the links themselves: the path through the injector is up only if every cable on it is */
+  assert.equal(x.edges().some((e) => e.indexOf("ap#v40") >= 0 && e.some((n) => /^msw/.test(n))), false, "no link edge joins the access point to the switch");
 });
 
 test("pings through the router: the TTL one less, Windows PCs still silent, the hit counts and NAT translations made", () => {

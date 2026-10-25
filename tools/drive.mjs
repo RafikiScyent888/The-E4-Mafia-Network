@@ -58,9 +58,22 @@ const labelsClear = (p, which) => p.evaluate((which) => {
   if (which === "net") {
     const names = [...svg.querySelectorAll("text.nl, text.ns")], tiles = [...svg.querySelectorAll("rect.tile")];
     names.forEach((t, i) => { off(t); tiles.forEach((o) => { if (o.parentNode !== t.parentNode && ov(box(t), box(o))) out.push('"' + t.textContent + '" on a tile'); }); names.slice(i + 1).forEach((o) => { if (o.parentNode !== t.parentNode && ov(box(t), box(o))) out.push('"' + t.textContent + '" on "' + o.textContent + '"'); }); });
+    /* and the port dots (25 October 2026): a dot is drawn over whatever is under it, so it never sits on a port name or a device's
+       name (with easier reading on, port 1's own dot sat on the bottom of its "1": AAA 4.98:1) */
+    const txt = [...svg.querySelectorAll("text.pl, text.nl, text.ns")];
+    svg.querySelectorAll(".pd").forEach((d) => { const b = box(d); txt.forEach((t) => { if (ov(b, box(t))) out.push('a port dot on "' + t.textContent + '"'); }); });
   }
   return { n: pl.length, out: out };
 }, which);
+/* both drawings again with easier reading on: its font is bigger, so names move (the drawings measure it as drawn), then off again */
+const dysClear = async (p, what) => {
+  await p.click("#dys"); await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(150);
+  await p.click("#vLog"); await p.waitForTimeout(60);
+  const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, what + "'s logical diagram with easier reading on: every name and port dot clear" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
+  await p.click("#vPhy"); await p.waitForTimeout(40);
+  const fp = await labelsClear(p, "plan"); check(fp.n > 0 && !fp.out.length, what + "'s floor plan with easier reading on: every name clear" + (fp.out.length ? " (" + fp.out.join("; ") + ")" : ""));
+  await p.click("#dys"); await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(100);
+};
 const T = (p, f) => p.evaluate(f);
 
 /* each ticket: what to look at, the fix through the page, the proof, and a tempting wrong fix */
@@ -1048,6 +1061,7 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
       const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished office's logical diagram: all " + pn.n + " port names on it, clear of every label, tile and other port name" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
       await p.click("#vPhy"); await p.waitForTimeout(40);
       const fp = await labelsClear(p, "plan"); check(fp.n > 0 && !fp.out.length, tag + "the finished office's floor plan: all " + fp.n + " names of devices and rooms on it, clear of each other and of every tile" + (fp.out.length ? " (" + fp.out.join("; ") + ")" : ""));
+      await dysClear(p, tag + "the finished office");
       await p.reload(); await p.waitForTimeout(350);
       check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)) && /done 1×|Done 1×/.test(await p.$eval('#queue [data-j="' + job + '"]', (n) => n.textContent)), tag + "still done after a reload, and the list counts it");
       if (job === "SO-J2") check(new RegExp("1 of " + LEVELS[1].jobs.length + " work orders done").test((await lv(p, 2)).text) && !/on the way/.test((await lv(p, 2)).text), tag + "the level counts its work orders, and says nothing more is coming (" + (await lv(p, 2)).text + ")");
@@ -1191,6 +1205,7 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished business's logical diagram: every port name and device name on it, clear of each other and every tile" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
       await p.click("#vPhy"); await p.waitForTimeout(40);
       const fp = await labelsClear(p, "plan"); check(fp.n > 0 && !fp.out.length, tag + "the finished business's floor plan: all " + fp.n + " names of devices and rooms on it, clear of each other and of every tile" + (fp.out.length ? " (" + fp.out.join("; ") + ")" : ""));
+      await dysClear(p, tag + "the finished business");
       await p.reload(); await p.waitForTimeout(350);
       check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)) && /done 1×|Done 1×/.test(await p.$eval('#queue [data-j="' + job + '"]', (n) => n.textContent)), tag + "still done after a reload, and the list counts it");
     } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }

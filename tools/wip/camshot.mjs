@@ -7,9 +7,9 @@ const pw = await import("/opt/node22/lib/node_modules/playwright/index.mjs"); co
 const B = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--headless=new", "--no-sandbox", "--use-gl=swiftshader", "--enable-unsafe-swiftshader"] });
 const ids = (process.argv[2] || "cam-ceil,cam-ceil-top,cam-wall").split(",");
 for (const id of ids) {
-  const ctx = await B.newContext({ viewport: { width: 1400, height: 1000 } }), p = await ctx.newPage(); p.on("pageerror", (e) => console.log("ERR", id, e.message)); p.on("console", (m) => { if (m.type() === "error") console.log("console", id, m.text()); });
+  const dpr = +(process.env.DPR || 1), ctx = await B.newContext({ viewport: { width: 1400, height: 1000 }, deviceScaleFactor: dpr }), p = await ctx.newPage(); p.on("pageerror", (e) => console.log("ERR", id, e.message)); p.on("console", (m) => { if (m.type() === "error") console.log("console", id, m.text()); });
   await p.goto("http://127.0.0.1:" + srv.address().port + "/preview/models.html#" + id); await p.waitForTimeout(6000);
-  await (await p.$("#view")).screenshot({ path: OUT + id + ".png" }); console.log("shot", id, await p.$eval("#name", (n) => n.textContent));
+  await (await p.$("#view")).screenshot({ path: OUT + id + (process.env.TAG || "") + ".png" }); console.log("shot", id, await p.$eval("#name", (n) => n.textContent));
   await ctx.close();
 }
 await B.close(); srv.close();

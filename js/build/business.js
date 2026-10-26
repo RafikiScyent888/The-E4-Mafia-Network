@@ -6,9 +6,10 @@
    devices and the network as they really are. Each line is an ordered list of
    causes, as on the other levels, so Mason's third rung can strike the ones
    the network has ruled out and leave two. None of it ever says what to type. */
-import { makeBusiness, addGuestKit, addBackSwitch } from "../net/business.js";
+import { makeBusiness, addGuestKit, addBackSwitch, addCameraKit } from "../net/business.js";
 import { Sim } from "../net/sim.js";
 import { exec } from "../net/cmd.js";
+import { browse } from "../net/pages.js";
 import { unsaved, pwOk, carries } from "../net/swcli.js";
 import { addrOf, rtStatus, poolFor, poolAddrs, aclVerdict, routes, netOf } from "../net/rtcli.js";
 import { online } from "./jobs.js";
@@ -208,7 +209,9 @@ const SB1 = {
 const VL = function (v, k) { return v.plan.vlans[k || "staff"]; };
 const staff = function (v) { return VL(v, "staff"); };
 const subName = function (v, k) { return v.plan.lanPort + "." + VL(v, k).id; };
-const PEOPLE = { staff: "staff", guest: "guests" };
+/* what a subinterface not set nat inside costs each VLAN, and each VLAN's name in a line's words (the cameras' VLAN, SB-J5) */
+const NAT_WHY = { staff: "so staff never get out", guest: "so guests never get out", cameras: "so nothing from outside is ever sent on to the cameras" };
+const W = function (k) { return k === "cameras" ? "cameras'" : k; };
 function vlanCauses(sim, v, k) {
   k = k || "staff";
   const sw = SW(sim), S = VL(v, k), vl = sw.vlans[S.id];
@@ -230,23 +233,27 @@ const vlanSub = function (R, v, k) {
 const staffSub = function (R, v) { return vlanSub(R, v, "staff"); };
 function subCauses(sim, v, k) {
   k = k || "staff";
-  const R = view(sim), S = VL(v, k), q = vlanSub(R, v, k), n = q || subName(v, k), f = q ? R.subs[q] : null, any = Object.keys(R.subs).find(function (z) { return R.subs[z].vlan === S.id; });
-  return [C("none", !f && !any, "The router has no subinterface for the " + k + " VLAN", "There's a subinterface for the " + k + " VLAN.", "show ip interface brief on the router: no " + n + "."),
-    C("other", !f && !!any, "The " + k + " VLAN's subinterface is on a port the switch isn't cabled to", "It's on the inside port.", "show ip interface brief: the " + k + " VLAN is on " + any + "."),
-    C("tag", !!f && f.vlan !== S.id, "The subinterface doesn't tag the " + k + " VLAN", "It tags the " + k + " VLAN.", "show running-config: " + n + (f && f.vlan ? " has encapsulation dot1Q " + f.vlan : " has no encapsulation line") + "."),
-    C("addr", !!f && f.vlan === S.id && (f.ip !== S.gw || f.mask !== v.plan.vmask), "Its address isn't the " + k + " network's gateway from the records", "Its address is the " + k + " gateway.", "show ip interface brief: " + n + " is " + (f && f.ip ? f.ip : "unassigned") + "."),
+  const R = view(sim), S = VL(v, k), q = vlanSub(R, v, k), n = q || subName(v, k), f = q ? R.subs[q] : null, any = Object.keys(R.subs).find(function (z) { return R.subs[z].vlan === S.id; }), w = W(k);
+  return [C("none", !f && !any, "The router has no subinterface for the " + w + " VLAN", "There's a subinterface for the " + w + " VLAN.", "show ip interface brief on the router: no " + n + "."),
+    C("other", !f && !!any, "The " + w + " VLAN's subinterface is on a port the switch isn't cabled to", "It's on the inside port.", "show ip interface brief: the " + w + " VLAN is on " + any + "."),
+    C("tag", !!f && f.vlan !== S.id, "The subinterface doesn't tag the " + w + " VLAN", "It tags the " + w + " VLAN.", "show running-config: " + n + (f && f.vlan ? " has encapsulation dot1Q " + f.vlan : " has no encapsulation line") + "."),
+    C("addr", !!f && f.vlan === S.id && (f.ip !== S.gw || f.mask !== v.plan.vmask), "Its address isn't the " + w + " network's gateway from the records", "Its address is the " + w + " gateway.", "show ip interface brief: " + n + " is " + (f && f.ip ? f.ip : "unassigned") + "."),
     C("shut", !!f && rtStatus(R, n)[1] !== "up", "The subinterface is down", "It's up.", "show ip interface brief: " + n + " is down."),
-    C("nat", !!f && f.nat !== "inside", "The subinterface isn't NAT's inside, so " + PEOPLE[k] + " never get out", "It's NAT's inside.", "show running-config: no ip nat inside on " + n + "."),
-    C("list", !!f && !RT(sim).nat.some(function (x) { return RT(sim).acls[x.list] && aclVerdict(RT(sim), x.list, { proto: "ip", src: S.net.replace(/\.0$/, ".50"), dst: "8.8.8.8" }).permit; }), "The NAT rule's access list doesn't take the " + k + " network", "The " + k + " network is translated too.", "show access-lists: the " + k + " addresses match no permit in NAT's list.")];
+    C("nat", !!f && f.nat !== "inside", "The subinterface isn't NAT's inside, " + NAT_WHY[k], "It's NAT's inside.", "show running-config: no ip nat inside on " + n + ".")].concat(
+    /* the cameras never go out through NAT's list: only their forwards are translated, and those are static */
+    k === "cameras" ? [] : [C("list", !!f && !RT(sim).nat.some(function (x) { return RT(sim).acls[x.list] && aclVerdict(RT(sim), x.list, { proto: "ip", src: S.net.replace(/\.0$/, ".50"), dst: "8.8.8.8" }).permit; }), "The NAT rule's access list doesn't take the " + k + " network", "The " + k + " network is translated too.", "show access-lists: the " + k + " addresses match no permit in NAT's list.")]);
 }
+/* a VLAN's pool: staff's and the guests' keep their first ten addresses back and hand out the provider's DNS servers; the
+   cameras' keep their first twenty back (their fixed addresses are among them) and need no DNS, since they never go out */
 function poolCauses(sim, v, k) {
   k = k || "staff";
-  const r = RT(sim), S = VL(v, k), q = Object.keys(r.pools).find(function (z) { return r.pools[z].network === S.net && r.pools[z].mask === v.plan.vmask; }), P = q ? r.pools[q] : null;
-  const A = q ? poolAddrs(r, q) : [], gwOut = A.indexOf(S.gw) >= 0 || A.some(function (ip) { return ip2n(ip) <= ip2n(S.gw) + 9; });
-  return [C("pool", !P, "The router has no pool for the " + k + " network", "There's a pool for the " + k + " network.", "show ip dhcp pool: nothing for " + S.net + "/24."),
-    C("gw", !!P && P.router[0] !== S.gw, "The " + k + " pool hands out the wrong gateway, or none", "It hands out the " + k + " gateway.", "The " + k + " pool's default-router is " + (P && P.router[0] || "not set") + "."),
-    C("dns", !!P && !(P.dns.length && P.dns.every(function (d) { return v.plan.dns.indexOf(d) >= 0; })), "The " + k + " pool hands out no DNS servers, or not the provider's", "It hands out the provider's DNS servers.", "The " + k + " pool's dns-server is " + (P && P.dns.join(" ") || "not set") + "."),
-    C("excl", !!P && gwOut, "The first ten " + k + " addresses (the gateway's and the gear's) aren't kept back", "The first ten are excluded.", "show ip dhcp pool: the " + k + " pool starts at its first address.")];
+  const r = RT(sim), S = VL(v, k), q = Object.keys(r.pools).find(function (z) { return r.pools[z].network === S.net && r.pools[z].mask === v.plan.vmask; }), P = q ? r.pools[q] : null, w = W(k);
+  const keep = k === "cameras" ? v.plan.camExcl : 10, kept = keep === 20 ? "twenty" : "ten";
+  const A = q ? poolAddrs(r, q) : [], gwOut = A.indexOf(S.gw) >= 0 || A.some(function (ip) { return ip2n(ip) <= ip2n(S.gw) + keep - 1; });
+  return [C("pool", !P, "The router has no pool for the " + w + " network", "There's a pool for the " + w + " network.", "show ip dhcp pool: nothing for " + S.net + "/24."),
+    C("gw", !!P && P.router[0] !== S.gw, "The " + w + " pool hands out the wrong gateway, or none", "It hands out the " + w + " gateway.", "The " + w + " pool's default-router is " + (P && P.router[0] || "not set") + ".")].concat(
+    k === "cameras" ? [] : [C("dns", !!P && !(P.dns.length && P.dns.every(function (d) { return v.plan.dns.indexOf(d) >= 0; })), "The " + k + " pool hands out no DNS servers, or not the provider's", "It hands out the provider's DNS servers.", "The " + k + " pool's dns-server is " + (P && P.dns.join(" ") || "not set") + ".")],
+    [C("excl", !!P && gwOut, k === "cameras" ? "The first twenty cameras' addresses (the gateway's and the cameras' fixed ones) aren't kept back" : "The first ten " + k + " addresses (the gateway's and the gear's) aren't kept back", "The first " + kept + " are excluded.", "show ip dhcp pool: the " + w + " pool starts " + (A.length && ip2n(A[0]) <= ip2n(S.gw) + keep - 1 ? "at " + A[0] : "at its first address") + ".")]);
 }
 const staffPoolCauses = function (sim, v) { return poolCauses(sim, v, "staff"); };
 function movedCauses(sim, v) {
@@ -728,4 +735,298 @@ const SB4 = {
   }
 };
 
-export const BUSINESS_JOBS = [SB1, SB2, SB3, SB4];
+/* ---------------------------------------------------------------- SB-J5: the cameras on their own VLAN, seen from outside */
+/* the owner's decisions (26 October 2026): the ceiling dome over the guests, the wall dome by the back door, a PoE injector each
+   (the ceiling camera's in the closet, the back door camera's in the back room), each camera's fixed address set on its own page,
+   and the test from outside on the manager's own phone, on mobile data */
+const cams = function (v) { return VL(v, "cameras"); };
+const camIp = function (v, c) { return cams(v).net.replace(/\.0$/, "." + c.host); };
+const CAM_ROOM = ["guest", "back"], INJ_ROOM = ["closet", "back"];
+const cap = function (s) { return s.charAt(0).toUpperCase() + s.slice(1); };
+const the = function (sim, id) { const x = sim.d[id]; return x.kind === "injector" ? "the injector labelled " + x.label.replace(/^.*, /, "") : "the " + name(sim, id); };   /* "the ceiling camera", "the back switch", "the injector labelled CAM-02" */
+const dark = function (sim, id) { return cap(the(sim, id)) + (sim.d[id].boxed ? " is still in its box." : "'s status light is dark."); };
+const spot = function (sim, k) { return k === 0 ? "on the ceiling in " + roomOf(sim, "guest") : "on the wall by the back door, in " + roomOf(sim, "back"); };
+/* a camera's run: its cable, the injector it comes from, and the switch and port that injector's data side lands on */
+function camPath(sim, c) {
+  const k = sim.cableAt(c.id, "LAN"), far = k && (k.a.dev === c.id ? k.b : k.a), inj = !!far && sim.d[far.dev].kind === "injector";
+  const out = { cable: k, far: far, inj: inj ? far.dev : null, up: null, sw: null, swPort: null };
+  if (inj) { const ci = sim.cableAt(far.dev, far.port === "PoE OUT" ? "DATA IN" : "PoE OUT"); out.up = ci ? (ci.a.dev === far.dev ? ci.b : ci.a) : null; }
+  else out.up = far;
+  if (out.up && sim.d[out.up.dev].kind === "mswitch" && /^\d+$/.test(out.up.port)) { out.sw = out.up.dev; out.swPort = out.up.port; }
+  return out;
+}
+function camCauses(sim, v, k) {
+  const c = v.plan.cams[k], x = sim.d[c.id], P = camPath(sim, c), mine = "cinj" + (k + 1), who = the(sim, c.id), room = sim.net.rooms[c.id];
+  const onOut = !!P.inj && P.far.port === "PoE OUT", fromSwitch = !!P.cable && !P.inj, fromDataIn = !!P.inj && P.far.port === "DATA IN", noAdapter = onOut && !sim.d[P.inj].power;
+  const tag = function (id) { return sim.d[id].label.replace(/^.*, /, ""); };   /* what's printed on an injector's label: CAM-01, CAM-02 */
+  return [C("box", x.boxed, cap(who) + " is still in its box", "It's out of its box.", cap(who) + " is still in its box."),
+    C("room", !x.boxed && room !== CAM_ROOM[k], "It isn't where the records put it, " + spot(sim, k), "It's " + spot(sim, k) + ".", cap(who) + " is in " + roomOf(sim, room) + "."),
+    C("cable", !x.boxed && !P.cable, "Nothing is plugged into it", "It's cabled.", "Nothing is plugged into " + who + "'s network lead."),
+    C("switch", fromSwitch, "Its cable comes straight from a port that gives no power: neither switch has PoE", "Its power comes from an injector.", cap(who) + "'s status light is dark; its cable goes straight to " + the(sim, P.far ? P.far.dev : c.sw) + "."),
+    C("datain", fromDataIn, "Its cable is in the injector's DATA IN: the power comes out of the other port", "It's on the injector's power side.", cap(who) + "'s status light is dark; its cable is in the injector's DATA IN."),
+    C("label", onOut && P.inj !== mine, "It's on the injector labelled for the other camera", "It's on its own injector.", cap(who) + "'s cable comes from the injector labelled " + (P.inj ? tag(P.inj) : "") + "."),
+    C("injroom", onOut && sim.net.rooms[P.inj] !== INJ_ROOM[k], "Its injector isn't where the records put it, in " + roomOf(sim, INJ_ROOM[k]), "Its injector is in " + roomOf(sim, INJ_ROOM[k]) + ".", "The injector labelled " + (P.inj ? tag(P.inj) : "") + " is in " + roomOf(sim, P.inj ? sim.net.rooms[P.inj] : INJ_ROOM[k]) + "."),
+    C("adapter", noAdapter, "Its injector's own power adapter isn't plugged in", "The injector has power.", "The injector's POWER light is off."),
+    C("power", !x.boxed && !!P.cable && !sim.on(c.id) && !fromSwitch && !fromDataIn && !noAdapter, "It gets no power down its cable", "It's powered over its cable.", cap(who) + "'s status light is dark."),
+    C("datain2", sim.on(c.id) && !!P.inj && !P.up, "Nothing is plugged into its injector's DATA IN: it has power but no network", "Its injector's data side is cabled.", cap(who) + "'s status light blinks; its injector's DATA IN is empty."),
+    C("where", sim.on(c.id) && !!P.up && P.up.dev !== c.sw, "Its injector's data side goes to " + the(sim, P.up ? P.up.dev : c.sw) + ", not " + the(sim, c.sw) + " the records give it", "It goes to " + the(sim, c.sw) + ".", "The injector's DATA IN goes to " + the(sim, P.up ? P.up.dev : c.sw) + "."),
+    C("port", !!P.swPort && P.sw === c.sw && P.swPort !== c.port, "It's on a port of " + the(sim, c.sw) + " the records keep for something else", "It's on the port the records give it.", cap(who) + "'s run is in " + the(sim, c.sw) + "'s port " + P.swPort + ".")];
+}
+function camVlanCauses(sim, v) {
+  const cv = cams(v), a = SW(sim).vlans[cv.id], b = BSW(sim).vlans[cv.id];
+  return [C("closet", !a, "The closet switch has no cameras' VLAN", "The closet switch has it.", "show vlan brief on the closet switch: no VLAN " + cv.id + "."),
+    C("cname", !!a && a.name !== cv.name, "The closet switch's cameras' VLAN isn't named as the records say", "It's named as the records say.", "show vlan brief on the closet switch: VLAN " + cv.id + " is " + (a ? a.name : "") + "."),
+    C("back", !b, "The back switch has no cameras' VLAN", "The back switch has it.", "show vlan brief on the back switch: no VLAN " + cv.id + "."),
+    C("bname", !!b && b.name !== cv.name, "The back switch's cameras' VLAN isn't named as the records say", "It's named as the records say.", "show vlan brief on the back switch: VLAN " + cv.id + " is " + (b ? b.name : "") + ".")];
+}
+/* each camera's port on its switch, as the records set it: the first camera whose port isn't, and what's wrong with it */
+function camPortCauses(sim, v) {
+  const cv = cams(v), rows = v.plan.cams.map(function (c) { const sw = sim.d[c.sw].sw, P = camPath(sim, c); return { c: c, sp: sw.ports[port(c.port)], cc: carries(sw, port(c.port), null), on: P.sw === c.sw && P.swPort === c.port }; });
+  const bad = function (r) { return !r.on || r.sp.shutdown || r.cc.untagged !== cv.id || r.sp.mode !== "access" || String(r.sp.desc || "").toUpperCase() !== r.c.desc; };
+  const r = rows.find(bad) || rows[0], at = the(sim, r.c.sw), who = the(sim, r.c.id), w = who + "'s port on " + at, dyn = /^dynamic/.test(r.sp.mode);   /* the port by whose it is: its number is the records' to give */
+  return [C("path", !r.on, cap(who) + "'s run isn't on its port yet", "Each camera's run is on its port.", cap(who) + "'s run doesn't reach " + at + "'s port " + r.c.port + "."),
+    C("shut", r.sp.shutdown, cap(w) + " is shut down, as every spare is", "Its port is open.", "show interfaces status on " + at + ": Gi0/" + r.c.port + " disabled."),
+    C("vlan", r.cc.untagged !== cv.id, cap(w) + " doesn't put it in the cameras' VLAN", "Its port is in the cameras' VLAN.", "show vlan brief on " + at + ": Gi0/" + r.c.port + " isn't in VLAN " + cv.id + "."),
+    C("mode", r.sp.mode !== "access", dyn ? cap(w) + " is left to negotiate: whoever unplugs the camera can plug in and ask it for a trunk" : cap(w) + " is set as a trunk, not an access port", "It's set as an access port.", "show interfaces Gi0/" + r.c.port + " switchport on " + at + ": administrative mode " + (dyn ? r.sp.mode : "trunk") + "."),
+    C("desc", String(r.sp.desc || "").toUpperCase() !== r.c.desc, cap(w) + " isn't described as the records say", "It's described as the records say.", "show interfaces status on " + at + ": Gi0/" + r.c.port + "'s name is " + (r.sp.desc || "blank") + ".")];
+}
+function camTrunkCauses(sim, v) {
+  const cv = cams(v), S = staff(v), L = trunkLink(sim), up = between(sim, "rtr", "msw"), uc = up ? carries(SW(sim), port(up.far), null) : null;
+  const has = function (c, id) { return !!c && c.mode === "trunk" && (c.tagged.indexOf(id) >= 0 || c.untagged === id); };
+  const lost = !!L && (!has(L.cc, S.id) ? ["closet switch", L.closet] : !has(L.bc, S.id) ? ["back switch", L.back] : null);
+  return [C("cable", !L, "No cable joins the closet switch to the back switch", "The two switches are cabled.", "Nothing from the closet switch reaches the back switch."),
+    C("closet", !!L && !has(L.cc, cv.id), "The closet switch's end of the trunk to the back switch doesn't carry the cameras' VLAN", "The closet end carries it.", "show interfaces trunk on the closet switch: VLAN " + cv.id + " isn't allowed and active on Gi0/" + (L ? L.closet : "") + "."),
+    C("back", !!L && !has(L.bc, cv.id), "The back switch's end of the trunk doesn't carry the cameras' VLAN", "The back end carries it.", "show interfaces trunk on the back switch: VLAN " + cv.id + " isn't allowed and active on Gi0/" + (L ? L.back : "") + "."),
+    C("staff", !!lost, "The trunk between the switches no longer carries the staff VLAN: its allowed list was replaced, not added to", "It still carries the staff VLAN.", "show interfaces trunk on the " + (lost ? lost[0] : "") + ": VLAN " + S.id + " isn't allowed and active on Gi0/" + (lost ? lost[1] : "") + "."),
+    C("uplink", !has(uc, cv.id), "The trunk to the router doesn't carry the cameras' VLAN", "The trunk to the router carries it.", "show interfaces trunk on the closet switch: VLAN " + cv.id + " isn't allowed and active on Gi0/" + (up ? up.far : "") + ".")];
+}
+/* each camera's fixed address, set on its own page: the first camera without the records' */
+const noCamLease = function (sim, c) { const f = sim.d[c.id].ifaces[0].cfg, a = sim.addr(c.id); return f.mode !== "static" && sim.on(c.id) && (!a || a.kind === "apipa"); };
+function camFixedCauses(sim, v) {
+  const cv = cams(v), rows = v.plan.cams.map(function (c) { return { c: c, f: sim.d[c.id].ifaces[0].cfg, a: sim.on(c.id) ? sim.addr(c.id) : null }; });
+  const bad = function (r) { return r.f.mode !== "static" || r.f.ip !== camIp(v, r.c) || r.f.mask !== v.plan.vmask || r.f.gw !== cv.gw; };
+  const r = rows.find(bad) || rows[0], who = the(sim, r.c.id), dyn = r.f.mode !== "static", page = cap(who) + "'s page: ";
+  return [C("off", dyn && !sim.on(r.c.id), cap(who) + " isn't powered, so its page can't be opened to set its address", "It's powered.", dark(sim, r.c.id)),
+    C("lease", noCamLease(sim, r.c), cap(who) + " has no address to find it by: its request for one gets no answer", "It had an address to find it by.", "show ip dhcp binding on the router: no lease for " + who + " (it gave itself " + (r.a ? r.a.ip : "nothing") + ")."),
+    C("dhcp", dyn, cap(who) + " is still on DHCP: the address the records and the forward point at can change", "It has a fixed address.", "show ip dhcp binding on the router: " + who + " has a lease" + (r.a ? ", " + r.a.ip : "") + "."),
+    C("ip", !dyn && r.f.ip !== camIp(v, r.c), "Its fixed address isn't the one in the records", "Its address is the records'.", page + "IP address " + r.f.ip + "."),
+    C("mask", !dyn && r.f.mask !== v.plan.vmask, "Its subnet mask isn't the cameras' network's", "Its mask is the network's.", page + "subnet mask " + r.f.mask + "."),
+    C("gw", !dyn && r.f.gw !== cv.gw, "Its gateway isn't the cameras' gateway on the router", "Its gateway is the router.", page + "gateway " + (r.f.gw || "blank") + ".")];
+}
+/* does what a camera starts get to an address: from a camera with an address on the cameras' network, really (arriving is
+   enough: a reply dropped on its way back doesn't stop the camera reaching it); otherwise a camera's packet put to the router's
+   lists (in on the cameras' subinterface, out where it would leave, NAT for the internet) */
+function camReaches(sim, v, ip, dport) {
+  if (!ip) return false;
+  const cv = cams(v), pk = { proto: "tcp", port: dport, sport: 50000 };
+  const id = v.plan.cams.map(function (c) { return c.id; }).find(function (x) { const a = sim.on(x) && sim.addr(x); return !!a && a.kind !== "apipa" && inNet(a.ip, cv.net); });
+  if (id) { const r = sim.route(id, ip, pk); return !r.fail ? !!(r.local || r.routed || r.internet) : r.fail === "no-reply" && r.why !== "arp"; }
+  const R = RT(sim), q = vlanSub(view(sim), v, "cameras"); if (!q || !R.subs[q].ip) return false;
+  const p = Object.assign({ src: cv.net.replace(/\.0$/, ".50"), dst: ip }, pk), f = R.subs[q];
+  if (f.aclIn && !aclVerdict(R, f.aclIn, p).permit) return false;
+  const outIf = Object.keys(R.subs).concat(Object.keys(R.ifs)).find(function (n) { const x = R.subs[n] || R.ifs[n]; return x.ip && x.mask && netOf(x.ip, x.mask) === netOf(ip, x.mask); });
+  if (!outIf) return f.nat === "inside" && R.nat.some(function (x) { return R.acls[x.list] && aclVerdict(R, x.list, { proto: "ip", src: p.src, dst: ip }).permit; });
+  const o = R.subs[outIf] || R.ifs[outIf];
+  return !(o.aclOut && !aclVerdict(R, o.aclOut, p).permit);
+}
+function camApartCauses(sim, v) {
+  const q = vlanSub(view(sim), v, "cameras"), routed = !!q && !!RT(sim).subs[q].ip, m = sim.addr("mgr");
+  return [C("none", !routed, "There's no cameras' network routed yet to keep apart", "The cameras' network is routed.", "Nothing on the router routes the cameras' VLAN yet."),
+    C("staff", routed && [445, 443].some(function (n) { return camReaches(sim, v, m && m.ip, n); }), "What a camera starts reaches the staff PCs: nothing stops it on its way in", "Nothing a camera starts reaches the staff PCs.", "From the cameras' network, a connection to the manager's PC gets there."),
+    C("lan", routed && camReaches(sim, v, printerIp(sim), 9100), "What a camera starts reaches the old network: the printer, the switch", "Nothing a camera starts reaches the old network.", "From the cameras' network, a connection to the printer gets there."),
+    C("internet", routed && camReaches(sim, v, "203.0.113.80", 443), "What a camera starts reaches the internet", "Nothing a camera starts reaches the internet.", "From the cameras' network, a connection out to the internet gets there.")];
+}
+/* the manager's PC opens each camera's page at its fixed address: the first that doesn't, and why its request or reply stops */
+function camViewCauses(sim, v) {
+  const rows = v.plan.cams.map(function (c) { const ip = camIp(v, c); return { c: c, ip: ip, r: sim.route("mgr", ip, { proto: "tcp", port: 443, sport: 50123 }), pg: browse(sim, "mgr", "https://" + ip) }; });
+  const bad = function (x) { return x.pg.status !== "cam" || x.pg.dev !== x.c.id; }, r = rows.find(bad) || rows[0], who = the(sim, r.c.id), f = r.r.fail, y = r.r.why, no = bad(r);
+  const tried = "From the manager's PC, https://" + r.ip;
+  return [C("off", no && !sim.on(r.c.id), cap(who) + " is off", "Both cameras are on.", dark(sim, r.c.id)),
+    C("route", no && (f === "net-unreachable" || f === "gateway-unreachable"), "The router has no way to the cameras' network yet", "The router routes to the cameras.", tracert(r.ip)),
+    C("nobody", no && y === "arp", "Nothing answers at " + who + "'s fixed address", "Something answers there.", tried + " times out; show ip arp on the router: " + r.ip + " Incomplete."),
+    C("blocked", no && f === "blocked", "The manager's request is dropped on its way to " + who + ": a list stops it", "The request gets there.", tried + " times out; show access-lists: a deny line's count goes up each try."),
+    C("gateway", no && y === "their gateway", cap(who) + " gets the request, but sends its reply to a gateway that isn't the router", "Its reply goes to the router.", tried + " times out; " + who + "'s page shows its settings."),
+    C("reply", no && y === "reply blocked", cap(who) + "'s replies are dropped on their way back: the cameras' list doesn't let them out", "Its replies get back.", tried + " times out; show access-lists: the cameras' list counts no matches for the replies."),
+    C("swap", no && r.pg.status === "cam" && r.pg.dev !== r.c.id, "The other camera answers at " + who + "'s fixed address", "Each camera answers at its own address.", tried + " opens " + (r.pg.dev ? the(sim, r.pg.dev) : "") + "'s page."),
+    C("other", no, cap(who) + "'s page doesn't open from the manager's PC", "Both pages open.", tried + ": " + (r.pg.head || "no page") + ".")];
+  function tracert(ip) { return "tracert " + ip + " from the manager's PC: the router says Destination net unreachable."; }
+}
+/* from outside, on the manager's phone (mobile data): each camera's port from the records, through the router's forwards */
+function camRemoteCauses(sim, v) {
+  const wan = sim.net.isp.wanIp, rows = v.plan.cams.map(function (c) { return { c: c, r: sim.fromInternet(wan, c.ext, "tcp") }; });
+  const r = rows.find(function (x) { return !x.r.ok || x.r.who !== x.c.id || +x.r.lport !== 443; }) || rows[0], who = the(sim, r.c.id), y = r.r.why, ok = !!r.r.ok;
+  const tried = "On the manager's phone, on mobile data, https://" + wan + ":" + r.c.ext, out = tried + " times out.", no = tried + " is refused.";
+  return [C("wan", y === "wan" || y === "provider" || y === "nobody", "The router isn't reachable from the internet at the business's address", "The router is up on the provider's side.", out),
+    C("aclin", y === "acl-in", "An access list in on the provider's port drops it", "Nothing on the provider's side drops it.", out + " show access-lists: a deny line's count goes up each try."),
+    C("forward", y === "no-forward", "The router has no forward for " + who + "'s outside port", "The router forwards its port.", no + " show ip nat translations: nothing for port " + r.c.ext + "."),
+    C("outside", y === "outside", "The provider's port isn't NAT's outside, so nothing arriving there is translated", "The provider's port is NAT's outside.", no + " show running-config: no ip nat outside on " + v.plan.wanPort + "."),
+    C("route", y === "no-route", "The forward points at an address the router has no network for", "The forward's address is on one of the router's networks.", out + " show ip nat translations: " + (r.r.local || "") + "."),
+    C("inside", y === "inside", "The forward's address is on a network that isn't NAT's inside", "The cameras' subinterface is NAT's inside.", out + " show running-config: no ip nat inside on " + (r.r.outIf || "the cameras' subinterface") + "."),
+    C("aclout", y === "acl-out", "An access list out towards the cameras drops it", "Nothing on the way to the cameras drops it.", out + " show access-lists: a deny line's count goes up each try."),
+    C("nobody", y === "arp", "Nothing answers at the address the forward sends it to", "The camera answers at the forward's address.", out + " show ip arp on the router: " + (r.r.local || "") + " Incomplete."),
+    C("swap", !!r.r.who && r.r.who !== r.c.id, cap(who) + "'s outside port goes to the other camera", "Each port reaches its own camera.", ok ? tried + " opens " + the(sim, r.r.who) + "'s page." : "show ip nat translations: port " + r.c.ext + " goes to " + (r.r.local || "") + "."),
+    C("port", y === "port", "The forward sends it to a port " + who + " doesn't answer on", "The camera answers on the forwarded port.", no + " show ip nat translations: " + (r.r.local || "") + ":" + (r.r.lport || "") + "."),
+    /* its plain page: the camera answers there, but the manager's password would cross the internet unencrypted (and the cameras'
+       list, letting out only replies from the secure page, drops what it sends back) */
+    C("http", !!r.r.who && r.r.who === r.c.id && y !== "port" && r.r.lport != null && +r.r.lport !== 443, "The forward goes to " + who + "'s unencrypted page: the manager's password would cross the internet in plain text", "It goes to the camera's secure page.", (ok ? tried + ": the phone says the site can't provide a secure connection." : out) + " show ip nat translations: " + (r.r.local || "") + ":" + r.r.lport + "."),
+    C("gateway", y === "gateway", cap(who) + "'s reply never comes back: its gateway isn't the router", "Its reply goes to the router.", out),
+    C("reply", y === "reply", "The cameras' list drops " + who + "'s replies on their way back out", "Its replies get out.", out + " show access-lists: the cameras' list counts no matches for the replies.")];
+}
+function camStillCauses(sim) {
+  const down = PCS.find(function (id) { return !online(sim, id); }), noPrint = ["pc", "bpc"].find(function (id) { return !printOk(sim, id); }), ip = apAddr(sim), r = ip ? sim.route("mgr", ip) : null;
+  return [C("net", !!down, "The " + (down ? name(sim, down) : "") + " is offline", "Every staff PC is online.", "ping from the " + (down ? name(sim, down) : "") + ": no replies from the internet."),
+    C("print", !!noPrint, "The " + (noPrint ? name(sim, noPrint) : "") + " can't print", "Staff print.", "Test pages from the " + (noPrint ? name(sim, noPrint) : "") + " don't print."),
+    C("guest", !online(sim, "guest"), "The visitor's phone is offline: the guest network stopped working", "Guests are online.", "The visitor's phone: no internet."),
+    C("ap", !!r && !((r.local || r.routed) && !r.fail), "The manager's PC can't reach the access point's page", "The access point's page opens from the manager's PC.", "From the manager's PC the access point's address doesn't answer.")];
+}
+const SB5 = {
+  id: "SB-J5", level: "business", title: "Two cameras on their own VLAN, kept apart, and seen from outside through port forwards",
+  already: ["still", "saved", "swsaved", "bswsaved"],
+  start(seed) {
+    const b = SB4.start(seed), sim = b.sim;
+    for (const a of SB4.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    addCameraKit(sim); sim.cli = {};   /* the two cameras and their injectors came in their boxes; the manager has their phone with them */
+    return { sim: sim, v: b.v };
+  },
+  brief(v, sim) { return { quote: "Someone tried our back door last month, and the insurer wants cameras. Two came this week: a dome for the ceiling in " + roomOf(sim, "guest") + " and one for the wall by the back door. I want to watch them from my office, and on my phone when I'm not here. The installer said cameras like these are the first thing hackers go for, so keep them well away from everything else of ours.", from: sim.net.client.manager + ", " + sim.net.client.name }; },
+  mason: "A camera is the least trusted thing on the network: its own VLAN, an address that never changes, and an access list that lets it answer but never start anything. The way in from outside is the router's: one outside port for each camera, sent on to that camera's secure page.",
+  limits: function (v, sim) {
+    const p = v.plan, cv = cams(v), a = p.cams[0], b = p.cams[1], S = staff(v);
+    return ["The business's plan: the cameras are VLAN " + cv.id + ", named " + cv.name + ", on " + cv.net + "/24 with the gateway " + cv.gw + " on the router's " + subName(v, "cameras") + ". Their pool keeps the first " + p.camExcl + " addresses back. Their access list, in on that subinterface, is named " + p.camAcl + ": the cameras answer on their secure page (HTTPS, 443) and start nothing.",
+      a.tag + ", the ceiling dome, goes " + spot(sim, 0) + ". Its injector (labelled " + a.tag + ") goes in the closet, on the closet switch's port " + a.port + ", described " + a.desc + ". Its fixed address: " + camIp(v, a) + ".",
+      b.tag + ", the wall dome, goes " + spot(sim, 1) + ". Its injector (labelled " + b.tag + ") goes in the back room, on the back switch's port " + b.port + ", described " + b.desc + ". Its fixed address: " + camIp(v, b) + ".",
+      "Camera ports are access ports, set as access (never left to negotiate), opened and described. The trunk between the two switches carries the cameras' VLAN as well as staff's (" + S.id + "). The cameras start on DHCP: each one's fixed address, mask and gateway are set on its own page, opened from the manager's PC.",
+      "From outside, the manager opens https://(the business's address on the provider's side):" + a.ext + " for " + a.tag + " and :" + b.ext + " for " + b.tag + ", each sent on to its camera's port 443. Test it as the manager will use it: on their phone, Wi-Fi off.",
+      "The records are as before: router " + p.rtHost + " (secret " + p.rtSecret + ", console " + p.rtConsole + "); switches " + p.swHost + " and " + p.bswHost + " (secret " + p.swSecret + ", console " + p.swConsole + ")."];
+  },
+  reqs: [{
+    id: "cam1", text: "The ceiling camera is up over the guests, powered by its own injector, its run on the closet switch's port the records give it",
+    causes: function (sim, v) { return camCauses(sim, v, 0); },
+    ok: function (sim, v) { return "It's " + spot(sim, 0) + ", powered by its injector in the closet, its run on the closet switch's port " + v.plan.cams[0].port + "."; },
+    rung1: function () { return "Look at the camera's Physical tab and its status light; then the Cable runs table: where does its cable come from, and where does that injector's other side go?"; },
+    rung2: function () { return "A dome camera is powered down its network cable (PoE). Neither switch gives power, so each camera's run goes through its own injector: data in on one side, data and power out to the camera on the other."; }
+  }, {
+    id: "cam2", text: "The back door camera is up by the back door, powered by its own injector, its run on the back switch's port the records give it",
+    causes: function (sim, v) { return camCauses(sim, v, 1); },
+    ok: function (sim, v) { return "It's " + spot(sim, 1) + ", powered by its injector in the back room, its run on the back switch's port " + v.plan.cams[1].port + "."; },
+    rung1: function () { return "Look at the camera's Physical tab and its status light; then the Cable runs table: where does its cable come from, and where does that injector's other side go?"; },
+    rung2: function () { return "A camera's run goes to the switch in the room it's in: the back of house has its own switch now. Its injector sits beside that switch, data in from the switch, data and power out to the camera."; }
+  }, {
+    id: "vlan", text: "Both switches have the cameras' VLAN, named as the records say",
+    causes: camVlanCauses,
+    ok: function (sim, v) { return "VLAN " + cams(v).id + " " + cams(v).name + " exists on both switches."; },
+    rung1: function () { return "show vlan brief on each switch."; },
+    rung2: function () { return "Each switch keeps its own list of VLANs: a VLAN made on one switch doesn't exist on the other until it's made there too."; }
+  }, {
+    id: "ports", text: "Each camera's port is open, described, and set as an access port in the cameras' VLAN",
+    causes: camPortCauses,
+    ok: function () { return "Both cameras' ports are access ports in the cameras' VLAN, open and described as the records say."; },
+    rung1: function () { return "show interfaces status and show vlan brief on each switch; show interfaces (the camera's port) switchport for how it was set."; },
+    rung2: function () { return "A camera knows nothing of VLANs: its switch port decides which network it's on. A port set as an access port stays in its one VLAN whatever is plugged into it, and a camera by an outside door is the easiest thing in the building to unplug."; }
+  }, {
+    id: "trunks", text: "The trunks carry the cameras' VLAN: to the router, and between the two switches",
+    causes: camTrunkCauses,
+    ok: function () { return "The trunk between the switches carries the cameras' VLAN and staff's at both ends; the trunk to the router carries it too."; },
+    rung1: function () { return "show interfaces trunk on both switches: which VLANs each trunk allows and has active."; },
+    rung2: function () { return "A VLAN crosses a trunk only if both ends allow it. Giving a trunk its allowed list again replaces the old list; adding a VLAN to it keeps the ones already there."; }
+  }, {
+    id: "sub", text: "The router has the cameras' gateway on a subinterface, NAT's inside",
+    causes: function (sim, v) { return subCauses(sim, v, "cameras"); },
+    ok: function (sim, v) { return vlanSub(view(sim), v, "cameras") + " tags VLAN " + cams(v).id + " at " + cams(v).gw + ", NAT's inside."; },
+    rung1: function () { return "On the router: show ip interface brief, then show running-config for the subinterfaces."; },
+    rung2: function () { return "Each VLAN on the trunk gets its own subinterface, tagged with its VLAN and holding its gateway. A forward from outside is NAT too: it only translates between an interface set as outside and one set as inside."; }
+  }, {
+    id: "pool", text: "The router hands out the cameras' addresses, keeping the first twenty back",
+    causes: function (sim, v) { return poolCauses(sim, v, "cameras"); },
+    ok: function () { return "A pool for the cameras' network, with its gateway, the first twenty kept back."; },
+    rung1: function () { return "On the router: show ip dhcp pool, and the pool's lines in show running-config."; },
+    rung2: function () { return "A camera from its box asks for an address by DHCP. Its network needs a pool that hands out the gateway, and the addresses given to devices by hand have to be kept out of it."; }
+  }, {
+    id: "fixed", text: "Each camera has its fixed address from the records, set on its own page",
+    causes: camFixedCauses,
+    ok: function (sim, v) { return v.plan.cams.map(function (c) { return c.tag + " is at " + camIp(v, c); }).join(", ") + ", fixed, with the cameras' gateway."; },
+    /* no lease (the guests' trap again, if the list goes on first): the hints point at what the camera's first message meets */
+    rung1: function (v, sim) { return v.plan.cams.some(function (c) { return noCamLease(sim, c); }) ? "A camera's first message goes in at the router's cameras' subinterface: look at the pool, and at what's applied there (show ip dhcp pool, show ip interface, show access-lists)." : "Find each camera's address (show ip dhcp binding on the router), then open its page from the manager's PC and look at its network settings."; },
+    rung2: function (v, sim) { return v.plan.cams.some(function (c) { return noCamLease(sim, c); }) ? "A camera with no address asks for one with a broadcast, sent from no address at all to UDP port 67. Anything checking what comes in from the cameras sees that request before any other traffic, and an access list ends with a deny you never see." : "A device that others point at, by a forward or in the records, needs an address that never changes: set on the device itself, outside the pool, with its network's mask and gateway."; }
+  }, {
+    id: "apart", text: "The cameras can't start anything: not with the staff PCs, the old network, or the internet",
+    causes: camApartCauses,
+    ok: function () { return "Nothing a camera starts gets anywhere."; },
+    rung1: function () { return "On the router: show access-lists, and which interface each list is applied to, in which direction (show running-config)."; },
+    rung2: function () { return "A camera only ever needs to answer: someone opens its page, and it replies. Its replies come from the port its page is on. A list in on the cameras' interface sees everything they send, and every list ends with a deny you never see."; }
+  }, {
+    id: "view", text: "The manager's PC opens both cameras' pages at their fixed addresses",
+    causes: camViewCauses,
+    ok: function () { return "Both cameras' pages open from the manager's PC."; },
+    rung1: function () { return "From the manager's PC, open each camera's fixed address in the browser; on the router, show access-lists while you do."; },
+    rung2: function () { return "A page opens only if the request gets there and the reply gets back. Access lists remember nothing: the reply is checked on its own, against the list on the interface it comes in on, by its own source and destination ports."; }
+  }, {
+    id: "remote", text: "From the manager's phone on mobile data, each camera's page opens on its port from the records",
+    causes: camRemoteCauses,
+    ok: function (sim, v) { return "From outside, port " + v.plan.cams[0].ext + " opens " + v.plan.cams[0].tag + " and port " + v.plan.cams[1].ext + " opens " + v.plan.cams[1].tag + ", each on its secure page."; },
+    rung1: function () { return "On the router: show ip interface brief (the business's address on the provider's side), show ip nat translations, and the ip nat lines in show running-config. Then try it on the manager's phone, Wi-Fi off."; },
+    rung2: function () { return "A port forward is static NAT: one port on the router's outside address sent on to one inside address and port. It translates only between an interface set as outside and one set as inside, and the camera's reply has to get back the same way."; }
+  }, {
+    id: "still", text: "Everything that worked still works",
+    causes: camStillCauses,
+    ok: function () { return "Staff are online and print, guests are online, and the access point's page opens from the manager's PC."; },
+    rung1: function () { return "Ping out from each staff PC and the visitor's phone; print a test page; open the access point's page from the manager's PC."; },
+    rung2: function () { return "The trunk between the switches carries staff as well as the cameras now: changing what one end allows can cut off what was already crossing it."; }
+  }, L_SAVED_RT, {
+    id: "swsaved", text: "The closet switch's setup survives a power cut",
+    causes: swSavedCauses,
+    ok: function () { return "What's running on the closet switch is saved."; },
+    rung1: function () { return "On the closet switch: compare show running-config with show startup-config."; },
+    rung2: function () { return "Each device keeps its own startup configuration: saving one saves nothing on the others."; }
+  }, {
+    id: "bswsaved", text: "The back switch's setup survives a power cut",
+    causes: function (sim) { return savedCauses(sim, "bsw"); },
+    ok: function () { return "What's running on the back switch is saved."; },
+    rung1: function () { return "On the back switch: compare show running-config with show startup-config."; },
+    rung2: function () { return "Each device keeps its own startup configuration: saving one saves nothing on the others."; }
+  }],
+  solve(v, sim) {
+    const p = v.plan, cv = cams(v), T = p.trunk, a = p.cams[0], b = p.cams[1], t = function (l) { return { t: "cmd", dev: "tech", line: l, cli: true }; }, w = "0.0.0.255";
+    const runs = sim ? sim.net.extra.runs || 0 : 13;   /* runs are numbered in the order they're laid: SB-J1 to SB-J4 laid thirteen, the last the console to the closet switch */
+    const sw = function (c, trunkPort) { return [t(""), t(p.swConsole), t("enable"), t(p.swSecret), t("configure terminal"), t("vlan " + cv.id), t("name " + cv.name), t("exit"),
+      t("interface gi0/" + c.port), t("description " + c.desc), t("switchport mode access"), t("switchport access vlan " + cv.id), t("no shutdown"),
+      t("interface gi0/" + trunkPort), t("switchport trunk allowed vlan add " + cv.id), t("end"), t("copy running-config startup-config"), t("")]; };
+    const sub = subName(v, "cameras");
+    return [{ t: "place", dev: "cinj1", room: "closet" }, { t: "place", dev: "cam1", room: "guest" },
+      { t: "lay", a: E("msw", a.port), b: E("cinj1", "DATA IN") }, { t: "lay", a: E("cinj1", "PoE OUT"), b: E("cam1", "LAN") },
+      { t: "place", dev: "cinj2", room: "back" }, { t: "place", dev: "cam2", room: "back" },
+      { t: "lay", a: E("bsw", b.port), b: E("cinj2", "DATA IN") }, { t: "lay", a: E("cinj2", "PoE OUT"), b: E("cam2", "LAN") }]
+      .concat(sw(a, T.closet),
+        [{ t: "pull", cable: "c-console-" + runs }, { t: "place", dev: "tech", room: "back" }, { t: "lay", a: E("tech", "USB-C"), b: E("bsw", "CONSOLE") }],   /* the four camera runs, then this console */
+        sw(b, T.back),
+        [{ t: "pull", cable: "c-console-" + (runs + 5) }, { t: "place", dev: "tech", room: "closet" }, { t: "lay", a: E("tech", "USB-C"), b: E("rtr", "CONSOLE") },
+          t(""), t(p.rtConsole), t("enable"), t(p.rtSecret), t("configure terminal"),
+          t("interface " + sub), t("encapsulation dot1Q " + cv.id), t("ip address " + cv.gw + " " + p.vmask), t("ip nat inside"), t("exit"),
+          t("ip dhcp excluded-address " + cv.gw + " " + cv.net.replace(/\.0$/, "." + p.camExcl)), t("ip dhcp pool " + cv.name), t("network " + cv.net + " " + p.vmask), t("default-router " + cv.gw), t("exit"), t("end"),
+          { t: "client", dev: "cam1", values: { mode: "static", ip: camIp(v, a), mask: p.vmask, gw: cv.gw } },
+          { t: "client", dev: "cam2", values: { mode: "static", ip: camIp(v, b), mask: p.vmask, gw: cv.gw } },
+          t("configure terminal"), t("interface " + sub), t("ip access-group " + p.camAcl + " in"), t("exit"),
+          t("ip access-list extended " + p.camAcl), t("permit tcp " + cv.net + " " + w + " eq 443 any"), t("exit"),
+          t("ip nat inside source static tcp " + camIp(v, a) + " 443 interface " + p.wanPort + " " + a.ext),
+          t("ip nat inside source static tcp " + camIp(v, b) + " 443 interface " + p.wanPort + " " + b.ext),
+          t("end"), t("copy running-config startup-config"), t("")]);
+  },
+  answer(v) {
+    const p = v.plan, cv = cams(v), T = p.trunk, a = p.cams[0], b = p.cams[1], sub = subName(v, "cameras");
+    return ["Place injector " + a.tag + " in the closet and the ceiling camera in the guest area; the closet switch's port " + a.port + " to the injector's DATA IN, its PoE OUT to the camera. The same in the back room: injector " + b.tag + ", the back door camera, the back switch's port " + b.port + ".",
+      "On the closet switch (console): vlan " + cv.id + ", name " + cv.name + "; interface gi0/" + a.port + ": description " + a.desc + ", switchport mode access, switchport access vlan " + cv.id + ", no shutdown; interface gi0/" + T.closet + ": switchport trunk allowed vlan add " + cv.id + "; save.",
+      "Take your laptop to the back room, console to the back switch: the same VLAN; interface gi0/" + b.port + ": description " + b.desc + ", access, VLAN " + cv.id + ", no shutdown; interface gi0/" + T.back + ": switchport trunk allowed vlan add " + cv.id + "; save.",
+      "On the router (console): interface " + sub + ": encapsulation dot1Q " + cv.id + ", ip address " + cv.gw + " " + p.vmask + ", ip nat inside. ip dhcp excluded-address " + cv.gw + " " + cv.net.replace(/\.0$/, "." + p.camExcl) + "; ip dhcp pool " + cv.name + ": network " + cv.net + " " + p.vmask + ", default-router " + cv.gw + ".",
+      "show ip dhcp binding: open each camera's leased address from the manager's PC, and set its fixed address on its page: " + camIp(v, a) + " and " + camIp(v, b) + ", mask " + p.vmask + ", gateway " + cv.gw + ".",
+      "On the router: interface " + sub + ": ip access-group " + p.camAcl + " in; ip access-list extended " + p.camAcl + ": permit tcp " + cv.net + " 0.0.0.255 eq 443 any.",
+      "ip nat inside source static tcp " + camIp(v, a) + " 443 interface " + p.wanPort + " " + a.ext + "; the same for " + camIp(v, b) + " on " + b.ext + "; save. Then the manager's phone, Wi-Fi off: https://(the router's provider address):" + a.ext + " and :" + b.ext + "."];
+  },
+  summary(v, sim) {
+    const p = v.plan, cv = cams(v);
+    return ["The ceiling camera is " + spot(sim, 0) + " and the back door camera " + spot(sim, 1) + ", each powered by its own injector, on access ports in the cameras' VLAN " + cv.id + " (" + cv.name + ").",
+      "The trunk between the switches carries the cameras as well as staff; the router's " + subName(v, "cameras") + " is their gateway, " + cv.gw + ", and hands out their addresses until each is fixed: " + camIp(v, p.cams[0]) + " and " + camIp(v, p.cams[1]) + ".",
+      "The cameras' list lets them answer on their secure page and start nothing; the manager reaches them from the office, and from outside on ports " + p.cams[0].ext + " and " + p.cams[1].ext + ".", "All three devices are saved."];
+  }
+};
+
+export const BUSINESS_JOBS = [SB1, SB2, SB3, SB4, SB5];

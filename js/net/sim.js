@@ -1014,9 +1014,9 @@ export class Sim {
     if (!owners.length) return { fail: "timeout", why: "arp", local: local, outIf: outIf };   /* nobody at that address answers the router's ARP */
     const who = owners[0], x = this.d[who], a = this.addr(who), gw = RT.addrOf(R, outIf, live);
     if ((x.listens || []).indexOf(+lport) < 0) return { fail: "refused", why: "port", who: who, local: local, lport: lport };
-    if (!a || !gw || a.gw !== gw.ip) return { fail: "timeout", why: "gateway", who: who, local: local };   /* its reply goes to its gateway: it must be the router */
+    if (!a || !gw || a.gw !== gw.ip) return { fail: "timeout", why: "gateway", who: who, local: local, lport: lport };   /* its reply goes to its gateway: it must be the router */
     const rep = { proto: P, src: local, dst: src, port: sport, sport: lport };
-    if (!pass(outIf, "in", rep) || !pass(w.iface, "out", Object.assign({}, rep, { src: dst, sport: port }))) return { fail: "timeout", why: "reply", who: who, local: local, outIf: outIf };
+    if (!pass(outIf, "in", rep) || !pass(w.iface, "out", Object.assign({}, rep, { src: dst, sport: port }))) return { fail: "timeout", why: "reply", who: who, local: local, lport: lport, outIf: outIf };
     return { ok: true, who: who, local: local, lport: lport, outIf: outIf, src: src };
   }
   /* a connection from the internet to the house's public address on a port (port forwarding, NAT) */

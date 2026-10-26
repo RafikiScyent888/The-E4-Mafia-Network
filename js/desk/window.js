@@ -96,6 +96,7 @@ function pagePane(id, key, ctx, rerender) {
     if (P.ipForm) pane.appendChild(ipForm(id, P.ipForm, ctx, rerender));
     if (P.speedTest) pane.appendChild(button(id, "speed", "Run a speed test", ctx, rerender, function () { const r = ctx.act({ t: "speed", dev: id }); const x = r && r.result; return x && x.ok ? "Speed test: " + x.down + " Mb/s down, " + x.up + " Mb/s up (the plan is " + x.plan + " Mb/s)." : "Speed test: can't reach the test server."; }));
     if (P.networks) pane.appendChild(networksList(id, P, ctx, rerender));
+    if (P.radio) pane.appendChild(button(id, "radio", P.radio.on ? "Turn Wi-Fi off" : "Turn Wi-Fi on", ctx, rerender, function () { const r = ctx.act({ t: "radio", dev: id, on: !P.radio.on }); const x = r && r.result; return !x || !x.ok ? "No change." : x.on ? "Wi-Fi on: it joins a network it knows, if it hears one." : "Wi-Fi off: the phone is on mobile data, out on the internet."; }));   /* the manager's phone (SB-J5) */
     if (P.heard) pane.appendChild(heardList(id, P, ctx, rerender));
     if (P.admin) pane.appendChild(button(id, "admin", "Change the admin password", ctx, rerender, function () { const r = ctx.act({ t: "router", page: "admin", values: { newPassword: true } }); return r && r.result && r.result.ok ? "Saved: a new admin password for the router's pages, written down for the client. The one on the label no longer opens them." : "Not saved."; }));
     if (P.join) pane.appendChild(button(id, "join", "Join " + P.join + " (enter the password)", ctx, rerender, function () { const r = ctx.act({ t: "join", dev: id }); const f = r && r.facts; return f && f.ap ? "Joined " + P.join + ": address " + f.ip + ". Internet: " + (f.internet ? "OK" : "none") + "." : "Couldn't join " + P.join + "."; }));
@@ -146,8 +147,10 @@ function browserPane(id, P, ctx, rerender) {
   const f = el("form", { class: "devform", novalidate: true }, el("div", { class: "urlbar" }, field("Address", "url", P.url, { inputmode: "url", spellcheck: "false" }), el("button", { class: "btn", type: "submit" }, "Go")));
   f.addEventListener("submit", function (e) { e.preventDefault(); browserAt[id] = String(new FormData(f).get("url") || "").trim(); rerender(); });
   wrap.appendChild(f);
+  if (ctx.flash && P.status !== "ap" && P.status !== "cam") { wrap.appendChild(el("p", { class: "msg ok", role: "status" }, ctx.flash)); ctx.flash = null; }   /* a camera moved to its new address: what was saved, over the page it left behind */
   if (P.status === "blank") wrap.appendChild(el("p", { class: "note" }, "Type an address and press Go. A device with a web page of its own shows it here."));
   else if (P.status === "ap") wrap.appendChild(apPage(P, ctx, rerender));
+  else if (P.status === "cam") wrap.appendChild(camPage(P, ctx, rerender));
   else wrap.appendChild(el("div", { class: "nopage", role: "status" }, el("h3", null, P.head), el("p", null, P.text), el("p", { class: "code" }, P.code)));
   return wrap;
 }
@@ -182,6 +185,51 @@ function apPage(P, ctx, rerender) {
   if (ctx.flash) { msg.className = "msg ok"; msg.textContent = ctx.flash; ctx.flash = null; }
   box.appendChild(f);
   return box;
+}
+/* a dome camera's own page (SB-J5): its live picture, what it is, and its network settings. Reached from outside (the manager's phone,
+   through a port forward) the settings are shown, not changed: a change there would cut off the page it's on */
+function camPage(P, ctx, rerender) {
+  const box = el("div", { class: "webpage" }, el("p", { class: "addr" }, P.title + " · " + P.shown));
+  box.appendChild(liveView(P.live));
+  const tb = el("tbody"); P.rows.forEach(function (r) { tb.appendChild(el("tr", null, el("th", { scope: "row" }, r[0]), el("td", null, r[1]))); });
+  box.appendChild(el("table", { class: "kv" }, tb));
+  const v = P.net, msg = el("p", { class: "msg", role: "status" });
+  if (P.remote) {
+    box.appendChild(el("h3", { style: "margin-top:12px" }, "Network"));
+    box.appendChild(el("table", { class: "kv" }, el("tbody", null, el("tr", null, el("th", { scope: "row" }, "Addressing"), el("td", null, v.mode === "static" ? "Fixed" : "DHCP")), el("tr", null, el("th", { scope: "row" }, "Subnet mask"), el("td", null, v.mask || "--")), el("tr", null, el("th", { scope: "row" }, "Gateway"), el("td", null, v.gw || "--")))));
+    box.appendChild(el("p", { class: "note" }, "Reached from outside, through the business's router: settings are changed from inside the business."));
+    return box;
+  }
+  const f = el("form", { class: "devform", novalidate: true, style: "margin-top:12px" });
+  f.appendChild(el("fieldset", null, el("legend", null, "Network settings (IPv4)"), el("div", { class: "radio" }, radio("mode", "dhcp", v.mode !== "static", "DHCP"), radio("mode", "static", v.mode === "static", "Fixed (static)")),
+    el("div", { class: "row2" }, field("IP address", "ip", v.ip), field("Subnet mask", "mask", v.mask)), el("div", { class: "row2" }, field("Gateway", "gw", v.gw), field("DNS server", "dns", v.dns))));
+  f.appendChild(el("div", { class: "acts" }, el("button", { class: "btn", type: "submit" }, "Save")));
+  f.appendChild(msg);
+  f.addEventListener("submit", function (e) {
+    e.preventDefault(); const d = new FormData(f), t = function (k) { return String(d.get(k) || "").trim(); };
+    const values = d.get("mode") === "static" ? { mode: "static", ip: t("ip"), mask: t("mask"), gw: t("gw"), dns: [t("dns")] } : { mode: "dhcp" };
+    const x = ctx.act({ t: "client", dev: P.dev, values: values });
+    if (x && x.result && x.result.ok) { const moved = values.mode !== "static" || values.ip !== v.ip; ctx.flash = "Saved. " + P.live.tag + (values.mode === "static" ? " now has the fixed address " + values.ip : " asks the network for an address") + (moved ? ": this page was at " + v.ip + ", so it's gone from here. Open its new address to reach it again." : "."); rerender(); }
+    else { msg.className = "msg err"; msg.textContent = "Not saved: " + ((x && x.result && x.result.errs) || []).join(". ") + "."; }
+  });
+  if (ctx.flash) { msg.className = "msg ok"; msg.textContent = ctx.flash; ctx.flash = null; }
+  box.appendChild(f);
+  return box;
+}
+/* the camera's live picture, as its page shows it: greyscale, its name and LIVE on a black band over the top. Drawn, not a photo */
+function liveView(L) {
+  const NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 320 180"); svg.setAttribute("class", "live"); svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "Live picture from " + L.tag + ": " + (L.mount === "ceiling" ? "looking down over " + L.where.toLowerCase() + ", chairs along the walls, the door to the street at the far side" : "looking out and down at the back door, the step outside it and the path to the gate") + ".");
+  const scene = L.mount === "ceiling"
+    ? '<rect width="320" height="180" fill="#5d5f62"/><ellipse cx="160" cy="112" rx="190" ry="112" fill="#77797c"/>' +
+      [0, 1, 2, 3, 4].map(function (i) { return '<rect x="' + (40 + i * 52) + '" y="138" width="34" height="26" rx="4" fill="#3c3e41"/><rect x="' + (42 + i * 52) + '" y="132" width="30" height="8" rx="3" fill="#2f3134"/>'; }).join("") +
+      [0, 1, 2].map(function (i) { return '<rect x="14" y="' + (58 + i * 30) + '" width="24" height="22" rx="4" fill="#3c3e41"/><rect x="282" y="' + (58 + i * 30) + '" width="24" height="22" rx="4" fill="#3c3e41"/>'; }).join("") +
+      '<rect x="128" y="34" width="64" height="34" fill="#9a9c9f"/><rect x="132" y="38" width="56" height="30" fill="#c9cacc"/><rect x="118" y="88" width="84" height="26" rx="10" fill="#4a4c4f"/>'
+    : '<rect width="320" height="180" fill="#6a6c6f"/><polygon points="0,180 0,120 320,120 320,180" fill="#4f5154"/><rect x="104" y="20" width="112" height="112" fill="#3b3d40"/><rect x="112" y="28" width="96" height="104" fill="#808285"/>' +
+      '<circle cx="196" cy="82" r="4" fill="#d6d7d9"/><polygon points="88,132 232,132 252,150 68,150" fill="#909295"/><polygon points="150,150 170,150 200,180 120,180" fill="#a4a6a9"/><rect x="250" y="88" width="34" height="46" rx="3" fill="#2f3134"/>';
+  svg.innerHTML = scene + '<rect width="320" height="22" fill="#000"/><text x="8" y="15" font-size="12" fill="#fff" font-family="inherit">' + L.tag + ' · ' + String(L.where).replace(/[<&>]/g, "") + '</text><rect x="268" y="4" width="44" height="15" fill="#fff"/><text x="290" y="15.5" font-size="11" text-anchor="middle" fill="#000" font-weight="700" font-family="inherit">LIVE</text>';
+  return svg;
 }
 /* a phone at the business: the networks it hears, each joined by name with the password typed in */
 function heardList(id, P, ctx, rerender) {

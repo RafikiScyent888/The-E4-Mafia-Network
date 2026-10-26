@@ -341,6 +341,124 @@ test("SB-J4: other right ways pass: one range with a comma, names spelled out, n
   }
 });
 
+/* SB-J5's solution: the closet switch's lines, then the back switch's (its console laid), then the router's (its console laid) */
+const sb5 = (sol) => { const b = sol.findIndex((a) => a.t === "lay" && a.b.dev === "bsw" && a.b.port === "CONSOLE"), r = sol.findIndex((a) => a.t === "lay" && a.b.dev === "rtr" && a.b.port === "CONSOLE"); return { closet: (l) => (a, k) => k < b && a.line === l, back: (l) => (a, k) => k > b && k < r && a.line === l, rtr: (l) => (a, k) => k > r && a.line === l }; };
+const afterAt = (acts, where, more) => { const i = acts.findIndex((a, k) => where(a, k)); assert.ok(i >= 0, "no such line"); return acts.slice(0, i + 1).concat(more.map(cli), acts.slice(i + 1)); };
+
+test("SB-J5: the tempting wrong ways fail the right line, for the right reason", () => {
+  const def = byId["SB-J5"];
+  for (const s of seeds("SB-J5").slice(0, 25)) {
+    const J0 = B.open(def, s), p = J0.v.plan, S = p.vlans.staff, cv = p.vlans.cameras, Tr = p.trunk, sol = def.solve(J0.v, J0.sim), T = (acts) => tryIt(def, s, acts), at = sb5(sol);
+    const [a, b] = p.cams, n3 = cv.net.replace(/\.0$/, "."), w = "0.0.0.255", sub = p.lanPort + "." + cv.id, wan = J0.sim.net.isp.wanIp;
+    const relay = (test, to) => sol.flatMap((x) => (x.t === "lay" && test(x) ? to(x) : [x]));
+    const fwd = (c, local, lport, ext) => "ip nat inside source static tcp " + local + " " + lport + " interface " + p.wanPort + " " + ext;
+    const why = (J, id, cause) => line(J, id).list.find((c) => c.id === cause).on;
+    assert.equal(line(T([]), "cam1").real.id, "box");
+    /* the power: straight from a switch, into the wrong side of the injector, on the other camera's injector, the injector elsewhere */
+    let J = T(relay((x) => x.a.dev === "msw" && x.b.dev === "cinj1" || x.a.dev === "cinj1", (x) => (x.a.dev === "msw" ? [{ t: "lay", a: E("msw", a.port), b: E("cam1", "LAN") }] : [])));
+    assert.equal(line(J, "cam1").real.id, "switch", "neither switch gives power"); assert.equal(line(J, "view").real.id, "off");
+    J = T(relay((x) => x.a.dev === "msw" && x.b.dev === "cinj1" || x.a.dev === "cinj1", (x) => (x.a.dev === "msw" ? [{ t: "lay", a: E("msw", a.port), b: E("cinj1", "PoE OUT") }, { t: "lay", a: E("cinj1", "DATA IN"), b: E("cam1", "LAN") }] : [])));
+    assert.equal(line(J, "cam1").real.id, "datain");
+    J = T(sol.map((x) => JSON.parse(JSON.stringify(x).replace(/"cinj1"/g, "\"cinjX\"").replace(/"cinj2"/g, "\"cinj1\"").replace(/"cinjX"/g, "\"cinj2\""))));
+    assert.equal(line(J, "cam1").real.id, "label", "each camera on the other's injector: it works, but not as the records have it"); assert.equal(line(J, "cam2").real.id, "label"); assert.ok(line(J, "remote").ok);
+    J = T(sol.map((x) => (x.t === "place" && x.dev === "cinj2" ? { t: "place", dev: "cinj2", room: "closet" } : x)));
+    assert.equal(line(J, "cam2").real.id, "injroom", "the back door camera's injector in the closet, beside the AP's");
+    J = T(relay((x) => x.a.dev === "bsw" && x.b.dev === "cinj2", () => [{ t: "lay", a: E("msw", "7"), b: E("cinj2", "DATA IN") }]));
+    assert.equal(line(J, "cam2").real.id, "where", "the back door camera's run home to the closet switch, not the back switch");
+    J = T(relay((x) => x.a.dev === "msw" && x.b.dev === "cinj1", () => [{ t: "lay", a: E("msw", "7"), b: E("cinj1", "DATA IN") }]));
+    assert.equal(line(J, "cam1").real.id, "port"); assert.equal(line(J, "ports").real.id, "path");
+    J = T(sol.map((x) => (x.t === "place" && x.dev === "cam1" ? { t: "place", dev: "cam1", room: "counter" } : x)));
+    assert.equal(line(J, "cam1").real.id, "room");
+    J = T(sol.concat([{ t: "injector", dev: "cinj1", values: { power: false } }]));
+    assert.equal(line(J, "cam1").real.id, "adapter");
+    J = T(sol.filter((x) => !(x.t === "lay" && x.a.dev === "msw" && x.b.dev === "cinj1")));
+    assert.equal(line(J, "cam1").real.id, "datain2", "powered, no network");
+    /* the VLAN and the ports */
+    J = T(dropAt(sol, (x, k) => at.back("vlan " + cv.id)(x, k) || at.back("name " + cv.name)(x, k) || (k > 0 && x.line === "exit" && sol[k - 1].line === "name " + cv.name && at.back("exit")(x, k))));
+    assert.equal(line(J, "vlan").real.id, "bname", "never made on the back switch: the access port makes it, named VLAN and its number");
+    J = T(swapAt(sol, at.closet("name " + cv.name), "name CCTV"));
+    assert.equal(line(J, "vlan").real.id, "cname");
+    J = T(dropAt(sol, at.back("switchport mode access")));
+    assert.equal(line(J, "ports").real.id, "mode", "left to negotiate: it works today, and a laptop at the back door could ask for a trunk"); assert.ok(line(J, "remote").ok);
+    J = T(dropAt(sol, at.closet("no shutdown")));
+    assert.equal(line(J, "ports").real.id, "shut"); assert.equal(line(J, "view").ok, false);
+    J = T(swapAt(sol, at.closet("description " + a.desc), "description CAMERA"));
+    assert.equal(line(J, "ports").real.id, "desc");
+    J = T(dropAt(sol, at.closet("switchport access vlan " + cv.id)));
+    assert.equal(line(J, "ports").real.id, "vlan", "an access port in VLAN 1: the old network");
+    /* the trunks */
+    J = T(dropAt(sol, at.back("switchport trunk allowed vlan add " + cv.id)));
+    assert.equal(line(J, "trunks").real.id, "back"); assert.equal(line(J, "view").ok, false, "the back door camera never reaches the router");
+    J = T(swapAt(sol, at.closet("switchport trunk allowed vlan add " + cv.id), "switchport trunk allowed vlan " + cv.id));
+    assert.equal(line(J, "trunks").real.id, "staff", "the allowed list replaced: staff dropped"); assert.equal(line(J, "still").real.id, "net", "the back PC is cut off");
+    J = T(dropAt(sol, (x) => x.line === "switchport trunk allowed vlan add " + cv.id));
+    assert.equal(line(J, "trunks").real.id, "closet"); assert.ok(line(J, "still").ok);
+    /* the router */
+    J = T(dropAt(sol, at.rtr("ip nat inside")));
+    assert.equal(line(J, "sub").real.id, "nat"); assert.equal(line(J, "remote").real.id, "inside"); assert.ok(line(J, "view").ok, "inside, the pages still open");
+    J = T(swapAt(sol, at.rtr("ip dhcp excluded-address " + cv.gw + " " + n3 + p.camExcl), "ip dhcp excluded-address " + cv.gw + " " + n3 + "10"));
+    assert.equal(line(J, "pool").real.id, "excl", "only the first ten kept back: the cameras' fixed addresses could be leased");
+    J = T(dropAt(sol, at.rtr("default-router " + cv.gw)));
+    assert.equal(line(J, "pool").real.id, "gw");
+    /* the fixed addresses */
+    J = T(sol.filter((x) => !(x.t === "client" && x.dev === "cam2")));
+    assert.equal(line(J, "fixed").real.id, "dhcp"); assert.equal(line(J, "remote").real.id, "nobody", "the forward points at an address nobody has");
+    J = T(sol.map((x) => (x.t === "client" && x.dev === "cam1" ? Object.assign({}, x, { values: Object.assign({}, x.values, { gw: n3 + "254" }) }) : x)));
+    assert.equal(line(J, "fixed").real.id, "gw"); assert.equal(line(J, "view").real.id, "gateway"); assert.equal(line(J, "remote").real.id, "gateway");
+    J = T(sol.map((x) => (x.t === "client" && x.dev === "cam1" ? Object.assign({}, x, { values: Object.assign({}, x.values, { ip: n3 + "21" }) }) : x)));
+    assert.equal(line(J, "fixed").real.id, "ip"); assert.equal(line(J, "view").real.id, "nobody");
+    /* the list on before the cameras had their addresses: their DHCP requests are dropped (the guests' trap, SB-J3) */
+    J = T(afterAt(sol.filter((x) => x.t !== "client"), at.rtr("ip nat inside"), ["ip access-group " + p.camAcl + " in", "exit", "ip access-list extended " + p.camAcl, "permit tcp " + cv.net + " " + w + " eq 443 any", "exit", "interface " + sub]));
+    assert.equal(line(J, "fixed").real.id, "lease"); assert.match(def.reqs.find((q) => q.id === "fixed").rung1(J.v, J.sim), /first message/);
+    /* the list: none, the guests' list copied (with the cameras put in NAT's list), out instead of in, the ports the wrong way round */
+    J = T(dropAt(sol, at.rtr("ip access-group " + p.camAcl + " in")));
+    assert.equal(line(J, "apart").real.id, "staff"); assert.ok(line(J, "view").ok && line(J, "remote").ok, "no list: everything works, and nothing is kept apart");
+    J = T(afterAt(sol.flatMap((x, k) => (at.rtr("permit tcp " + cv.net + " " + w + " eq 443 any")(x, k) ? ["deny ip " + cv.net + " " + w + " " + S.net + " " + w, "deny ip " + cv.net + " " + w + " " + p.lan + " " + w, "permit ip " + cv.net + " " + w + " any"].map(cli) : [x])),
+      (x) => x.line === fwd(b, n3 + b.host, 443, b.ext), ["access-list 1 permit " + cv.net + " " + w]));
+    assert.equal(line(J, "apart").real.id, "internet", "kept off the business's own networks, but free to call out to the internet");
+    J = T(swapAt(sol, at.rtr("ip access-group " + p.camAcl + " in"), "ip access-group " + p.camAcl + " out"));
+    assert.equal(line(J, "apart").real.id, "staff", "out: it checks what goes to the cameras, not what they send"); assert.equal(line(J, "view").real.id, "blocked");
+    J = T(swapAt(sol, at.rtr("permit tcp " + cv.net + " " + w + " eq 443 any"), "permit tcp " + cv.net + " " + w + " any eq 443"));
+    assert.equal(line(J, "apart").real.id, "staff", "to 443, not from it: a camera can open HTTPS to anything"); assert.equal(line(J, "view").real.id, "reply"); assert.equal(line(J, "remote").real.id, "reply");
+    /* the forwards */
+    J = T(swapAt(swapAt(sol, at.rtr(fwd(a, n3 + a.host, 443, a.ext)), fwd(a, n3 + b.host, 443, a.ext)), at.rtr(fwd(b, n3 + b.host, 443, b.ext)), fwd(b, n3 + a.host, 443, b.ext)));
+    assert.equal(line(J, "remote").real.id, "swap");
+    J = T(swapAt(sol, at.rtr(fwd(a, n3 + a.host, 443, a.ext)), fwd(a, n3 + a.host, 80, a.ext)));
+    assert.equal(line(J, "remote").real.id, "http", "to the camera's plain page: the manager's password in plain text");
+    J = T(swapAt(sol, at.rtr(fwd(a, n3 + a.host, 443, a.ext)), fwd(a, n3 + a.host, a.ext, a.ext)));
+    assert.equal(line(J, "remote").real.id, "port", "the outside port sent on unchanged: the camera doesn't answer there");
+    J = T(swapAt(sol, at.rtr(fwd(a, n3 + a.host, 443, a.ext)), fwd(a, n3 + a.host, 443, 443)));
+    assert.equal(line(J, "remote").real.id, "forward", "the camera on the router's 443, not the records' port");
+    J = T(afterAt(sol, at.rtr(fwd(b, n3 + b.host, 443, b.ext)), ["interface " + p.wanPort, "no ip nat outside", "exit"]));
+    assert.equal(line(J, "remote").real.id, "outside"); assert.equal(line(J, "still").real.id, "net");
+    J = T(afterAt(sol, at.rtr(fwd(b, n3 + b.host, 443, b.ext)), ["ip access-list extended OUTSIDE-IN", "deny tcp any any eq " + a.ext, "permit ip any any", "exit", "interface " + p.wanPort, "ip access-group OUTSIDE-IN in", "exit"]));
+    assert.equal(line(J, "remote").real.id, "aclin");
+    /* saving: each device its own */
+    J = T(dropAt(sol, at.rtr("copy running-config startup-config")));
+    assert.equal(line(J, "saved").real.id, "since"); assert.ok(line(J, "swsaved").ok && line(J, "bswsaved").ok);
+    J = T(dropAt(sol, at.back("copy running-config startup-config")));
+    assert.equal(line(J, "bswsaved").real.id, "since"); assert.ok(line(J, "swsaved").ok);
+    J = T(dropAt(sol, at.closet("copy running-config startup-config")));
+    assert.equal(line(J, "swsaved").real.id, "since"); assert.ok(why(J, "swsaved", "since"));
+    assert.ok(wan);
+  }
+});
+
+test("SB-J5: other right ways pass: the allowed list given whole, a named port, a DHCP line in the list, the address in the forward, a subinterface numbered its own way", () => {
+  const def = byId["SB-J5"];
+  for (const s of seeds("SB-J5").slice(0, 25)) {
+    const J0 = B.open(def, s), p = J0.v.plan, S = p.vlans.staff, cv = p.vlans.cameras, sol = def.solve(J0.v, J0.sim), at = sb5(sol), w = "0.0.0.255", wan = J0.sim.net.isp.wanIp, n3 = cv.net.replace(/\.0$/, ".");
+    let acts = swap(sol, "switchport trunk allowed vlan add " + cv.id, "switchport trunk allowed vlan " + S.id + "," + cv.id);
+    acts = swapAt(acts, at.rtr("permit tcp " + cv.net + " " + w + " eq 443 any"), "permit udp any any eq bootps");
+    acts = afterAt(acts, at.rtr("permit udp any any eq bootps"), ["permit tcp " + cv.net + " " + w + " eq https any"]);
+    acts = acts.map((a) => (a.t === "cmd" && /^ip nat inside source static tcp /.test(a.line) ? Object.assign({}, a, { line: a.line.replace("interface " + p.wanPort, wan) }) : a));
+    acts = swap(swap(acts, "interface " + p.lanPort + "." + cv.id, "interface gi0/1.6" + cv.id), "ip dhcp excluded-address " + cv.gw + " " + n3 + p.camExcl, "ip dhcp excluded-address " + cv.gw + " " + n3 + "30");
+    acts = acts.map((a) => (a.t === "client" ? Object.assign({}, a, { values: Object.assign({}, a.values, { dns: ["203.0.113.53"] }) }) : a));
+    const J = tryIt(def, s, acts);
+    for (const r of B.check(J).res) assert.ok(r.ok, "SB-J5 " + r.id + ", seed " + s + ": " + r.ev);
+  }
+});
+
 test("the business jobs replay exactly, and undo takes back the last line typed", () => {
   for (const def of BUSINESS_JOBS) for (const s of seeds(def.id).slice(0, 30)) {
     const J = B.open(def, s), sol = def.solve(J.v, J.sim), half = Math.floor(sol.length / 2);
@@ -372,7 +490,8 @@ test("no help on the business jobs names the answer: no name, password, VLAN num
     const J = B.open(def, s), p = J.v.plan, sol = def.solve(J.v, J.sim);
     const bad = [p.rtHost, p.rtSecret, p.rtConsole, p.swHost, p.swSecret, p.swConsole, p.user, p.userPw, p.vlans.staff.name, "dot1Q " + p.vlans.staff.id, "vlan " + p.vlans.staff.id,
       p.guestSsid, p.guestPw, p.guestAcl, p.vlans.guest.name, "dot1Q " + p.vlans.guest.id, "vlan " + p.vlans.guest.id, p.apDesc,
-      p.bswHost, p.trunk.closetDesc, p.trunk.backDesc, p.desc["4"], p.vlans.native.name, "vlan " + p.vlans.native.id];
+      p.bswHost, p.trunk.closetDesc, p.trunk.backDesc, p.desc["4"], p.vlans.native.name, "vlan " + p.vlans.native.id,
+      p.camAcl, p.vlans.cameras.name, "dot1Q " + p.vlans.cameras.id, "vlan " + p.vlans.cameras.id, ...p.cams.map((c) => c.desc), ...p.cams.map((c) => String(c.ext))];
     const said = [];
     for (let k = 0; k <= sol.length; k++) {
       for (let c = 0; c < 6; c++) { B.check(J); const m = B.mason(J); if (m) said.push(m.text, m.principle || "", ...(m.struck || []).map((x) => x.text + " " + x.why)); }
@@ -387,12 +506,17 @@ test("no help on the business jobs names the answer: no name, password, VLAN num
 test("random work on the business never breaks the checker; an unmet line always has two causes or more and replays exactly", () => {
   for (const def of BUSINESS_JOBS) for (const s of seeds(def.id).slice(0, 50)) {
     const J = B.open(def, s), p = J.v.plan, R = rng(s * 17 + 3), rooms = ["closet", "counter", "office", "back"];
-    const devs = ["rtr", "msw", "tech", "pc", "mgr", "bpc", "printer", "modem"].concat(J.sim.d.router ? ["router"] : [], J.sim.d.ap ? ["ap", "injector"] : [], J.sim.d.bsw ? ["bsw"] : []);
-    const P = { rtr: ["Gi0/0", "Gi0/1", "Gi0/2", "Gi0/7", "CONSOLE"], msw: ["1", "2", "4", "5", "23", "24", "CONSOLE"], tech: ["USB-C", "ETH"], pc: ["NIC"], mgr: ["NIC"], bpc: ["NIC"], printer: ["NET"], modem: ["ETH"], router: ["LAN 1", "WAN"], ap: ["ETH"], injector: ["DATA IN", "PoE OUT"], bsw: ["1", "2", "23", "24", "CONSOLE"] };
+    const devs = ["rtr", "msw", "tech", "pc", "mgr", "bpc", "printer", "modem"].concat(J.sim.d.router ? ["router"] : [], J.sim.d.ap ? ["ap", "injector"] : [], J.sim.d.bsw ? ["bsw"] : [], J.sim.d.cam1 ? ["cam1", "cam2", "cinj1", "cinj2"] : []);
+    const P = { rtr: ["Gi0/0", "Gi0/1", "Gi0/2", "Gi0/7", "CONSOLE"], msw: ["1", "2", "4", "5", "6", "23", "24", "CONSOLE"], tech: ["USB-C", "ETH"], pc: ["NIC"], mgr: ["NIC"], bpc: ["NIC"], printer: ["NET"], modem: ["ETH"], router: ["LAN 1", "WAN"], ap: ["ETH"], injector: ["DATA IN", "PoE OUT"], bsw: ["1", "2", "23", "24", "CONSOLE"],
+      cam1: ["LAN"], cam2: ["LAN"], cinj1: ["DATA IN", "PoE OUT"], cinj2: ["DATA IN", "PoE OUT"] };
+    const cv = p.vlans.cameras, c3 = cv.net.replace(/\.0$/, ".");
     const LINES = ["", "enable", p.rtSecret, p.swSecret, p.rtConsole, p.swConsole, "configure terminal", "end", "exit", "interface gi0/0", "interface gi0/1", "interface gi0/1." + p.vlans.staff.id, "interface gi0/24", "interface gi0/2",
       "shutdown", "no shutdown", "ip address dhcp", "ip address " + p.lanGw + " " + p.mask, "ip nat inside", "ip nat outside", "encapsulation dot1Q " + p.vlans.staff.id, "switchport mode trunk", "switchport mode access", "switchport access vlan " + p.vlans.staff.id,
       "vlan " + p.vlans.staff.id, "name STAFF", "vlan " + p.vlans.guest.id, "interface gi0/5", "switchport trunk allowed vlan 1," + p.vlans.guest.id, "ip access-group GUEST-IN in", "ip access-list extended GUEST-IN", "deny ip any any", "permit ip any any", "ip dhcp pool X", "network " + p.lan + " " + p.mask, "default-router " + p.lanGw, "access-list 1 permit any", "ip nat inside source list 1 interface gi0/0 overload", "hostname X1",
       "interface gi0/23", "switchport trunk native vlan " + p.vlans.native.id, "switchport trunk native vlan 1", "switchport trunk allowed vlan " + p.vlans.staff.id, "switchport mode dynamic desirable", "switchport nonegotiate", "interface range gi0/2 - 23 , gi0/25 - 28",
+      "vlan " + cv.id, "name CAMERAS", "interface gi0/6", "switchport access vlan " + cv.id, "switchport trunk allowed vlan add " + cv.id, "interface gi0/1." + cv.id, "encapsulation dot1Q " + cv.id, "ip address " + cv.gw + " " + p.vmask,
+      "ip dhcp pool CAMERAS", "network " + cv.net + " " + p.vmask, "default-router " + cv.gw, "ip access-group CAMERAS-IN in", "ip access-list extended CAMERAS-IN", "permit tcp " + cv.net + " 0.0.0.255 eq 443 any",
+      "ip nat inside source static tcp " + c3 + "11 443 interface gi0/0 8443", "ip nat inside source static tcp " + c3 + "12 80 interface gi0/0 8444",
       "copy running-config startup-config", "reload", "no", "show ip interface brief", "show ip nat translations", "show vlan brief", "show interfaces trunk", "?"];
     for (let k = 0; k < 40; k++) {
       const pick = R();
@@ -402,6 +526,7 @@ test("random work on the business never breaks the checker; an unmet line always
       else if (pick < 0.85) B.act(J, cli(R.pick(LINES)));
       else if (pick < 0.88) B.act(J, { t: "power", dev: R.pick(["rtr", "msw"]) });
       else if (pick < 0.9 && J.sim.d.ap) B.act(J, R() < 0.5 ? { t: "apnet", dev: "ap", net: { ssid: R.pick([p.guestSsid, "Test"]), sec: R.pick(["WPA2-Personal", "Open", "WPA3-Personal"]), psk: R.pick([p.guestPw, "short", "password123"]), vlan: R.pick(["", p.vlans.guest.id, 7]) } } : { t: "joinssid", dev: "guest", ssid: R.pick([p.guestSsid, "Test"]), pass: R.pick([p.guestPw, "nope-nope"]) });
+      else if (pick < 0.93 && J.sim.d.cam1) B.act(J, R() < 0.7 ? { t: "client", dev: R.pick(["cam1", "cam2"]), values: R() < 0.2 ? { mode: "dhcp" } : { mode: "static", ip: c3 + R.pick([11, 12, 21]), mask: R.pick([p.vmask, "255.255.0.0"]), gw: R.pick([cv.gw, p.lanGw, ""]) } } : { t: "injector", dev: R.pick(["cinj1", "cinj2"]), values: { power: R() < 0.7 } });
       else B.act(J, { t: "cmd", dev: R.pick(["pc", "mgr", "bpc"]), line: R.pick(["ipconfig", "ipconfig /renew", "ping " + p.lanGw, "ping 8.8.8.8", "tracert 8.8.8.8"]) });
       for (const q of def.reqs) { const c = B.evaluate(q, J.sim, J.v); assert.ok(typeof c.ev === "string" && c.ev.length > 10, def.id + " " + q.id + ": empty evidence"); if (!c.ok) assert.ok(c.list.filter((x) => !x.skip).length >= 2, def.id + " " + q.id + ": a failing line needs two causes or more"); }
     }

@@ -60,6 +60,12 @@ const SETUP = {
   /* the ceiling access point under its tile, seen from below as photographed; its port bay on top. No bench: it hangs from the ceiling */
   ceilingAP: { build: function (o) { return BIZ.ceilingAP({ cable: o.cable }); }, stage: "none", view: [0.3, -0.42, 1], light: [0.4, -1.2, 0.8], frame: [-180, -60, -180, 180, 30, 180],
     views: [["Light ring", { view: [0.08, -1, 0.25], frame: [-70, -40, -70, 70, -30, 70], light: [0.3, -1.3, 0.5] }], ["Port bay (top)", { view: [0.2, 1, 0.3], frame: [-60, -10, -60, 60, 20, 60], light: [0.3, 1.3, 0.6] }]] },
+  /* the dome cameras (SB-J5), as photographed: the ceiling dome under its tile, seen from below (above the tile, its pigtail and the
+     cable's coupler), and the wall dome on its junction box by the back door. No bench: each is where it's mounted */
+  domeCeiling: { build: function (o) { return BIZ.ceilingDome({ cable: o.cable, status: o.status }); }, stage: "none", view: [0.35, -0.5, 1], light: [0.4, -1.2, 0.8], frame: [-85, -85, -85, 85, 10, 85],
+    views: [["In its ceiling", { view: [0.6, -0.55, 0.9], frame: [-750, -100, -200, 200, 20, 760] }], ["Above the tile", { view: [0.35, 1, 0.75], frame: [-20, 0, -140, 380, 140, 70], light: [0.3, 1.3, 0.6] }], ["Its pigtail close up", { view: [0.15, 1, 0.6], frame: [30, 10, -10, 120, 30, 60], light: [0.3, 1.3, 0.6] }]] },
+  domeWall: { build: function (o) { return BIZ.wallDome({ cable: o.cable, status: o.status }); }, stage: "none", view: [0.45, 0.12, 1], light: [0.5, 1.2, 1.0], frame: [-130, 60, -10, 130, 360, 150],
+    views: [["Its cables close up", { view: [0.4, 0.1, 1], frame: [-70, 20, 0, 70, 210, 90] }]] },
   camera: { build: function (o) { return END.ipCamera({ ipLine: o.ipLine, poe: o.poe }); }, stage: "concrete", view: [1, 0.5, 0.75], light: [0.7, 1.3, 0.9], frame: [-70, 0, -70, 125, 112, 125],
     views: [["Port close-up", { focus: "panel:PoE port", view: [0.91, 0.3, 0.41] }]] }
 };

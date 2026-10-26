@@ -12,7 +12,7 @@ import { browse, page } from "../js/net/pages.js";
 const N = Math.min(40, Number(process.env.SEEDS || 40));
 const seeds = Array.from({ length: N }, (_, i) => 5100 + i * 7919);
 const E = (dev, port) => ({ dev, port });
-/* o: what to leave out or change (noacl, nonat, nooutside, dhcp, noallow, nopool, nogw, ext: [p1, p2], acl: lines, listens) */
+/* o: what to leave out or change (noacl, nonat, nooutside, dhcp, noallow, nopool, nogw, ext: [p1, p2], lport: the cameras' port the forwards go to, acl: lines, listens) */
 function build(seed, o = {}) {
   const J = B.open(BUSINESS_JOBS[3], seed); for (const a of BUSINESS_JOBS[3].solve(J.v, J.sim)) B.act(J, a);
   const sim = J.sim, p = J.v.plan, C = p.vlans.cameras, T = p.trunk, net3 = C.net.replace(/\.0$/, "."), w = "0.0.0.255";
@@ -37,7 +37,7 @@ function build(seed, o = {}) {
   if (!o.dhcp) p.cams.forEach((c) => ap({ t: "client", dev: c.id, values: { mode: "static", ip: net3 + c.host, mask: p.vmask, gw: o.camGw || C.gw } }));
   const ext = o.ext || p.cams.map((c) => c.ext);
   cli(["configure terminal"].concat(o.noacl ? [] : ["interface " + sub, "ip access-group " + p.camAcl + " in", "exit", "ip access-list extended " + p.camAcl].concat(o.acl || ["permit tcp " + C.net + " " + w + " eq 443 any"], ["exit"]),
-    p.cams.map((c, k) => "ip nat inside source static tcp " + net3 + c.host + " 443 interface " + p.wanPort + " " + ext[k]),
+    p.cams.map((c, k) => "ip nat inside source static tcp " + net3 + c.host + " " + (o.lport || 443) + " interface " + p.wanPort + " " + ext[k]),
     o.nooutside ? ["interface " + p.wanPort, "no ip nat outside", "exit"] : [], o.wanAcl ? ["ip access-list extended OUTSIDE-IN", "deny tcp any any eq " + p.cams[0].ext, "permit ip any any", "exit", "interface " + p.wanPort, "ip access-group OUTSIDE-IN in", "exit"] : [], ["end"]));
   if (o.listens) p.cams.forEach((c) => { sim.d[c.id].listens = o.listens; });
   return { sim, p, C, net3, J };
@@ -129,6 +129,18 @@ test("the cameras' list applied before their addresses are fixed: their DHCP req
     const p = sim.net.plan, C = p.vlans.cameras;
     ["configure terminal", "ip dhcp pool " + C.name, "network " + C.net + " " + p.vmask, "default-router " + C.gw, "exit", "end"].forEach((l) => exec(sim, "tech", l));
     assert.equal(sim.addr("cam1").kind, "apipa", "the pool is there, but the list in on the cameras' subinterface drops the DISCOVER");
+  }
+});
+
+test("a forward to the camera's plain page: a secure request gets no secure answer, a plain one opens it; its replies need the list to let them out", () => {
+  for (const s of seeds.slice(0, 10)) {
+    let { sim, p } = build(s, { lport: 80, noacl: true });
+    const u = "://" + wan(sim) + ":" + p.cams[0].ext;
+    assert.equal(browse(sim, "mphone", "https" + u).status, "ssl"); assert.equal(browse(sim, "mphone", "http" + u).status, "cam");
+    ({ sim, p } = build(s, { lport: 80 }));
+    assert.equal(sim.fromInternet(wan(sim), p.cams[0].ext).why, "reply", "the list lets out only replies from 443"); assert.equal(sim.fromInternet(wan(sim), p.cams[0].ext).lport, 80);
+    ({ sim, p } = build(s));
+    assert.equal(browse(sim, "mphone", "http://" + wan(sim) + ":" + p.cams[0].ext).status, "badreq", "plain HTTP to the secure page");
   }
 });
 

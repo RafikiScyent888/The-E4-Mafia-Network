@@ -9,7 +9,7 @@ import { page, physical } from "../net/pages.js";
 import { hash } from "../net/util.js";
 
 const PUBLIC = "203.0.113.80";
-const STATE = { cmd: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1, router: 1, client: 1, print: 1, speed: 1, outside: 1, rejoin: 1, pcprinter: 1, forget: 1, join: 1, injector: 1, place: 1, lay: 1, pull: 1, ipam: 1, tftp: 1, crossover: 1, tone: 1, repatch: 1, cablemap: 1, sfp: 1, polarity: 1, joinssid: 1, apnet: 1 };
+const STATE = { cmd: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1, router: 1, client: 1, print: 1, speed: 1, outside: 1, rejoin: 1, pcprinter: 1, forget: 1, join: 1, injector: 1, place: 1, lay: 1, pull: 1, ipam: 1, tftp: 1, crossover: 1, tone: 1, repatch: 1, cablemap: 1, sfp: 1, polarity: 1, joinssid: 1, apnet: 1, radio: 1 };
 const PHYSICAL = { look: 1, test: 1, reseat: 1, unplug: 1, replace: 1, crossover: 1, tighten: 1, power: 1, tone: 1, probe: 1, repatch: 1, polarity: 1 };   /* the patch panel and fibre (SO-J9, SO-J10) as on the Ticket Desk */
 
 export function open(def, seed) {

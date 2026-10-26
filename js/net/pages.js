@@ -47,6 +47,9 @@ export function browse(sim, id, url) {
     if (!isPublic(host)) return fail("timeout", "This site can't be reached", host + " took too long to respond.", "ERR_CONNECTION_TIMED_OUT");
     const r = sim.fromInternet(host, port, "tcp"); facts.forward = r.ok ? r.who : r.why;
     if (!r.ok) return r.fail === "refused" ? fail("refused", "This site can't be reached", host + " refused to connect.", "ERR_CONNECTION_REFUSED") : fail("timeout", "This site can't be reached", host + " took too long to respond.", "ERR_CONNECTION_TIMED_OUT");
+    /* sent on to the other kind of page from the one asked for: a secure request to the camera's plain page, or the reverse */
+    if (+r.lport === 80 && scheme === "https") return fail("ssl", "This site can't provide a secure connection", host + " sent an invalid response.", "ERR_SSL_PROTOCOL_ERROR");
+    if (+r.lport === 443 && scheme === "http") return fail("badreq", "400 Bad Request", "The plain HTTP request was sent to HTTPS port.", "HTTP 400");
     return camPage(sim, r.who, raw, host, port, scheme, facts, true);
   }
   const rt = sim.route(id, host, { proto: "tcp", port: port, sport: 50123 });
@@ -287,7 +290,7 @@ export function page(sim, id, key, opts) {
   }
   if (x.kind === "phone" && key === "wifi" && sim.net.site === "business") {   /* a phone at the business: the networks it hears, each joined by name with its password typed in (the client gives visitors the guest one) */
     const f0 = x.ifaces[0];
-    if (f0.off) return { kind: "rows", title: "Wi-Fi", rows: [["Wi-Fi", "Off"], ["Mobile data", x.cell ? "On (5G): the phone is on the internet through its carrier, not the business's network" : "--"]], radio: { on: false }, heard: [], facts: { page: id + "-wifi", off: true, cell: !!x.cell } };
+    if (f0.off) return { kind: "rows", title: "Wi-Fi", rows: [["Wi-Fi", "Off"], ["Mobile data", x.cell ? "On (5G): the phone is on the internet through its carrier, not the business's network" : "--"]], radio: { on: false }, heard: null, facts: { page: id + "-wifi", off: true, cell: !!x.cell } };   /* off: it hears nothing, and says so in its rows */
     const l = sim.wifiLink(id), a = sim.addr(id), up = !!(a && sim.route(id, "203.0.113.80").internet), f = x.ifaces[0];
     const status = l && l.connected ? "Connected to " + l.ap.ssid + (l.band === 5 ? " (5 GHz)" : " (2.4 GHz)") + " · signal " + l.signal + "%" : l && l.reason === "auth" ? "Can't join " + l.ap.ssid + ": the password is wrong" : l && l.reason === "security" ? "Can't join " + l.ap.ssid + ": this phone doesn't support its security" : f.saved.ssid ? "Not connected: it can't hear " + f.saved.ssid + " here" : "Not connected";
     const rows = [["Wi-Fi", status], ["IP address", a ? a.ip + (a.kind === "apipa" ? " (it gave itself this: no address came)" : "") : "--"], ["Router", a && a.gw || "--"], ["Internet", up ? "OK" : "No internet"]];

@@ -29,7 +29,9 @@ const PORTS = {
   rack: Array.from({ length: 24 }, function (_, i) { return ["P" + (i + 1), String(i + 1)]; }),
   wallplate: [],
   /* the ceiling access point: its one port, in the bay on its top */
-  ceilingAP: [["ETH", "ETH"]]   /* "port:ETH" on the model; printed ETH (PoE IN) beside it */
+  ceilingAP: [["ETH", "ETH"]],   /* "port:ETH" on the model; printed ETH (PoE IN) beside it */
+  /* the dome cameras (SB-J5): the waterproof RJ45 coupler on the end of each one's pigtail */
+  domeCeiling: [["LAN", "LAN"]], domeWall: [["LAN", "LAN"]]
 };
 /* what the installer wrote on the panel's tabs, from his map */
 const TAB = { front: "FRONT", open: "OPEN", manager: "MGR", meeting: "MEET" };
@@ -38,7 +40,7 @@ const SAY_PORT = { brouter: function (p) { return p === "CONSOLE" ? "CON (consol
 
 export function physicalState(sim, id) {
   const x = sim.d[id]; if (!x) return null;
-  const model = x.kind === "patchpanel" ? "rack" : x.kind === "jack" ? "wallplate" : x.kind === "injector" ? (x.dual ? "injectorDual" : "injector") : x.kind === "mswitch" ? "msw" : x.kind === "brouter" ? "brouter" : x.kind === "bap" ? "ceilingAP" : x.kind === "techlaptop" ? "techlaptop" : x.kind === "switch" && x.ports === 8 ? "switch8" : MODEL_OF[id]; if (!model) return null;   /* build mode's PoE+ injector is the dual-port one; the office has the managed switch and an old 8-port */
+  const model = x.kind === "patchpanel" ? "rack" : x.kind === "jack" ? "wallplate" : x.kind === "injector" ? (x.dual ? "injectorDual" : "injector") : x.kind === "mswitch" ? "msw" : x.kind === "brouter" ? "brouter" : x.kind === "bap" ? "ceilingAP" : x.kind === "dcam" ? (x.mount === "ceiling" ? "domeCeiling" : "domeWall") : x.kind === "techlaptop" ? "techlaptop" : x.kind === "switch" && x.ports === 8 ? "switch8" : MODEL_OF[id]; if (!model) return null;   /* build mode's PoE+ injector is the dual-port one; the office has the managed switch and an old 8-port */
   const ports = [], leds = [], says = [], opts = {};
   /* the device an injector output powers right now (its PoE light lit), or null */
   const feeds = function (port) { const c = sim.cableAt(id, port); if (!c) return null; const o = c.a.dev === id ? c.b.dev : c.a.dev; return sim.d[o] && sim.d[o].poe && sim.on(o) && sim.poeSource(o) === x ? o : null; };
@@ -154,6 +156,17 @@ export function physicalState(sim, id) {
     says.push("The light ring round its face: " + ring[2] + ".");
     says.push("ETH (PoE IN), in the bay on its top: " + (p0.plug === "none" ? "empty." : p0.plug === "out" ? "unplugged: the plug is out, hanging loose." : "plugged in: " + cableName(sim, c, id).replace(/^Patch cable/, "the cable") + "."));
     says.push("Its label, on top: CEILING ACCESS POINT, 802.11ac Wave 2, 802.3af PoE. Its settings are on its own web page, at the address it's given.");
+    return { id: id, model: model, label: x.label, ports: ports, leds: leds, opts: opts, says: says };
+  }
+  if (model === "domeCeiling" || model === "domeWall") {   /* a dome camera: its status light says power, then the network (in words too) */
+    const c = sim.cableAt(id, "LAN"), up = on && !!c && sim.cableUp(c), a = on ? sim.addr(id) : null, net = up && !!a && a.kind !== "apipa", p0 = ports[0], ceil = model === "domeCeiling";
+    const st = !on ? ["off", "off: no power (it takes its power down its network cable)"] : !net ? ["blinking", "blinking blue: it has power, but isn't on the network yet" + (up ? " (no address)" : " (no link on its cable)")] : ["on", "on, blue: on the network"];
+    L("status", "Status light", st[0], "blue");
+    opts.cable = p0.plug !== "none"; opts.status = st[0] === "blinking" ? "blink" : st[0];
+    p0.lights = null;
+    says.push("The status light on the housing, beside the bubble: " + st[1] + ".");
+    says.push("Its pigtail's network coupler, " + (ceil ? "above the tile" : "under the junction box") + ": " + (p0.plug === "none" ? "empty: nothing plugged in." : p0.plug === "out" ? "unplugged: the plug is out, hanging loose." : "plugged in: " + cableName(sim, c, id).replace(/^Patch cable/, "the cable") + ", its waterproof sleeve screwed on.") + " The pigtail's DC lead is capped, never used: the power comes down the network cable.");
+    says.push("Its label: IP DOME CAMERA, 4 MP, IR 30 m, IEEE 802.3af PoE, IP66. The MAC and serial number are covered. Its settings are on its own web page, at its address.");
     return { id: id, model: model, label: x.label, ports: ports, leds: leds, opts: opts, says: says };
   }
   if (model === "wallplate") { says.push("A data/voice wall plate: nothing plugged into its ETHERNET or TELEPHONE jack. Its run goes back through the wall to the closet."); return { id: id, model: model, label: x.label, ports: ports, leds: leds, opts: opts, says: says }; }

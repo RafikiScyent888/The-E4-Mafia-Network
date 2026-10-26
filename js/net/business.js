@@ -106,6 +106,25 @@ export function addBackSwitch(sim) {
   net.rooms.bsw = "back"; sim.arp.bsw = {};
 }
 
+/* what SB-J5 brings: the two dome cameras in their boxes (the ceiling dome for the waiting area, the wall dome for the back door), a
+   PoE injector for each, and the manager's own phone, on mobile data with its Wi-Fi off. From a stream of its own, so the
+   business is drawn as before. The cameras start on DHCP and serve their own page (80 and 443) */
+export function addCameraKit(sim) {
+  const net = sim.net, p = net.plan, r = rng(net.seed ^ 0x6ca3);
+  [["cam1", "Ceiling camera", "ceiling", "guest"], ["cam2", "Back door camera", "wall", "back"]].forEach(function (c, k) {
+    const m = mac(r);
+    net.devices[c[0]] = { id: c[0], kind: "dcam", label: c[1], sub: "DHCP", on: true, boxed: true, poe: true, draw: 5.2, mount: c[2], listens: [80, 443], host: p.cams[k].tag, mac: m,
+      ifaces: [{ name: "eth0", type: "eth", port: "LAN", mac: m, cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] };
+    net.rooms[c[0]] = c[3];
+  });
+  net.devices.cinj1 = { id: "cinj1", kind: "injector", label: "PoE injector, CAM-01", on: true, boxed: true, power: true, std: "af" };
+  net.devices.cinj2 = { id: "cinj2", kind: "injector", label: "PoE injector, CAM-02", on: true, boxed: true, power: true, std: "af" };
+  net.devices.mphone = { id: "mphone", kind: "phone", label: "Manager's phone", sub: "Mobile data", on: true, cell: true, undocumented: true,
+    ifaces: [{ name: "Wi-Fi", type: "wifi", mac: mac(r), bands: [24, 5], secs: ["WPA2-Personal", "WPA3-Personal"], saved: { ssid: null }, off: true, cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] };
+  Object.assign(net.rooms, { cinj1: "closet", cinj2: "back", mphone: "office" });
+  ["cam1", "cam2", "cinj1", "cinj2", "mphone"].forEach(function (id) { sim.arp[id] = {}; });
+}
+
 export function makeBusiness(seed) {
   const r = rng(seed ^ 0x3b17);
   const biz = r.pick(BUSINESSES), k = r.int(0, PREFIXES.length - 1), prefix = PREFIXES[k], range = RANGES[k], mask = "255.255.255.0", gw = prefix + ".1";
@@ -133,6 +152,11 @@ export function makeBusiness(seed) {
     guestSsid: biz.wifi, guestPw: biz.wifiPw, apPort: "5", apDesc: "CEILING-AP", guestAcl: "GUEST-IN",
     /* the back of house's own switch (SB-J4): its name, the trunk's port at each end and their descriptions, the back PC's port on it */
     bswHost: biz.tag + "-BACK-SW1", trunk: { closet: "23", back: "24", closetDesc: "TRUNK-BACK-SW1", backDesc: "TRUNK-CLOSET-SW1" }, backPort: "1",
+    /* the cameras (SB-J5), on the cameras' VLAN: each one's switch and port, that port's description, its fixed address (the host
+       part), the port the manager reaches it on from outside, its ID; the cameras' pool keeps the first twenty back; their list */
+    cams: [{ id: "cam1", tag: "CAM-01", sw: "msw", port: "6", desc: "CAM-01-" + biz.guest.toUpperCase().replace(/[^A-Z0-9]+/g, "-"), host: 11, ext: 8443 },
+      { id: "cam2", tag: "CAM-02", sw: "bsw", port: "2", desc: "CAM-02-BACK-DOOR", host: 12, ext: 8444 }],
+    camExcl: 20, camAcl: "CAMERAS-IN",
     /* the switch's port descriptions, by what's plugged in */
     desc: { "1": biz.pc.toUpperCase().replace(/[^A-Z0-9]+/g, "-"), "2": "MANAGER-PC", "3": "PRINTER", "4": biz.backPc.toUpperCase().replace(/[^A-Z0-9]+/g, "-"), "24": "UPLINK-ROUTER" }
   };

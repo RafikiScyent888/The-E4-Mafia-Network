@@ -413,6 +413,10 @@ function rtPools(r, live) {
 function rtNat(r, live) {
   const T = (live && live("nat")) || [];
   const L = [pad("Pro", 5) + pad("Inside global", 22) + pad("Inside local", 22) + pad("Outside local", 22) + "Outside global"];
+  (r.statics || []).forEach(function (x) {   /* the static mappings (port forwards), listed whether or not anything has used them */
+    const ga = x.iface ? addrOf(r, x.iface, live) : null, g = x.iface ? (ga ? ga.ip : null) : x.global; if (!g) return;
+    L.push(pad(x.proto || "---", 5) + pad(g + (x.gport != null ? ":" + x.gport : ""), 22) + pad(x.local + (x.lport != null ? ":" + x.lport : ""), 22) + pad("---", 22) + "---");
+  });
   T.forEach(function (t) { L.push(pad(t.proto, 5) + pad(t.ig, 22) + pad(t.il, 22) + pad(t.ol, 22) + t.og); });
   return L;
 }

@@ -29,7 +29,7 @@ const SIGNAL = {
 
 /* build mode: the ports each kind of device has (the sim's names), where some devices have to go,
    and how long a cable run is between two rooms of the house, in metres, as it really goes (walls, ceilings) */
-export const PORTS = { router: ["WAN", "LAN 1", "LAN 2", "LAN 3", "LAN 4"], switch: ["1", "2", "3", "4", "5"], modem: ["ETH"], pc: ["NIC"], printer: ["NET"], camera: ["LAN"], tv: ["LAN"], injector: ["DATA IN", "PoE OUT"], mesh: ["WAN", "LAN"] };
+export const PORTS = { router: ["WAN", "LAN 1", "LAN 2", "LAN 3", "LAN 4"], switch: ["1", "2", "3", "4", "5"], modem: ["ETH"], pc: ["NIC"], printer: ["NET"], camera: ["LAN"], tv: ["LAN"], injector: ["DATA IN", "PoE OUT"], mesh: ["WAN", "LAN"], dcam: ["LAN"] };
 /* what a PoE injector can send down the cable: at the injector, and what reaches the device after the cable's loss (IEEE 802.3af and 802.3at) */
 export const POE = { af: { pse: 15.4, pd: 12.95 }, at: { pse: 30, pd: 25.5 } };
 export const PORT_NAME = { WAN: "INTERNET (WAN)", ETH: "ETHERNET", NIC: "Ethernet", NET: "NETWORK", LAN: "LAN", "PoE OUT": "DATA + POWER OUT" };
@@ -324,7 +324,7 @@ export class Sim {
   /* a Wi-Fi client's link: which access point, band and channel, how strong, and how lossy */
   wifiLink(id) {
     const x = this.d[id]; if (!x || !x.ifaces || !this.on(id)) return null;
-    const f = x.ifaces.find(function (i) { return i.type === "wifi"; }); if (!f) return null;
+    const f = x.ifaces.find(function (i) { return i.type === "wifi"; }); if (!f || f.off) return null;   /* off: its Wi-Fi turned off (a phone on mobile data) */
     const room = this.net.rooms[id];
     let best = null;
     for (const ap of this.aps()) {
@@ -559,13 +559,16 @@ export class Sim {
   }
   /* after something changes physically, clients whose link came up ask again */
   relink(before) {
+    /* a DHCP pool still being typed (a console in its dhcp-config mode): a device asks now and then, not on every line, so it doesn't
+       catch the pool half made (its network typed, its default-router not yet: a lease with no gateway) */
+    const cli = this.cli || {}, poolOpen = Object.keys(cli).some(function (k) { const st = cli[k]; return !!(st && st.S && st.S.mode === "dhcp"); });
     for (const id in this.d) {
       const x = this.d[id]; if (!x.ifaces || x.ifaces[0].cfg.mode === "static") continue;
       const now = this.hasLink(id), f = x.ifaces[0];
       if (now && !before[id]) this.dhcp(id, "link");
       /* build mode: a device that gave itself 169.254 keeps asking (Windows tries every few minutes), so cabling the
          router in after the switch still gets everyone an address. The tickets keep the moment frozen. */
-      else if (now && this.net.extra.build && f.apipa && !f.lease && this.dhcpServers(id).length) this.dhcp(id, "retry");
+      else if (now && this.net.extra.build && f.apipa && !f.lease && !poolOpen && this.dhcpServers(id).length) this.dhcp(id, "retry");
     }
   }
   links() { const o = {}; for (const id in this.d) if (this.d[id].ifaces) o[id] = this.hasLink(id); return o; }
@@ -786,6 +789,7 @@ export class Sim {
       case "speed": res = this.speedTest(act.dev); break;
       case "outside": res = this.outside(act.port); break;
       case "rejoin": res = this.hasLink(act.dev) ? this.dhcp(act.dev, "rejoin") : { result: "no-wifi" }; break;
+      case "radio": { const f = (this.d[act.dev].ifaces || []).find(function (i) { return i.type === "wifi"; }); if (!f) { res = { ok: false, errs: ["It has no Wi-Fi"] }; break; } f.off = !act.on; if (f.off) this.release(act.dev); else if (this.hasLink(act.dev)) this.dhcp(act.dev, "join"); res = { ok: true, on: !f.off }; break; }   /* a phone's Wi-Fi turned off or on */
       case "forget": { const f = this.d[act.dev].ifaces[0]; f.saved = { ssid: null, passOk: false }; this.release(act.dev); res = { ok: true }; break; }
       case "join": {                                            /* join the house's network by name: the secured one with its current password, or (open) a copy with none; or (ssid) the guest network */
         const f = this.d[act.dev].ifaces[0], w = this.d.router.wifi, g = this.d.router.guest;
@@ -983,6 +987,38 @@ export class Sim {
     return { ok: true };
   }
 
+  /* a connection from out on the internet (a phone on mobile data) to an address and port: the business router's own address on
+     the provider's side, sent on by a static mapping to a device inside (a port forward). In through the provider-side
+     interface's access list; translated only between an interface set nat outside and one set nat inside; routed; out through
+     the inside interface's list to a device listening on that port; its reply back to its own gateway and through the same
+     lists the other way (access lists remember nothing). Nothing here changes the network.
+     Returns { ok, who, local, lport, outIf } or { fail: "timeout" | "refused", why } */
+  fromInternet(dst, port, proto) {
+    const P = proto || "tcp", isp = this.net.isp, src = isp.cell || "172.58.14.97", sport = 51544;
+    if (!isp.up || isp.outage) return { fail: "timeout", why: "provider" };
+    const rid = Object.keys(this.d).find(function (id) { return this.d[id].kind === "brouter" && this.on(id); }, this);
+    if (!rid || dst !== isp.wanIp) return { fail: "timeout", why: "nobody" };
+    const R = this.rtView(rid), live = this.rtLive(rid), w = this.rtWan(rid, R); if (!w || !w.ok) return { fail: "timeout", why: "wan" };
+    const f = function (n) { return n.indexOf(".") > 0 ? R.subs[n] : R.ifs[n]; };
+    const pass = function (n, dir, pk) { const x = f(n), L = x && (dir === "in" ? x.aclIn : x.aclOut); return !L || RT.aclVerdict(R, L, pk).permit; };
+    if (!pass(w.iface, "in", { proto: P, src: src, dst: dst, port: port, sport: sport })) return { fail: "timeout", why: "acl-in", iface: w.iface };
+    const st = R.statics.find(function (x) { return (x.proto ? x.proto === P && +x.gport === +port : true) && ((x.iface && x.iface === w.iface) || x.global === dst); });
+    if (!st) return { fail: "refused", why: "no-forward" };   /* nothing sends it on: the router itself answers, and has nothing on that port */
+    if ((f(w.iface) || {}).nat !== "outside") return { fail: "refused", why: "outside" };   /* not set nat outside: no translating at all */
+    const local = st.local, lport = st.proto ? st.lport : port, rt = RT.lookup(R, local, live);
+    if (!rt || rt.iface === w.iface) return { fail: "timeout", why: "no-route", local: local };
+    const outIf = rt.iface;
+    if ((f(outIf) || {}).nat !== "inside") return { fail: "timeout", why: "inside", local: local, outIf: outIf };
+    if (!pass(outIf, "out", { proto: P, src: src, dst: local, port: lport, sport: sport })) return { fail: "timeout", why: "acl-out", local: local, outIf: outIf };
+    const odom = this.domain(this.rtNode(rid, outIf)), owners = this.owners(local, odom).filter(function (o) { return o !== rid; });
+    if (!owners.length) return { fail: "timeout", why: "arp", local: local, outIf: outIf };   /* nobody at that address answers the router's ARP */
+    const who = owners[0], x = this.d[who], a = this.addr(who), gw = RT.addrOf(R, outIf, live);
+    if ((x.listens || []).indexOf(+lport) < 0) return { fail: "refused", why: "port", who: who, local: local, lport: lport };
+    if (!a || !gw || a.gw !== gw.ip) return { fail: "timeout", why: "gateway", who: who, local: local };   /* its reply goes to its gateway: it must be the router */
+    const rep = { proto: P, src: local, dst: src, port: sport, sport: lport };
+    if (!pass(outIf, "in", rep) || !pass(w.iface, "out", Object.assign({}, rep, { src: dst, sport: port }))) return { fail: "timeout", why: "reply", who: who, local: local, outIf: outIf };
+    return { ok: true, who: who, local: local, lport: lport, outIf: outIf, src: src };
+  }
   /* a connection from the internet to the house's public address on a port (port forwarding, NAT) */
   outside(port) {
     if (!this.wanUp()) return { ok: false, why: "wan" };

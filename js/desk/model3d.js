@@ -93,7 +93,9 @@ function viewer() {
   const stageMat = SURF.grain(new THREE.MeshStandardMaterial({ map: stages.wood, alphaMap: fade, transparent: true, roughness: 0.62, depthWrite: true, envMapIntensity: 0.5 }), { grain: 0.12, scale: 0.6 });
   const stage = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), stageMat); stage.rotation.x = -Math.PI / 2; stage.receiveShadow = true; scene.add(stage);
   /* ambient occlusion for the settled frame; print and clear plastic left out of it */
-  const composer = new EffectComposer(renderer);
+  /* the frame is drawn through post-processing, which draws into buffers of its own: without multisampling there, the renderer's
+     antialias does nothing and every edge comes out stair-stepped (the owner, 26 October 2026: "Will they be this pixelated?") */
+  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(640, 480, { type: THREE.HalfFloatType, samples: 4 }));
   composer.addPass(new RenderPass(scene, camera));
   const gtao = new GTAOPass(scene, camera, 640, 480); gtao.blendIntensity = 1.0; composer.addPass(gtao);
   gtao.overrideVisibility = function () {

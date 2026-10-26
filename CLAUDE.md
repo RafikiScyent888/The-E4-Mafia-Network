@@ -2027,6 +2027,21 @@ the plan: SB-J4 to SB-J10, then the 15 tickets, then Levels 4 and 5).
   light), `l3labels.mjs` (a finished business job's port names as placed, and
   a picture). Not part of the site.
 
+### 3D views antialiased (live 26 October 2026)
+
+The owner, looking at the dome cameras' preview: **"Will they be this pixelated?"**
+- Partly the preview's screenshots (software graphics at standard density, then
+  shrunk). But it was also a real fault, on every screen. Every 3D view draws
+  its frame through post-processing (the ambient shading, then the LED glows),
+  and that renders into buffers of its own with no multisampling. So the
+  renderer's `antialias` did nothing, and every edge came out stair-stepped.
+- The composer now gets a 4x multisampled buffer (`WebGLRenderTarget` with
+  `samples: 4`), in `js/desk/model3d.js` and in `preview/preview.js`. A
+  close-up before and after showed the stair-steps gone.
+- Checked before going live: `node tools/models.mjs` 188 of 188 (every light
+  still reads as it should); AAA on the 28 states that show a 3D model, 65,436
+  text runs passing.
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

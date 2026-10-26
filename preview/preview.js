@@ -231,7 +231,7 @@ const stageMat = SURF.grain(new THREE.MeshStandardMaterial({ map: STAGES.wood, a
 const stage = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), stageMat); stage.rotation.x = -Math.PI / 2; stage.receiveShadow = true; scene.add(stage);
 
 /* ambient occlusion: the darkening in recesses, port openings and where things meet */
-const composer = new EffectComposer(renderer);
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(640, 480, { type: THREE.HalfFloatType, samples: 4 }));   /* multisampled: post-processing's own buffers otherwise skip the antialiasing */
 composer.addPass(new RenderPass(scene, camera));
 const gtao = new GTAOPass(scene, camera, 800, 600); gtao.blendIntensity = 1.0; composer.addPass(gtao);
 /* print (labels, legends) is paper-thin: leave it out of the occlusion depth, as the pass already does for glows */

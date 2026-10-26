@@ -2042,6 +2042,36 @@ The owner, looking at the dome cameras' preview: **"Will they be this pixelated?
   still reads as it should); AAA on the 28 states that show a 3D model, 65,436
   text runs passing.
 
+### Level 3, stage 4: SB-J5, the cameras' VLAN and a port forward (in progress, 26 October 2026)
+
+The owner's decisions, 26 October 2026 (talked out before building):
+- **The cameras, from the owner's photographs** of a ceiling dome under a
+  suspended ceiling and a wall dome on a junction box. Asked for "real world
+  detail", then "the cabling needs to match that level of detail". Approved:
+  **"That is the level of detail that I am looking for."** These are
+  `ceilingDome` and `wallDome` in `assets/models/business-gear.js`, on
+  `preview/models.html`. The detail is the bar for every model from here on:
+  - the camera's seams and screws, the gimballed eyeball, the coated lens, the
+    infrared ring, the status light
+  - fissured ceiling tiles, the grid, the J-hook and hanger wire; painted
+    concrete, the junction box's glands, the conduit's saddle clip
+  - printed jackets, ribbed strain reliefs, the Y-splitter, capped DC jacks,
+    cable ties, TIA-606 ID flags
+  - plenum-rated cable above a ceiling, riser-rated along a wall, nail-in clips
+- **Where:** the ceiling dome in the waiting area, the wall dome at the back
+  door in the back room.
+- **Power: "A PoE injector each"**, one in the closet for the ceiling dome and
+  one in the back room for the wall dome. Neither switch has PoE.
+- **Fixed addresses: "On each camera's own page".** The cameras start on DHCP.
+  The student finds each one's address (as with the access point), opens its
+  page in the manager's PC's browser, and sets a static address outside the
+  pool.
+- **The outside test: "Manager's phone on mobile data".** Wi-Fi off, the
+  phone's browser opens the business's public address and port, as the
+  manager would from home.
+- Asked about the previews, **"Will they be this pixelated?"**: the 3D views'
+  antialiasing fault above, fixed and live first.
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

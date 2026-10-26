@@ -10,6 +10,7 @@
 import * as THREE from "three";
 import { COL, mat, rbox, box, cyl, at, named, text, COVERED, led, rj45Jack, iecInlet, fanGrille, screw, socket, pinhole, rocker, cable } from "./parts.js";
 import { rj45Plug, plugInto, cableFrom } from "./cables.js";
+import { tubeVar, jacketMaterial } from "./cable-kit.js";
 import { perforated, printLines, label, plastic, paintedSteel, brushed, rubber, ceilingTileTex, paintedConcreteTex } from "./surface.js";
 import { sfpCage, sfpModule } from "./office-gear.js";
 
@@ -172,11 +173,12 @@ export function ceilingAP(o = {}) {
     const pg = new THREE.Mesh(new THREE.ExtrudeGeometry(ps, { depth: 2, bevelEnabled: false }), plate); pg.rotation.x = Math.PI / 2; pg.position.y = 2.4; g.add(pg);
     g.add(at(box(150, 1.6, 26, plate), 0, 18.2, 0));                                    /* the bar across the tile's back */
     const tileM = mat(0xeeeeea, { rough: 0.95 }), grid = mat(0xf2f2ef, { metal: 0.2, rough: 0.5 });
-    g.add(at(box(600, 15, 600, tileM), 0, 2.4 + 7.5, 0));
+    const tileFace = new THREE.MeshStandardMaterial({ map: ceilingTileTex(), roughness: 0.96 });   /* the same fissured tile as the cameras' ceiling */
+    g.add(at(new THREE.Mesh(new THREE.BoxGeometry(600, 15, 600), [tileM, tileM, tileM, tileFace, tileM, tileM]), 0, 2.4 + 7.5, 0));
     [[-300, 0, 24, 600], [300, 0, 24, 600], [0, -300, 600, 24], [0, 300, 600, 24]].forEach(function (b) { g.add(at(box(b[2], 3, b[3], grid), b[0], 1, b[1])); });
     if (o.cable !== false) {   /* its cable, as photographed: down through the tile at the right, along under it, in at the plate's notch */
       plugInto(eth, rj45Plug({ standard: "T568B", boot: 0xf0f0ec, jacket: 0xf0f0ec }));
-      g.add(cable([[150, 17, -60], [152, 2, -48], [148, -2.4, -30], [126, -3.2, -12], [104, -3.0, -5], [90, -1.2, -5]], 2.6, 0xeeeeea, { seg: 80 }));
+      g.add(lead([[150, 17, -60], [152, 2, -48], [148, -2.4, -30], [126, -3.2, -12], [104, -3.0, -5], [90, -1.2, -5]], 2.6, 0xeeeeea, "CAT6 CMP PLENUM  ·  23AWG 4PR  ·  TIA-568.2  ·  UL VERIFIED"));   /* plenum-rated, printed, as cable above a ceiling is */
       g.add(at(rbox(12, 6.6, 7, 1.4, plastic(0xe6e6e2, { rough: 0.4 })), 98, -3.4, -5));   /* the cable's boot into the notch */
     }
   }
@@ -257,9 +259,9 @@ function pigtailEnd() {
   cp.add(at(cyl(9.5, 30, blk, 32), 0, 0, -15, Math.PI / 2));
   for (let k = 0; k < 7; k++) cp.add(at(new THREE.Mesh(new THREE.TorusGeometry(10.1, 0.55, 6, 32), thr), 0, 0, -1.6 - k * 1.6));   /* the thread */
   cp.add(at(cyl(10.6, 6, rubber(0x2a2c2f), 6), 0, 0, -22, Math.PI / 2));                                                           /* the hex grip */
-  cp.add(at(cyl(4.6, 14, blk, 20), 0, 0, -33, Math.PI / 2));                                                                       /* the boot where the pigtail goes in */
+  const bt = relief(16, 6.2, 3.3, 0x18191c, 5); bt.rotation.x = -Math.PI / 2; bt.position.z = -25; cp.add(bt);                    /* the ribbed boot where the pigtail goes in */
   const jack = rj45Jack({ name: "LAN", leds: false }); jack.scale.set(0.95, 0.95, 1); at(jack, 0, -0.9, -2.2); cp.add(jack);
-  cp.userData.exitZ = -40;
+  cp.userData.exitZ = -41;
   const tag = label(["IP DOME CAMERA · LAN (PoE IN)", "802.3af · 10/100", "MAC: " + COVERED, "S/N: " + COVERED], { w: 32, h: 13, bg: "#f4f4f0" }); at(tag, 0, 10.3, -24, -Math.PI / 2, 0, 0); cp.add(tag);
   return { group: cp, jack: jack };
 }
@@ -272,13 +274,66 @@ function sleeveOn(plug) {
   s.add(at(new THREE.Mesh(new THREE.RingGeometry(3.4, 10.6, 32), mat(0x0a0a0b)), 0, 0, 12.05));
   s.position.z = -46; plug.add(s); return s;
 }
-/* the DC lead: a barrel plug with its rubber cap on */
+/* the DC lead's end: a female barrel jack (2.1 mm), knurled where fingers grip it, its rubber cap on, a ribbed strain relief where the
+   lead goes in; along +Z, the lead off -Z */
 function dcLead() {
-  const d = new THREE.Group();
-  d.add(at(cyl(4.2, 14, plastic(0x18191c, { rough: 0.5 }), 24), 0, 0, 0, Math.PI / 2));
-  d.add(at(cyl(4.9, 9, rubber(0x2b2d30), 24), 0, 0, 11, Math.PI / 2));
-  d.add(at(cyl(2.6, 10, plastic(0x18191c, { rough: 0.5 }), 16), 0, 0, -11, Math.PI / 2));
-  return d;
+  const d = new THREE.Group(), blk = plastic(0x18191c, { rough: 0.5 });
+  d.add(at(cyl(4.4, 15, blk, 28), 0, 0, 0, Math.PI / 2));
+  for (let k = 0; k < 9; k++) d.add(at(new THREE.Mesh(new THREE.TorusGeometry(4.45, 0.28, 6, 28), mat(0x101113, { rough: 0.6 })), 0, 0, -5.5 + k * 1.1));   /* the knurl */
+  d.add(at(cyl(5.0, 10, rubber(0x2b2d30), 28), 0, 0, 12, Math.PI / 2));                                                            /* the cap */
+  d.add(at(new THREE.Mesh(new THREE.TorusGeometry(5.0, 0.6, 8, 28), rubber(0x24262a)), 0, 0, 17));
+  const rl = relief(12, 3.6, 1.9, 0x18191c, 4); rl.rotation.x = -Math.PI / 2; rl.position.z = -7.5; d.add(rl);
+  d.userData.exitZ = -19.5; return d;
+}
+const V3 = function (p) { return p.isVector3 ? p : new THREE.Vector3(p[0], p[1], p[2]); };
+/* a lead with a printed jacket, as real cable is, along points (mm) */
+function lead(pts, r, color, text) {
+  const curve = new THREE.CatmullRomCurve3(pts.map(V3), false, "centripetal"), L = curve.getLength();
+  const geo = tubeVar(curve, { n: Math.max(40, Math.ceil(L / 1.2)), m: 20, uvLength: 420, radius: function () { return [r, r]; } });
+  const lum = new THREE.Color(color).getHSL({}).l;
+  return new THREE.Mesh(geo, jacketMaterial(color, text, lum < 0.3 ? "rgba(235,235,235,0.55)" : "rgba(25,25,25,0.6)", { font: 16 }));
+}
+/* a ribbed strain relief, tapering from r0 to r1 along +Y over len: where a lead leaves a moulding, so it bends gently there */
+function relief(len, r0, r1, color, ribs) {
+  const p = [new THREE.Vector2(0, 0), new THREE.Vector2(r0, 0)];
+  for (let i = 1; i <= ribs * 2; i++) { const t = i / (ribs * 2); p.push(new THREE.Vector2(r0 + (r1 - r0) * t + (i % 2 && i < ribs * 2 ? 0.45 : 0), t * len)); }
+  p.push(new THREE.Vector2(0, len));
+  return new THREE.Mesh(new THREE.LatheGeometry(p, 28), rubber(color));
+}
+/* a cable tie round a cable of radius r running along Z: the strap, its square head, the cut tail */
+function zipTie(r) {
+  const t = new THREE.Group(), m = plastic(0x161719, { rough: 0.5 });
+  const band = new THREE.Mesh(new THREE.TorusGeometry(r + 0.55, 0.5, 6, 28), m); band.scale.z = 2.4; t.add(band);
+  t.add(at(rbox(4, 3.2, 4.4, 0.6, m), r + 2.1, 0, 0));
+  t.add(at(box(0.9, 4.5, 2.4, m), r + 3.6, 2.2, 0));
+  return t;
+}
+/* the wrap-around ID flag a cable carries near each end (TIA-606): white, printed both sides; along the cable's Z */
+function cableFlag(lines, r) {
+  const f = new THREE.Group();
+  f.add(at(cyl(r + 0.35, 9, plastic(0xf5f5f2, { rough: 0.5 }), 24), 0, 0, 0, Math.PI / 2));
+  [1, -1].forEach(function (sd) { const l = label(lines, { w: 24, h: 10, bg: "#f7f7f4" }); at(l, sd * 0.15, r + 6.2, 0, 0, sd > 0 ? Math.PI / 2 : -Math.PI / 2, 0); f.add(l); });
+  f.add(at(box(0.3, 10.4, 24.4, plastic(0xf5f5f2, { rough: 0.5 })), 0, r + 6.2, 0));
+  return f;
+}
+/* a J-hook above the ceiling: the hanger wire from the slab above, the steel J the cables lie in (opening up, along X) */
+function jHook() {
+  const g = new THREE.Group(), st = paintedSteel(0xa4a8ad, { rough: 0.4 });
+  const j = new THREE.Mesh(new THREE.TorusGeometry(22, 2.4, 8, 32, Math.PI), st); j.rotation.set(0, Math.PI / 2, Math.PI); g.add(j);
+  g.add(at(box(2.4, 46, 8, st), 0, 23, -22));
+  g.add(at(box(3, 6, 14, st), 0, 46, -22));
+  g.add(at(cyl(1.1, 260, mat(0xb8bbbf, { metal: 0.85, rough: 0.3 }), 8), 0, 46 + 130, -22));
+  g.add(at(new THREE.Mesh(new THREE.TorusGeometry(2.4, 0.9, 6, 16), mat(0xb8bbbf, { metal: 0.85, rough: 0.3 })), 0, 50, -22, 0, Math.PI / 2, 0));
+  return g;
+}
+/* a nail-in cable clip on a wall (the wall the plane z = 0), round a cable of radius r running along X at height y */
+function cableClip(r) {
+  const c = new THREE.Group(), w = plastic(0xf1f1ee, { rough: 0.45 });
+  const arch = new THREE.Mesh(new THREE.TorusGeometry(r + 1.1, 1.0, 8, 20, Math.PI), w);   /* its half-circle turned into the Y-Z plane, out from the wall */
+  arch.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0))); arch.scale.z = 3; c.add(arch);
+  c.add(at(box(6, 5, r + 3, w), 0, r + 3.6, (r + 3) / 2));
+  c.add(at(cyl(1.7, 1.2, mat(0x9ea1a6, { metal: 0.8, rough: 0.35 }), 16), 0, r + 3.6, r + 3.4, Math.PI / 2));
+  return c;
 }
 
 /* the ceiling dome, as photographed: under the middle tile of a suspended ceiling, the white T-bar grid between the tiles, a flat LED
@@ -308,13 +363,22 @@ export function ceilingDome(o = {}) {
   for (let k = 0; k < 3; k++) { const a = k * 2 * Math.PI / 3 + Math.PI / 6; g.add(at(screw(3.4, 0xb4b7bb), Math.cos(a) * 52, top + 1.7, Math.sin(a) * 52, -Math.PI / 2, 0, 0)); }
   g.add(at(new THREE.Mesh(new THREE.CircleGeometry(11, 28), mat(0x0b0b0c)), 0, top + 1.65, 0, -Math.PI / 2));
   g.add(at(cyl(9, 4, rubber(0x2b2d30), 28), 0, top + 3.6, 0));                                                                      /* the grommet */
-  const P = pigtailEnd(); at(P.group, 150, top + 10.2, 4, 0, Math.PI / 2, 0); g.add(P.group);
-  g.add(cable([[0, top + 2, 0], [0, top + 9, 0], [20, top + 10, 4], [70, top + 10, 6], [104, top + 10.2, 4], [108, top + 10.2, 4]], 2.4, 0x26282c, { seg: 60 }));
-  const dc = dcLead(); at(dc, 92, top + 4.9, 52, 0, 0.7, 0); g.add(dc);
-  g.add(cable([[3, top + 6, 3], [30, top + 5, 30], [64, top + 4.9, 44], [80, top + 4.9, 47]], 1.6, 0x26282c, { seg: 40 }));
+  /* the pigtail: one printed lead up through the grommet to its moulded Y-splitter, then the LAN branch to its coupler and the DC
+     branch to its capped jack, each with a ribbed strain relief where it leaves a moulding */
+  const blk = 0x1d1e21, P = pigtailEnd(); at(P.group, 160, top + 10.2, 4, 0, Math.PI / 2, 0); g.add(P.group);
+  const gr = relief(10, 4.2, 3.1, 0x2b2d30, 3); gr.position.set(0, top + 3, 0); g.add(gr);
+  g.add(lead([[0, top + 4, 0], [0, top + 9, 0], [12, top + 10, 5], [34, top + 10, 9], [50, top + 9.5, 10]], 3.0, blk, "IP CAMERA PIGTAIL  ·  LAN (PoE) + DC 12V  ·  26AWG  ·  UL2464"));
+  g.add(at(rbox(24, 7.6, 11, 3, plastic(0x18191c, { rough: 0.45 })), 62, top + 9.5, 10.5));
+  [[50, 10.5, -1], [74, 8, 1], [74, 13, 1]].forEach(function (q, k) { const r = relief(6, k ? 3.0 : 3.6, k ? 2.0 : 3.0, 0x18191c, 2); r.rotation.z = q[2] > 0 ? -Math.PI / 2 : Math.PI / 2; r.position.set(q[0], top + 9.5, q[1]); g.add(r); });
+  g.add(lead([[79, top + 9.5, 8], [92, top + 10, 5], [110, top + 10.2, 4], [119.5, top + 10.2, 4]], 2.4, blk, "LAN  ·  PoE IN  ·  10/100"));
+  const dc = dcLead(), da = Math.atan2(30, 37); at(dc, 104, top + 5, 50, 0, da, 0); g.add(dc);
+  g.add(lead([[79, top + 9.5, 13], [84, top + 8, 21], [89, top + 5.6, 30], [104 - 19.5 * Math.sin(da), top + 5, 50 - 19.5 * Math.cos(da)]], 1.8, blk, "DC 12V IN  ·  2.1 mm"));
+  /* the network cable: plenum-rated above a ceiling, its ID flag near the end, up into a J-hook on its hanger wire */
+  const hook = jHook(); hook.position.set(300, top + 72, -70); g.add(hook);
   if (o.cable !== false) {
     const plug = plugInto(P.jack, rj45Plug({ standard: "T568B", boot: 0x2c55b8, jacket: 0x2c55b8 })); sleeveOn(plug);
-    cableFrom(g, plug, [[262, top + 7, 0], [300, top + 4, -40], [310, top + 3.5, -220]], { straight: 64 });
+    const fl = cableFlag(["CAM-01", "WAITING AREA"], 3.05); fl.position.z = -70; plug.add(fl);
+    cableFrom(g, plug, [[262, top + 16, -10], [288, top + 40, -50], [300, top + 54, -70], [322, top + 56, -110], [350, top + 48, -260]], { straight: 72, text: "CAT6 CMP PLENUM  ·  23AWG 4PR  ·  TIA-568.2  ·  UL VERIFIED  ·  CAM-01" });
   }
   return named(g, "device:Ceiling dome camera", { type: "dome-camera", w: 124, h: 74, d: 124 });
 }
@@ -354,16 +418,19 @@ export function wallDome(o = {}) {
   /* the glands in the box's bottom: hex body, domed cap nut */
   const gl = function (x) { const y = BY - BW / 2; g.add(at(cyl(9.8, 6, plastic(0x9a9ea3, { rough: 0.5 }), 6), x, y - 3, BD / 2)); g.add(at(new THREE.Mesh(new THREE.SphereGeometry(8.6, 24, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), plastic(0x8e9297, { rough: 0.45 })), x, y - 6, BD / 2)); };
   gl(-32); gl(18);
-  /* the pigtail out of the left gland, down and round in a drip loop, its coupler hanging open end down */
-  const P = pigtailEnd(); at(P.group, 8, BY - 212, BD / 2 + 10, Math.PI / 2, 0, 0); g.add(P.group);
-  g.add(cable([[-32, BY - BW / 2 - 8, BD / 2], [-34, BY - 120, BD / 2 + 4], [-28, BY - 160, BD / 2 + 8], [-6, BY - 168, BD / 2 + 10], [8, BY - 150, BD / 2 + 10], [8, BY - 140, BD / 2 + 10], [8, BY - 172, BD / 2 + 10]], 2.4, 0xeceae6, { seg: 80 }));
-  /* the DC lead out of the right gland, capped, tied back on itself with a cable tie */
-  const dc = dcLead(); at(dc, 30, BY - 122, BD / 2 + 5, Math.PI / 2 + 0.25, 0, 0); g.add(dc);
-  g.add(cable([[18, BY - BW / 2 - 8, BD / 2], [18, BY - 96, BD / 2 + 2], [24, BY - 106, BD / 2 + 4], [30, BY - 108, BD / 2 + 5]], 1.6, 0xeceae6, { seg: 30 }));
-  g.add(at(new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.7, 6, 16), plastic(0x1b1c1f, { rough: 0.5 })), 18, BY - 94, BD / 2 + 2, Math.PI / 2, 0, 0));
+  /* the camera's leads out of the glands: the LAN pigtail down to its coupler (hanging open end down, so rain runs off the cable
+     below it), the spare DC lead brought across and tied back to the pigtail, its jack capped */
+  const W = 0xeceae6, P = pigtailEnd(); at(P.group, -30, BY - 150, BD / 2 + 8, Math.PI / 2, 0, 0); g.add(P.group);
+  g.add(lead([[-32, BY - 72, BD / 2], [-32, BY - 86, BD / 2 + 1], [-31, BY - 100, BD / 2 + 6], [-30, BY - 108.6, BD / 2 + 8]], 2.4, W, "LAN  ·  PoE IN  ·  10/100"));
+  const dc = dcLead(); at(dc, -17, BY - 128, BD / 2 + 9, Math.PI / 2, 0, 0); g.add(dc);
+  g.add(lead([[18, BY - 72, BD / 2], [16, BY - 86, BD / 2 + 2], [2, BY - 96, BD / 2 + 6], [-12, BY - 100, BD / 2 + 8.5], [-17, BY - 106, BD / 2 + 9], [-17, BY - 108.6, BD / 2 + 9]], 1.8, W, "DC 12V IN  ·  2.1 mm"));
+  const zt = zipTie(5.2); zt.rotation.x = Math.PI / 2; zt.position.set(-24, BY - 100, BD / 2 + 8); g.add(zt);
+  /* the network cable: riser-rated, its ID flag near the end, down and along the wall in nail-in clips */
   if (o.cable !== false) {
     const plug = plugInto(P.jack, rj45Plug({ standard: "T568B", boot: 0x2c55b8, jacket: 0x2c55b8 })); sleeveOn(plug);
-    cableFrom(g, plug, [[10, BY - 296, BD / 2 + 14], [60, BY - 320, 14], [330, BY - 322, 8]], { straight: 64 });
+    const fl = cableFlag(["CAM-02", "BACK DOOR"], 3.05); fl.position.z = -70; plug.add(fl);
+    cableFrom(g, plug, [[-28, BY - 246, BD / 2 + 4], [-8, BY - 258, 10], [40, BY - 260, 4.4], [420, BY - 260, 4.4]], { straight: 72, text: "CAT6 CMR RISER  ·  23AWG 4PR  ·  TIA-568.2  ·  UL VERIFIED  ·  CAM-02" });
+    [70, 190, 310].forEach(function (x) { const c = cableClip(3.05); c.position.set(x, BY - 260, 0); g.add(c); });
   }
   return named(g, "device:Wall dome camera", { type: "dome-camera", w: 700, h: 600, d: BD + LD + 80 });
 }

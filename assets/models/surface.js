@@ -200,3 +200,37 @@ export function concreteTex() {
     for (let k = 0; k < 40; k++) { g.fillStyle = "rgba(70,68,64," + (0.15 + rnd() * 0.3) + ")"; g.beginPath(); g.arc(rnd() * cw, rnd() * ch, 1 + rnd() * 3, 0, Math.PI * 2); g.fill(); }
   }, { repeat: true });
 }
+/* a suspended ceiling's mineral-fibre tile from below, as in the owner's photo of the ceiling dome (26 October 2026): off-white, its
+   fissures (short wandering grooves) and pinholes, faintly mottled. One tile per repeat */
+export function ceilingTileTex() {
+  return canvasTex("ceilingTile", 1024, 1024, function (g, cw, ch) {
+    g.fillStyle = "rgb(236,235,229)"; g.fillRect(0, 0, cw, ch);
+    let s = 4242; const rnd = function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+    for (let k = 0; k < 60; k++) { const r = 40 + rnd() * 120, v = rnd() > 0.5 ? 255 : 200; g.fillStyle = "rgba(" + v + "," + v + "," + (v - 6) + ",0.05)"; g.beginPath(); g.arc(rnd() * cw, rnd() * ch, r, 0, Math.PI * 2); g.fill(); }
+    for (let k = 0; k < 5200; k++) {                      /* fissures: fine short wandering grooves, a few millimetres long */
+      let x = rnd() * cw, y = rnd() * ch, a = rnd() * 6.28; const n = 2 + Math.floor(rnd() * 4);
+      g.strokeStyle = "rgba(150,147,138," + (0.16 + rnd() * 0.22) + ")"; g.lineWidth = 0.7 + rnd() * 0.6; g.beginPath(); g.moveTo(x, y);
+      for (let i = 0; i < n; i++) { a += (rnd() - 0.5) * 1.8; x += Math.cos(a) * (1.4 + rnd() * 2.2); y += Math.sin(a) * (1.4 + rnd() * 2.2); g.lineTo(x, y); }
+      g.stroke();
+    }
+    for (let k = 0; k < 9000; k++) { g.fillStyle = "rgba(128,125,118," + (0.18 + rnd() * 0.3) + ")"; g.beginPath(); g.arc(rnd() * cw, rnd() * ch, 0.4 + rnd() * 0.7, 0, Math.PI * 2); g.fill(); }
+    g.strokeStyle = "rgba(170,168,160,0.9)"; g.lineWidth = 6; g.strokeRect(3, 3, cw - 6, ch - 6);   /* the tile's bevelled edge */
+  }, { repeat: true });
+}
+/* painted concrete, as the wall behind the owner's photo of the wall dome: a warm off-white over beige, mottled where the paint is
+   thin, small pits, a hairline crack or two, a faint stain run down from above */
+export function paintedConcreteTex() {
+  return canvasTex("paintedConcrete", 1024, 1024, function (g, cw, ch) {
+    g.fillStyle = "rgb(204,193,172)"; g.fillRect(0, 0, cw, ch);
+    let s = 7171; const rnd = function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+    for (let k = 0; k < 320; k++) {                       /* mottling: soft-edged patches, darker where the paint is thin */
+      const r = 20 + rnd() * 120, d = rnd() > 0.5, x = rnd() * cw, y = rnd() * ch, c = d ? "160,146,120" : "228,220,202", al = d ? 0.1 + rnd() * 0.14 : 0.12 + rnd() * 0.18;
+      const rg = g.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, "rgba(" + c + "," + al + ")"); rg.addColorStop(1, "rgba(" + c + ",0)");
+      g.fillStyle = rg; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+    }
+    for (let k = 0; k < 30000; k++) { const v = 150 + rnd() * 90; g.fillStyle = "rgba(" + v + "," + (v - 6) + "," + (v - 18) + "," + (0.06 + rnd() * 0.12) + ")"; g.fillRect(rnd() * cw, rnd() * ch, 1 + rnd() * 2, 1 + rnd() * 2); }
+    for (let k = 0; k < 160; k++) { g.fillStyle = "rgba(96,88,74," + (0.25 + rnd() * 0.35) + ")"; g.beginPath(); g.arc(rnd() * cw, rnd() * ch, 0.8 + rnd() * 2.6, 0, Math.PI * 2); g.fill(); }
+    for (let c = 0; c < 3; c++) { let x = rnd() * cw, y = rnd() * ch * 0.3, a = 1.2 + rnd() * 0.7; g.strokeStyle = "rgba(96,88,74,0.6)"; g.lineWidth = 1; g.beginPath(); g.moveTo(x, y); for (let i = 0; i < 60; i++) { a += (rnd() - 0.5) * 0.5; x += Math.cos(a) * 6; y += Math.sin(a) * 6; g.lineTo(x, y); } g.stroke(); }
+    for (let k = 0; k < 6; k++) { const x = rnd() * cw, w = 6 + rnd() * 16, grd = g.createLinearGradient(0, 0, 0, ch * (0.4 + rnd() * 0.5)); grd.addColorStop(0, "rgba(140,126,98,0.2)"); grd.addColorStop(1, "rgba(140,126,98,0)"); g.fillStyle = grd; g.fillRect(x, 0, w, ch); }
+  }, { repeat: true });
+}

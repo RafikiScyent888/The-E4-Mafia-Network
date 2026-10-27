@@ -228,7 +228,7 @@ function liveView(L) {
       '<rect x="128" y="34" width="64" height="34" fill="#9a9c9f"/><rect x="132" y="38" width="56" height="30" fill="#c9cacc"/><rect x="118" y="88" width="84" height="26" rx="10" fill="#4a4c4f"/>'
     : '<rect width="320" height="180" fill="#6a6c6f"/><polygon points="0,180 0,120 320,120 320,180" fill="#4f5154"/><rect x="104" y="20" width="112" height="112" fill="#3b3d40"/><rect x="112" y="28" width="96" height="104" fill="#808285"/>' +
       '<circle cx="196" cy="82" r="4" fill="#d6d7d9"/><polygon points="88,132 232,132 252,150 68,150" fill="#909295"/><polygon points="150,150 170,150 200,180 120,180" fill="#a4a6a9"/><rect x="250" y="88" width="34" height="46" rx="3" fill="#2f3134"/>';
-  svg.innerHTML = scene + '<rect width="320" height="22" fill="#000"/><text x="8" y="15" font-size="12" fill="#fff" font-family="inherit">' + L.tag + ' · ' + String(L.where).replace(/[<&>]/g, "") + '</text><rect x="268" y="4" width="44" height="15" fill="#fff"/><text x="290" y="15.5" font-size="11" text-anchor="middle" fill="#000" font-weight="700" font-family="inherit">LIVE</text>';
+  svg.innerHTML = scene + '<rect width="320" height="22" fill="#000"/><text x="8" y="15" font-size="12" style="color:#fff">' + L.tag + ' · ' + String(L.where).replace(/[<&>]/g, "") + '</text><rect x="268" y="4" width="44" height="15" fill="#fff"/><text x="290" y="15.5" font-size="11" text-anchor="middle" font-weight="700" style="color:#000">LIVE</text>';   /* painted in currentColor, as the diagrams' text is: the AAA check reads the colour and can hide it */
   return svg;
 }
 /* a phone at the business: the networks it hears, each joined by name with the password typed in */

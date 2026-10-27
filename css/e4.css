@@ -229,6 +229,7 @@ dialog.m3d-dialog .db { max-height: calc(100vh - 90px); }
 /* a business PC's web browser: the address bar, the page in its frame, or the browser's own words for why there's none */
 .browser .urlbar { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
 .browser .webpage { margin-top: 10px; padding: 10px 12px; border: 2px solid var(--line); border-radius: 8px; }
+.browser .live text { fill: currentColor; font-family: inherit; }
 .browser .live { display: block; width: 100%; max-width: 480px; height: auto; margin: 4px 0 10px; border: 2px solid var(--line); border-radius: 6px; background: #000; }   /* a camera's live picture (SB-J5): its name and LIVE on a black band, AAA by construction */
 .browser .nopage { margin-top: 10px; padding: 10px 12px; border: 2px dashed var(--line); border-radius: 8px; }
 .browser .nopage h3 { margin: 0 0 6px; }

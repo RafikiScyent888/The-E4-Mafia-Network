@@ -1364,6 +1364,7 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       for (let k = 0; k < sol.length; k++) {
         const a = sol[k];
         if (k === 4) {   /* both of the ceiling camera's runs laid, its switch port still shut: powered, not on the network */
+          check(!!(await p.$('#devtabs [data-d="cam1"]')) && !!(await p.$('#devtabs [data-d="cinj1"]')), tag + "the ceiling camera and its injector out of their boxes: each has a device button");
           check((await p.getAttribute('#plan [data-d="cam1"] use', "href")) === "#p-dome" && (await p.getAttribute('#net [data-d="cam1"] use', "href")) === "#i-dome", tag + "the ceiling camera placed: a dome on the plan and on the diagram");
           await dev(p, "cam1"); if (!(await p.$('.win-tabs button[aria-selected="true"]:text-is("Physical")'))) await tab(p, "Physical"); await p.waitForTimeout(300);
           check(/status light[^.]*blinking blue: it has power, but isn't on the network yet/.test(await p.$eval(".m3d-says", (n) => n.textContent).catch(() => "")), tag + "the ceiling camera's Physical tab: its status light blinks, powered, not on the network (its switch port is still shut)");
@@ -1400,6 +1401,7 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       await go(p, "https://" + n3 + "11"); check(/took too long to respond/.test(await p.$eval(".browser", (n) => n.textContent)), tag + "the phone on mobile data: a camera's private address means nothing out there");
       await go(p, "http://" + wan + ":" + plan.cams[0].ext); check(/400 Bad Request/.test(await p.$eval(".browser", (n) => n.textContent)), tag + "plain http to the forward: the camera's secure page answers 400");
       await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Turn Wi-Fi on")'); await p.waitForTimeout(60);
+      check(!/Wi-FiOff/.test(await p.$eval(".pane", (n) => n.textContent)) && !!(await p.$('.pane button:text-is("Turn Wi-Fi off")')), tag + "the phone's switch turns its Wi-Fi on (the tab no longer says Off; its button now turns it off)");
       await p.fill(".pane input[name=pass]", plan.guestPw).catch(() => { }); const join = await p.$('.pane button:has-text("Join ' + plan.guestSsid + '")'); if (join) { await join.click(); await p.waitForTimeout(60); }
       await tab(p, "Web browser"); await go(p, "https://" + wan + ":" + plan.cams[0].ext);
       check(/refused to connect/.test(await p.$eval(".browser", (n) => n.textContent)), tag + "the phone on the guest Wi-Fi: the business's own address refuses (the router doesn't loop its forwards back inside): test from outside");

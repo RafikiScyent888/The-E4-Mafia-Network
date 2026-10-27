@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (25 October 2026): Level 3 (the small business) goes live stage by stage: stage 1 (the business, its router and switch on the page, work orders SB-J1 and SB-J2) and stage 2 (SB-J3, guest Wi-Fi on a ceiling access point: the access point's page through a business PC's web browser, the visitor's phone, the ring in 3D) and stage 3 (SB-J4, the back of house on its own switch over a trunk with its allowed list and native VLAN) are live; the level opens once the small office is finished, with `planned: 25` until all its work orders and tickets exist. See "Level 3, the small business" below.**
+**Status (27 October 2026): Level 3 (the small business) goes live stage by stage: stage 1 (the business, its router and switch on the page, work orders SB-J1 and SB-J2), stage 2 (SB-J3, guest Wi-Fi on a ceiling access point: the access point's page through a business PC's web browser, the visitor's phone, the ring in 3D), stage 3 (SB-J4, the back of house on its own switch over a trunk with its allowed list and native VLAN) and stage 4 (SB-J5, two dome cameras on PoE injectors on a VLAN of their own, each one's fixed address set on its own page, port forwards tested from the manager's phone on mobile data) are live; the level opens once the small office is finished, with `planned: 25` until all its work orders and tickets exist. See "Level 3, the small business" below.**
 **Status (19 October 2026): Level 2 (the small office) is complete and live: the level lock, work orders SO-J1 to SO-J10, tickets SO-01 to SO-15 with the office's records on each, the managed switch, the closet rack and patch panel, SFP modules and fibre, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05", "Level 2, tickets SO-06, SO-07 and SO-09", "Level 2, ticket SO-08", "Level 2, ticket SO-10", "Level 2: the office's records on office tickets; tickets SO-11 to SO-15" and "Level 2: work orders SO-J6 to SO-J10, the small office complete" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
 from the Under the Hood tile (decision 6). See "The real site" below. The owner, 11
@@ -2042,7 +2042,7 @@ The owner, looking at the dome cameras' preview: **"Will they be this pixelated?
   still reads as it should); AAA on the 28 states that show a 3D model, 65,436
   text runs passing.
 
-### Level 3, stage 4: SB-J5, the cameras' VLAN and a port forward (in progress, 26 October 2026)
+### Level 3, stage 4: SB-J5, the cameras' VLAN and a port forward (live 27 October 2026)
 
 The owner's decisions, 26 October 2026 (talked out before building):
 - **The cameras, from the owner's photographs** of a ceiling dome under a
@@ -2132,6 +2132,24 @@ SB-J5 and finish it"**):
   - `ONLY=business JOB=SB-J5 node tools/drive.mjs`: on three businesses, every step through the page, the cameras'
     leases read from `show ip dhcp binding` and each camera's page opened at its lease and its address fixed there; the
     phone on mobile data, on the guest Wi-Fi (refused), and back; both drawings in both fonts, mid-job and done.
+  - `ONLY=business node tools/models.mjs`: both cameras done (the status light sampled on, blue; the words; the cable in
+    the pigtail's coupler; drawn as the ceiling or the wall dome), the back door camera unplugged (off, the plug out),
+    and part way (blinking with power and no network; off, no plug, before its injector is cabled).
+  - AAA: 12 SB-J5 states. The live picture's caption first measured 1.01:1: SVG text painted by a `fill` attribute,
+    which the checker neither reads nor hides. It is now `fill: currentColor` from CSS, measured again passing (3,146
+    runs), and a dark caption planted fails 8 lines.
+  - Plants, each shown to fail:
+    - `python3 tools/plants-business-node.py`: 13 new, all caught (a camera on the other camera's injector, an injector
+      in the wrong room, a port left to negotiate, the trunk's allowed list replaced, a forward to the plain page,
+      HTTPS to the staff PCs left open, no lease read as merely DHCP, the pool keeping only ten back, an address in a
+      hint, the walk-through's console cable, the reply and the gateway never checked from outside, a camera catching
+      the pool half typed). The run takes over two hours, so it was finished in two goes.
+    - `python3 tools/plants-business-page.py SB-J5`: 9 new, all caught. Two were first caught only because the drive
+      stalled on a click (the phone's Wi-Fi switch doing nothing, the ceiling camera with no device button); each now
+      fails a named check first. SB-J3's "form's error" plant had come to match twice (the camera's page has the same
+      line) and was re-anchored.
+    - `python3 tools/plants-business-models.py`: 3 new (the status light lit whatever the state, no cable drawn, the wall
+      dome drawn as the ceiling one), all caught.
 - `tools/wip/` (not part of the site): `sb5net.mjs` (the cameras' network by hand), `sb5job.mjs` (each line at the start
   and after the solution), `sb5lay.mjs` (the layout search above), `sb5page.mjs` (the camera's page, the phone and the 3D
   tabs, screenshotted), `camshot.mjs` (the dome previews at a pixel density).

@@ -2161,9 +2161,10 @@ SB-J5 and finish it"**):
   - **HOME-05's blink check** (`tools/models.mjs`) failed once with nothing else running: twelve samples all saw DS off.
     Each sample draws a shaded frame, about a second under software graphics with the multisampling, so samples 230 ms
     apart could stay in step with the half-second blink. The gaps now vary (230 to 740 ms) and it looks for up to forty
-    samples. Pending: the run again, and the run with the blink planted off (`const on = true`), which must fail.
+    samples. Run again alone it passed; with the blink planted off (`const on = true`, in a throwaway copy) exactly
+    that check fails ("saw green").
   - **Totals before going live:** `npm test` 348 of 348; `node tools/drive.mjs` in full 3,855 checks (`ONLY=business`
-    394); `node tools/models.mjs` pending (being run again); AAA on painted pixels, all 207 states and 492,928 text runs passing (in four
+    394); `node tools/models.mjs` 202 of 202; AAA on painted pixels, all 207 states and 492,928 text runs passing (in four
     parts, two at a time).
 - `tools/wip/` (not part of the site): `sb5net.mjs` (the cameras' network by hand), `sb5job.mjs` (each line at the start
   and after the solution), `sb5lay.mjs` (the layout search above), `sb5page.mjs` (the camera's page, the phone and the 3D

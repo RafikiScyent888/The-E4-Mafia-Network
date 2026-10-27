@@ -6,6 +6,9 @@ PLANTS = [
  ("SB-J4: the lower row's lights read only from above", "js/desk/model3d.js", ', ["Lower row lights", { focus: "panel:Front", view: [0.3, 0.03, 1], light: [0.3, 1.2, 1.0] }]', ""),
  ("SB-J4: the lower row's view looks down like the close-up", "js/desk/model3d.js", '["Lower row lights", { focus: "panel:Front", view: [0.3, 0.03, 1],', '["Lower row lights", { focus: "panel:Front", view: [0.06, 0.12, 1],'),
  ("a port's light lit whatever the far end", "js/net/physical.js", "p.link = sim.cableUp(c); p.speed = sim.speed(c);", "p.link = true; p.speed = sim.speed(c);"),
+ ("SB-J5: the dome's status light lit whatever the camera's state", "js/net/physical.js", 'L("status", "Status light", st[0], "blue");', 'L("status", "Status light", "on", "blue");'),
+ ("SB-J5: the dome drawn with no cable when one is plugged in", "js/net/physical.js", 'opts.cable = p0.plug !== "none"; opts.status', 'opts.cable = false; opts.status'),
+ ("SB-J5: the wall dome drawn as the ceiling dome", "js/net/physical.js", 'x.kind === "dcam" ? (x.mount === "ceiling" ? "domeCeiling" : "domeWall")', 'x.kind === "dcam" ? "domeCeiling"'),
  ("the back switch drawn as the closet switch", "js/net/physical.js", "  const x = sim.d[id]; if (!x) return null;", "  if (id === \"bsw\") id = \"msw\"; const x = sim.d[id]; if (!x) return null;"),
 ]
 only = sys.argv[1:]

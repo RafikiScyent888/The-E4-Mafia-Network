@@ -1074,5 +1074,67 @@
   "page": "build.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J4',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const set=(id,v)=>{const e=document.getElementById(id); e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true}));}; const kb=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='bsw'&&a.b.port==='CONSOLE'), kc=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='msw'&&a.b.port==='CONSOLE'); sol.forEach(a=>c.act(a)); c.check(); dev('bsw'); tab('Physical');",
   "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "business: SB-J5 first check, the work order with the cameras' records",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J5 a camera's page from the manager's PC, on its lease, its network settings",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); sol.slice(0,fc).forEach(a=>c.act(a)); dev('mgr'); tab('Web browser'); go('https://'+J.sim.addr('cam1').ip);"
+ },
+ {
+  "name": "business: SB-J5 a camera's fixed address saved: the browser left at the old address says so",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); sol.slice(0,fc).forEach(a=>c.act(a)); dev('mgr'); tab('Web browser'); go('https://'+J.sim.addr('cam1').ip); const w=document.querySelector('.webpage form'); w.querySelector('input[name=mode][value=static]').checked=true; w.querySelector('[name=ip]').value=n3+'11'; w.querySelector('[name=mask]').value=p.vmask; w.querySelector('[name=gw]').value=cv.gw; w.requestSubmit();"
+ },
+ {
+  "name": "business: SB-J5 your laptop at the back switch, the cameras placed: the logical diagram",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); const kb=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='bsw'&&a.b.port==='CONSOLE'); sol.slice(0,kb+1).forEach(a=>c.act(a)); document.getElementById('vLog').click(); dev('tech');"
+ },
+ {
+  "name": "business: SB-J5 the cameras' list the wrong way round, Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); const w4='0.0.0.255'; sol.forEach(a=>c.act(a.line==='permit tcp '+cv.net+' '+w4+' eq 443 any'?Object.assign({},a,{line:'permit tcp '+cv.net+' '+w4+' any eq 443'}):a)); for(let i=0;i<5;i++) c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J5 done, the manager's phone: Wi-Fi off, on mobile data",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); sol.forEach(a=>c.act(a)); c.check(); dev('mphone'); tab('Wi-Fi');"
+ },
+ {
+  "name": "business: SB-J5 done, the manager's phone on mobile data: the back door camera's page from outside",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); sol.forEach(a=>c.act(a)); c.check(); dev('mphone'); tab('Web browser'); go('https://'+wan+':'+p.cams[1].ext);"
+ },
+ {
+  "name": "business: SB-J5 done, the manager's phone on mobile data: a camera's private address times out",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); sol.forEach(a=>c.act(a)); c.check(); dev('mphone'); tab('Web browser'); go('https://'+n3+'11');"
+ },
+ {
+  "name": "business: SB-J5 done, the logical diagram drawn taller with the cameras",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('vLog').click(); dev('cam1');"
+ },
+ {
+  "name": "business: SB-J5 done, the floor plan: the back door camera outside the back door",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('vPhy').click(); dev('cam2');"
+ },
+ {
+  "name": "business: SB-J5 done, the ceiling camera's 3D model",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); sol.forEach(a=>c.act(a)); c.check(); dev('cam1'); tab('Physical');",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "business: SB-J5 done, the back door camera's 3D model",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); sol.forEach(a=>c.act(a)); c.check(); dev('cam2'); tab('Physical');",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
  }
 ]

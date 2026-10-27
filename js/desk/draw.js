@@ -50,7 +50,6 @@ const CAM_H = 716;   /* the business's diagram's height with the cameras on it *
 function pos(sim, id) {
   const L = Object.assign({}, layOf(sim)[id]);
   if (sim.net.site === "business" && sim.d.cam1 && L.cams) Object.assign(L, L.cams);   /* the cameras' job (SB-J5) draws some devices elsewhere, to give the cameras room */
-  if (typeof globalThis !== "undefined" && globalThis.__layTry && globalThis.__layTry[id]) Object.assign(L, globalThis.__layTry[id]);
   if (office(sim)) { const alt = L.alt && L.alt[sim.net.rooms[id]]; if (alt && alt.x != null) Object.assign(L, { x: alt.x, y: alt.y, lab: alt.lab || L.lab }); return L; }   /* a device carried to another room can sit elsewhere on the diagram too (your laptop at the back office's switch) */
   if (id === "laptop" && sim.net.rooms.laptop === "living") Object.assign(L, { x: 770, y: 150, px: 610, py: 235 });
   if (id === "laptop" && sim.net.rooms.laptop === "kitchen") Object.assign(L, { px: 640, py: 360 });

@@ -13,6 +13,19 @@ PLANTS = [
  ("SB-J4: the back switch's save read from the closet switch", "js/build/business.js", 'concat(savedCauses(sim, "bsw"))', 'concat(savedCauses(sim, "msw"))'),
  ("SB-J4: the back switch's name given away in a hint", "js/build/business.js", 'rung1: function (v, sim) { return sim.d.bsw.boxed ? "The box tray, then the Place form." :', 'rung1: function (v, sim) { return sim.d.bsw.boxed ? "The box tray, then the Place form: " + v.plan.bswHost :'),
  ("SB-J4: the walk-through pulls a console cable that isn't there", "js/build/business.js", '{ t: "pull", cable: "c-console-" + (runs + 3) }', '{ t: "pull", cable: "c-console-" + (runs + 2) }'),
+ ("SB-J5: a camera on the other camera's injector, accepted", "js/build/business.js", 'C("label", onOut && P.inj !== mine,', 'C("label", false,'),
+ ("SB-J5: an injector in the wrong room, accepted", "js/build/business.js", 'C("injroom", onOut && sim.net.rooms[P.inj] !== INJ_ROOM[k],', 'C("injroom", false,'),
+ ("SB-J5: a camera's port left to negotiate, accepted", "js/build/business.js", 'C("mode", r.sp.mode !== "access",', 'C("mode", false,'),
+ ("SB-J5: the trunk's allowed list replaced, accepted", "js/build/business.js", 'C("staff", !!lost,', 'C("staff", false,'),
+ ("SB-J5: a forward to the camera's plain page, accepted", "js/build/business.js", 'C("http", !!r.r.who && r.r.who === r.c.id', 'C("http", false && r.r.who === r.c.id'),
+ ("SB-J5: a camera free to open HTTPS to the staff PCs", "js/build/business.js", "[445, 443].some(", "[445].some("),
+ ("SB-J5: a camera with no lease read as merely on DHCP", "js/build/business.js", 'C("lease", noCamLease(sim, r.c),', 'C("lease", false,'),
+ ("SB-J5: the cameras' pool keeping only ten addresses back", "js/build/business.js", 'const keep = k === "cameras" ? v.plan.camExcl : 10,', 'const keep = 10,'),
+ ("SB-J5: a camera's address given away in a hint", "js/build/business.js", '"Find each camera\'s address (show ip dhcp binding on the router)', '"Find each camera\'s address (" + camIp(v, v.plan.cams[0]) + ", show ip dhcp binding on the router)'),
+ ("SB-J5: the walk-through pulls a console cable that isn't there", "js/build/business.js", '{ t: "pull", cable: "c-console-" + (runs + 5) }', '{ t: "pull", cable: "c-console-" + (runs + 4) }'),
+ ("SB-J5: a camera's reply from outside never checked", "js/net/sim.js", 'if (!pass(outIf, "in", rep) || !pass(w.iface, "out"', 'if (false && !pass(outIf, "in", rep) || false && !pass(w.iface, "out"'),
+ ("SB-J5: a camera's gateway never checked from outside", "js/net/sim.js", "if (!a || !gw || a.gw !== gw.ip)", "if (!a || !gw)"),
+ ("SB-J5: a camera catches the pool half typed", "js/net/sim.js", "&& !poolOpen && ", "&& "),
  ("an access port's missing VLAN never made", "js/net/swcli.js", 'if (!S.sw.vlans[v]) { S.sw.vlans[v] = { name: "VLAN" + String(v).padStart(4, "0") }; out.push("% Access VLAN does not exist. Creating vlan " + v); }', 'if (!S.sw.vlans[v]) { out.push("% Access VLAN does not exist. Creating vlan " + v); }'),
  ("interface range takes no list", "js/net/swcli.js", '.replace(/\\s+/g, " ").split(","), out = [];', '.replace(/\\s+/g, " ").split(/(?!)/), out = [];'),
  ("a cable refused names devices in capitals mid-sentence", "js/net/sim.js", 'const theDev = function (x) { return /^your /i.test(x.label) ? x.label.toLowerCase() : "the " + x.label.replace(', 'const theDev = function (x) { return "the " + x.label; return "the " + x.label.replace('),
@@ -26,7 +39,7 @@ for name, f, a, b in PLANTS:
     shutil.copy(f, "/tmp/bplant.bak")
     open(f, "w").write(src.replace(a, b))
     try:
-        r = subprocess.run(["node", "--test", "tests/business-jobs.test.js", "tests/business-sim.test.js", "tests/business-cli.test.js", "tests/office.test.js"], env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=1200)
+        r = subprocess.run(["node", "--test", "tests/business-jobs.test.js", "tests/business-sim.test.js", "tests/business-cli.test.js", "tests/business-cams.test.js", "tests/office.test.js"], env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=1200)
         fails = [l.strip() for l in r.stdout.splitlines() if l.startswith("not ok")]
         caught += 1 if r.returncode else 0
         print(("CAUGHT" if r.returncode else "MISSED") + " · " + name + " · " + (", ".join(fails)[:200]), flush=True)

@@ -5,7 +5,7 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 PLANTS = [
  ("the diagram gives the access point's address away", "js/desk/draw.js", 'if (x.kind === "bap") return "DHCP";', 'if (x.kind === "bap") return x.ifaces[0].lease ? x.ifaces[0].lease.ip : "DHCP";'),
  ("the access point's form saves nothing", "js/desk/window.js", 'const x = ctx.act({ t: "apnet", dev: P.dev, net: { ssid: t("ssid"), sec: t("sec"), psk: t("psk"), vlan: t("vlan").trim() } });', 'const x = { result: { ok: true, ssid: t("ssid") } };'),
- ("the form's error isn't shown", "js/desk/window.js", 'else { msg.className = "msg err"; msg.textContent = "Not saved: " + ((x && x.result && x.result.errs) || []).join(". ") + "."; }\n  });\n  if (ctx.flash) { msg.className = "msg ok"; msg.textContent = ctx.flash; ctx.flash = null; }\n  box.appendChild(f);', 'else { msg.className = "msg err"; msg.textContent = ""; }\n  });\n  if (ctx.flash) { msg.className = "msg ok"; msg.textContent = ctx.flash; ctx.flash = null; }\n  box.appendChild(f);'),
+ ("the form's error isn't shown", "js/desk/window.js", '(t("vlan").trim() ? ", tagged VLAN " + t("vlan").trim() : ", untagged") + "."; rerender(); }\n    else { msg.className = "msg err"; msg.textContent = "Not saved: " + ((x && x.result && x.result.errs) || []).join(". ") + "."; }\n  });\n  if (ctx.flash) { msg.className = "msg ok"; msg.textContent = ctx.flash; ctx.flash = null; }\n  box.appendChild(f);', '(t("vlan").trim() ? ", tagged VLAN " + t("vlan").trim() : ", untagged") + "."; rerender(); }\n    else { msg.className = "msg err"; msg.textContent = ""; }\n  });\n  if (ctx.flash) { msg.className = "msg ok"; msg.textContent = ctx.flash; ctx.flash = null; }\n  box.appendChild(f);'),
  ("the phone ignores the password typed", "js/desk/window.js", '{ t: "joinssid", dev: id, ssid: n.ssid, pass: pw.value }', '{ t: "joinssid", dev: id, ssid: n.ssid }'),
  ("the access point has no device button", "js/build/app.js", '"injector", "injector2", "ap", "camera",', '"injector", "injector2", "camera",'),
  ("the visitor's phone gets the house's page", "js/net/pages.js", 'if (x.kind === "phone" && key === "wifi" && sim.net.site === "business") {', 'if (x.kind === "phone" && key === "wifi" && false) {'),
@@ -18,6 +18,15 @@ PLANTS = [
  ("SB-J4: the back switch goes anywhere", "js/net/sim.js", "const fx = x.fixed || (this.net.fixed || FIXED_ROOM)[x.kind];", "const fx = x.id === \"bsw\" ? null : x.fixed || (this.net.fixed || FIXED_ROOM)[x.kind];", "SB-J4"),
  ("SB-J4: the console cable reaches the next room", "js/net/sim.js", "if (ca && this.net.rooms[a.dev] !== this.net.rooms[b.dev]) return", "if (false) return", "SB-J4"),
  ("SB-J4: the back switch has no device button", "js/build/app.js", '"pp", "msw", "bsw", "pc",', '"pp", "msw", "pc",', "SB-J4"),
+ ("SB-J5: the camera's page saves nothing", "js/desk/window.js", 'const x = ctx.act({ t: "client", dev: P.dev, values: values });', 'const x = { result: { ok: true } };', "SB-J5"),
+ ("SB-J5: the phone's Wi-Fi switch does nothing", "js/desk/window.js", 'const r = ctx.act({ t: "radio", dev: id, on: !P.radio.on });', 'const r = { result: { ok: true, on: !P.radio.on } };', "SB-J5"),
+ ("SB-J5: the phone's browser never on mobile data", "js/net/pages.js", "if (sim.d[id].cell && !(sim.wifiLink(id) && sim.wifiLink(id).connected)) {", "if (false) {", "SB-J5"),
+ ("SB-J5: a camera's settings changeable from outside", "js/desk/window.js", "  if (P.remote) {\n    box.appendChild(el(\"h3\"", "  if (false) {\n    box.appendChild(el(\"h3\"", "SB-J5"),
+ ("SB-J5: the ceiling camera has no device button", "js/build/app.js", '"cinj1", "cam1", "cinj2",', '"cinj1", "cinj2",', "SB-J5"),
+ ("SB-J5: the diagram not drawn taller for the cameras", "js/desk/draw.js", '(sim.net.site === "business" && sim.d.cam1 ? CAM_H : 546)', '(546)', "SB-J5"),
+ ("SB-J5: the visitor's phone left where the camera's injector goes", "js/net/business.js", ', cams: { x: 735, y: 600 } },', ' },', "SB-J5"),
+ ("SB-J5: plain http to a camera's secure page answered as if secure", "js/net/pages.js", '    if (+r.lport === 443 && scheme === "http") return fail("badreq"', '    if (false) return fail("badreq"', "SB-J5"),
+ ("SB-J5: a powered camera off the network said to be on it", "js/net/physical.js", ': !net ? ["blinking", "blinking blue: it has power, but isn\'t on the network yet"', ': !net ? ["on", "on, blue: on the network"', "SB-J5"),
 ]
 only = sys.argv[1:]
 caught = 0; run = 0

@@ -2072,6 +2072,70 @@ The owner's decisions, 26 October 2026 (talked out before building):
 - Asked about the previews, **"Will they be this pixelated?"**: the 3D views'
   antialiasing fault above, fixed and live first.
 
+**What was built** (the owner: **"Yes, go ahead and build SB-J5"**, then, after a pause for the flash cards, **"Go back to
+SB-J5 and finish it"**):
+- **The simulation** (`js/net/sim.js`, `js/net/business.js`):
+  - `addCameraKit` brings the two cameras (`dcam`: `cam1` the ceiling dome, `cam2` the wall dome), an 802.3af injector for
+    each (`cinj1`, `cinj2`, labelled CAM-01 and CAM-02), and the manager's phone (`mphone`: `cell`, its Wi-Fi off, not on
+    the diagram). The records: `cams` (each camera's switch and port, its port's description, its fixed address's host
+    number, its outside port 8443 or 8444), `camExcl` 20, `camAcl` CAMERAS-IN.
+  - The cameras start on DHCP and serve their page on 80 and 443. A camera on 169.254 asks again once a pool exists, but
+    not while the pool is still being typed (`poolOpen`), or it would catch a lease with no default router.
+  - **From outside** (`fromInternet`): in through the provider-side interface's list, sent on only by a static NAT entry
+    (`ip nat inside source static tcp <inside> <port> interface <wan> <port>`), and only between nat outside and nat
+    inside, then routed, out through the inside interface's list, to whoever answers ARP and listens on that port. The
+    camera's reply goes back to its own gateway and through the same lists (a list remembers nothing). Each failure says
+    why (`why`: provider, nobody, wan, acl-in, no-forward, outside, no-route, inside, acl-out, arp, port, gateway, reply);
+    nothing changes the network. `show ip nat translations` lists the static forwards before any traffic.
+  - A phone's Wi-Fi radio (`radio`, in the engine's state list). On mobile data the phone is out on the internet: a
+    private address means nothing, and the business's own address goes through its forwards. On the guest Wi-Fi the
+    router doesn't loop its own forwards back inside: refused.
+- **SB-J5** (`js/build/business.js`), 15 lines: each camera installed (its own injector, in the records' rooms, the
+  injector's PoE OUT to the camera, DATA IN to the records' switch and port); the cameras' VLAN on both switches; their
+  ports (open, described, **set as access**: a camera by an outside door is the easiest thing to unplug, and a port left
+  to negotiate would trunk with a laptop); the trunks (the allowed list added to, not replaced: replacing it drops staff
+  and the back PC); the router's subinterface (NAT's inside, or no forward reaches it; no NAT list, the cameras never go
+  out); the pool (the first twenty kept back, where the fixed addresses are; no DNS needed); each fixed address on the
+  camera's own page; the cameras starting nothing (a packet that arrives counts, whether or not its reply gets back, so a
+  list applied out is caught); both pages from the manager's PC; both from the phone on mobile data (a forward to the
+  plain page on 80 is its own cause: the manager's password in plain text); everything still working; three saves.
+  `subCauses` and `poolCauses` take the cameras' wording (`W`, `NAT_WHY`). The guests' DHCP trap comes back if the list
+  goes on before the cameras have leases: the fixed line's hints point at it.
+- **The page:**
+  - **The camera's own page** in the browser (`camPage` in `js/desk/window.js`): a live picture (drawn, greyscale, its
+    name and LIVE on a black band), what it is, and its settings form (DHCP or fixed). Saved with a new address, the
+    browser is left at the old one, which now says the page has gone from there. Reached from outside, the settings are
+    shown and not changeable. A secure request to a forward to the plain page gets the browser's SSL error, plain http to
+    the secure page a 400.
+  - **The manager's phone**: a device button and a place on the plan (its desk), no place on the logical diagram; its
+    Wi-Fi tab has a Turn Wi-Fi on/off button.
+  - **The diagram is drawn taller** with the cameras (`CAM_H`): the ceiling camera's injector under the closet switch and
+    the camera down to its left (so its line clears the injector's name), the back door camera and its injector on a row
+    of their own; the visitor's phone moves under the access point (`cams` positions in `BUSINESS_LAYOUT`). A camera
+    shows "DHCP" until it's fixed, then its address. A camera's injector reads "PoE injector" with its camera's tag under
+    it, and "Injector CAM-0x" on the plan.
+  - **The floor plan** grows a strip outside, under a back door in the back room's wall: the back door camera is drawn
+    there ("OUTSIDE THE BACK DOOR"); the back PC moves right on the plan so its long name clears the camera's injector.
+  - Positions were searched with `tools/wip/sb5lay.mjs`, which scores a layout in both fonts at four points in the job
+    (nothing done, the cameras cabled with their ports shut, your laptop at the back switch, done): names and tiles on
+    each other, port names and dots on other lines, and **a line under another device's name or tile**. Lines may pass
+    under their own device's name (its plate masks them). Six businesses, all clean.
+  - **3D** (`domeCeiling`, `domeWall` in `js/desk/model3d.js`; `physicalState`): the status light off with no power,
+    blinking blue with power and no network (no link, or no address), on once on the network; the same in words; the
+    cable in the pigtail's coupler, or hanging out of it. Views: In its ceiling, Above the tile, Its pigtail close up;
+    Its cables close up.
+- **Checks:**
+  - `tests/business-cams.test.js` (the simulation, 40 businesses) and SB-J5 in `tests/business-jobs.test.js`: the
+    tempting wrong ways each failing their own line for their own cause, other right ways passing (the allowed list
+    given whole, `eq https`, a DHCP line in the list, the address in the forward, a subinterface numbered its own way,
+    a wider excluded range), the help never naming the list, the descriptions, the outside ports or an address.
+  - `ONLY=business JOB=SB-J5 node tools/drive.mjs`: on three businesses, every step through the page, the cameras'
+    leases read from `show ip dhcp binding` and each camera's page opened at its lease and its address fixed there; the
+    phone on mobile data, on the guest Wi-Fi (refused), and back; both drawings in both fonts, mid-job and done.
+- `tools/wip/` (not part of the site): `sb5net.mjs` (the cameras' network by hand), `sb5job.mjs` (each line at the start
+  and after the solution), `sb5lay.mjs` (the layout search above), `sb5page.mjs` (the camera's page, the phone and the 3D
+  tabs, screenshotted), `camshot.mjs` (the dome previews at a pixel density).
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

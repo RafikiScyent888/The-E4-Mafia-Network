@@ -514,6 +514,41 @@ CB.push(async () => {
   const k = await plugAt(p, "CONSOLE"); check(!k.missing && k.plug && k.off < 1, "SB-J4 part way, back switch: the console cable is in CONSOLE " + JSON.stringify(k));
   await ctx.close();
 });
+/* SB-J5: the dome cameras as the simulation says, the status light sampled on the light. Done: each camera's light on, blue (on
+   the network), its network cable in the pigtail's coupler; unplugged on the page, the light dark and the plug out of the coupler.
+   Part way, the ceiling camera cabled through its injector but its switch port still a shut spare: powered, not on the network,
+   the light blinking blue (held steady for anyone who asks for less motion) and the words saying so. Placed but not yet cabled:
+   the coupler empty, the light dark */
+CB.push(async () => {
+  const { p, ctx } = await office("SB-J5", 5501);
+  for (const [id, name] of [["cam1", "ceiling"], ["cam2", "back door"]]) {
+    await physical(p, id);
+    await led(p, "SB-J5 " + name + " camera status light (on the network)", null, "status", "blue");
+    check(/status light[^.]*on, blue: on the network/.test(await p.$eval(".m3d-says", (x) => x.textContent)), "SB-J5 " + name + " camera: the words say the light is on, blue, on the network");
+    const k = await plugAt(p, "LAN"); check(!k.missing && k.plug && k.off < 1 && k.run, "SB-J5 " + name + " camera: its network cable is in the coupler " + JSON.stringify(k));
+    const model = await p.evaluate(async (id) => { const m = await import("./js/net/physical.js"); return m.physicalState(window.__e4b.T.sim, id).model; }, id);
+    check(model === (id === "cam1" ? "domeCeiling" : "domeWall"), "SB-J5 " + name + " camera: drawn as the " + (id === "cam1" ? "ceiling" : "wall") + " dome (" + model + ")");
+  }
+  let n = await fine(p);
+  await p.click('.cabs li button:text-is("Unplug it")'); await settled(p, n);
+  await led(p, "SB-J5 back door camera status light (unplugged)", null, "status", "off");
+  const k2 = await plugAt(p, "LAN"); check(!k2.missing && k2.plug && k2.off > 10, "SB-J5 back door camera: unplugged, the plug hangs out of the coupler " + JSON.stringify(k2));
+  await ctx.close();
+});
+CB.push(async () => {
+  const { p, ctx } = await office("SB-J5", 5502, 4);   /* the ceiling camera and its injector placed and cabled; its switch port still shut */
+  await physical(p, "cam1");
+  await led(p, "SB-J5 ceiling camera status light (powered, not on the network)", null, "status", "blue");
+  check(/status light[^.]*blinking blue: it has power, but isn't on the network yet/.test(await p.$eval(".m3d-says", (x) => x.textContent)), "SB-J5 ceiling camera: the words say the light blinks, powered but not on the network");
+  await ctx.close();
+});
+CB.push(async () => {
+  const { p, ctx } = await office("SB-J5", 5503, 2);   /* both the ceiling camera and its injector placed, nothing cabled */
+  await physical(p, "cam1");
+  await led(p, "SB-J5 ceiling camera status light (no cable)", null, "status", "off");
+  const k = await plugAt(p, "LAN"); check(!k.missing && k.plug === false, "SB-J5 ceiling camera: nothing in the coupler before it's cabled " + JSON.stringify(k));
+  await ctx.close();
+});
 const RUN = process.env.ONLY === "office" ? CO : process.env.ONLY === "business" ? CB : C.concat(CO, CB);
 for (const c of RUN) { try { await c(); } catch (e) { bad.push("crashed: " + e.message.split("\n")[0]); } }
 

@@ -1,6 +1,9 @@
 /* SB-J5's diagram: try layouts for the cameras and score them, in both fonts. node tools/wip/sb5lay.mjs <cands.json> [seed] [shot]
    cands.json: [{ name, lay: { id: { x, y, lab } } }]. Reports, for each: names or tiles on other names/tiles, port names and dots
-   on other lines, device names and tiles under another device's line, anything off the diagram */
+   on other lines, device names and tiles under another device's line, anything off the diagram. With no candidates
+   ([{"name":"set","lay":{}}]) it scores the layout as it is. Trying other positions needs this line back in pos() in
+   js/desk/draw.js, taken out before going live:
+     if (typeof globalThis !== "undefined" && globalThis.__layTry && globalThis.__layTry[id]) Object.assign(L, globalThis.__layTry[id]); */
 import http from "node:http"; import fs from "node:fs"; import path from "node:path";
 const ROOT = new URL("../..", import.meta.url).pathname, OUT = "./wip-out/";
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".jpg": "image/jpeg", ".png": "image/png", ".woff2": "font/woff2", ".otf": "font/otf", ".ttf": "font/ttf" };

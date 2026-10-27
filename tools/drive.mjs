@@ -37,7 +37,14 @@ async function page(ticket, seed, file) {
   return { p, ctx };
 }
 const dev = async (p, id) => { await p.click('#devtabs [data-d="' + id + '"]'); await p.waitForTimeout(40); };
-const tab = async (p, name) => { await p.click('.win-tabs button:text-is("' + name + '")'); await p.waitForTimeout(40); };
+/* a Physical tab is left to settle before the next step: the first 3D frame (and the first shaded one) compiles its shaders, which
+   under software graphics holds the page for about four seconds, and on a loaded machine longer than a click is given. An open
+   Physical tab isn't clicked again, as a student wouldn't */
+const settle3d = (p) => p.waitForFunction(() => { const f = document.querySelector("figure.m3d"); if (!f || f.querySelector(".m3d-still")) return true; if (!/^Drag/.test(f.querySelector(".m3d-note").textContent)) return false; return import("./js/desk/model3d.js").then((m) => !!(m.debug() && m.debug().settled)); }, null, { timeout: 60000, polling: 100 });
+const tab = async (p, name) => {
+  if (!(name === "Physical" && await p.$('.win-tabs button[aria-selected="true"]:text-is("Physical")'))) { await p.click('.win-tabs button:text-is("' + name + '")'); await p.waitForTimeout(40); }
+  if (name === "Physical") await settle3d(p);
+};
 const type = async (p, line) => { await p.fill(".term .cmdin", line); await p.press(".term .cmdin", "Enter"); await p.waitForTimeout(40); };
 const term = (p) => p.$eval(".term pre", (n) => n.textContent);
 /* a drawing as painted on screen. The logical diagram ("net"): every port name on the diagram, clear of every device's tile
@@ -1280,7 +1287,7 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       await dysClear(p, tag + "the finished business");
       await p.reload(); await p.waitForTimeout(350);
       check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)), tag + "still done after a reload");
-    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0] + (process.env.STACK ? " " + (String(e.stack).match(/drive\.mjs:\d+/g) || []).join(" ") : "")); }
     await ctx.close();
   }
   /* SB-J4 (stage 3): the back of house on its own switch, joined to the closet switch by a trunk. The new switch set up at its own
@@ -1366,7 +1373,7 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
         if (k === 4) {   /* both of the ceiling camera's runs laid, its switch port still shut: powered, not on the network */
           check(!!(await p.$('#devtabs [data-d="cam1"]')) && !!(await p.$('#devtabs [data-d="cinj1"]')), tag + "the ceiling camera and its injector out of their boxes: each has a device button");
           check((await p.getAttribute('#plan [data-d="cam1"] use', "href")) === "#p-dome" && (await p.getAttribute('#net [data-d="cam1"] use', "href")) === "#i-dome", tag + "the ceiling camera placed: a dome on the plan and on the diagram");
-          await dev(p, "cam1"); if (!(await p.$('.win-tabs button[aria-selected="true"]:text-is("Physical")'))) await tab(p, "Physical"); await p.waitForTimeout(300);
+          await dev(p, "cam1"); await tab(p, "Physical"); await p.waitForTimeout(300);
           check(/status light[^.]*blinking blue: it has power, but isn't on the network yet/.test(await p.$eval(".m3d-says", (n) => n.textContent).catch(() => "")), tag + "the ceiling camera's Physical tab: its status light blinks, powered, not on the network (its switch port is still shut)");
         }
         if (a.t === "client") {   /* its page, found as a technician finds it: the router's leases, then each address opened from the manager's PC */
@@ -1409,7 +1416,7 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       await tab(p, "Web browser"); await go(p, "https://" + wan + ":" + plan.cams[0].ext); check(/Camera name/.test(await p.$eval(".browser", (n) => n.textContent)), tag + "Wi-Fi off again: on mobile data, the forward works");
       const t = await checkJob(p), n = await BJ(p, () => window.__e4b.T.def.reqs.length);
       check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
-      for (const id of ["cam1", "cam2"]) { await dev(p, id); if (!(await p.$('.win-tabs button[aria-selected="true"]:text-is("Physical")'))) await tab(p, "Physical"); await p.waitForTimeout(400); check(/status light[^.]*on, blue: on the network/.test(await p.$eval(".m3d-says", (n) => n.textContent).catch(() => "")), tag + id + "'s Physical tab: drawn, its status light on: on the network"); }
+      for (const id of ["cam1", "cam2"]) { await dev(p, id); await tab(p, "Physical"); await p.waitForTimeout(400); check(/status light[^.]*on, blue: on the network/.test(await p.$eval(".m3d-says", (n) => n.textContent).catch(() => "")), tag + id + "'s Physical tab: drawn, its status light on: on the network"); }
       await p.click("#vLog"); await p.waitForTimeout(60);
       const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished business's logical diagram: every name and port dot clear" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
       check(+(await p.getAttribute("#net", "viewBox")).split(" ")[3] > 546, tag + "the diagram is drawn taller, the cameras on rows of their own");

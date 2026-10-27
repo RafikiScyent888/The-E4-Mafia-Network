@@ -2150,9 +2150,18 @@ SB-J5 and finish it"**):
       line) and was re-anchored.
     - `python3 tools/plants-business-models.py`: 3 new (the status light lit whatever the state, no cable drawn, the wall
       dome drawn as the ceiling one), all caught.
+  - **The drive and the 3D view's first frame.** The full drive stopped SB-J3 on one business: a click timed out after the
+    access point's Physical tab opened. Timed (`node tools/wip/aptime.mjs`): the first 3D frame and the first shaded one
+    compile their shaders, which under software graphics holds the page about four seconds (with or without the 4x
+    multisampling: 4.0-4.8 s with it, 3.8-4.1 s without), and a loaded machine pushes the next click past its 5 s. A
+    student with a graphics card doesn't see this. The drive's `tab` now waits for a Physical tab to settle
+    (`settle3d`: the model mounted and its shaded frame drawn, read from `debug().settled` in `js/desk/model3d.js`) and
+    doesn't click an open Physical tab again, as a student wouldn't. Shown both ways under the same CPU load: the old
+    helper stopped SB-J3 777777, the new one passed all 74 checks.
 - `tools/wip/` (not part of the site): `sb5net.mjs` (the cameras' network by hand), `sb5job.mjs` (each line at the start
   and after the solution), `sb5lay.mjs` (the layout search above), `sb5page.mjs` (the camera's page, the phone and the 3D
-  tabs, screenshotted), `camshot.mjs` (the dome previews at a pixel density).
+  tabs, screenshotted), `camshot.mjs` (the dome previews at a pixel density), `aptime.mjs` (how long a click takes with the
+  access point's 3D view open, and the page's long tasks).
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

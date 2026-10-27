@@ -295,4 +295,4 @@ export function mount(holder, S) {
 /* a new ticket: frame the next model afresh */
 export function forget() { if (V) { V.id = null; V.skey = ""; } }
 /* for the checks: what was drawn, and the model itself */
-export function debug() { return V ? { frames: V.frames, fineFrames: V.fineFrames, id: V.id, model: V.model, blink: V.blink.length, camera: V.camera, controls: V.controls, render: function () { draw(true); } } : null; }
+export function debug() { return V ? { frames: V.frames, fineFrames: V.fineFrames, settled: V.fine && !V.dirty, id: V.id, model: V.model, blink: V.blink.length, camera: V.camera, controls: V.controls, render: function () { draw(true); } } : null; }

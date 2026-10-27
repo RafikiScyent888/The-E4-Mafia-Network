@@ -145,12 +145,14 @@ C.push(async () => {
   const k = await plugAt(p, "CABLE IN"); check(k.plug && k.off > 7, "HOME-05: the coax is backed off its thread " + JSON.stringify(k));
   await ctx.close();
 });
-/* for anyone who hasn't asked for less motion, DS really blinks: on and off at different moments */
+/* for anyone who hasn't asked for less motion, DS really blinks: on and off at different moments. Each sample draws a shaded frame,
+   which under software graphics can take about a second, so evenly spaced samples could keep landing in the same half of the
+   blink: the gaps vary, and it keeps looking for up to forty samples */
 C.push(async () => {
   const { p, ctx } = await open(GL, "HOME-05", 1, true);
   await physical(p, "modem", "Front lights");
   const seen = new Set();
-  for (let i = 0; i < 12 && seen.size < 2; i++) { seen.add(classify(await sample(p, null, "DS"))); await p.waitForTimeout(230); }
+  for (let i = 0; i < 40 && seen.size < 2; i++) { seen.add(classify(await sample(p, null, "DS"))); await p.waitForTimeout(230 + 170 * (i % 4)); }
   check(seen.has("green") && seen.has("off"), "HOME-05 with motion: DS blinks (saw " + [...seen].join(", ") + ")");
   await ctx.close();
 });

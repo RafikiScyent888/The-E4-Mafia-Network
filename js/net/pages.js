@@ -72,7 +72,7 @@ export function browse(sim, id, url) {
    outside, through the business's port forward, on the manager's phone */
 function camPage(sim, who, raw, host, port, scheme, facts, remote) {
   const x = sim.d[who], f = x.ifaces[0], a = sim.addr(who), st = f.cfg.mode === "static";
-  const room = (sim.net.roomNames || {})[sim.net.rooms[who]] || "";
+  const room = x.mount === "wall" ? "Outside the back door" : (sim.net.roomNames || {})[sim.net.rooms[who]] || "";   /* the wall dome is on the wall outside the back door (SB-J5) */
   return { kind: "browser", url: raw, status: "cam", dev: who, remote: remote, shown: scheme + "://" + host + (port !== 443 && port !== 80 ? ":" + port : "") + "/", title: "IP camera · " + x.host,
     rows: [["Camera name", x.host], ["Model", "IP dome camera, " + (x.mount === "ceiling" ? "ceiling" : "wall") + " mount"], ["Where", room], ["IP address", a ? a.ip + (st ? " (fixed)" : " (from DHCP)") : "--"], ["Power", "PoE, 802.3af, over its network cable"], ["Web page", "HTTP 80, HTTPS 443"]],
     net: { mode: f.cfg.mode, ip: st ? f.cfg.ip : a ? a.ip : "", mask: st ? f.cfg.mask : a ? a.mask : "", gw: st ? f.cfg.gw : a ? a.gw || "" : "", dns: st ? (f.cfg.dns || [])[0] || "" : a && a.dns ? a.dns[0] || "" : "" },

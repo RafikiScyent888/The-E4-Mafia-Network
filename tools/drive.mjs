@@ -1221,6 +1221,7 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
   /* SB-J3 (stage 2): the guest Wi-Fi on the ceiling access point, through the page. The access point's address is found as a
      student finds it (the router's DHCP bindings), its page opened in the manager's PC's web browser and the guest network added
      with the page's own form; the visitor's phone joins by name with the password typed in (a wrong one first) */
+  let leases = [];
   const go = async (p, url) => { await p.fill('.browser input[name="url"]', url); await p.click(".browser .urlbar button"); await p.waitForTimeout(60); return p.$eval(".browser", (n) => n.textContent); };
   for (const seed of !process.env.JOB || process.env.JOB === "SB-J3" ? [11, 2025, 777777] : []) {
     const job = "SB-J3", { p, ctx } = await zpage("build.html", { net: solvedTo(2), build: { current: job, j: { [job]: { seed } }, done: doneTo(2) } });
@@ -1333,6 +1334,90 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       await p.reload(); await p.waitForTimeout(350);
       check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)), tag + "still done after a reload");
     } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+    await ctx.close();
+  }
+
+  /* SB-J5 (stage 4): the two dome cameras on their own VLAN. Each powered by its own injector, their ports and the trunks, the
+     router's subinterface and pool; then, as a technician would, the cameras' leases found with show ip dhcp binding, each one's
+     page opened from the manager's PC and its fixed address set there; the access list, the port forwards, and the test the
+     owner chose: the manager's phone on mobile data */
+  let camLeases = [];
+  for (const seed of !process.env.JOB || process.env.JOB === "SB-J5" ? [11, 2025, 777777] : []) {
+    const job = "SB-J5", { p, ctx } = await zpage("build.html", { net: solvedTo(2), build: { current: job, j: { [job]: { seed } }, done: doneTo(2) } });
+    const tag = "business " + job + " " + seed + ": ";
+    try {
+      const plan = await BJ(p, () => window.__e4b.T.sim.net.plan), cv = plan.vlans.cameras, wan = await BJ(p, () => window.__e4b.T.sim.net.isp.wanIp), n3 = cv.net.replace(/\.0$/, ".");
+      check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed, tag + "opens the job on the business asked for");
+      check(!(await p.$('#plan [data-d="cam1"]')) && !(await p.$('#devtabs [data-d="cam2"]')) && /Ceiling camera[\s\S]*Back door camera/.test(await p.$eval(".tray", (n) => n.textContent)), tag + "the cameras and their injectors start in their boxes: off the plan, no device buttons");
+      const lim = await p.$eval(".limits", (n) => n.textContent);
+      check([plan.camAcl, cv.name, cv.gw, plan.cams[0].desc, plan.cams[1].desc, n3 + "11", n3 + "12", ":" + plan.cams[0].ext, ":" + plan.cams[1].ext].every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the records the job needs: the list's name, the VLAN, the ports' descriptions, the fixed addresses, the outside ports");
+      /* the manager's phone: a device button, off the diagram; its Wi-Fi off, on mobile data; nothing forwarded yet */
+      check(!!(await p.$('#devtabs [data-d="mphone"]')) && !(await p.$('#net [data-d="mphone"]')) && !!(await p.$('#plan [data-d="mphone"]')), tag + "the manager's phone: a device button and on the plan (on the manager's desk), not on the logical diagram");
+      await dev(p, "mphone"); await tab(p, "Wi-Fi");
+      check(/Wi-FiOff/.test(await p.$eval(".pane", (n) => n.textContent)) && /Mobile data/.test(await p.$eval(".pane", (n) => n.textContent)) && !!(await p.$('.pane button:text-is("Turn Wi-Fi on")')), tag + "the phone's Wi-Fi tab: off, on mobile data, with its switch");
+      await tab(p, "Web browser"); await go(p, "https://" + wan + ":" + plan.cams[0].ext);
+      check(/refused to connect/.test(await p.$eval(".browser", (n) => n.textContent)), tag + "from outside before the work: the business's address on port " + plan.cams[0].ext + " refuses");
+      await checkJob(p);
+      check((await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do");
+      const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
+      const at = (f) => sol.findIndex(f), cBack = at((a) => a.t === "lay" && a.b.dev === "bsw" && a.b.port === "CONSOLE"), firstClient = at((a) => a.t === "client");
+      for (let k = 0; k < sol.length; k++) {
+        const a = sol[k];
+        if (k === 4) {   /* both of the ceiling camera's runs laid, its switch port still shut: powered, not on the network */
+          check((await p.getAttribute('#plan [data-d="cam1"] use', "href")) === "#p-dome" && (await p.getAttribute('#net [data-d="cam1"] use', "href")) === "#i-dome", tag + "the ceiling camera placed: a dome on the plan and on the diagram");
+          await dev(p, "cam1"); if (!(await p.$('.win-tabs button[aria-selected="true"]:text-is("Physical")'))) await tab(p, "Physical"); await p.waitForTimeout(300);
+          check(/status light[^.]*blinking blue: it has power, but isn't on the network yet/.test(await p.$eval(".m3d-says", (n) => n.textContent).catch(() => "")), tag + "the ceiling camera's Physical tab: its status light blinks, powered, not on the network (its switch port is still shut)");
+        }
+        if (a.t === "client") {   /* its page, found as a technician finds it: the router's leases, then each address opened from the manager's PC */
+          if (k === firstClient) {
+            await step(p, { t: "cmd", dev: "tech", cli: true, line: "show ip dhcp binding" });
+            camLeases = ((await term(p)).split("show ip dhcp binding").pop().match(new RegExp(n3.replace(/\./g, "\\.") + "\\d+", "g")) || []).filter((x, i, l) => l.indexOf(x) === i);
+            check(camLeases.length === 2 && camLeases.every((ip) => +ip.split(".")[3] > plan.camExcl), tag + "show ip dhcp binding: two leases on the cameras' network, above the twenty kept back (" + camLeases.join(", ") + ")");
+          }
+          const want = plan.cams.find((c) => c.id === a.dev).tag;
+          await dev(p, "mgr"); await tab(p, "Web browser");
+          let found = null;
+          for (const ip of camLeases) { await go(p, "https://" + ip); if (new RegExp("Camera name" + want).test(await p.$eval(".browser", (n) => n.textContent))) { found = ip; break; } }
+          check(!!found, tag + "the manager's PC opens " + want + "'s page at its lease");
+          await p.check('.browser input[name="mode"][value="static"]'); await p.fill('.browser input[name="ip"]', a.values.ip); await p.fill('.browser input[name="mask"]', a.values.mask); await p.fill('.browser input[name="gw"]', a.values.gw);
+          await p.click('.browser .devform button[type="submit"]:text-is("Save")'); await p.waitForTimeout(60);
+          check(new RegExp("Saved\\. " + want + " now has the fixed address " + a.values.ip.replace(/\./g, "\\.") + ": this page was at").test(await p.$eval(".browser", (n) => n.textContent)) && /took too long to respond/.test(await p.$eval(".browser", (n) => n.textContent)), tag + want + "'s page: saved, and the browser left at the old address says so (the page is gone from there)");
+          await go(p, "https://" + a.values.ip); check(/IP address[^A-Z]*\(fixed\)/.test(await p.$eval(".browser", (n) => n.textContent)), tag + want + "'s page at its new address: fixed");
+          continue;
+        }
+        await step(p, a);
+        if (k === cBack + 1) {
+          await p.click("#vLog"); await p.waitForTimeout(60);
+          const mid = await labelsClear(p, "net"); check(mid.n > 0 && !mid.out.length, tag + "your laptop at the back switch, the cameras placed: the logical diagram's names and port dots all clear" + (mid.out.length ? " (" + mid.out.join("; ") + ")" : ""));
+          await dysClear(p, tag + "your laptop at the back switch");
+          await p.click("#vPhy"); await p.waitForTimeout(40);
+        }
+      }
+      check(!/% Invalid|% Incomplete|% Ambiguous/.test(await term(p)), tag + "no line was refused on the router");
+      /* the test the owner chose: the manager's phone, Wi-Fi off, on mobile data */
+      await dev(p, "mphone"); await tab(p, "Web browser");
+      for (const c of plan.cams) { await go(p, "https://" + wan + ":" + c.ext); const t = await p.$eval(".browser", (n) => n.textContent); check(new RegExp("Camera name" + c.tag).test(t) && /Reached from outside/.test(t) && !(await p.$('.browser input[name="ip"]')), tag + "the phone on mobile data: port " + c.ext + " opens " + c.tag + "'s page, its settings shown but not changeable from outside"); }
+      await go(p, "https://" + n3 + "11"); check(/took too long to respond/.test(await p.$eval(".browser", (n) => n.textContent)), tag + "the phone on mobile data: a camera's private address means nothing out there");
+      await go(p, "http://" + wan + ":" + plan.cams[0].ext); check(/400 Bad Request/.test(await p.$eval(".browser", (n) => n.textContent)), tag + "plain http to the forward: the camera's secure page answers 400");
+      await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Turn Wi-Fi on")'); await p.waitForTimeout(60);
+      await p.fill(".pane input[name=pass]", plan.guestPw).catch(() => { }); const join = await p.$('.pane button:has-text("Join ' + plan.guestSsid + '")'); if (join) { await join.click(); await p.waitForTimeout(60); }
+      await tab(p, "Web browser"); await go(p, "https://" + wan + ":" + plan.cams[0].ext);
+      check(/refused to connect/.test(await p.$eval(".browser", (n) => n.textContent)), tag + "the phone on the guest Wi-Fi: the business's own address refuses (the router doesn't loop its forwards back inside): test from outside");
+      await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Turn Wi-Fi off")'); await p.waitForTimeout(60);
+      await tab(p, "Web browser"); await go(p, "https://" + wan + ":" + plan.cams[0].ext); check(/Camera name/.test(await p.$eval(".browser", (n) => n.textContent)), tag + "Wi-Fi off again: on mobile data, the forward works");
+      const t = await checkJob(p), n = await BJ(p, () => window.__e4b.T.def.reqs.length);
+      check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
+      for (const id of ["cam1", "cam2"]) { await dev(p, id); if (!(await p.$('.win-tabs button[aria-selected="true"]:text-is("Physical")'))) await tab(p, "Physical"); await p.waitForTimeout(400); check(/status light[^.]*on, blue: on the network/.test(await p.$eval(".m3d-says", (n) => n.textContent).catch(() => "")), tag + id + "'s Physical tab: drawn, its status light on: on the network"); }
+      await p.click("#vLog"); await p.waitForTimeout(60);
+      const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished business's logical diagram: every name and port dot clear" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
+      check(+(await p.getAttribute("#net", "viewBox")).split(" ")[3] > 546, tag + "the diagram is drawn taller, the cameras on rows of their own");
+      await p.click("#vPhy"); await p.waitForTimeout(40);
+      const fp = await labelsClear(p, "plan"); check(fp.n > 0 && !fp.out.length, tag + "the finished business's floor plan: every name clear" + (fp.out.length ? " (" + fp.out.join("; ") + ")" : ""));
+      check(/OUTSIDE THE BACK DOOR/.test(await p.$eval("#plan", (n) => n.textContent)), tag + "the plan shows the back door camera outside the back door");
+      await dysClear(p, tag + "the finished business");
+      await p.reload(); await p.waitForTimeout(350);
+      check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)), tag + "still done after a reload");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0] + (process.env.STACK ? " " + (String(e.stack).match(/drive\.mjs:\d+/g) || []).join(" ") + " open=" + (await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "?")) + " tabs=" + (await p.$$eval(".win-tabs button", (l) => l.map((b) => b.textContent).join("|")).catch(() => "?")) + " devtabs=" + (await p.$$eval("#devtabs [data-d]", (l) => l.map((b) => b.dataset.d).join(",")).catch(() => "?")) : "")); }
     await ctx.close();
   }
 }

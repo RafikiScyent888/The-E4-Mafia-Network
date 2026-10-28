@@ -2172,6 +2172,34 @@ SB-J5 and finish it"**):
   tabs, screenshotted), `camshot.mjs` (the dome previews at a pixel density), `aptime.mjs` (how long a click takes with the
   access point's 3D view open, and the page's long tasks).
 
+### Level 3, stage 5: SB-J6, hardening after a card-payment check (in progress, 28 October 2026)
+
+The Network+ (V9) objectives were read from the owner's doc on 28 October 2026: the Network+ section is word for word
+the copy saved on 30 September (`Network-quizzes/verify/objectives-netplus-2026-09-30.md`). SB-J6 draws on Network
+security (security features and defense: "device hardening, NAC, key management, ACL ... trusted vs. untrusted zones";
+types of attacks: "VLAN hopping, MAC flooding, ARP poisoning/spoofing ... rogue devices/services"; audits and
+compliance: "PCI DSS"; physical security: "cameras and locks"; logical security: "least privilege") and Network
+operations (access and management: "SSH ... console").
+
+The owner's decisions, 28 October 2026 (talked out before building):
+- **The reason: "Card payment check"**: the card processor's PCI DSS check flagged the business's network.
+- **The lines proposed and shown:** the router managed by SSH only (Telnet off, its keys, the business's user; the
+  switch learned this in SO-J2, the router hasn't); only the staff VLAN reaches the router's remote lines (an access
+  list on the lines); no password readable in any configuration, on the router and both switches; idle sessions log
+  out (console and remote lines); port security on the staff PCs' ports, one device each; unused ports shut and parked
+  in an unused VLAN; access ports can't become trunks (VLAN hopping); the router silent to the provider (LLDP off on
+  its outside port, its web server off); the closet rack locked; everything still works; every device saved.
+- **"Both, with ARP inspection"**: DHCP snooping (DHCP answers trusted only from the uplinks) and Dynamic ARP
+  Inspection, two more lines.
+- **Port security: "Shut the port"**: a violation err-disables the port until it's reset (its light out in 3D).
+- **The rack lock: the owner's photographs** (28 October): a full-height cabinet, a black hexagon-perforated front door
+  in its frame, hinged on the left, a silver-grey side panel; a black recessed rectangular latch housing with rounded
+  corners, two screws (top centre, lower right), a black paddle handle folded flat in its left half, a chrome key
+  cylinder at upper right, a silver key on a split ring with a blue tag (its writing left off). The owner sent the full
+  cabinet when asked which rack, so it's modelled as photographed and shown on `preview/models.html` for approval
+  before SB-J6 uses it; the door's back, the cabinet's top and back are drawn, for the owner to review. The photographs
+  are kept out of the repo (only modelled from).
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

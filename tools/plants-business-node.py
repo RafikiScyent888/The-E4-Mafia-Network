@@ -26,6 +26,16 @@ PLANTS = [
  ("SB-J5: a camera's reply from outside never checked", "js/net/sim.js", 'if (!pass(outIf, "in", rep) || !pass(w.iface, "out"', 'if (false && !pass(outIf, "in", rep) || false && !pass(w.iface, "out"'),
  ("SB-J5: a camera's gateway never checked from outside", "js/net/sim.js", "if (!a || !gw || a.gw !== gw.ip)", "if (!a || !gw)"),
  ("SB-J5: a camera catches the pool half typed", "js/net/sim.js", "&& !poolOpen && ", "&& "),
+ ("SB-J6: snooping never drops an answer from an untrusted port", "js/net/sim.js", 'if (S && S.on && S.vlans.indexOf(h.vlan) >= 0 && h.port && !(sw.ports[h.port] && sw.ports[h.port].dtrust)) return h; }', 'if (false) return h; }'),
+ ("SB-J6: snooping never learns a binding", "js/net/sim.js", 'sw.snoopBind = (sw.snoopBind || []).filter(function (b) { return b.mac !== mac; }); sw.snoopBind.push(', 'sw.snoopBind = (sw.snoopBind || []).filter(function (b) { return b.mac !== mac; }); [].push('),
+ ("SB-J6: ARP inspection ignores a trusted port", "js/net/sim.js", 'if (!sw.dai || sw.dai.vlans.indexOf(h.vlan) < 0 || !h.port || (sw.ports[h.port] && sw.ports[h.port].atrust)) continue;', 'if (!sw.dai || sw.dai.vlans.indexOf(h.vlan) < 0 || !h.port) continue;'),
+ ("SB-J6: ARP inspection never drops anything", "js/net/sim.js", '  anyDai() { for (const id in this.d)', '  anyDai() { return false; for (const id in this.d)'),
+ ("SB-J6: a port security violation never shuts the port", "js/net/sim.js", 'if (P.viol === "shutdown") { run.err = true; break; }', 'if (P.viol === "shutdown") { break; }'),
+ ("SB-J6: shut and opened, an err-disabled port stays down", "js/net/swcli.js", 'S.sw.ports[n].shutdown = true; if (S.sw.psRun && S.sw.psRun[n]) S.sw.psRun[n].err = false; }', 'S.sw.ports[n].shutdown = true; }'),
+ ("SB-J6: the remote lines' access list never checked", "js/net/cmd.js", "const name = x.sw.vty.acl, a = sim.addr(id); if (!name", "const name = null, a = sim.addr(id); if (!name"),
+ ("SB-J6: no lldp transmit on a port does nothing", "js/net/rtcli.js", "return r.lldp !== false && !(f && f.lldpTx === false); }", "return r.lldp !== false; }"),
+ ("SB-J6: a reload keeps what the switch learned", "js/net/swcli.js", "  sw.psRun = {}; sw.snoopBind = [];   /* what it learned", "  /* what it learned"),
+ ("SB-J6: an older save reads as changed (keys compared in their saved order)", "js/net/swcli.js", "keys.forEach(function (k) { o[k] = st[k]; }); return now !== JSON.stringify(o); }", "return now !== JSON.stringify(st); }"),
  ("an access port's missing VLAN never made", "js/net/swcli.js", 'if (!S.sw.vlans[v]) { S.sw.vlans[v] = { name: "VLAN" + String(v).padStart(4, "0") }; out.push("% Access VLAN does not exist. Creating vlan " + v); }', 'if (!S.sw.vlans[v]) { out.push("% Access VLAN does not exist. Creating vlan " + v); }'),
  ("interface range takes no list", "js/net/swcli.js", '.replace(/\\s+/g, " ").split(","), out = [];', '.replace(/\\s+/g, " ").split(/(?!)/), out = [];'),
  ("a cable refused names devices in capitals mid-sentence", "js/net/sim.js", 'const theDev = function (x) { return /^your /i.test(x.label) ? x.label.toLowerCase() : "the " + x.label.replace(', 'const theDev = function (x) { return "the " + x.label; return "the " + x.label.replace('),
@@ -39,7 +49,7 @@ for name, f, a, b in PLANTS:
     shutil.copy(f, "/tmp/bplant.bak")
     open(f, "w").write(src.replace(a, b))
     try:
-        r = subprocess.run(["node", "--test", "tests/business-jobs.test.js", "tests/business-sim.test.js", "tests/business-cli.test.js", "tests/business-cams.test.js", "tests/office.test.js"], env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=1200)
+        r = subprocess.run(["node", "--test", "tests/business-jobs.test.js", "tests/business-sim.test.js", "tests/business-cli.test.js", "tests/business-cams.test.js", "tests/business-harden.test.js", "tests/office.test.js"], env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=1200)
         fails = [l.strip() for l in r.stdout.splitlines() if l.startswith("not ok")]
         caught += 1 if r.returncode else 0
         print(("CAUGHT" if r.returncode else "MISSED") + " · " + name + " · " + (", ".join(fails)[:200]), flush=True)

@@ -5,6 +5,7 @@
    source on replay). */
 import { isIp, isApipa, isLoopback, sameSubnet, hash, pad, lpad } from "./util.js";
 import * as SW from "./swcli.js";
+import * as RT from "./rtcli.js";
 import { SFP_MODULES, swPort } from "./sim.js";
 
 const STATIC_ARP = [["224.0.0.22", "01-00-5e-00-00-16"], ["224.0.0.251", "01-00-5e-00-00-fb"], ["239.255.255.250", "01-00-5e-7f-ff-fa"], ["255.255.255.255", "ff-ff-ff-ff-ff-ff"]];
@@ -212,6 +213,7 @@ function ssh(sim, id, args, k) {
   if (x.kind !== "mswitch" && x.kind !== "brouter") return { out: x.kind === "pc" || x.kind === "laptop" ? "ssh: connect to host " + host + " port 22: Connection timed out\n" : "ssh: connect to host " + host + " port 22: Connection refused\n", facts: Object.assign(facts, { ok: false, why: "no-ssh" }) };
   const v = x.sw.vty;
   if (!x.sw.rsa || !/^(ssh|all)$/.test(v.transport)) return { out: "ssh: connect to host " + host + " port 22: Connection refused\n", facts: Object.assign(facts, { ok: false, why: "refused" }) };
+  if (!vtyAllowed(sim, id, x, host, 22)) return { out: "ssh: connect to host " + host + " port 22: Connection refused\n", facts: Object.assign(facts, { ok: false, why: "access-class" }) };
   if (x.sw.rsa < 768) return { out: "Protocol major versions differ: 2 vs. 1\n", facts: Object.assign(facts, { ok: false, why: "v1" }) };
   /* the host keys this computer has met before (SO-13's office keeps a list): a different key from the one remembered stops the
      connection, as OpenSSH does; a host met for the first time is added to the list */
@@ -225,6 +227,12 @@ function ssh(sim, id, args, k) {
   sim.cli[k || id] = { sw: who, via: "ssh", host: host, auth: { step: "pass", user: user, tries: 0, secret: true }, ask: user + "@" + host + "'s password: " };
   return { out: added ? "Warning: Permanently added '" + host + "' (RSA) to the list of known hosts.\n" : "", facts: Object.assign(facts, { ok: true, asked: true, added: added }), secret: true, cli: true };
 }
+/* the remote lines' access list (access-class N in): whether this computer's address may open a login at all. A list that
+   doesn't exist (or a switch, which keeps none) lets everyone in, as on the real thing */
+function vtyAllowed(sim, id, x, host, port) {
+  const name = x.sw.vty.acl, a = sim.addr(id); if (!name || !x.sw.acls || !x.sw.acls[name] || !a) return true;
+  return RT.aclVerdict(x.sw, name, { proto: "tcp", src: a.ip, dst: host, sport: 50000, port: port }).permit;
+}
 /* telnet host: port 23, everything (passwords too) sent in the clear */
 function telnet(sim, id, args, k) {
   const host = args[0], facts = { cmd: "telnet", dev: id, host: host };
@@ -235,6 +243,7 @@ function telnet(sim, id, args, k) {
   if (rt.fail || !rt.local) return { out: fail, facts: Object.assign(facts, { ok: false, why: "unreachable" }) };
   const who = rt.owner[0], x = sim.d[who];
   if ((x.kind !== "mswitch" && x.kind !== "brouter") || !/^(telnet|all)$/.test(x.sw.vty.transport)) return { out: fail, facts: Object.assign(facts, { ok: false, why: "refused" }) };
+  if (!vtyAllowed(sim, id, x, host, 23)) return { out: fail, facts: Object.assign(facts, { ok: false, why: "access-class" }) };
   const v = x.sw.vty;
   if (!v.login || (v.login === "password" && !v.password)) return { out: "\nPassword required, but none set\n\nConnection to host lost.\n", facts: Object.assign(facts, { ok: false, why: "no-login" }) };
   sim.cli = sim.cli || {};

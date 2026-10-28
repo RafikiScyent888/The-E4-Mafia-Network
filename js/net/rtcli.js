@@ -25,10 +25,13 @@ export function newRouter(o = {}) {
   RT_PORTS.forEach(function (n) { ifs[n] = { desc: "", ip: null, mask: null, dhcp: false, shutdown: true, speed: "auto", duplex: "auto", nat: null, aclIn: null, aclOut: null }; });
   return { os: "router", model: "BR-4200", hostname: "Router", enableSecret: null, enablePassword: null, encrypt: false,
     con: { password: null, login: null }, vty: { password: null, login: null, transport: "telnet" }, users: {}, domain: null, rsa: 0, keyGen: 0, banner: null,
-    ifs: ifs, subs: {}, routes: [], excluded: [], pools: {}, acls: {}, nat: [], statics: [],
+    ifs: ifs, subs: {}, routes: [], excluded: [], pools: {}, acls: {}, nat: [], statics: [], lldp: true,
     links: o.links || {}, mac: o.mac || "00e0.4d██.████", serial: "██████████", startup: null, uptime: o.uptime || "2 minutes" };
 }
-const RT_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "banner", "ifs", "subs", "routes", "excluded", "pools", "acls", "nat", "statics"];
+const RT_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "banner", "ifs", "subs", "routes", "excluded", "pools", "acls", "nat", "statics", "lldp"];
+/* LLDP on: everywhere unless turned off (no lldp run), and on a port unless it's told not to send or listen there.
+   A router saved before LLDP could be turned off has it on (undefined) */
+export function lldpSends(r, n) { const f = r.ifs[n]; return r.lldp !== false && !(f && f.lldpTx === false); }
 
 /* ------------------------------------------------------------ addresses */
 const n4 = function (s) { return s.split(".").reduce(function (a, p) { return a * 256 + +p; }, 0); };
@@ -177,6 +180,8 @@ const has = function (list, word) { return list.find(function (c) { return c[0] 
 const pick = function (list, words) { return words.map(function (w) { return has(list, w); }).filter(Boolean); };
 const bad = ["% Invalid input detected at '^' marker."], inc = ["% Incomplete command."];
 
+/* LLDP is a physical port's: a subinterface has none of its own */
+function lldpIf(S, k, v) { if (S.ifs.some(isSub)) return ["% Invalid input detected at '^' marker.", "  (LLDP runs on the physical port, not on a subinterface)"]; S.ifs.forEach(function (n) { const f = ifOf(S.sw, n); if (v) delete f[k]; else f[k] = false; }); return []; }
 function setIfs(S, k, v) { S.ifs.forEach(function (n) { const f = ifOf(S.sw, n); if (f) f[k] = v; }); return []; }
 function rtAddress(S, a) {
   if (!a.length) return inc;
@@ -269,7 +274,9 @@ const RT_IFACE = [
   ["speed", "Configure speed operation.", [["10", "Force 10 Mbps operation", function (S) { return setIfs(S, "speed", "10"); }], ["100", "Force 100 Mbps operation", function (S) { return setIfs(S, "speed", "100"); }], ["1000", "Force 1000 Mbps operation", function (S) { return setIfs(S, "speed", "1000"); }], ["auto", "Enable AUTO speed configuration", function (S) { return setIfs(S, "speed", "auto"); }]]],
   ["duplex", "Configure duplex operation.", [["full", "Force full duplex operation", function (S) { return setIfs(S, "duplex", "full"); }], ["half", "Force half-duplex operation", function (S) { return setIfs(S, "duplex", "half"); }], ["auto", "Enable AUTO duplex configuration", function (S) { return setIfs(S, "duplex", "auto"); }]]],
   ["shutdown", "Shutdown the selected interface", function (S) { setIfs(S, "shutdown", true); return S.ifs.map(function (n) { return "%LINK-5-CHANGED: Interface " + n + ", changed state to administratively down"; }); }],
+  ["lldp", "LLDP interface subcommands", [["transmit", "Enable LLDP transmission on interface", function (S) { return lldpIf(S, "lldpTx", true); }], ["receive", "Enable LLDP reception on interface", function (S) { return lldpIf(S, "lldpRx", true); }]]],
   ["no", "Negate a command or set its defaults", [
+    ["lldp", "LLDP interface subcommands", [["transmit", "Enable LLDP transmission on interface", function (S) { return lldpIf(S, "lldpTx", false); }], ["receive", "Enable LLDP reception on interface", function (S) { return lldpIf(S, "lldpRx", false); }]]],
     ["shutdown", "Shutdown the selected interface", function (S) { setIfs(S, "shutdown", false); return S.ifs.map(function (n) { const st = rtStatus(S.sw, n); return "%LINK-3-UPDOWN: Interface " + n + ", changed state to " + (st[0] === "up" ? "up" : "down"); }); }],
     ["description", "Interface specific description", function (S) { return setIfs(S, "desc", ""); }],
     ["ip", "Interface Internet Protocol config commands", [
@@ -315,6 +322,7 @@ const RT_NACL = [
 ];
 
 const RT_CONFIG = pick(CONFIG, ["hostname", "enable", "line", "username", "crypto", "service", "banner", "do", "end", "exit"]).concat([
+  ["lldp", "Global LLDP configuration subcommands", [["run", "Enable LLDP", function (S) { S.sw.lldp = true; return []; }]]],
   ["interface", "Select an interface to configure", function (S, a) {
     if (!a.length) return inc;
     const f = rtName(a, 0); if (!f) return bad; if (f.err === "incomplete") return inc; if (f.err) return bad;
@@ -338,6 +346,7 @@ const RT_CONFIG = pick(CONFIG, ["hostname", "enable", "line", "username", "crypt
     return aclLine(S, a[0], type, a.slice(1));
   }, { sub: [["<1-99>", "IP standard access list (sources)"], ["<100-199>", "IP extended access list (protocol, source, destination, port)"]] }],
   ["no", "Negate a command or set its defaults", pick(has(CONFIG, "no")[2], ["hostname", "enable", "username", "service", "banner"]).concat([
+    ["lldp", "Global LLDP configuration subcommands", [["run", "Enable LLDP", function (S) { S.sw.lldp = false; return []; }]]],
     ["interface", "Select an interface to configure", function (S, a) { const f = rtName(a, 0); if (!f || f.err || f.sub == null) return ["% Invalid input detected at '^' marker.", "  (only a subinterface can be removed)"]; delete S.sw.subs[f.name]; return []; }],
     ["ip", "Global IP configuration subcommands", [
       has(has(has(CONFIG, "no")[2], "ip")[2], "domain-name"),
@@ -450,6 +459,7 @@ function rtRunning(r, startup) {
     if (f.aclIn) L.push(" ip access-group " + f.aclIn + " in");
     if (f.aclOut) L.push(" ip access-group " + f.aclOut + " out");
     if (f.nat) L.push(" ip nat " + f.nat);
+    if (f.lldpTx === false) L.push(" no lldp transmit"); if (f.lldpRx === false) L.push(" no lldp receive");
     if (f.shutdown) L.push(" shutdown");
     if (!isSub(n)) { if (f.speed !== "auto") L.push(" speed " + f.speed); if (f.duplex !== "auto") L.push(" duplex " + f.duplex); }
     L.push("!");
@@ -464,9 +474,10 @@ function rtRunning(r, startup) {
     else A.lines.forEach(function (e) { L.push("access-list " + k + " " + aceText(A.type, e)); });
   });
   if (Object.keys(r.acls).length) L.push("!");
+  if (r.lldp === false) L.push("no lldp run", "!");
   if (r.banner != null) L.push("banner motd ^C" + r.banner + "^C", "!");
-  L.push("line con 0"); if (r.con.password) L.push(" password " + pw(r.con.password)); if (r.con.login) L.push(r.con.login === "local" ? " login local" : " login");
-  L.push("line vty 0 4"); if (r.vty.password) L.push(" password " + pw(r.vty.password)); if (r.vty.login) L.push(r.vty.login === "local" ? " login local" : " login"); L.push(" transport input " + r.vty.transport);
+  L.push("line con 0"); if (r.con.timeout) L.push(" exec-timeout " + r.con.timeout[0] + " " + r.con.timeout[1]); if (r.con.password) L.push(" password " + pw(r.con.password)); if (r.con.login) L.push(r.con.login === "local" ? " login local" : " login");
+  L.push("line vty 0 4"); if (r.vty.acl) L.push(" access-class " + r.vty.acl + " in"); if (r.vty.timeout) L.push(" exec-timeout " + r.vty.timeout[0] + " " + r.vty.timeout[1]); if (r.vty.password) L.push(" password " + pw(r.vty.password)); if (r.vty.login) L.push(r.vty.login === "local" ? " login local" : " login"); L.push(" transport input " + r.vty.transport);
   L.push("!", "end");
   return L;
 }
@@ -486,7 +497,7 @@ const RT_SHOW = pick(SHOW, ["startup-config", "history", "clock", "users", "ssh"
     ["nat", "IP NAT information", [["translations", "Translation entries", function (S) { return rtNat(S.sw, S.live); }]]],
     ["access-lists", "List IP access lists", function (S, a) { return rtAcls(S.sw, a[0], S.live); }]]],
   ["access-lists", "List access lists", function (S, a) { return rtAcls(S.sw, a[0], S.live); }],
-  ["lldp", "LLDP information (neighbour discovery)", [["neighbors", "LLDP neighbor entries", function (S, a) { return lldpTable(S.sw, a[0] && /^d/i.test(a[0]), RT_PORTS); }, { sub: [["detail", "Show detailed information: each neighbour's management address"]] }]]],
+  ["lldp", "LLDP information (neighbour discovery)", [["neighbors", "LLDP neighbor entries", function (S, a) { if (S.sw.lldp === false) return ["% LLDP is not enabled"]; return lldpTable(S.sw, a[0] && /^d/i.test(a[0]), RT_PORTS.filter(function (n) { return !(S.sw.ifs[n] && S.sw.ifs[n].lldpRx === false); })); }, { sub: [["detail", "Show detailed information: each neighbour's management address"]] }]]],
   ["interfaces", "Interface status and configuration", function (S, a) {
     if (!a.length) return allIfs(S.sw).reduce(function (L, n) { return L.concat(rtIfDetail(S.sw, n, S.live)); }, []);
     const f = rtName(a, 0); if (!f || f.err || !ifOf(S.sw, f.name)) return bad;

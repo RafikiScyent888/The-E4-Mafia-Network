@@ -5,7 +5,7 @@
    Every change goes through apply(), so a ticket can be replayed exactly
    (progress is saved as the list of actions). */
 import { rng, hash, ip2n, n2ip, sameSubnet, isIp, isApipa, isPublic, isPrivate, isLoopback, broadcast, network, maskBits } from "./util.js";
-import { reload as reloadSwitch, duplexEnds, carries, ownAddrs } from "./swcli.js";
+import { reload as reloadSwitch, duplexEnds, carries, ownAddrs, psRunOf, errDisabled, dotMac } from "./swcli.js";
 import * as RT from "./rtcli.js";
 
 /* each radio has its own hardware address: the 5 GHz one is the next number up */
@@ -148,7 +148,7 @@ export class Sim {
     if (c.cond === "crushed") return false;                 /* pairs 1-2 or 3-6 open: no link at all */
     for (const e of [c.a, c.b]) {   /* a managed switch's port: shut down, or a fixed speed the far end can't match, and there's no link */
       const x = this.d[e.dev]; if (!x || x.kind !== "mswitch") continue;
-      const p = x.sw.ports[swPort(e.port)]; if (!p || p.shutdown) return false;
+      const p = x.sw.ports[swPort(e.port)]; if (!p || p.shutdown || errDisabled(x.sw, swPort(e.port))) return false;
       const fs = this.speedSetting(e === c.a ? c.b : c.a); if (p.speed !== "auto" && fs !== "auto" && p.speed !== fs) return false;
       const fx = this.d[(e === c.a ? c.b : c.a).dev], top = Math.min((fx && fx.maxMbps) || 1000, c.cond === "damaged" ? 100 : 1000);
       if (p.speed !== "auto" && +p.speed > top) return false;   /* a speed forced above what the far end (or the cable) can run: no link */
@@ -160,7 +160,7 @@ export class Sim {
       const o = this.cableAt(ij.dev, POE_PAIR[ij.port]);   /* the cable in the same pair's other port */
       if (!o || o === c || !o.a.seated || !o.b.seated || o.cond === "crushed") return false;
       const fe = o.a.dev === ij.dev ? o.b : o.a, fx = this.d[fe.dev];   /* and the port on the far side open: a shut switch or router port is no link, through the injector or not */
-      if (fx && fx.kind === "mswitch") { const p = fx.sw.ports[swPort(fe.port)]; if (!p || p.shutdown) return false; }
+      if (fx && fx.kind === "mswitch") { const p = fx.sw.ports[swPort(fe.port)]; if (!p || p.shutdown || errDisabled(fx.sw, swPort(fe.port))) return false; }
       if (fx && fx.kind === "brouter") { const ph = RT_IF(fe.port); if (!ph || fx.sw.ifs[ph].shutdown) return false; }
       return [c.a, c.b, o.a, o.b].filter(function (e) { return e.dev !== ij.dev; }).every(function (e) { return this.on(e.dev); }, this);
     }
@@ -201,7 +201,7 @@ export class Sim {
     const x = end && this.d[end.dev]; if (!x || !this.on(end.dev)) return null;
     /* the address it advertises is the one it's configured with (worked out from its own links, two devices asking each other would never finish) */
     if (x.kind === "mswitch") { const sw = x.sw, v = sw.vlan1.ip && !sw.vlan1.shutdown ? sw.vlan1 : Object.keys(sw.svis || {}).map(function (k) { return sw.svis[k]; }).find(function (f) { return f.ip && !f.shutdown; }); return { id: sw.hostname, port: swPort(end.port), caps: "B", model: sw.model, addr: v ? v.ip : null }; }
-    if (x.kind === "brouter") { const r = x.sw, f = RT.allIfs(r).map(function (n) { return n.indexOf(".") > 0 ? r.subs[n] : r.ifs[n]; }).find(function (g) { return g && g.ip && !g.shutdown; }); return { id: r.hostname, port: RT_IF(end.port), caps: "R", model: r.model, addr: f ? f.ip : null }; }
+    if (x.kind === "brouter") { if (!RT.lldpSends(x.sw, RT_IF(end.port))) return null; const r = x.sw, f = RT.allIfs(r).map(function (n) { return n.indexOf(".") > 0 ? r.subs[n] : r.ifs[n]; }).find(function (g) { return g && g.ip && !g.shutdown; }); return { id: r.hostname, port: RT_IF(end.port), caps: "R", model: r.model, addr: f ? f.ip : null }; }
     if (x.kind === "bap") { const f = x.ifaces && x.ifaces[0], a = f && f.lease; return { id: x.host || "AP-" + x.mac.replace(/[^0-9a-f]/gi, "").slice(-6).toUpperCase(), port: "eth0", caps: "W", model: "Ceiling access point", addr: a ? a.ip : null }; }
     return null;
   }
@@ -397,15 +397,117 @@ export class Sim {
       }
       return { u: this.nodeOf(end.dev, end.port), t: {} };
     }.bind(this);
-    const a = side(c.a, c.b), b = side(c.b, c.a);
-    if (a.u && b.u) e.push([a.u, b.u]);
-    for (const v in a.t) if (b.t[v]) e.push([a.t[v], b.t[v]]);
+    const a = side(c.a, c.b), b = side(c.b, c.a), m = { ea: c.a, eb: c.b };   /* each edge keeps its cable's ends (the first node is c.a's): the port a frame comes into a switch by */
+    if (a.u && b.u) e.push([a.u, b.u, m]);
+    for (const v in a.t) if (b.t[v]) e.push([a.t[v], b.t[v], m]);
   }
   domain(node) {
     const e = this.edges(), seen = new Set([node]), q = [node];
     while (q.length) { const v = q.shift(); for (const [a, b] of e) { const w = a === v ? b : b === v ? a : null; if (w && !seen.has(w)) { seen.add(w); q.push(w); } } }
     return seen;
   }
+  /* ------------------------------------------------------------ the switches' guards: DHCP snooping, ARP inspection, port security */
+  /* a node inside a managed switch: which switch and which VLAN; null for anything else */
+  swNode(node) { const i = node.indexOf(":v"), dev = i > 0 ? node.slice(0, i) : node, x = this.d[dev]; return x && x.kind === "mswitch" ? { dev: dev, vlan: i > 0 ? +node.slice(i + 2) : 1 } : null; }
+  /* the way across layer 2 from one node to another: each switch it passes, the VLAN, and the port the frame comes in by */
+  l2Path(from, to) {
+    const e = this.edges(), prev = new Map([[from, null]]), q = [from];
+    while (q.length) { const v = q.shift(); if (v === to) break; for (const ed of e) { const w = ed[0] === v ? ed[1] : ed[1] === v ? ed[0] : null; if (w && !prev.has(w)) { prev.set(w, { from: v, m: ed[2] || null }); q.push(w); } } }
+    if (!prev.has(to)) return null;
+    const out = []; let v = to;
+    while (prev.get(v)) { const p = prev.get(v), s = this.swNode(v); if (s) { const end = p.m ? (p.m.ea.dev === s.dev ? p.m.ea : p.m.eb) : null; out.unshift({ dev: s.dev, vlan: s.vlan, port: end ? swPort(end.port) : null }); } v = p.from; }
+    return out;
+  }
+  anySnoop() { for (const id in this.d) { const x = this.d[id]; if (x.kind === "mswitch" && x.sw.snoop && x.sw.snoop.on) return true; } return false; }
+  anyDai() { for (const id in this.d) { const x = this.d[id]; if (x.kind === "mswitch" && x.sw.dai && x.sw.dai.vlans.length) return true; } return false; }
+  /* a DHCP server's node by its key: a router's LAN side ("router"), its guest network ("router:guest"), a business router's interface ("rtr@...") */
+  srvNode(key) { if (key.indexOf("@") > 0) { const [rid, n] = key.split("@"); return this.rtNode(rid, n); } return key === "router:guest" ? "router:guest" : key + ":lan"; }
+  /* DHCP snooping: a server's answers are dropped at the first switch that snoops their VLAN and doesn't trust the port they
+     come in by. Where, or null */
+  snoopBlock(serverNode, clientNode) {
+    const P = this.l2Path(serverNode, clientNode); if (!P) return null;
+    for (const h of P) { const sw = this.d[h.dev].sw, S = sw.snoop; if (S && S.on && S.vlans.indexOf(h.vlan) >= 0 && h.port && !(sw.ports[h.port] && sw.ports[h.port].dtrust)) return h; }
+    return null;
+  }
+  /* a lease seen through a snooping switch, from a client on a port it doesn't trust: the switch binds the client's address to
+     that port (show ip dhcp snooping binding). Kept as the switch runs, never saved */
+  snoopLearn(id, key, ip) {
+    if (!this.anySnoop()) return;
+    const P = this.l2Path(this.homeNode(id), this.srvNode(key)); if (!P) return;
+    const mac = dotMac(this.macOf(id));
+    for (const h of P) {
+      const sw = this.d[h.dev].sw, S = sw.snoop; if (!S || !S.on || S.vlans.indexOf(h.vlan) < 0 || !h.port || (sw.ports[h.port] && sw.ports[h.port].dtrust)) continue;
+      sw.snoopBind = (sw.snoopBind || []).filter(function (b) { return b.mac !== mac; }); sw.snoopBind.push({ mac: mac, ip: ip, vlan: h.vlan, port: h.port, lease: 86400 });
+    }
+  }
+  /* Dynamic ARP Inspection: a device's ARP is dropped at the first switch inspecting its VLAN, on a port it doesn't trust, with no
+     snooping binding there for the device's address. Where, or null */
+  arpBlock(fromNode, toNode, mac, ip) {
+    const P = this.l2Path(fromNode, toNode); if (!P) return null;
+    const m = dotMac(mac);
+    for (const h of P) {
+      const sw = this.d[h.dev].sw; if (!sw.dai || sw.dai.vlans.indexOf(h.vlan) < 0 || !h.port || (sw.ports[h.port] && sw.ports[h.port].atrust)) continue;
+      const snooped = !!(sw.snoop && sw.snoop.on && sw.snoop.vlans.indexOf(h.vlan) >= 0);
+      if (!snooped || !(sw.snoopBind || []).some(function (b) { return b.mac === m && b.ip === ip && b.vlan === h.vlan && b.port === h.port; })) return Object.assign({ who: ip }, h);
+    }
+    return null;
+  }
+  /* the node a device answers ARP for an address on */
+  arpNode(o, ip, dom) {
+    const x = this.d[o]; if (!x) return null;
+    if (x.kind === "router" || x.kind === "rogue") return dom.has(o + ":lan") ? o + ":lan" : dom.has("router:guest") ? "router:guest" : null;
+    if (x.kind === "brouter") { const n = this.rtIfFor(o, ip, dom); return n ? this.rtNode(o, n) : null; }
+    if (x.kind === "mswitch") { const m = this.mgmtAddrs(o).find(function (a) { return a.ip === ip; }); return m ? this.vnode(o, m.vlan) : null; }
+    if (x.kind === "bap") return this.bapNode(o, null);
+    return this.nodeOf(o, "LAN");
+  }
+  /* an ARP exchange between a peer and the device answering for an address, both ways: the request reaching it, the answer coming back */
+  arpBlocked(peerNode, peerMac, peerIp, o, ip, dom) {
+    if (!this.anyDai()) return null;
+    const on = this.arpNode(o, ip, dom); if (!on) return null;
+    return this.arpBlock(peerNode, on, peerMac, peerIp) || this.arpBlock(on, peerNode, this.macOf(o), ip);
+  }
+  /* what's behind a switch port: every device whose frames come into the switch by it, with the VLAN they come in on (null without a link) */
+  behindPort(id, n) {
+    const k = +n.split("/")[1], p = k > 24 ? "SFP" + (k - 24) : String(k), c0 = this.cableAt(id, p); if (!c0 || !this.cableUp(c0)) return null;
+    const e = this.edges(), own = function (v) { const s = this.swNode(v); return !!s && s.dev === id; }.bind(this), seen = new Set(), out = [], macs = new Set();
+    for (const ed of e) {
+      const m = ed[2]; if (!m) continue;
+      const mine = m.ea.dev === id && m.ea.port === p ? 0 : m.eb.dev === id && m.eb.port === p ? 1 : -1; if (mine < 0) continue;
+      const vlan = (this.swNode(mine === 0 ? ed[0] : ed[1]) || { vlan: 1 }).vlan, q = [mine === 0 ? ed[1] : ed[0]];
+      while (q.length) {
+        const v = q.shift(); if (seen.has(v) || own(v)) continue; seen.add(v);
+        const dev = v.split(/[:#@]/)[0], x = this.d[dev];
+        if (x && this.on(dev)) { const mac = x.kind === "brouter" || x.kind === "router" || x.kind === "rogue" || x.kind === "mswitch" || (x.ifaces && this.hasLink(dev)) ? dotMac(this.macOf(dev)) : null; if (mac && !macs.has(mac)) { macs.add(mac); out.push({ mac: mac, vlan: vlan, dev: dev }); } }
+        for (const f of e) { const w = f[0] === v ? f[1] : f[1] === v ? f[0] : null; if (w && !seen.has(w)) q.push(w); }
+      }
+    }
+    return out;
+  }
+  /* port security after each change: on each secured port that's up, the addresses behind it are learned (stuck into the running
+     configuration when sticky) up to its limit; one more is a violation, which shuts the port (err-disabled) in shutdown mode. A
+     port that loses its link forgets what it learned without sticking */
+  portSecurity() {
+    for (const id in this.d) {
+      const x = this.d[id]; if (x.kind !== "mswitch" || !this.on(id)) continue;
+      const sw = x.sw;
+      for (const n in sw.ports) {
+        const P = sw.ports[n].ps; if (!P || !P.on) continue;
+        const run = psRunOf(sw, n); if (run.err) continue;
+        const macs = this.behindPort(id, n); if (!macs) { run.dyn = []; continue; }
+        run.seen = run.seen || [];
+        for (const m of macs) {
+          if (P.macs.some(function (k) { return k.mac === m.mac; }) || run.dyn.some(function (k) { return k.mac === m.mac; })) continue;
+          if (P.macs.length + run.dyn.length < P.max) { if (P.sticky) P.macs.push({ mac: m.mac, sticky: true }); else run.dyn.push({ mac: m.mac, vlan: m.vlan }); continue; }
+          if (run.seen.indexOf(m.mac) < 0) { run.viol++; run.seen.push(m.mac); }
+          run.last = { mac: m.mac, vlan: m.vlan };
+          if (P.viol === "shutdown") { run.err = true; break; }
+        }
+      }
+    }
+  }
+  /* bindings go with snooping: turned off, or a VLAN taken out of it, and the switch forgets them */
+  snoopTidy() { for (const id in this.d) { const x = this.d[id]; if (x.kind !== "mswitch" || !x.sw.snoopBind) continue; const S = x.sw.snoop; x.sw.snoopBind = S && S.on ? x.sw.snoopBind.filter(function (b) { return S.vlans.indexOf(b.vlan) >= 0; }) : []; } }
   /* the node a device's network interface sits on */
   homeNode(id) { const x = this.d[id]; if (x && x.kind === "mswitch") { const a = this.addr(id); return this.vnode(id, a && a.vlan ? a.vlan : 1); } return this.nodeOf(id, "LAN"); }   /* a managed switch: the VLAN its management address is on */
   hasLink(id) {
@@ -460,7 +562,7 @@ export class Sim {
   ttlOf(id) { const k = this.d[id].kind; return k === "pc" || k === "laptop" ? 128 : k === "mswitch" || k === "brouter" ? 255 : 64; }
 
   /* DHCP servers a client's request reaches */
-  dhcpServers(id) {
+  dhcpServers(id, raw) {   /* raw: before any snooping switch drops their answers */
     const dom = this.domain(this.homeNode(id)), out = [];
     for (const sid in this.d) {
       const s = this.d[sid];
@@ -475,7 +577,14 @@ export class Sim {
       const discover = { proto: "udp", src: "0.0.0.0", dst: "255.255.255.255", sport: 68, port: 67 };
       RT.allIfs(R).forEach(function (n) { const a = RT.addrOf(R, n, live), f = n.indexOf(".") > 0 ? R.subs[n] : R.ifs[n]; if (a && RT.rtStatus(R, n)[1] === "up" && dom.has(this.rtNode(rid, n)) && RT.poolFor(R, a.ip, a.mask) && (!f.aclIn || RT.aclVerdict(R, f.aclIn, discover).permit)) out.push(rid + "@" + n); }, this);
     }
-    return out;
+    if (raw || !this.anySnoop()) return out;
+    const me = this.homeNode(id);
+    return out.filter(function (k) { return !this.snoopBlock(this.srvNode(k), me); }, this);   /* an answer coming in by a port a snooping switch doesn't trust never reaches the client */
+  }
+  /* the servers a client's request reaches whose answers a snooping switch drops: where (for the checks' causes) */
+  snoopDrops(id) {
+    if (!this.anySnoop()) return [];
+    const all = this.dhcpServers(id, true), me = this.homeNode(id); return all.map(function (k) { const b = this.snoopBlock(this.srvNode(k), me); return b ? Object.assign({ server: k }, b) : null; }, this).filter(Boolean);
   }
   /* the business router's offer from the pool for an interface's network: the client's own address back if it's still free,
      else the lowest free one. Like the real server it checks an address isn't answering first: one in use by a device set by
@@ -522,7 +631,7 @@ export class Sim {
     const wins = (this.net.extra && this.net.extra.rogueWins) || [];
     const order = servers.slice().sort(function (a, b) { const ra = this.srv(a).kind === "rogue", rb = this.srv(b).kind === "rogue"; return wins.indexOf(id) >= 0 ? (rb - ra) : (ra - rb); }.bind(this));   /* whoever answers first: a rogue server beats the router for the devices it is quicker to */
     for (const sid of order) {
-      if (sid.indexOf("@") > 0) { const o = this.rtOffer(sid, f.mac); if (o) { ans = o.ip; server = sid; this.rtLease(sid, x, f, o); break; } continue; }
+      if (sid.indexOf("@") > 0) { const o = this.rtOffer(sid, f.mac); if (o) { ans = o.ip; server = sid; this.rtLease(sid, x, f, o); this.snoopLearn(id, sid, o.ip); break; } continue; }
       const ip = this.offer(sid, f.mac, f.lease && f.lease.server === this.srv(sid).lan.ip ? f.lease.ip : null); if (ip) { ans = ip; server = sid; break; }
     }
     if (!ans) {
@@ -536,7 +645,7 @@ export class Sim {
     s.leases.push({ mac: f.mac, ip: ans, name: x.label, host: x.host || x.label.replace(/\s+/g, "-").toUpperCase() });
     const dns = s.dhcp.dnsMode === "router" ? [s.lan.ip] : s.dhcp.dns.filter(Boolean);
     f.lease = { ip: ans, mask: s.lan.mask, gw: s.lan.ip, dns: dns, server: s.lan.ip, obtained: this.n, hours: s.dhcp.leaseH };
-    f.apipa = null;
+    f.apipa = null; this.snoopLearn(id, server, ans);
     return { result: "lease", ip: ans, server: server };
   }
   /* a lease from the business router: what its pool says (its mask, its default router, its DNS servers), right or wrong */
@@ -547,7 +656,8 @@ export class Sim {
     f.lease = { ip: o.ip, mask: P.mask, gw: P.router[0] || null, dns: P.dns.slice(), server: a.ip, obtained: this.n, hours: P.lease === "infinite" ? 0 : P.lease[0] * 24 + (P.lease[1] || 0), domain: P.domain || null };
   }
   release(id) {
-    const f = this.d[id].ifaces[0];
+    const f = this.d[id].ifaces[0], m = dotMac(f.mac);
+    for (const sid in this.d) if (this.d[sid].kind === "mswitch" && this.d[sid].sw.snoopBind) this.d[sid].sw.snoopBind = this.d[sid].sw.snoopBind.filter(function (b) { return b.mac !== m; });
     for (const rid in this.d) if (this.d[rid].kind === "brouter" && this.d[rid].leases) this.d[rid].leases = this.d[rid].leases.filter(function (l) { return l.mac !== f.mac; });
     if (f.lease) { const s = Object.values(this.d).concat(this.d.router && this.d.router.guest ? [this.d.router.guest] : []).find(function (v) { return (v.kind === "router" || v.kind === "rogue") && v.lan.ip === f.lease.server; }); if (s) s.leases = s.leases.filter(function (l) { return l.mac !== f.mac; }); }
     f.lease = null; f.apipa = null;
@@ -559,6 +669,7 @@ export class Sim {
   }
   /* after something changes physically, clients whose link came up ask again */
   relink(before) {
+    this.snoopTidy(); this.portSecurity();
     /* a DHCP pool still being typed (a console in its dhcp-config mode): a device asks now and then, not on every line, so it doesn't
        catch the pool half made (its network typed, its default-router not yet: a lease with no gateway) */
     const cli = this.cli || {}, poolOpen = Object.keys(cli).some(function (k) { const st = cli[k]; return !!(st && st.S && st.S.mode === "dhcp"); });
@@ -585,8 +696,13 @@ export class Sim {
     if (sameSubnet(a.ip, dst, a.mask)) next = dst;
     else if (a.gw && sameSubnet(a.ip, a.gw, a.mask)) next = a.gw;
     else return { fail: "no-route", addr: a };
-    const owners = this.owners(next, dom);
+    let owners = this.owners(next, dom);
     if (!owners.length) return { fail: next === dst ? "host-unreachable" : "gateway-unreachable", addr: a, next: next };
+    if (this.anyDai()) {   /* an ARP request or its answer dropped by a switch inspecting ARP: as if nobody answered */
+      const me = this.homeNode(id), mm = this.macOf(id); let blk = null;
+      owners = owners.filter(function (o) { const b = this.arpBlocked(me, mm, a.ip, o, next, dom); if (b) blk = blk || b; return !b; }, this);
+      if (!owners.length) return { fail: next === dst ? "host-unreachable" : "gateway-unreachable", addr: a, next: next, dai: blk };
+    }
     if (next === dst) {
       /* the reply has to come back too: a device whose mask puts the sender on another network sends its
          reply to its gateway, and if that gateway isn't on its own network either, the reply never leaves */
@@ -705,8 +821,9 @@ export class Sim {
       return Object.assign({ internet: true, nat: { inside: a.ip, global: this.net.isp.wanIp }, hops: [gwIp, this.net.isp.gw, this.net.isp.core, dst] }, base);
     }
     /* out onto another of the business's own networks */
-    const odom = this.domain(this.rtNode(rid, outIf)), next = rt.nh || dst, owners = this.owners(next, odom).filter(function (o) { return o !== rid; });
-    if (!owners.length) return Object.assign({ fail: "no-reply", hops: [gwIp], why: "arp" }, base);   /* the router's ARP for it goes unanswered: Request timed out */
+    const odom = this.domain(this.rtNode(rid, outIf)), next = rt.nh || dst, oa = RT.addrOf(R, outIf, live);
+    let blk = null; const owners = this.owners(next, odom).filter(function (o) { if (o === rid) return false; const b = oa && this.arpBlocked(this.rtNode(rid, outIf), this.macOf(rid), oa.ip, o, next, odom); if (b) blk = blk || b; return !b; }, this);
+    if (!owners.length) return Object.assign({ fail: "no-reply", hops: [gwIp], why: "arp", dai: blk }, base);   /* the router's ARP for it goes unanswered (or a switch inspecting ARP drops it): Request timed out */
     if (rt.nh) return Object.assign({ fail: "beyond", hops: [gwIp, rt.nh] }, base);
     const back = owners.filter(function (o) { return this.canReply(o, a.ip, odom); }, this);
     if (!back.length) return Object.assign({ fail: "no-reply", hops: [gwIp], why: "their gateway" }, base);   /* the router answers tracert's first probe; nothing after it */
@@ -730,8 +847,9 @@ export class Sim {
       if (!isPublic(dst)) return { fail: "beyond", src: src, hops: [this.net.isp.gw] };
       return inOk(outIf, rep) ? { internet: true, src: src, outIf: outIf, hops: [this.net.isp.gw, this.net.isp.core, dst], acls: acls } : { fail: "no-reply", src: src, acls: acls };
     }
-    const odom = this.domain(this.rtNode(rid, outIf)), next = rt.nh || dst, owners = this.owners(next, odom).filter(function (o) { return o !== rid; });
-    if (!owners.length) return { fail: "host-unreachable", src: src, next: next };
+    const odom = this.domain(this.rtNode(rid, outIf)), next = rt.nh || dst;
+    let blk = null; const owners = this.owners(next, odom).filter(function (o) { if (o === rid) return false; const b = src && this.arpBlocked(this.rtNode(rid, outIf), this.macOf(rid), src, o, next, odom); if (b) blk = blk || b; return !b; }, this);
+    if (!owners.length) return { fail: "host-unreachable", src: src, next: next, dai: blk };
     if (rt.nh) return { fail: "beyond", src: src, hops: [rt.nh] };
     const back = owners.filter(function (o) { return this.canReply(o, src, odom); }, this);
     if (!back.length || !inOk(outIf, rep)) return { fail: "no-reply", src: src, acls: acls };
@@ -1010,8 +1128,9 @@ export class Sim {
     const outIf = rt.iface;
     if ((f(outIf) || {}).nat !== "inside") return { fail: "timeout", why: "inside", local: local, outIf: outIf };
     if (!pass(outIf, "out", { proto: P, src: src, dst: local, port: lport, sport: sport })) return { fail: "timeout", why: "acl-out", local: local, outIf: outIf };
-    const odom = this.domain(this.rtNode(rid, outIf)), owners = this.owners(local, odom).filter(function (o) { return o !== rid; });
-    if (!owners.length) return { fail: "timeout", why: "arp", local: local, outIf: outIf };   /* nobody at that address answers the router's ARP */
+    const odom = this.domain(this.rtNode(rid, outIf)), ga = RT.addrOf(R, outIf, live);
+    let blk = null; const owners = this.owners(local, odom).filter(function (o) { if (o === rid) return false; const b = ga && this.arpBlocked(this.rtNode(rid, outIf), this.macOf(rid), ga.ip, o, local, odom); if (b) blk = blk || b; return !b; }, this);
+    if (!owners.length) return { fail: "timeout", why: "arp", local: local, outIf: outIf, dai: blk };   /* nobody at that address answers the router's ARP (or a switch inspecting ARP drops it) */
     const who = owners[0], x = this.d[who], a = this.addr(who), gw = RT.addrOf(R, outIf, live);
     if ((x.listens || []).indexOf(+lport) < 0) return { fail: "refused", why: "port", who: who, local: local, lport: lport };
     if (!a || !gw || a.gw !== gw.ip) return { fail: "timeout", why: "gateway", who: who, local: local, lport: lport };   /* its reply goes to its gateway: it must be the router */

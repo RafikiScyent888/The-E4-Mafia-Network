@@ -25,7 +25,7 @@ export function newSwitch(o = {}) {
   const sw = { model: "MSW-2800G", hostname: "Switch", enableSecret: null, enablePassword: null, encrypt: false,
     con: { password: null, login: null }, vty: { password: null, login: null, transport: "telnet" },
     users: {}, domain: null, rsa: 0, keyGen: 0, banner: null, vlan1: { ip: null, mask: null, shutdown: true }, gateway: null, ports: ports,
-    vlans: { "1": { name: "default" } }, svis: {},
+    vlans: { "1": { name: "default" } }, svis: {}, snoop: { on: false, vlans: [] }, dai: { vlans: [] },
     links: o.links || {}, mac: o.mac || "00e0.4c██.████", serial: "██████████", startup: null, uptime: o.uptime || "2 minutes" };
   return sw;
 }
@@ -35,7 +35,7 @@ const PORT_VLAN = { mode: "dynamic auto", access: 1, native: 1, allowed: "all", 
 /* a switch saved before VLANs came (the small office's progress in a student's browser) gets them as from the box,
    in what's saved too, so it doesn't read as changed */
 function fix(sw) {
-  const one = function (c) { if (!c) return; if (!c.vlans) c.vlans = { "1": { name: "default" } }; if (!c.svis) c.svis = {}; if (c.ports) for (const n in c.ports) for (const k in PORT_VLAN) if (c.ports[n][k] === undefined) c.ports[n][k] = PORT_VLAN[k]; };
+  const one = function (c) { if (!c) return; if (!c.vlans) c.vlans = { "1": { name: "default" } }; if (!c.svis) c.svis = {}; if (!c.snoop) c.snoop = { on: false, vlans: [] }; if (!c.dai) c.dai = { vlans: [] }; if (c.ports) for (const n in c.ports) for (const k in PORT_VLAN) if (c.ports[n][k] === undefined) c.ports[n][k] = PORT_VLAN[k]; };
   one(sw); one(sw.startup); return sw;
 }
 const clone = function (x) { return x === undefined ? undefined : JSON.parse(JSON.stringify(x)); };
@@ -48,7 +48,15 @@ export function pwOk(stored, typed) {
   if (/^\$7\$/.test(stored)) return stored.slice(3) === hashish(typed).slice(0, 14).toUpperCase();
   return false;
 }
-const CONFIG_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "vlan1", "gateway", "ports", "banner", "vlans", "svis"];   /* keyGen: which set of RSA keys it holds (each crypto key generate makes a new one) */
+/* port security as it runs, never saved: a port shut down for a violation (err-disabled), the addresses it has learned
+   without sticking them, how many violations, the last stranger's address and VLAN */
+export function psRunOf(sw, n) { sw.psRun = sw.psRun || {}; return sw.psRun[n] || (sw.psRun[n] = { err: false, dyn: [], viol: 0, last: null }); }
+export function errDisabled(sw, n) { return !!(sw.psRun && sw.psRun[n] && sw.psRun[n].err); }
+/* a port's port security settings, made the first time it's configured */
+export function psOf(p) { return p.ps || (p.ps = { on: false, max: 1, viol: "shutdown", sticky: false, macs: [] }); }
+/* a MAC address as the switch writes it: aaaa.bbbb.cccc */
+export function dotMac(m) { const h = String(m || "").replace(/[^0-9a-f]/gi, "").toLowerCase(); return h.length === 12 ? h.slice(0, 4) + "." + h.slice(4, 8) + "." + h.slice(8) : null; }
+const CONFIG_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "vlan1", "gateway", "ports", "banner", "vlans", "svis", "snoop", "dai"];   /* keyGen: which set of RSA keys it holds (each crypto key generate makes a new one) */
 /* each kind of device with this command line (this switch; the business router, rtcli.js) registers what's its own: its
    command tree, its prompts, what its configuration is made of, a factory-fresh one, and how its configuration reads */
 const OS = {};
@@ -60,7 +68,8 @@ export function reload(sw, why) {
   if (!sw.os) fix(sw);
   const base = sw.startup ? clone(sw.startup) : snapshot(osOf(sw).fresh());
   osOf(sw).keys.forEach(function (k) { sw[k] = base[k]; });
-  sw.uptime = "0 minutes"; sw.uptimeFixed = null; sw.restart = why || "reload";   /* show version says what brought it back: a power cut, or the reload command */
+  sw.uptime = "0 minutes"; sw.uptimeFixed = null; sw.restart = why || "reload";
+  sw.psRun = {}; sw.snoopBind = [];   /* what it learned as it ran (port security's addresses, err-disabled ports, snooping's bindings) is gone */   /* show version says what brought it back: a power cut, or the reload command */
 }
 
 /* ------------------------------------------------------------ interface names */
@@ -121,6 +130,7 @@ function status(sw, n) {
   if (isSvi(n)) { const s = sviOf(sw, n); if (!s) return ["down", "down"]; return s.shutdown ? ["administratively down", "down"] : ["up", vlanActive(sw, +n.slice(4)) ? "up" : "down"]; }   /* the switch's own interface on a VLAN is up only while the VLAN exists and a port that's up carries it */
   const p = sw.ports[n], l = sw.links[n];
   if (p.shutdown) return ["administratively down", "down"];
+  if (errDisabled(sw, n)) return ["down", "down"];   /* shut down by port security until someone shuts it and opens it again */
   if (!l) return ["down", "down"];
   if (linkFails(p, l)) return ["down", "down"];
   return ["up", "up"];
@@ -175,7 +185,9 @@ const SHOW = [
   ["running-config", "Current operating configuration", function (S) { return osOf(S.sw).config(S.sw); }],
   ["startup-config", "Contents of startup-config", function (S) { return S.sw.startup ? osOf(S.sw).config(Object.assign({}, S.sw, S.sw.startup), true) : ["startup-config is not present"]; }],
   ["version", "System hardware and software status", function (S) { const sw = S.sw; return ["MSW-2800G Network Operating System, Version 4.2.1", "", sw.hostname + " uptime is " + sw.uptime, "", "Model number: MSW-2800G (24 x 10/100/1000, 4 x SFP)", "Base MAC address: " + sw.mac, "System serial number: " + sw.serial, "", "System returned to ROM by " + (sw.restart || "power-on"), "", "Configuration register: 0x2102"]; }],
-  ["ip", "IP information", [["interface", "IP interface status and configuration", [["brief", "Brief summary of IP status and configuration", function (S) { return ipBrief(S.sw); }]]]]],
+  ["ip", "IP information", [["interface", "IP interface status and configuration", [["brief", "Brief summary of IP status and configuration", function (S) { return ipBrief(S.sw); }]]],
+    ["dhcp", "Show items in the DHCP database", [["snooping", "DHCP snooping", function (S, a) { if (a[0] && /^b/i.test(a[0])) return snoopBindings(S.sw); if (a[0]) return ["% Invalid input detected at '^' marker."]; return snoopSummary(S.sw); }, { sub: [["binding", "DHCP snooping binding table"]] }]]],
+    ["arp", "IP ARP table", [["inspection", "Show ARP Inspection", function (S, a) { if (a[0] && /^i/i.test(a[0])) return daiInterfaces(S.sw); if (a[0] && !/^v/i.test(a[0])) return ["% Invalid input detected at '^' marker."]; return daiSummary(S.sw); }, { sub: [["interfaces", "Arp Inspection Interface Status"], ["vlan", "Arp Inspection VLAN"]] }]]]]],
   ["interfaces", "Interface status and configuration", function (S, args) {
     if (!args.length) return PORT_NAMES.slice(0, 4).reduce(function (a, n) { return a.concat(ifDetail(S.sw, n)); }, []).concat(["(showing the first four; name a port: show interfaces gi0/5)"]);
     if (/^st/i.test(args[0])) return ifStatus(S.sw);
@@ -193,6 +205,12 @@ const SHOW = [
     return vlanTable(S.sw);
   }, { sub: [["brief", "VTP all VLAN status in brief"], ["id", "VTP VLAN status by VLAN id"]] }],
   ["mac", "MAC configuration", [["address-table", "MAC forwarding table", function (S) { return macTable(S.sw); }]]],
+  ["port-security", "Show secure port information", function (S, a) {
+    if (a[0] && /^i/i.test(a[0])) { const f = ifName(a, 1); if (!f || f.err || isSvi(f.name)) return a[1] ? ["% Invalid input detected at '^' marker."] : ["% Incomplete command."]; return psDetail(S.sw, f.name); }
+    if (a[0] && /^a/i.test(a[0])) return psAddresses(S.sw);
+    if (a[0]) return ["% Invalid input detected at '^' marker."];
+    return psTable(S.sw);
+  }, { sub: [["interface", "Show secure interface"], ["address", "Show secure address"]] }],
   ["inventory", "Physical inventory: the chassis and its modules", function (S) { return inventory(S.sw); }],
   ["lldp", "LLDP information (neighbour discovery)", [["neighbors", "LLDP neighbor entries", function (S, a) { return lldpTable(S.sw, a[0] && /^d/i.test(a[0])); }, { sub: [["detail", "Show detailed information: each neighbour's management address"]] }]]],
   ["crypto", "Encryption module", [["key", "Show long term public keys", [["mypubkey", "Show the switch's own public keys", [["rsa", "Show its RSA keys", function (S) {
@@ -260,7 +278,10 @@ const CONFIG = [
   ["ip", "Global IP configuration subcommands", [
     ["default-gateway", "Specify default gateway (if not routing IP)", function (S, a) { if (!a.length) return ["% Incomplete command."]; if (!ip4(a[0])) return ["% Invalid input detected at '^' marker."]; S.sw.gateway = a[0]; return []; }],
     ["domain-name", "Define the default domain name", function (S, a) { if (!a.length) return ["% Incomplete command."]; S.sw.domain = a[0]; return []; }],
-    ["ssh", "Configure ssh options", [["version", "Specify protocol version", function (S, a) { return a[0] === "2" ? [] : ["% Invalid input detected at '^' marker."]; }]]]
+    ["ssh", "Configure ssh options", [["version", "Specify protocol version", function (S, a) { return a[0] === "2" ? [] : ["% Invalid input detected at '^' marker."]; }]]],
+    ["dhcp", "Configure DHCP", [["snooping", "DHCP Snooping", [["vlan", "DHCP Snooping vlan", function (S, a) { const L = vlanList(a.join("")); if (!L) return a.length ? ["% Invalid input detected at '^' marker."] : ["% Incomplete command."]; S.sw.snoop.vlans = vlanList(S.sw.snoop.vlans.concat(L).join(",")); return []; }, { sub: [["WORD", "DHCP Snooping vlan first number or vlan range, example: 1,3-5,7,9-11"]] }]],
+      { bare: function (S) { S.sw.snoop.on = true; return []; } }]]],
+    ["arp", "IP ARP global configuration", [["inspection", "Arp Inspection configuration", [["vlan", "Enable/Disable ARP Inspection on vlans", function (S, a) { const L = vlanList(a.join("")); if (!L) return a.length ? ["% Invalid input detected at '^' marker."] : ["% Incomplete command."]; S.sw.dai.vlans = vlanList(S.sw.dai.vlans.concat(L).join(",")); return []; }, { sub: [["WORD", "vlan range, example: 1,3-5,7,9-11"]] }]]]]]
   ]],
   ["username", "Establish User Name Authentication", function (S, a) {
     if (a.length < 3 || !/^(secret|password)$/i.test(a[1])) return a.length < 3 ? ["% Incomplete command."] : ["% Invalid input detected at '^' marker."];
@@ -278,7 +299,10 @@ const CONFIG = [
   ["no", "Negate a command or set its defaults", [
     ["hostname", "Set system's network name", function (S) { S.sw.hostname = "Switch"; return []; }],
     ["enable", "Modify enable password parameters", [["secret", "Assign the privileged level secret", function (S) { S.sw.enableSecret = null; return []; }], ["password", "Assign the privileged level password", function (S) { S.sw.enablePassword = null; return []; }]]],
-    ["ip", "Global IP configuration subcommands", [["default-gateway", "Specify default gateway", function (S) { S.sw.gateway = null; return []; }], ["domain-name", "Define the default domain name", function (S) { S.sw.domain = null; return []; }]]],
+    ["ip", "Global IP configuration subcommands", [["default-gateway", "Specify default gateway", function (S) { S.sw.gateway = null; return []; }], ["domain-name", "Define the default domain name", function (S) { S.sw.domain = null; return []; }],
+      ["dhcp", "Configure DHCP", [["snooping", "DHCP Snooping", [["vlan", "DHCP Snooping vlan", function (S, a) { const L = vlanList(a.join("")); if (!L) return a.length ? ["% Invalid input detected at '^' marker."] : ["% Incomplete command."]; S.sw.snoop.vlans = S.sw.snoop.vlans.filter(function (v) { return L.indexOf(v) < 0; }); return []; }]],
+        { bare: function (S) { S.sw.snoop.on = false; return []; } }]]],
+      ["arp", "IP ARP global configuration", [["inspection", "Arp Inspection configuration", [["vlan", "Enable/Disable ARP Inspection on vlans", function (S, a) { const L = vlanList(a.join("")); if (!L) return a.length ? ["% Invalid input detected at '^' marker."] : ["% Incomplete command."]; S.sw.dai.vlans = S.sw.dai.vlans.filter(function (v) { return L.indexOf(v) < 0; }); return []; }]]]]]]],
     ["username", "Establish User Name Authentication", function (S, a) { delete S.sw.users[a[0]]; return []; }],
     ["vlan", "VLAN commands", function (S, a) {
       const L = vlanList(a.join("")); if (!L) return a.length ? ["% Invalid input detected at '^' marker."] : ["% Incomplete command."];
@@ -300,12 +324,13 @@ const IFACE = [
   ["speed", "Configure speed operation.", [["10", "Force 10 Mbps operation", function (S) { return setPort(S, "speed", "10"); }], ["100", "Force 100 Mbps operation", function (S) { return setPort(S, "speed", "100"); }], ["1000", "Force 1000 Mbps operation", function (S) { return setPort(S, "speed", "1000"); }], ["auto", "Enable AUTO speed configuration", function (S) { return setPort(S, "speed", "auto"); }]]],
   ["duplex", "Configure duplex operation.", [["full", "Force full duplex operation", function (S) { return setPort(S, "duplex", "full"); }], ["half", "Force half-duplex operation", function (S) { return setPort(S, "duplex", "half"); }], ["auto", "Enable AUTO duplex configuration", function (S) { return setPort(S, "duplex", "auto"); }]]],
   ["mdix", "Set Media Dependent Interface with Crossover", [["auto", "Enable automatic MDI crossover detection on this interface", function (S) { return setPort(S, "mdix", true); }]]],
-  ["shutdown", "Shutdown the selected interface", function (S) { S.ifs.forEach(function (n) { if (isSvi(n)) sviOf(S.sw, n).shutdown = true; else S.sw.ports[n].shutdown = true; }); return S.ifs.map(function (n) { return "%LINK-5-CHANGED: Interface " + n + ", changed state to administratively down"; }); }],
+  ["shutdown", "Shutdown the selected interface", function (S) { S.ifs.forEach(function (n) { if (isSvi(n)) sviOf(S.sw, n).shutdown = true; else { S.sw.ports[n].shutdown = true; if (S.sw.psRun && S.sw.psRun[n]) S.sw.psRun[n].err = false; } });   /* shut then opened again: the way back from err-disabled */ return S.ifs.map(function (n) { return "%LINK-5-CHANGED: Interface " + n + ", changed state to administratively down"; }); }],
   ["ip", "Interface Internet Protocol config commands", [["address", "Set the IP address of an interface", function (S, a) {
     if (!isSvi(S.ifs[0])) return ["% Invalid input detected at '^' marker.", "  (a switch port is layer 2: the switch's own address goes on interface vlan 1)"];
     if (a.length < 2) return ["% Incomplete command."]; if (!ip4(a[0]) || !isMask(a[1])) return ["% Invalid input detected at '^' marker."];
     const s = sviOf(S.sw, S.ifs[0]); s.ip = a[0]; s.mask = a[1]; return [];
-  }]]],
+  }], ["dhcp", "DHCP", [["snooping", "DHCP Snooping configuration", [["trust", "DHCP Snooping trust config", function (S) { return setPort(S, "dtrust", true); }]]]]],
+    ["arp", "Configure ARP features", [["inspection", "Arp Inspection configuration", [["trust", "Configure Trust state", function (S) { return setPort(S, "atrust", true); }]]]]]]],
   ["switchport", "Set switching mode characteristics", [
     ["mode", "Set trunking mode of the interface", [
       ["access", "Set trunking mode to ACCESS unconditionally", function (S) { return setMode(S, "access"); }],
@@ -322,21 +347,46 @@ const IFACE = [
     ["nonegotiate", "Device will not engage in negotiation protocol on this interface", function (S) {
       if (S.ifs.some(function (n) { return !isSvi(n) && /^dynamic/.test(S.sw.ports[n].mode); })) return ["Command rejected: Conflict between 'nonegotiate' and 'dynamic' status."];
       return setPort(S, "nonegotiate", true);
-    }]]],
+    }],
+    ["port-security", "Security related command", [
+      ["maximum", "Max secure addresses", function (S, a) { if (!a.length) return ["% Incomplete command."]; if (!/^\d+$/.test(a[0]) || +a[0] < 1 || +a[0] > 132) return ["% Invalid input detected at '^' marker."]; return psSet(S, function (P) { P.max = +a[0]; }); }, { sub: [["<1-132>", "Maximum addresses"]] }],
+      ["violation", "Security violation mode", [
+        ["protect", "Security violation protect mode", function (S) { return psSet(S, function (P) { P.viol = "protect"; }); }],
+        ["restrict", "Security violation restrict mode", function (S) { return psSet(S, function (P) { P.viol = "restrict"; }); }],
+        ["shutdown", "Security violation shutdown mode", function (S) { return psSet(S, function (P) { P.viol = "shutdown"; }); }]]],
+      ["mac-address", "Secure mac address", function (S, a) {
+        if (!a.length) return ["% Incomplete command."];
+        const sticky = /^st/i.test(a[0]), m = dotMac(sticky ? a[1] : a[0]);
+        if (sticky && !a[1]) return psSet(S, function (P, n) { P.sticky = true; const r = S.sw.psRun && S.sw.psRun[n]; if (r) { r.dyn.forEach(function (d) { if (!P.macs.some(function (x) { return x.mac === d.mac; })) P.macs.push({ mac: d.mac, sticky: true }); }); r.dyn = []; } });   /* what it had learned already becomes sticky */
+        if (!m || !/^[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}$/i.test(sticky ? a[1] : a[0])) return ["% Invalid input detected at '^' marker."];
+        return psSet(S, function (P) { if (sticky) P.sticky = true; if (!P.macs.some(function (x) { return x.mac === m; })) P.macs.push({ mac: m, sticky: sticky }); });
+      }, { sub: [["sticky", "Configure dynamic secure addresses as sticky"], ["H.H.H", "48 bit mac address"]] }]],
+      { bare: function (S) {
+        const dyn = S.ifs.filter(function (n) { return !isSvi(n) && /^dynamic/.test(S.sw.ports[n].mode); });
+        if (dyn.length) return ["Command rejected: " + dyn[0] + " is a dynamic port."];
+        return psSet(S, function (P) { P.on = true; });
+      } }]]],
   ["no", "Negate a command or set its defaults", [
     ["shutdown", "Shutdown the selected interface", function (S) { const out = []; S.ifs.forEach(function (n) { if (isSvi(n)) { sviOf(S.sw, n).shutdown = false; out.push("%LINK-3-UPDOWN: Interface " + n + ", changed state to up"); } else { S.sw.ports[n].shutdown = false; const st = status(S.sw, n); out.push("%LINK-3-UPDOWN: Interface " + n + ", changed state to " + (st[0] === "up" ? "up" : "down")); } }); return out; }],
     ["description", "Interface specific description", function (S) { S.ifs.forEach(function (n) { if (isSvi(n)) sviOf(S.sw, n).desc = ""; else S.sw.ports[n].desc = ""; }); return []; }],
     ["speed", "Configure speed operation.", function (S) { return setPort(S, "speed", "auto"); }],
     ["duplex", "Configure duplex operation.", function (S) { return setPort(S, "duplex", "auto"); }],
     ["mdix", "Set Media Dependent Interface with Crossover", [["auto", "Enable automatic MDI crossover detection on this interface", function (S) { return setPort(S, "mdix", false); }]]],
-    ["ip", "Interface Internet Protocol config commands", [["address", "Set the IP address of an interface", function (S) { if (isSvi(S.ifs[0])) { const s = sviOf(S.sw, S.ifs[0]); s.ip = null; s.mask = null; } return []; }]]],
+    ["ip", "Interface Internet Protocol config commands", [["address", "Set the IP address of an interface", function (S) { if (isSvi(S.ifs[0])) { const s = sviOf(S.sw, S.ifs[0]); s.ip = null; s.mask = null; } return []; }],
+      ["dhcp", "DHCP", [["snooping", "DHCP Snooping configuration", [["trust", "DHCP Snooping trust config", function (S) { return setPort(S, "dtrust", false); }]]]]],
+      ["arp", "Configure ARP features", [["inspection", "Arp Inspection configuration", [["trust", "Configure Trust state", function (S) { return setPort(S, "atrust", false); }]]]]]]],
     ["switchport", "Set switching mode characteristics", [
       ["mode", "Set trunking mode of the interface", function (S) { return setMode(S, "dynamic auto"); }],
       ["access", "Set access mode characteristics of the interface", [["vlan", "Set VLAN when interface is in access mode", function (S) { return setPort(S, "access", 1); }]]],
       ["trunk", "Set trunking characteristics of the interface", [
         ["native", "Set trunking native characteristics when interface is in trunking mode", [["vlan", "Set native VLAN when interface is in trunking mode", function (S) { return setPort(S, "native", 1); }]]],
         ["allowed", "Set allowed VLAN characteristics when interface is in trunking mode", [["vlan", "Set allowed VLANs when interface is in trunking mode", function (S) { return setPort(S, "allowed", "all"); }]]]]],
-      ["nonegotiate", "Device will not engage in negotiation protocol on this interface", function (S) { return setPort(S, "nonegotiate", false); }]]]
+      ["nonegotiate", "Device will not engage in negotiation protocol on this interface", function (S) { return setPort(S, "nonegotiate", false); }],
+      ["port-security", "Security related command", [
+        ["maximum", "Max secure addresses", function (S) { return psSet(S, function (P) { P.max = 1; }); }],
+        ["violation", "Security violation mode", function (S) { return psSet(S, function (P) { P.viol = "shutdown"; }); }],
+        ["mac-address", "Secure mac address", function (S, a) { const sticky = /^st/i.test(a[0] || ""), m = dotMac(sticky ? a[1] : a[0]); return psSet(S, function (P, n) { if (sticky && !a[1]) { const r = psRunOf(S.sw, n); P.macs.filter(function (x) { return x.sticky; }).forEach(function (x) { r.dyn.push({ mac: x.mac, vlan: S.sw.ports[n].access }); }); P.sticky = false; P.macs = P.macs.filter(function (x) { return !x.sticky; }); } else P.macs = P.macs.filter(function (x) { return x.mac !== m; }); }); }]],   /* sticky off: its addresses go back to being learned, not kept */
+        { bare: function (S) { return psSet(S, function (P, n) { P.on = false; if (S.sw.psRun && S.sw.psRun[n]) { S.sw.psRun[n].err = false; S.sw.psRun[n].dyn = []; } }); } }]]]
   ]],
   ["interface", "Select an interface to configure", null],
   ["do", "To run exec commands in config mode", null],
@@ -347,9 +397,19 @@ const LINE = [
   ["password", "Set a password", function (S, a) { if (!a.length) return ["% Incomplete command."]; S.sw[S.line].password = typed(a); return []; }],
   ["login", "Enable password checking", [["local", "Local password checking", function (S) { S.sw[S.line].login = "local"; return []; }]], { bare: function (S) { if (!S.sw[S.line].password) { S.sw[S.line].login = "password"; return ["% Login disabled on line " + (S.line === "con" ? "0" : "1") + ", until 'password' is set"]; } S.sw[S.line].login = "password"; return []; } }],
   ["transport", "Define transport protocols for line", [["input", "Define which protocols to use when connecting to the terminal server", [["ssh", "TCP/IP SSH protocol", function (S) { return setTransport(S, "ssh"); }], ["telnet", "TCP/IP Telnet protocol", function (S) { return setTransport(S, "telnet"); }], ["all", "All protocols", function (S) { return setTransport(S, "all"); }], ["none", "No protocols", function (S) { return setTransport(S, "none"); }]]]]],
-  ["exec-timeout", "Set the EXEC timeout", function () { return []; }],
+  ["exec-timeout", "Set the EXEC timeout", function (S, a) {
+    if (!a.length) return ["% Incomplete command."]; if (!/^\d+$/.test(a[0]) || (a[1] != null && !/^\d+$/.test(a[1])) || +a[0] > 35791 || +(a[1] || 0) > 2147483) return ["% Invalid input detected at '^' marker."];
+    S.sw[S.line].timeout = [+a[0], +(a[1] || 0)]; return [];
+  }, { sub: [["<0-35791>", "Timeout in minutes, then seconds (0 0 never logs out)"]] }],
+  ["access-class", "Filter connections based on an IP access list", function (S, a) {
+    if (S.line !== "vty") return ["% Invalid input detected at '^' marker.", "  (access-class is for the vty lines: who may log in remotely)"];
+    if (a.length < 2) return ["% Incomplete command."]; if (!/^(in|out)$/i.test(a[1])) return ["% Invalid input detected at '^' marker."];
+    if (/^out$/i.test(a[1])) S.sw.vty.aclOut = a[0]; else S.sw.vty.acl = a[0]; return [];
+  }, { sub: [["WORD", "IP access list name or number, then in"]] }],
   ["logging", "Modify message logging facilities", [["synchronous", "Synchronized message output", function () { return []; }]]],
-  ["no", "Negate a command or set its defaults", [["password", "Set a password", function (S) { S.sw[S.line].password = null; return []; }], ["login", "Enable password checking", function (S) { S.sw[S.line].login = null; return []; }]]],
+  ["no", "Negate a command or set its defaults", [["password", "Set a password", function (S) { S.sw[S.line].password = null; return []; }], ["login", "Enable password checking", function (S) { S.sw[S.line].login = null; return []; }],
+    ["exec-timeout", "Set the EXEC timeout", function (S) { S.sw[S.line].timeout = null; return []; }],
+    ["access-class", "Filter connections based on an IP access list", function (S, a) { if (S.line === "vty") { if (/^out$/i.test(a[1] || "")) S.sw.vty.aclOut = null; else S.sw.vty.acl = null; } return []; }]]],
   ["do", "To run exec commands in config mode", null],
   ["end", "Exit from configure mode", function (S) { S.mode = "priv"; S.line = null; return []; }],
   ["exit", "Exit from line configuration mode", function (S) { S.mode = "config"; S.line = null; return []; }]
@@ -388,7 +448,9 @@ function typed(a) {
   if (a.length > 1 && a[0] === "0") return a[1];
   return a[a.length - 1];
 }
-function setPort(S, k, v) { if (S.ifs.some(isSvi) && ["access", "native", "allowed", "nonegotiate", "mode"].indexOf(k) >= 0) return ["% Invalid input detected at '^' marker.", "  (switchport settings are for the switch's ports, not its own interface on a VLAN)"]; S.ifs.forEach(function (n) { if (!isSvi(n)) S.sw.ports[n][k] = Array.isArray(v) ? v.slice() : v; }); return []; }
+function setPort(S, k, v) { if (S.ifs.some(isSvi) && ["access", "native", "allowed", "nonegotiate", "mode", "dtrust", "atrust"].indexOf(k) >= 0) return ["% Invalid input detected at '^' marker.", "  (switchport settings are for the switch's ports, not its own interface on a VLAN)"]; S.ifs.forEach(function (n) { if (!isSvi(n)) S.sw.ports[n][k] = Array.isArray(v) ? v.slice() : v; }); return []; }
+/* port security's settings on each port in the session's list (not on the switch's own interfaces) */
+function psSet(S, f) { if (S.ifs.some(isSvi)) return ["% Invalid input detected at '^' marker.", "  (port security is for the switch's ports, not its own interface on a VLAN)"]; S.ifs.forEach(function (n) { f(psOf(S.sw.ports[n]), n); }); return []; }
 /* the trunking mode: a dynamic mode and nonegotiate can't go together */
 function setMode(S, m) {
   if (/^dynamic/.test(m) && S.ifs.some(function (n) { return !isSvi(n) && S.sw.ports[n].nonegotiate; })) return ["Command rejected: Conflict between 'nonegotiate' and 'dynamic' status."];
@@ -490,7 +552,9 @@ function bootFrom(sw, text) {
 }
 /* whether the running configuration differs from what is saved (a factory switch has nothing saved) */
 export function unsaved(sw) { return changed(sw); }
-function changed(sw) { return JSON.stringify(snapshot(sw)) !== JSON.stringify(sw.startup || snapshot(osOf(sw).fresh())); }
+/* compared key by key in the configuration's own order: a switch saved before a setting existed gets it added at the end of what
+   was saved (fix), and that mustn't read as a change */
+function changed(sw) { const now = JSON.stringify(snapshot(sw)), keys = osOf(sw).keys, st = sw.startup || snapshot(osOf(sw).fresh()), o = {}; keys.forEach(function (k) { o[k] = st[k]; }); return now !== JSON.stringify(o); }   /* snapshot first: it brings an old save up to date */
 function logout(S) { S.mode = "gone"; return ["", S.sw.hostname + " con0 is now available", "", "", "", "Press RETURN to get started."]; }
 function pingOut(S, a) {
   if (!a.length || !ip4(a[0])) return a.length ? ["% Unrecognized host or address, or protocol not running."] : ["% Incomplete command."];
@@ -518,19 +582,26 @@ function runningConfig(sw, startup) {
   Object.keys(sw.users).forEach(function (u) { L.push("username " + u + " secret " + pw(sw.users[u], "secret")); });
   if (sw.enableSecret || sw.enablePassword || Object.keys(sw.users).length) L.push("!");
   if (sw.domain) L.push("ip domain-name " + sw.domain, "!");
+  if (sw.snoop && sw.snoop.vlans.length) L.push("ip dhcp snooping vlan " + vlanText(sw.snoop.vlans));
+  if (sw.snoop && sw.snoop.on) L.push("ip dhcp snooping");
+  if (sw.dai && sw.dai.vlans.length) L.push("ip arp inspection vlan " + vlanText(sw.dai.vlans));
+  if ((sw.snoop && (sw.snoop.on || sw.snoop.vlans.length)) || (sw.dai && sw.dai.vlans.length)) L.push("!");
   Object.keys(sw.vlans || {}).map(Number).sort(function (a, b) { return a - b; }).forEach(function (v) { if (v === 1) return; L.push("vlan " + v); if (sw.vlans[v].name !== "VLAN" + String(v).padStart(4, "0")) L.push(" name " + sw.vlans[v].name); L.push("!"); });
   PORT_NAMES.forEach(function (n) { const p = Object.assign({}, PORT_VLAN, sw.ports[n]); L.push("interface " + n); if (p.desc) L.push(" description " + p.desc);
     if (p.access !== 1) L.push(" switchport access vlan " + p.access);
     if (p.native !== 1) L.push(" switchport trunk native vlan " + p.native);
     if (p.allowed !== "all") L.push(" switchport trunk allowed vlan " + vlanText(p.allowed));
     if (p.mode !== "dynamic auto") L.push(" switchport mode " + p.mode);
-    if (p.nonegotiate) L.push(" switchport nonegotiate"); if (p.speed !== "auto") L.push(" speed " + p.speed); if (p.duplex !== "auto") L.push(" duplex " + p.duplex); if (p.mdix === false) L.push(" no mdix auto"); if (p.shutdown) L.push(" shutdown"); L.push("!"); });
+    if (p.nonegotiate) L.push(" switchport nonegotiate");
+    if (p.ps) { const P = p.ps; if (P.max !== 1) L.push(" switchport port-security maximum " + P.max); if (P.viol !== "shutdown") L.push(" switchport port-security violation " + P.viol); if (P.sticky) L.push(" switchport port-security mac-address sticky"); P.macs.forEach(function (m) { L.push(" switchport port-security mac-address " + (m.sticky ? "sticky " : "") + m.mac); }); if (P.on) L.push(" switchport port-security"); }
+    if (p.atrust) L.push(" ip arp inspection trust"); if (p.dtrust) L.push(" ip dhcp snooping trust");
+    if (p.speed !== "auto") L.push(" speed " + p.speed); if (p.duplex !== "auto") L.push(" duplex " + p.duplex); if (p.mdix === false) L.push(" no mdix auto"); if (p.shutdown) L.push(" shutdown"); L.push("!"); });
   L.push("interface Vlan1"); if (sw.vlan1.desc) L.push(" description " + sw.vlan1.desc); L.push(sw.vlan1.ip ? " ip address " + sw.vlan1.ip + " " + sw.vlan1.mask : " no ip address"); if (sw.vlan1.shutdown) L.push(" shutdown"); L.push("!");
   Object.keys(sw.svis || {}).map(Number).sort(function (a, b) { return a - b; }).forEach(function (v) { const s = sw.svis[v]; L.push("interface Vlan" + v); if (s.desc) L.push(" description " + s.desc); L.push(s.ip ? " ip address " + s.ip + " " + s.mask : " no ip address"); if (s.shutdown) L.push(" shutdown"); L.push("!"); });
   if (sw.gateway) L.push("ip default-gateway " + sw.gateway, "!");
   if (sw.banner != null) L.push("banner motd ^C" + sw.banner + "^C", "!");   /* shown with ^C as its delimiter, whatever was typed */
-  L.push("line con 0"); if (sw.con.password) L.push(" password " + pw(sw.con.password)); if (sw.con.login) L.push(sw.con.login === "local" ? " login local" : " login");
-  L.push("line vty 0 15"); if (sw.vty.password) L.push(" password " + pw(sw.vty.password)); if (sw.vty.login) L.push(sw.vty.login === "local" ? " login local" : " login"); L.push(" transport input " + sw.vty.transport);
+  L.push("line con 0"); if (sw.con.timeout) L.push(" exec-timeout " + sw.con.timeout[0] + " " + sw.con.timeout[1]); if (sw.con.password) L.push(" password " + pw(sw.con.password)); if (sw.con.login) L.push(sw.con.login === "local" ? " login local" : " login");
+  L.push("line vty 0 15"); if (sw.vty.acl) L.push(" access-class " + sw.vty.acl + " in"); if (sw.vty.timeout) L.push(" exec-timeout " + sw.vty.timeout[0] + " " + sw.vty.timeout[1]); if (sw.vty.password) L.push(" password " + pw(sw.vty.password)); if (sw.vty.login) L.push(sw.vty.login === "local" ? " login local" : " login"); L.push(" transport input " + sw.vty.transport);
   L.push("!", "end");
   return L;
 }
@@ -574,13 +645,13 @@ function ifStatus(sw) {
     const ng = up ? negotiated(p, l) : null;
     const dx = up ? (ng.auto.duplex ? "a-" : "") + ng.duplex : p.duplex === "auto" ? "auto" : p.duplex;
     const sp = up ? (ng.auto.speed ? "a-" : "") + ng.speed : p.speed === "auto" ? "auto" : p.speed;
-    L.push(pad(short(n), 10) + pad(p.desc, 19) + pad(p.shutdown ? "disabled" : l && l.unsupported ? "err-disabled" : up ? "connected" : "notconnect", 13) + pad(vlanCol(sw, n, up), 11) + pad(dx, 7) + pad(sp, 7) + (p.sfp ? (l && l.module ? l.module : "Not Present") : "10/100/1000BaseTX"));
+    L.push(pad(short(n), 10) + pad(p.desc, 19) + pad(p.shutdown ? "disabled" : errDisabled(sw, n) || (l && l.unsupported) ? "err-disabled" : up ? "connected" : "notconnect", 13) + pad(vlanCol(sw, n, up), 11) + pad(dx, 7) + pad(sp, 7) + (p.sfp ? (l && l.module ? l.module : "Not Present") : "10/100/1000BaseTX"));
   });
   return L;
 }
 function ifDetail(sw, n) {
   const p = sw.ports[n], l = sw.links[n], st = status(sw, n), up = st[0] === "up", ng = up ? negotiated(p, l) : null, c = (l && (l.counters || (up ? mismatchCounters(p, l) : null))) || {};
-  const L = [n + " is " + st[0] + ", line protocol is " + st[1] + (up ? " (connected)" : p.shutdown ? " (disabled)" : " (notconnect)"),
+  const L = [n + " is " + st[0] + ", line protocol is " + st[1] + (up ? " (connected)" : p.shutdown ? " (disabled)" : errDisabled(sw, n) ? " (err-disabled)" : " (notconnect)"),
     "  Hardware is Gigabit Ethernet, address is " + sw.mac + " (bia " + sw.mac + ")"];
   if (p.desc) L.push("  Description: " + p.desc);
   L.push("  MTU 1500 bytes, BW " + (up ? ng.speed * 1000 : 1000000) + " Kbit/sec, DLY 10 usec,",
@@ -643,6 +714,56 @@ export function lldpTable(sw, detail, ifs) {
   const L = ["Capability codes:", "    (R) Router, (B) Bridge, (T) Telephone, (C) DOCSIS Cable Device", "    (W) WLAN Access Point, (P) Repeater, (S) Station, (O) Other", "", pad("Device ID", 20) + pad("Local Intf", 15) + pad("Hold-time", 11) + pad("Capability", 16) + "Port ID"];
   rows.forEach(function (r) { L.push(pad(r[1].id, 20) + pad(short(r[0]), 15) + pad("120", 11) + pad(r[1].caps, 16) + short(r[1].port)); });
   return L.concat(["", "Total entries displayed: " + rows.length]);
+}
+/* show port-security: each port with it on, its limit, how many it holds, its violations and what a violation does */
+function psAddrs(sw, n) { const p = sw.ports[n], P = p.ps, r = (sw.psRun && sw.psRun[n]) || { dyn: [] }; return P ? P.macs.map(function (m) { return { mac: m.mac, type: m.sticky ? "SecureSticky" : "SecureConfigured" }; }).concat(r.dyn.map(function (m) { return { mac: m.mac, type: "SecureDynamic", vlan: m.vlan }; })) : []; }
+function psTable(sw) {
+  const pad = function (x, k) { return (String(x) + " ".repeat(k)).slice(0, k); }, cap = { shutdown: "Shutdown", restrict: "Restrict", protect: "Protect" };
+  const L = ["Secure Port  MaxSecureAddr  CurrentAddr  SecurityViolation  Security Action", "                (Count)       (Count)          (Count)", "---------------------------------------------------------------------------"];
+  PORT_NAMES.forEach(function (n) { const P = sw.ports[n].ps; if (!P || !P.on) return; const r = (sw.psRun && sw.psRun[n]) || { viol: 0 }; L.push(pad("      " + short(n), 13) + String(P.max).padStart(14) + String(psAddrs(sw, n).length).padStart(13) + String(r.viol).padStart(19) + pad("         " + cap[P.viol], 17)); });
+  L.push("---------------------------------------------------------------------------", "Total Addresses in System (excluding one mac per port)     : 0", "Max Addresses limit in System (excluding one mac per port) : 4096");
+  return L;
+}
+function psDetail(sw, n) {
+  const P = sw.ports[n].ps, r = (sw.psRun && sw.psRun[n]) || { viol: 0, last: null }, on = !!(P && P.on), A = psAddrs(sw, n), cap = { shutdown: "Shutdown", restrict: "Restrict", protect: "Protect" };
+  const st = !on ? "Secure-down" : errDisabled(sw, n) ? "Secure-shutdown" : status(sw, n)[0] === "up" ? "Secure-up" : "Secure-down";
+  return ["Port Security              : " + (on ? "Enabled" : "Disabled"), "Port Status                : " + st, "Violation Mode             : " + cap[(P && P.viol) || "shutdown"], "Aging Time                 : 0 mins", "Aging Type                 : Absolute", "SecureStatic Address Aging : Disabled",
+    "Maximum MAC Addresses      : " + ((P && P.max) || 1), "Total MAC Addresses        : " + A.length, "Configured MAC Addresses   : " + A.filter(function (x) { return x.type === "SecureConfigured"; }).length, "Sticky MAC Addresses       : " + A.filter(function (x) { return x.type === "SecureSticky"; }).length,
+    "Last Source Address:Vlan   : " + (r.last ? r.last.mac + ":" + r.last.vlan : "0000.0000.0000:0"), "Security Violation Count   : " + r.viol];
+}
+function psAddresses(sw) {
+  const L = ["               Secure Mac Address Table", "-----------------------------------------------------------------------------", "Vlan    Mac Address       Type                          Ports   Remaining Age", "                                                                   (mins)", "----    -----------       ----                          -----   -------------"];
+  let k = 0; PORT_NAMES.forEach(function (n) { const P = sw.ports[n].ps; if (!P || !P.on) return; const v = carries(sw, n).untagged || sw.ports[n].access; psAddrs(sw, n).forEach(function (a) { k++; L.push(String(a.vlan || v).padStart(4) + "    " + a.mac + "    " + (a.type + " ".repeat(30)).slice(0, 30) + (short(n) + "        ").slice(0, 8) + "    -"); }); });
+  return L.concat(["-----------------------------------------------------------------------------", "Total Addresses in System (excluding one mac per port)     : " + Math.max(0, k - 1), "Max Addresses limit in System (excluding one mac per port) : 4096"]);
+}
+/* show ip dhcp snooping: on or off, its VLANs, and the ports it trusts; the bindings it has learned (sw.snoopBind, kept by the
+   simulation as DHCP answers pass, never saved) */
+function snoopSummary(sw) {
+  fix(sw); const S = sw.snoop, pad = function (x, k) { return (String(x) + " ".repeat(k)).slice(0, k); };
+  const L = ["Switch DHCP snooping is " + (S.on ? "enabled" : "disabled"), "DHCP snooping is configured on following VLANs:", S.vlans.length ? vlanText(S.vlans) : "none", "DHCP snooping is operational on following VLANs:", S.on && S.vlans.length ? vlanText(S.vlans.filter(function (v) { return !!sw.vlans[v]; })) || "none" : "none",
+    "Insertion of option 82 is disabled", "Verification of hwaddr field is enabled", "", pad("Interface", 27) + pad("Trusted", 11) + pad("Allow option", 16) + "Rate limit (pps)", pad("-----------------------", 27) + pad("-------", 11) + pad("------------", 16) + "----------------"];
+  PORT_NAMES.forEach(function (n) { if (sw.ports[n].dtrust) L.push(pad(n, 27) + pad("yes", 11) + pad("yes", 16) + "unlimited"); });
+  return L;
+}
+function snoopBindings(sw) {
+  const pad = function (x, k) { return (String(x) + " ".repeat(k)).slice(0, k); }, B = sw.snoopBind || [];
+  const L = [pad("MacAddress", 20) + pad("IpAddress", 17) + pad("Lease(sec)", 12) + pad("Type", 15) + pad("VLAN", 6) + "Interface", pad("------------------", 20) + pad("---------------", 17) + pad("----------", 12) + pad("-------------", 15) + pad("----", 6) + "--------------------"];
+  B.forEach(function (b) { L.push(pad(b.mac.replace(/\./g, "").replace(/(..)(?!$)/g, "$1:").toUpperCase(), 20) + pad(b.ip, 17) + pad(String(b.lease || 86400), 12) + pad("dhcp-snooping", 15) + pad(String(b.vlan), 6) + b.port); });
+  return L.concat(["Total number of bindings: " + B.length]);
+}
+/* show ip arp inspection [vlan | interfaces]: which VLANs are checked, and which ports are trusted */
+function daiSummary(sw) {
+  fix(sw); const pad = function (x, k) { return (String(x) + " ".repeat(k)).slice(0, k); }, V = Object.keys(sw.vlans).map(Number).filter(function (v) { return sw.dai.vlans.indexOf(v) >= 0; });
+  const L = ["", "Source Mac Validation      : Disabled", "Destination Mac Validation : Disabled", "IP Address Validation      : Disabled", "", pad(" Vlan", 10) + pad("Configuration", 17) + pad("Operation", 12) + pad("ACL Match", 19) + "Static ACL", pad(" ----", 10) + pad("-------------", 17) + pad("---------", 12) + pad("---------", 19) + "----------"];
+  sw.dai.vlans.forEach(function (v) { L.push(pad(String(v).padStart(5), 10) + pad("Enabled", 17) + pad(V.indexOf(v) >= 0 ? "Active" : "Inactive", 12)); });
+  if (!sw.dai.vlans.length) L.push("  (ARP inspection is not enabled on any VLAN)");
+  return L;
+}
+function daiInterfaces(sw) {
+  const pad = function (x, k) { return (String(x) + " ".repeat(k)).slice(0, k); };
+  const L = ["", pad(" Interface", 18) + pad("Trust State", 16) + pad("Rate (pps)", 14) + "Burst Interval", pad(" ---------------", 18) + pad("-----------", 16) + pad("----------", 14) + "--------------"];
+  PORT_NAMES.forEach(function (n) { L.push(pad(" " + short(n), 18) + pad(sw.ports[n].atrust ? "Trusted" : "Untrusted", 16) + pad(sw.ports[n].atrust ? "None" : "15", 14).replace(/^(\S+)/, function (m) { return " ".repeat(Math.max(0, 10 - m.length)) + m; }) + (sw.ports[n].atrust ? "     N/A" : "        1")); });
+  return L;
 }
 function macTable(sw) {
   const L = ["          Mac Address Table", "-------------------------------------------", "", "Vlan    Mac Address       Type        Ports", "----    -----------       --------    -----"];

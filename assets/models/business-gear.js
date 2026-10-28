@@ -12,7 +12,7 @@ import { COL, mat, rbox, box, cyl, at, named, text, COVERED, led, rj45Jack, iecI
 import { rj45Plug, plugInto, cableFrom } from "./cables.js";
 import { tubeVar, jacketMaterial } from "./cable-kit.js";
 import { perforated, printLines, label, plastic, paintedSteel, brushed, rubber, ceilingTileTex, paintedConcreteTex } from "./surface.js";
-import { sfpCage, sfpModule } from "./office-gear.js";
+import { sfpCage, sfpModule, managedSwitch, patchPanel24 } from "./office-gear.js";
 
 const BACK = Math.PI;
 const ink = function (s, w, h, o) { return text(s, w, h, Object.assign({ color: "#e8eef0", weight: "600" }, o || {})); };
@@ -434,3 +434,137 @@ export function wallDome(o = {}) {
   }
   return named(g, "device:Wall dome camera", { type: "dome-camera", w: 700, h: 600, d: BD + LD + 80 });
 }
+
+/* ------------------------------------------------------- the closet cabinet (SB-J6) */
+/* From the owner's photographs of 28 October 2026: a full-height cabinet, its black front door perforated with hexagons inside a
+   solid frame, hung on hinges down its left edge, a silver-grey side panel. On the door's right, the latch: a black rounded
+   rectangular housing held by two screws (top centre, lower right), a black paddle handle folded flat in its left half, a chrome
+   key cylinder at its upper right, the key in it on a split ring with a blue tag (the tag's writing left off) and a spare key.
+   The door's back, the cabinet's top and back aren't in the photographs and are drawn as such cabinets usually come. Inside, on
+   its 19-inch rails: the patch panel, the managed switch and the business router, blanking panels over the empty spaces.
+   Front faces +Z, the door's face at z = 0, on the floor at y = 0.
+   o.open: how far the door has swung, in degrees (0 = shut); o.locked: the cylinder turned to locked; o.key: false once the key
+   has been taken out of the lock; o.contents: false for an empty cabinet */
+function phillips(r) {
+  const s = screw(r, 0x1d1e21); s.add(at(box(r * 0.22, r * 1.7, 0.8, mat(0x060607, { rough: 0.7 })), 0, 0, r * 0.32)); return s;
+}
+function rrExtrude(w, h, r, d, m, hole) {
+  const sh = shapeRR(w, h, r); if (hole) sh.holes.push(shapeRR(hole[0], hole[1], hole[2]));
+  return new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: d, bevelEnabled: true, bevelThickness: 0.8, bevelSize: 0.8, bevelSegments: 2, curveSegments: 10 }), m);
+}
+/* the key: its bow (a rounded head with a hole for the ring), the shoulder, the cuts along the blade; the blade along -Z */
+function cabinetKey(m) {
+  const k = new THREE.Group();
+  k.add(at(rrExtrude(20, 18, 6, 1.6, m, [6, 6, 3]), 0, 0, 0));
+  k.add(at(box(6, 3.4, 1.8, m), 0, -10.4, 0.8));
+  const blade = new THREE.Group(); at(blade, 0, -12, 0.8); k.add(blade);
+  blade.add(at(box(5.2, 26, 1.8, m), 0, -13, 0));
+  [-6, -12, -18, -23].forEach(function (y, i) { blade.add(at(box(1.6, 2.2, 1.9, mat(0x0d0d0e)), 2.1 - (i % 2) * 0.6, y, 0)); });
+  return k;
+}
+/* the latch: the housing's raised rim and recessed floor, the paddle under its pivot block, the key cylinder and two screws; the
+ key in it (o.key) with its ring, the blue tag and the spare key. Faces +Z, centred on the housing */
+function cabinetLatch(o) {
+  const L = new THREE.Group(), satin = paintedSteel(0x141518, { rough: 0.38 }); named(L, "latch", { locked: !!o.locked });
+  L.add(at(rrExtrude(150, 96, 9, 6, satin, [134, 80, 6]), 0, 0, 0));                                        /* the housing's raised rim */
+  L.add(at(new THREE.Mesh(new THREE.ShapeGeometry(shapeRR(136, 82, 6), 10), mat(0x111214, { rough: 0.6 })), 0, 0, 0.4));   /* its recessed floor */
+  /* the paddle: its pivot block along the top-left, the handle folded flat below it, rounded at the foot */
+  L.add(at(rrExtrude(78, 22, 4, 7, satin), -24, 26, 0.6));
+  const paddle = at(rrExtrude(46, 70, 10, 8, satin), -40, -5, 0.6); L.add(paddle); named(paddle, "paddle");
+  L.add(at(box(40, 1.2, 0.6, mat(0x08090a)), -40, 14.5, 9.6));                                             /* the seam under the pivot */
+  /* the key cylinder: a chrome ring, its face, the keyway turned to locked (across) or unlocked (upright) */
+  const chrome = mat(0xd4d7db, { metal: 0.92, rough: 0.2 }), cx = 40, cy = 18;
+  L.add(at(cyl(9.5, 3, chrome, 32), cx, cy, 1.5, Math.PI / 2));
+  L.add(at(cyl(7.2, 3.2, mat(0xb9bdc2, { metal: 0.9, rough: 0.28 }), 32), cx, cy, 2.2, Math.PI / 2));
+  const way = at(box(1.8, 8.4, 0.4, mat(0x050506)), cx, cy, 3.9); way.rotation.z = o.locked ? Math.PI / 2 : 0; L.add(way); named(way, "keyway");
+  L.add(at(phillips(3.6), 0, 40, 6.6)); L.add(at(phillips(3.6), 62, -38, 6.6));
+  /* the key in the lock, its bow hanging down; the split ring through it, the blue tag and the spare key on the ring */
+  if (o.key !== false) {
+    /* the key's blade is in the cylinder, its bow standing out from the face: upright while unlocked, turned flat when locked */
+    const K = new THREE.Group(); K.position.set(cx, cy, 17); L.add(K); named(K, "key", {});
+    const steel = mat(0xc4c8cd, { metal: 0.9, rough: 0.25 });
+    const k1 = cabinetKey(steel); k1.rotation.set(Math.PI / 2, 0, o.locked ? 0 : Math.PI / 2, "ZYX"); K.add(k1);
+    /* the ring through the bow's hole hangs below it, the tag and the spare key below the ring */
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(10, 1.1, 8, 36), steel); ring.position.set(0, -9, 0); ring.rotation.set(0, 0.35, 0.1); K.add(ring);
+    const tag = new THREE.Group(); tag.position.set(5, -50, -6); tag.rotation.set(-0.08, 0, -0.12); K.add(tag);
+    tag.add(at(rrExtrude(22, 58, 6, 2.6, plastic(0x2f5fb8, { rough: 0.35 }), [16, 46, 3]), 0, 0, 0));
+    tag.add(at(rrExtrude(22, 58, 6, 0.01, plastic(0x2f5fb8, { rough: 0.35 })), 0, 0, -0.4));
+    tag.add(at(box(16, 46, 0.4, plastic(0xf3f3ef, { rough: 0.8 })), 0, -1, 1.2));                         /* the paper insert, its writing left off */
+    tag.add(at(box(16.4, 46.4, 0.3, clearTag()), 0, -1, 2.6));
+    tag.add(at(new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.9, 8, 20), plastic(0x2f5fb8, { rough: 0.35 })), 0, 31, 1.3));
+    const k2 = cabinetKey(steel); k2.position.set(-7, -25, -4); k2.rotation.set(-0.1, 0.4, 0.15); K.add(k2);
+}
+return L;
+}
+export function closetCabinet(o = {}) {
+  const g = new THREE.Group(), W = 600, H = 2000, D = 1000, PL = 100, U = 44.45, RZ = -80;
+  const black = paintedSteel(0x1b1c1f, { rough: 0.5 }), satin = paintedSteel(0x141518, { rough: 0.38 }), side = paintedSteel(0xa9adb2, { rough: 0.4 }), rail = paintedSteel(0x26282c, { rough: 0.55 }), hole = mat(0x09090a, { rough: 1 });
+  /* the plinth on four levelling feet, the top cover, a side panel each side, the frame's posts */
+  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (s) { g.add(at(cyl(17, 14, rubber(0x141517), 24), s[0] * (W / 2 - 55), 7, -D / 2 + s[1] * (D / 2 - 70))); });
+  g.add(at(box(W - 4, PL - 14, D - 24, black), 0, 14 + (PL - 14) / 2, -D / 2));
+  g.add(at(box(W, 32, D, black), 0, H - 16, -D / 2));
+  for (let k = 0; k < 6; k++) g.add(at(box(W - 140, 1, 14, hole), 0, H + 0.1, -160 - k * 130));          /* the top's vent slots */
+  const bodyH = H - PL - 32, midY = PL + bodyH / 2;
+  [-1, 1].forEach(function (sd) {
+    g.add(at(box(12, bodyH, D - 50, side), sd * (W / 2 - 6), midY, -D / 2 - 5));
+    g.add(at(box(24, bodyH, 28, black), sd * (W / 2 - 12), midY, -34));
+    g.add(at(box(24, bodyH, 28, black), sd * (W / 2 - 12), midY, -D + 14));
+    [PL + 60, H - 92].forEach(function (y) { g.add(at(box(14, 40, 4, satin), sd * (W / 2 + 0.5), y, -D / 2 - 5)); });   /* the side panel's lock tabs */
+  });
+  /* the 19-inch rails, front and back, square holes three to a U */
+  const units = Math.floor((bodyH - 20) / U), y0 = PL + 12;
+  [RZ, -D + 120].forEach(function (z) {
+    [-1, 1].forEach(function (sd) {
+      g.add(at(box(17, units * U + 8, 2.4, rail), sd * 232.5, y0 + units * U / 2, z));
+      g.add(at(box(2.4, units * U + 8, 40, rail), sd * 241, y0 + units * U / 2, z - 20));
+      if (z === RZ) for (let u = 0; u < units; u++) [6.35, 22.25, 38.1].forEach(function (yy) { g.add(at(box(9.5, 9.5, 0.3, hole), sd * 232.5, y0 + u * U + yy, z + 1.3)); });
+    });
+  });
+  /* inside: the patch panel at eye height, the switch under it, the router under that, blanking panels over the empty units */
+  const gear = function (obj, u, z) { obj.position.set(0, y0 + u * U, z); g.add(obj); return obj; };
+  const ears = function (u, color) { [-1, 1].forEach(function (sd) { g.add(at(box(20, U - 2, 2.4, paintedSteel(color, { rough: 0.45 })), sd * 231, y0 + u * U + U / 2, RZ + 2.6)); }); };
+  const blank = function (u, n) { g.add(at(box(482.6, n * U - 1.2, 1.6, black), 0, y0 + u * U + n * U / 2, RZ + 2.4)); for (let k = 0; k < n * 3; k++) g.add(at(box(440, 0.8, 0.4, satin), 0, y0 + u * U + 8 + k * (n * U - 16) / Math.max(1, n * 3 - 1), RZ + 3.3)); };
+  if (o.contents !== false) {
+    const top = units - 1;
+    blank(top - 9, 9);
+    gear(patchPanel24(), top - 10, RZ + 1.2);
+    blank(top - 11, 1);
+    gear(managedSwitch({ cords: false, sfp: [null, null, null, null] }), top - 12, RZ - 132); ears(top - 12, 0xb8bbbf);
+    blank(top - 13, 1);
+    gear(businessRouter({ cables: false, sfp: [null, null] }), top - 14, RZ - 152); ears(top - 14, 0x34505d);
+    blank(0, top - 14);
+  }
+  /* the front door, on its hinges down the left edge: the solid frame round the hexagon perforation, wider on the latch side */
+  const DW = W - 8, DH = bodyH - 6, BAND = 34, LB = 86, door = new THREE.Group();
+  door.position.set(-W / 2 + 4, PL + 3, 0); door.rotation.y = -(o.open || 0) * Math.PI / 180; g.add(door);
+  const pw = DW - BAND - LB, ph = DH - 2 * BAND;
+  door.add(at(box(BAND, DH, 20, black), BAND / 2, DH / 2, -10));
+  door.add(at(box(LB, DH, 20, black), DW - LB / 2, DH / 2, -10));
+  door.add(at(box(pw, BAND, 20, black), BAND + pw / 2, BAND / 2, -10));
+  door.add(at(box(pw, BAND, 20, black), BAND + pw / 2, DH - BAND / 2, -10));
+  const tile = perforated(72, 14 * 6 * 0.866 + 0.01, { shape: "hex", pitch: 6, d: 4.0, color: 0x1b1c1f });
+  /* blended rather than cut at a threshold: from across the room the holes average to a see-through dark mesh, where a cut-off
+     alpha breaks up into a coarse grid of dots; close in, the holes are still sharp */
+  tile.material.alphaTest = 0; tile.material.transparent = true; tile.material.depthWrite = false;
+  const am = tile.material.alphaMap; am.wrapS = am.wrapT = THREE.RepeatWrapping; am.repeat.set(pw / 72, ph / (14 * 6 * 0.866 + 0.01)); am.needsUpdate = true;
+  const perf = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph), tile.material); perf.position.set(BAND + pw / 2, DH / 2, -3); door.add(perf);
+  /* the perforated sheet's folded lip just inside the frame */
+  [[pw, 3, BAND + pw / 2, BAND + 1.5], [pw, 3, BAND + pw / 2, DH - BAND - 1.5]].forEach(function (q) { door.add(at(box(q[0], q[1], 4, satin), q[2], q[3], -3)); });
+  [BAND + 1.5, DW - LB - 1.5].forEach(function (x) { door.add(at(box(3, ph, 4, satin), x, DH / 2, -3)); });
+  /* the hinges: a barrel on the door's edge, a leaf on the frame, top, middle and bottom */
+  [150, DH / 2, DH - 150].forEach(function (y) {
+    door.add(at(cyl(6.5, 80, paintedSteel(0x2c2e33, { rough: 0.35 }), 20), -1, y, -6));
+    door.add(at(cyl(2.2, 92, mat(0x8d9095, { metal: 0.8, rough: 0.3 }), 12), -1, y, -6));
+    g.add(at(box(5, 84, 30, paintedSteel(0x2c2e33, { rough: 0.35 })), -W / 2 - 2, PL + 3 + y, -18));
+  });
+  /* the latch, its housing across the frame and the perforation as in the photograph */
+  const L = cabinetLatch(o); L.position.set(DW - 98, 1000 - PL - 3, 0); door.add(L);
+  /* the rear door, shut: a frame round the same perforation */
+  const rear = new THREE.Group(); rear.position.set(0, PL + 3, -D); rear.rotation.y = Math.PI; g.add(rear);
+  rear.add(at(box(DW, BAND, 20, black), 0, BAND / 2, 10)); rear.add(at(box(DW, BAND, 20, black), 0, DH - BAND / 2, 10));
+  [-1, 1].forEach(function (sd) { rear.add(at(box(BAND, DH, 20, black), sd * (DW / 2 - BAND / 2), DH / 2, 10)); });
+  const rp = new THREE.Mesh(new THREE.PlaneGeometry(DW - 2 * BAND, ph), tile.material.clone()); rp.material.alphaMap = am.clone(); rp.material.alphaMap.repeat.set((DW - 2 * BAND) / 72, ph / (14 * 6 * 0.866 + 0.01)); rp.material.alphaMap.needsUpdate = true; rp.position.set(0, DH / 2, 4); rear.add(rp);
+  const RL = cabinetLatch({ locked: true, key: false }); RL.position.set(DW / 2 - 98, 1000 - PL - 3, 20); rear.add(RL);
+  return named(g, "device:Closet cabinet", { type: "cabinet", w: W, h: H, d: D, units: units });
+}
+function clearTag() { return new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.18, roughness: 0.1, metalness: 0 }); }

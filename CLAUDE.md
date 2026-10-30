@@ -2200,6 +2200,61 @@ The owner's decisions, 28 October 2026 (talked out before building):
   before SB-J6 uses it; the door's back, the cabinet's top and back are drawn, for the owner to review. The photographs
   are kept out of the repo (only modelled from).
 
+**SAVE POINT, 30 October 2026: SB-J6 paused by the owner** ("Pause on this for now. Create a save point."), for the test
+banks' new score card, question map and filters, which come first (Core 1, Core 2, Network+, Security+, CySA+), then back
+here. Everything below is on `save/level3-stage5`, not live; `main` is SB-J5.
+
+Built and checked so far:
+- **The cabinet** (`closetCabinet` in `assets/models/business-gear.js`; `cabinetLatch`, `cabinetKey`, `phillips`,
+  `rrExtrude`): five views on `preview/models.html` (`cab`, `cab-latch`, `cab-locked`, `cab-open`, `cab-back`), shots sent
+  to the owner on 28 October. **Waiting for the owner's approval**; SB-J6's lock line waits for it. Options: `open`
+  (degrees), `locked`, `key` (false: taken out), `contents`. The perforation is blended (not cut at a threshold) so it
+  doesn't break into a grid of dots from across the room; holes `d: 4.0` at `pitch: 6` read as dark as the photograph.
+- **The engine** (`js/net/swcli.js`, `rtcli.js`, `sim.js`, `cmd.js`):
+  - Switch: `switchport port-security` (refused on a dynamic port, as on the real thing), `maximum`, `violation
+    protect|restrict|shutdown`, `mac-address sticky [H.H.H]` (turning sticky on keeps what was already learned; off, it
+    goes back to learned); `ip dhcp snooping`, `ip dhcp snooping vlan`, `ip dhcp snooping trust`; `ip arp inspection vlan`,
+    `ip arp inspection trust`; `show port-security [interface | address]`, `show ip dhcp snooping [binding]`, `show ip arp
+    inspection [interfaces]`; err-disabled in `show interfaces status` and `show interfaces`. Settings in `ports[n].ps`,
+    `snoop`, `dai` (configuration); what it learns as it runs in `psRun` and `snoopBind` (never saved; a reload clears them).
+  - Both: `exec-timeout` kept (`con.timeout`, `vty.timeout`), `access-class NAME in` on the vty lines (`vty.acl`), in the
+    running configuration. Router: `no lldp transmit|receive` per port, `no lldp run`, honoured by the switch's LLDP view.
+  - `cmd.js`: SSH and Telnet are refused ("Connection refused") from a source the vty access list denies.
+  - `sim.js`: every layer-2 edge keeps its cable's ends, so `l2Path` knows the port a frame comes into each switch by.
+    `snoopBlock` (answers on an untrusted port dropped, in `dhcpServers`; `snoopDrops` says where), `snoopLearn` (a lease
+    through an untrusted port binds the client to it; release and snooping off remove it), `arpBlock`/`arpBlocked` (ARP both
+    ways checked against the bindings at each inspecting switch: in `route`, `routeBR`, `routeFromRouter`, `fromInternet`;
+    the failure carries `dai`), `behindPort` and `portSecurity` (after each change, in `relink`).
+  - Fixed while building: a switch saved before a setting existed read as changed (keys compared in saved order); now
+    compared in the configuration's own order.
+  - Hand runs (`tools/wip/sb6net.mjs [seed] [notrust|cams|old]`) show the real gotchas: clients with leases from before
+    snooping are dropped by ARP inspection until they ask again; the router's port must be trusted for both; inspection on
+    the cameras' VLAN or the old network drops the fixed addresses (forwards fail at ARP; printing stops).
+- **Records** (`js/net/business.js`): `plan.vtyAcl` (MGMT-ONLY, SSH-STAFF or ADMIN-IN) and `plan.idle` (5 or 7 minutes:
+  under the default 10, so leaving the lines alone never meets them), from a stream of their own (`rng(seed ^ 0x6a11)`), so
+  every earlier business comes out exactly as before.
+- **Checks:** `tests/business-harden.test.js` (5 tests, 20 businesses); 10 Node plants in `tools/plants-business-node.py`,
+  all caught; business tests 75 of 75.
+- **One change from the lines shown to the owner, to tell them:** "its web server off" is dropped: this router never had
+  one (SB-J3 checks its address is refused in a browser), so line 8 is LLDP off on the outside port only.
+
+Next, when the owner says go back:
+1. **The work order** `SB6` in `js/build/business.js` (start from SB5's solve; `already`: still, saved, swsaved,
+   bswsaved). Lines, in order: `ssh` (router: domain, keys of 768 bits or more, `login local`, the records' user, `transport
+   input ssh`); `vtyacl` (the records' list in on the vty lines, permitting the staff VLAN only; a list that doesn't exist
+   lets everyone in); `pwenc` (no plain or type-7 enable password, `service password-encryption`, on all three);
+   `idle` (con and vty on all three, 0 < timeout <= the records' minutes; `0 0` never logs out); `psec` (the staff PCs'
+   ports, closet 1 and 2, back 1: on, maximum 1, shutdown, sticky holding that PC's address; none on the access point's
+   port or the uplinks); `park` (every spare copper port on both switches shut, access, in the parking VLAN, named
+   PARKING); `access` (every port with a device on it set as access: the printer's port 3 is still left to negotiate);
+   `lldp` (no LLDP sent on the router's outside port, or `no lldp run`); `snoop` and `dai` (staff and guest VLANs on both
+   switches, trusting the way to the router: closet 24, back 24; trusting the inter-switch trunk too is accepted, a device's
+   port is not); `rack` (locked, key taken away: after the cabinet is approved); `still`; `saved`, `swsaved`, `bswsaved`.
+   The walk-through renews the staff PCs and rejoins the visitor's phone after snooping.
+2. Its tests (tempting wrong ways: Telnet left on, `permit any`, a type-7 enable password, `exec-timeout 0 0`, no sticky,
+   restrict, port security on the access point's port, the router's port untrusted, inspection on the cameras' VLAN or
+   VLAN 1, clients never renewed), then the page, drive, AAA, plants, totals and go-live, as for SB-J5.
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

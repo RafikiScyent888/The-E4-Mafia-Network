@@ -169,6 +169,9 @@ export function makeBusiness(seed) {
     /* the switch's port descriptions, by what's plugged in */
     desc: { "1": biz.pc.toUpperCase().replace(/[^A-Z0-9]+/g, "-"), "2": "MANAGER-PC", "3": "PRINTER", "4": biz.backPc.toUpperCase().replace(/[^A-Z0-9]+/g, "-"), "24": "UPLINK-ROUTER" }
   };
+  /* the hardening (SB-J6), from a stream of its own so every business before it comes out exactly as it always has: the remote
+     lines' access list's name, and how many idle minutes log a session out */
+  const r6 = rng(seed ^ 0x6a11); plan.vtyAcl = r6.pick(["MGMT-ONLY", "SSH-STAFF", "ADMIN-IN"]); plan.idle = r6.pick([5, 7]);   /* under the 10 minutes a line logs out after by default, so leaving it alone never meets the records */
   const sw = closetSwitch(r, plan, plan.desc);
   const ifc = function (port, rr, cfg) { return [{ name: "Ethernet", type: "eth", port: port, mac: mac(rr), desc: "Gigabit Network Connection", cfg: cfg || { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }]; };
   const dev = {

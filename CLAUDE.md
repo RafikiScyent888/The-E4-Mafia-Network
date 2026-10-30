@@ -2201,8 +2201,9 @@ The owner's decisions, 28 October 2026 (talked out before building):
   are kept out of the repo (only modelled from).
 
 **SAVE POINT, 30 October 2026: SB-J6 paused by the owner** ("Pause on this for now. Create a save point."), for the test
-banks' new score card, question map and filters, which come first (Core 1, Core 2, Network+, Security+, CySA+), then back
-here. Everything below is on `save/level3-stage5`, not live; `main` is SB-J5.
+banks' new score card, question map, filters and retest-the-wrong-ones option, which come first (Core 1, Core 2, Network+,
+Security+, CySA+), then back here. That plan: the owner's doc "Test banks: score card, question map and filters (plan)"
+(https://claude.ai/artifact/6vcGwyvSsrwfHBWaKp6rq5); the order is also in `/root/.claude/CLAUDE.md`. Everything below is on `save/level3-stage5`, not live; `main` is SB-J5.
 
 Built and checked so far:
 - **The cabinet** (`closetCabinet` in `assets/models/business-gear.js`; `cabinetLatch`, `cabinetKey`, `phillips`,

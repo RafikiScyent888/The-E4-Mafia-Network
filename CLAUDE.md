@@ -2381,6 +2381,52 @@ Built after SB-J6 and goes live after it (stage 6 merges into `main` once stage 
   limits with no mask, the phone before and after, SSH from the manager's PC, tracert through the provider's gateway, both
   drawings in both fonts, a reload); 5 AAA states in `tools/aaa-states.json`; Node plants 10 (all caught); page plants 3.
 
+### Level 3, SB-J8: the printers' VLAN (built 1 November 2026, on `save/level3-stage7`)
+
+The lines shown to the owner on 1 November 2026, with the Network+ objectives they draw on (VLANs and inter-VLAN routing,
+IPv4 addressing, ACLs, troubleshooting incorrect IP/gateway): the printers' VLAN on the closet switch named as the records
+say; the printer's port in it; the router's subinterface as its gateway; the printer's fixed address on its control panel;
+staff print at the new address (the reception PC's printer port changed, the back PC reaches it); guests can't reach the
+printers (the guests' list needs a line); everything still works (ARP inspection on the printers' VLAN would break the fixed
+address); router and closet switch saved. Goes live after SB-J7.
+- **The records** (`addPrinterVlan` in `js/net/business.js`, nothing random, so every business before it is unchanged): the
+  printers' VLAN from the business's VLAN set (50, 55, 150 or 65), named PRINTERS, on 10.<site>.<vlan>.0/24 with its gateway
+  .1; the printer's fixed address on it keeps its host number (`plan.printerIp`).
+- **The story:** the card company's follow-up letter asks why the printer still shares a network with the switches and the
+  access point. Moving it opens a hole on purpose: the guests' list (SB-J3) denies the staff network and the old network,
+  then permits everything, so the printer's new network is open to guests until a line goes in ahead of that permit.
+- **SB-J8** (`js/build/business.js`), 9 lines: `pvlan` (none, its name: a VLAN made by putting the port in it is named
+  after its number); `pport` (not on the closet switch, shut, not an access port, still in the old VLAN or another, its
+  description); `psub` (none, on the wrong port, the wrong tag, the wrong address, down, the trunk to the router not
+  carrying it); `pfixed` (DHCP, the old address, another address, the mask, the gateway: blank, the old network's, or
+  another); `pprint` (the printer not at its new address yet, ARP inspection dropping it, the reception PC can't reach it,
+  its printer port still naming the old address, the back PC, the manager's PC); `pguest`, judged on the list in on the
+  guests' subinterface for raw printing (9100), IPP (631), the web page (443, 80) and ping, to the printer and to another
+  address on its network (no list applied, a missing list, a deny below the permit that never matches, no line at all,
+  some of the traffic stopped, the printer stopped but not its network); `still` (staff, guests, the access point's page,
+  both cameras from outside at the fixed address, the cabinet); both saves. `already`: still, saved, swsaved.
+- **The walk-through** works from the manager's PC over SSH: the closet switch at its management address (across the
+  router, new with SB-J8), then the router, where the guests' line goes in as `35 deny ip <guests> <printers>`; then the
+  printer's control panel and the reception PC's Printers tab.
+- **Named access lists take sequence numbers** (`js/net/rtcli.js`), as on the real thing: `35 deny ...` in a named list's
+  mode goes in by its number (a number already used: "% Duplicate sequence number"), `no 40` or `no <the line>` takes one
+  out, the other lines keep their numbers and their match counts (`aclSeqs`, `freezeSeqs`, `shiftHits`), `show
+  access-lists` prints the numbers and the configuration doesn't. A line typed with no number goes in ten after the last.
+  The parser matches a number against a `<a-b>` entry (`match` in `js/net/swcli.js`); `?` lists it as "Sequence Number";
+  Tab leaves a number as typed. Permit, deny and remark now take abbreviations in a named list's mode.
+- **SSH and Telnet cross the business router** (`js/net/cmd.js`): before, they reached only a device on the PC's own
+  network. They're routed now, judged by the router's lists as TCP 22 and 23, so an access list can stop SSH and still let
+  ping through (tested).
+- **Checks:** `tests/business-sb8.test.js` (6 tests: as found and solved, with the visitor's phone reaching the printer when
+  the line is missing and not when it's there; 20 tempting wrong ways, each failing its own line; other right ways: the
+  list's last line taken out and put back after the deny, any source, a subinterface numbered its own way, the panel first,
+  the closet switch's console with the cabinet locked again after; checking changes nothing; sequence numbers; SSH across
+  the router). `tests/business-jobs.test.js` covers SB-J8 in its shared tests (the printers' VLAN's name and number added to
+  what no hint may say; its own random walk lines and printer actions). `ONLY=business JOB=SB-J8 node tools/drive.mjs`: 47
+  checks on three businesses (the test page before and after, `show access-lists` read back with 35 between 30 and 40,
+  the printer's panel, the diagram's new address, both drawings in both fonts, a reload). 7 AAA states; 16 Node plants;
+  5 page plants.
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

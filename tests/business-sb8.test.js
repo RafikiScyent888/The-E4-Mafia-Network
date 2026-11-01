@@ -35,7 +35,7 @@ test("SB-J8 as found: the printer on the old network, the six lines to do, for t
     assert.ok(Object.values(p.vlans).filter((x) => x.id === P.id).length === 1, "a VLAN number of its own");
     const K = tryIt(s, def.solve(J.v, J.sim));
     onlyThese(K, [], "the solution, seed " + s);
-    assert.equal(K.sim.d.pc.printer.port, p.printerIp);
+    assert.equal(K.sim.d.pc.printer.port, p.printerIp); assert.equal(B.act(K, { t: "print" }).facts.print, "ok", "the reception PC's test page prints at the new address");
     const g = K.sim.route("guest", p.printerIp); assert.ok(g.fail, "the visitor's phone can't reach the printer: " + JSON.stringify(g));
     const L = tryIt(s, dropAt(def.solve(J.v, J.sim), at(def.solve(J.v, J.sim), "35 deny ip " + p.vlans.guest.net + w + " " + P.net + w)));
     const g2 = L.sim.route("guest", p.printerIp); assert.ok((g2.routed || g2.local) && !g2.fail, "with no line for it, the visitor's phone reaches the printer, as the line says: " + JSON.stringify(g2));
@@ -66,6 +66,7 @@ test("SB-J8: the tempting wrong ways fail their own line, and what they break", 
     assert.equal(real(J, "pfixed"), "dhcp", "on DHCP, with nothing to hand it out");
     J = T(sol.filter((a) => a.t !== "pcprinter"));
     assert.equal(real(J, "pprint"), "port", "the reception PC still printing to the old address"); onlyThese(J, ["pprint"], "only printing");
+    assert.equal(B.act(J, { t: "print" }).facts.print, "fail", "its test page goes to the old address, and nothing prints");
     /* the guests' line: typed in at the end, a line above lets them through first */
     J = T(swap(sol, deny, deny.replace(/^35 /, "")));
     assert.equal(real(J, "pguest"), "late", "the deny after the permit"); onlyThese(J, ["pguest"], "the deny after the permit");

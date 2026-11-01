@@ -780,6 +780,9 @@ function macTable(sw) {
 function match(list, w) {
   const lw = w.toLowerCase(), exact = list.filter(function (c) { return c[0].toLowerCase() === lw || (c[0] === "tftp:" && /^tftp:\/\//.test(lw)); });   /* tftp://host/file names the server and the file on the line */
   if (exact.length) return { one: exact[0] };
+  /* a number where a list takes one: an access list's sequence number ("<1-2147483647>"), matched by its range */
+  const num = /^\d+$/.test(w) ? list.find(function (c) { const r = /^<(\d+)-(\d+)>$/.exec(c[0]); return !!r && +w >= +r[1] && +w <= +r[2]; }) : null;
+  if (num) return { one: num };
   const m = list.filter(function (c) { return c[0].toLowerCase().indexOf(lw) === 0; });
   return m.length === 1 ? { one: m[0] } : m.length ? { many: m } : { none: true };
 }
@@ -834,7 +837,7 @@ export function complete(S, raw) {
   if (!raw.trim() || /\s$/.test(raw)) return raw;
   const tokens = raw.trim().split(/\s+/); let list = treeOf(S)[S.mode];
   for (let i = 0; i < tokens.length - 1; i++) { const r = match(list, tokens[i]); if (!r.one || !Array.isArray(r.one[2])) return raw; list = r.one[2]; }
-  const r = match(list, tokens[tokens.length - 1]); if (!r.one) return raw;
+  const r = match(list, tokens[tokens.length - 1]); if (!r.one || /^</.test(r.one[0])) return raw;   /* a number stays the number typed */
   tokens[tokens.length - 1] = r.one[0]; return tokens.join(" ") + " ";
 }
 

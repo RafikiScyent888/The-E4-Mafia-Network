@@ -495,7 +495,7 @@ test("no help on the business jobs names the answer: no name, password, VLAN num
       p.guestSsid, p.guestPw, p.guestAcl, p.vlans.guest.name, "dot1Q " + p.vlans.guest.id, "vlan " + p.vlans.guest.id, p.apDesc,
       p.bswHost, p.trunk.closetDesc, p.trunk.backDesc, p.desc["4"], p.vlans.native.name, "vlan " + p.vlans.native.id,
       p.camAcl, p.vlans.cameras.name, "dot1Q " + p.vlans.cameras.id, "vlan " + p.vlans.cameras.id, ...p.cams.map((c) => c.desc), ...p.cams.map((c) => String(c.ext)),
-      p.vtyAcl, p.domain, p.vlans.parking.name, "vlan " + p.vlans.parking.id, "exec-timeout " + p.idle, p.idle + " minutes"];
+      p.vtyAcl, p.domain, p.vlans.parking.name, "vlan " + p.vlans.parking.id, "exec-timeout " + p.idle, p.idle + " minutes"].concat(p.vlans.printers ? [p.vlans.printers.name, "dot1Q " + p.vlans.printers.id, "vlan " + p.vlans.printers.id, "35 deny"] : []);   /* SB-J8's records, where it has them */
     const said = [];
     for (let k = 0; k <= sol.length; k++) {
       /* what Mason says on the first line not met, at each count of failing checks: the same as checking six times over, as
@@ -506,7 +506,7 @@ test("no help on the business jobs names the answer: no name, password, VLAN num
     }
     assert.ok(said.length > 3);
     for (const q of def.reqs) said.push(q.rung1(J.v, J.sim), q.rung2(J.v, J.sim));
-    const V = p.vlans, vre = new RegExp("\\bvlans?\\s+(" + [V.staff, V.guest, V.cameras, V.mgmt, V.native, V.parking].map((x) => x.id).join("|") + ")\\b", "i");   /* a VLAN's number, in any case */
+    const V = p.vlans, vre = new RegExp("\\bvlans?\\s+(" + [V.staff, V.guest, V.cameras, V.mgmt, V.native, V.parking, V.printers].filter(Boolean).map((x) => x.id).join("|") + ")\\b", "i");   /* a VLAN's number, in any case */
     for (const t of said) { assert.ok(!vre.test(t), def.id + " names a VLAN's number: " + t); for (const b of bad) assert.ok(!t.includes(b), def.id + " gives away " + b + ": " + t); assert.ok(!new RegExp("\\b" + p.pool + "\\b").test(t), def.id + " names the pool: " + t); assert.deepEqual(t.match(/\d+\.\d+\.\d+\.\d+/g) || [], [], def.id + " names an address: " + t); }
   }
 });
@@ -529,7 +529,11 @@ test("random work on the business never breaks the checker; an unmet line always
     /* SB-J6's hardening lines too, only on its own walk (the other jobs' walks pick from the same list as always) */
     const S6 = p.vlans.staff, G6 = p.vlans.guest, P6 = p.vlans.parking;
     const F7 = p.fixed;   /* SB-J7's provider letter (only in its own walk) */
-    const L6 = def.id !== "SB-J6" && def.id !== "SB-J7" ? LINES : (def.id === "SB-J7" && F7 ? ["interface gi0/0", "ip address " + F7.ip + " " + F7.mask, "ip address " + F7.ip + " 255.255.255.0", "ip address " + F7.gw + " " + F7.mask, "ip address dhcp",
+    const P8 = p.vlans.printers, w8 = " 0.0.0.255";   /* SB-J8's printers' VLAN (only in its own walk) */
+    const L8 = def.id === "SB-J8" && P8 ? ["vlan " + P8.id, "name PRINTERS", "interface gi0/3", "switchport access vlan " + P8.id, "switchport access vlan 1", "interface gi0/1." + P8.id, "encapsulation dot1Q " + P8.id,
+      "ip address " + P8.gw + " " + p.vmask, "no interface gi0/1." + P8.id, "ip access-list extended " + p.guestAcl, "35 deny ip " + G6.net + w8 + " " + P8.net + w8, "deny ip " + G6.net + w8 + " " + P8.net + w8, "no 35", "no 40",
+      "permit ip " + G6.net + w8 + " any", "5 deny ip any any", "ip arp inspection vlan " + S6.id + "," + G6.id + "," + P8.id, "switchport trunk allowed vlan remove " + P8.id, "show access-lists"] : [];
+    const L6 = def.id !== "SB-J6" && def.id !== "SB-J7" && def.id !== "SB-J8" ? LINES : L8.concat(def.id === "SB-J7" && F7 ? ["interface gi0/0", "ip address " + F7.ip + " " + F7.mask, "ip address " + F7.ip + " 255.255.255.0", "ip address " + F7.gw + " " + F7.mask, "ip address dhcp",
       "ip route 0.0.0.0 0.0.0.0 " + F7.gw, "ip route 0.0.0.0 0.0.0.0 198.51.100.1", "ip route 0.0.0.0 0.0.0.0 gi0/0", "no ip route 0.0.0.0 0.0.0.0 " + F7.gw, "show ip route"] : []).concat(LINES, ["service password-encryption", "no service password-encryption", "enable password 7 0822455D0A16", "enable password Plain1", "line vty 0 4", "line vty 0 15", "line console 0",
       "exec-timeout 0 0", "exec-timeout " + p.idle + " 0", "exec-timeout 15 0", "transport input ssh", "transport input telnet", "transport input ssh telnet", "login local", "ip domain-name " + p.domain, "crypto key generate rsa modulus 512", "crypto key generate rsa modulus 2048",
       "username " + p.user + " secret " + p.userPw, "access-class " + p.vtyAcl + " in", "access-class " + p.vtyAcl + " out", "ip access-list standard " + p.vtyAcl, "permit " + S6.net + " 0.0.0.255", "permit any", "interface gi0/3", "interface range gi0/7 - 22",
@@ -544,6 +548,7 @@ test("random work on the business never breaks the checker; an unmet line always
       else if (pick < 0.85) { if (J.sim.d.cab && R() < 0.15) B.act(J, { t: "cabinet", values: R.pick([{ open: true }, { open: false }, { locked: true }, { locked: false }, { key: true }, { key: false }]) }); else B.act(J, cli(R.pick(L6))); }
       else if (pick < 0.88) B.act(J, { t: "power", dev: R.pick(["rtr", "msw"]) });
       else if (pick < 0.9 && J.sim.d.ap) B.act(J, R() < 0.5 ? { t: "apnet", dev: "ap", net: { ssid: R.pick([p.guestSsid, "Test"]), sec: R.pick(["WPA2-Personal", "Open", "WPA3-Personal"]), psk: R.pick([p.guestPw, "short", "password123"]), vlan: R.pick(["", p.vlans.guest.id, 7]) } } : { t: "joinssid", dev: "guest", ssid: R.pick([p.guestSsid, "Test"]), pass: R.pick([p.guestPw, "nope-nope"]) });
+      else if (pick < 0.91 && P8 && def.id === "SB-J8") B.act(J, R() < 0.7 ? { t: "client", dev: "printer", values: R() < 0.2 ? { mode: "dhcp" } : { mode: "static", ip: R.pick([p.printerIp, P8.net.replace(/\.0$/, ".9"), p.lan.replace(/\.0$/, ".15")]), mask: R.pick([p.vmask, "255.255.0.0"]), gw: R.pick([P8.gw, p.lanGw, ""]) } } : { t: "pcprinter", ip: R.pick([p.printerIp, p.lan.replace(/\.0$/, ".15")]) });
       else if (pick < 0.93 && J.sim.d.cam1) B.act(J, R() < 0.7 ? { t: "client", dev: R.pick(["cam1", "cam2"]), values: R() < 0.2 ? { mode: "dhcp" } : { mode: "static", ip: c3 + R.pick([11, 12, 21]), mask: R.pick([p.vmask, "255.255.0.0"]), gw: R.pick([cv.gw, p.lanGw, ""]) } } : { t: "injector", dev: R.pick(["cinj1", "cinj2"]), values: { power: R() < 0.7 } });
       else B.act(J, { t: "cmd", dev: R.pick(["pc", "mgr", "bpc"]), line: R.pick(["ipconfig", "ipconfig /renew", "ping " + p.lanGw, "ping 8.8.8.8", "tracert 8.8.8.8"]) });
       for (const q of def.reqs) { const c = B.evaluate(q, J.sim, J.v); assert.ok(typeof c.ev === "string" && c.ev.length > 10, def.id + " " + q.id + ": empty evidence"); if (!c.ok) assert.ok(c.list.filter((x) => !x.skip).length >= 2, def.id + " " + q.id + ": a failing line needs two causes or more"); }

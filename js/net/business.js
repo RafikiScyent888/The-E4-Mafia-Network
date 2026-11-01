@@ -158,6 +158,16 @@ export function addFixedLine(sim) {
   sim.net.isp.fixed = fixed; sim.net.plan.fixed = fixed;
 }
 
+/* what SB-J8 brings: the printers' VLAN from the business's records (its number from the business's VLAN set, named PRINTERS, on
+   10.<site>.<vlan>.0/24 with its gateway .1, as every VLAN's), and the printer's fixed address on it, keeping its host number.
+   Nothing drawn from a random stream, so every business before it comes out exactly as it always has */
+export function addPrinterVlan(sim) {
+  const p = sim.net.plan, S = p.vlans.staff, V = VLAN_SETS.find(function (x) { return x.staff === S.id; }), b = S.net.split(".")[1];
+  const host = String(sim.d.printer.ifaces[0].cfg.ip).split(".")[3], net = "10." + b + "." + V.printers;
+  p.vlans.printers = { id: V.printers, name: "PRINTERS", net: net + ".0", gw: net + ".1" };
+  p.printerIp = net + "." + host;
+}
+
 export function makeBusiness(seed) {
   const r = rng(seed ^ 0x3b17);
   const biz = r.pick(BUSINESSES), k = r.int(0, PREFIXES.length - 1), prefix = PREFIXES[k], range = RANGES[k], mask = "255.255.255.0", gw = prefix + ".1";

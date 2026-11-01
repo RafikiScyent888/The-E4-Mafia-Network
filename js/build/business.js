@@ -6,12 +6,12 @@
    devices and the network as they really are. Each line is an ordered list of
    causes, as on the other levels, so Mason's third rung can strike the ones
    the network has ruled out and leave two. None of it ever says what to type. */
-import { makeBusiness, addGuestKit, addBackSwitch, addCameraKit, addCabinet, addFixedLine } from "../net/business.js";
+import { makeBusiness, addGuestKit, addBackSwitch, addCameraKit, addCabinet, addFixedLine, addPrinterVlan } from "../net/business.js";
 import { Sim } from "../net/sim.js";
 import { exec } from "../net/cmd.js";
 import { browse } from "../net/pages.js";
 import { unsaved, pwOk, carries, errDisabled, dotMac } from "../net/swcli.js";
-import { addrOf, rtStatus, poolFor, poolAddrs, aclVerdict, routes, netOf, lldpSends } from "../net/rtcli.js";
+import { addrOf, rtStatus, poolFor, poolAddrs, aclVerdict, aceMatch, routes, netOf, lldpSends } from "../net/rtcli.js";
 import { online } from "./jobs.js";
 import { ip2n } from "../net/util.js";
 
@@ -1469,4 +1469,168 @@ const SB7 = {
   }
 };
 
-export const BUSINESS_JOBS = [SB1, SB2, SB3, SB4, SB5, SB6, SB7];
+/* ---------------------------------------------------------------- SB-J8: the printers' VLAN */
+/* the printer off the old network the switches and the access point are managed on, onto a VLAN of its own: the closet switch's
+   VLAN and port, the router's subinterface, the printer's own control panel, every PC that names its old address, and the guests'
+   list, which kept guests off the old network and knows nothing of the new one */
+const prn = function (v) { return VL(v, "printers"); };
+const printsAt = function (sim, from, ip) { const r = sim.route(from, ip); return !!((r.local || r.routed) && !r.fail && r.owner && r.owner.indexOf("printer") >= 0); };
+function prVlanCauses(sim, v) {
+  const P = prn(v), vl = SW(sim).vlans[P.id];
+  return [C("none", !vl, "The closet switch has no printers' VLAN", "The printers' VLAN exists.", "show vlan brief on the closet switch: no VLAN " + P.id + "."),
+    C("name", !!vl && vl.name !== P.name, "The printers' VLAN isn't named as the records say", "It's named as the records say.", "show vlan brief on the closet switch: VLAN " + P.id + " is " + (vl ? vl.name : "") + ".")];
+}
+function prPortCauses(sim, v) {
+  const P = prn(v), sw = SW(sim), m = between(sim, "printer", "msw"), n = m ? port(m.far) : null, sp = n && sw.ports[n], c = n ? carries(sw, n, null) : null;
+  return [C("cable", !m, "The printer isn't on the closet switch", "The printer is on the closet switch.", "The printer's cable doesn't reach the closet switch."),
+    C("shut", !!sp && sp.shutdown, "The printer's port is shut down", "Its port is open.", "show interfaces status on the closet switch: " + gi(n) + " disabled."),
+    C("mode", !!sp && sp.mode !== "access", sp && sp.mode === "trunk" ? "The printer's port is set as a trunk" : "The printer's port is left to negotiate", "It's set as an access port.", "show interfaces " + gi(n) + " switchport on the closet switch: administrative mode " + (sp ? sp.mode : "") + "."),
+    C("vlan", !!c && c.untagged !== P.id, c && c.untagged === 1 ? "The printer's port is still in the old network's VLAN" : "The printer's port is in a VLAN that isn't the printers'", "Its port is in the printers' VLAN.", "show vlan brief on the closet switch: " + gi(n) + " is in VLAN " + (c ? c.untagged : "") + "."),
+    C("desc", !!sp && String(sp.desc || "").toUpperCase() !== v.plan.desc["3"], "The printer's port isn't described as the records say", "Its port is described as the records say.", "show interfaces status on the closet switch: " + gi(n) + "'s name is " + (sp && sp.desc ? sp.desc : "blank") + ".")];
+}
+function prSubCauses(sim, v) {
+  const R = view(sim), P = prn(v), q = vlanSub(R, v, "printers"), n = q || subName(v, "printers"), f = q ? R.subs[q] : null, any = Object.keys(R.subs).find(function (z) { return R.subs[z].vlan === P.id; });
+  const sw = SW(sim), up = between(sim, "rtr", "msw"), uc = up ? carries(sw, port(up.far), null) : null;
+  return [C("none", !f && !any, "The router has no subinterface for the printers' VLAN", "There's a subinterface for the printers' VLAN.", "show ip interface brief on the router: no " + n + "."),
+    C("other", !f && !!any, "The printers' VLAN's subinterface is on a port the switch isn't cabled to", "It's on the inside port.", "show ip interface brief on the router: the printers' VLAN is on " + any + "."),
+    C("tag", !!f && f.vlan !== P.id, "The subinterface doesn't tag the printers' VLAN", "It tags the printers' VLAN.", "show running-config on the router: " + n + (f && f.vlan ? " has encapsulation dot1Q " + f.vlan : " has no encapsulation line") + "."),
+    C("addr", !!f && f.vlan === P.id && (f.ip !== P.gw || f.mask !== v.plan.vmask), "Its address isn't the printers' gateway from the records", "Its address is the printers' gateway.", "show ip interface brief on the router: " + n + " is " + (f && f.ip ? f.ip : "unassigned") + "."),
+    C("shut", !!f && rtStatus(R, n)[1] !== "up", "The subinterface is down", "It's up.", "show ip interface brief on the router: " + n + " is down."),
+    C("uplink", !!sw.vlans[P.id] && !!uc && uc.mode === "trunk" && uc.tagged.indexOf(P.id) < 0 && uc.untagged !== P.id, "The trunk to the router doesn't carry the printers' VLAN", "The trunk to the router carries it.", "show interfaces trunk on the closet switch: VLAN " + P.id + " isn't allowed and active on Gi0/" + (up ? up.far : "") + ".")];
+}
+function prFixedCauses(sim, v) {
+  const P = prn(v), f = sim.d.printer.ifaces[0].cfg, fix = f.mode === "static", lan = v.plan.lan;
+  return [C("dhcp", !fix, "The printer asks for its address by DHCP: the records give it a fixed one", "It has a fixed address.", "The printer's control panel: TCP/IP set to DHCP."),
+    C("old", fix && inNet(f.ip, lan), "The printer still has its old address, on the old network", "Its address is on the printers' network.", "The printer's control panel: " + f.ip + "."),
+    C("ip", fix && !inNet(f.ip, lan) && f.ip !== v.plan.printerIp, "Its address isn't the one in the records", "Its address is the records'.", "The printer's control panel: " + f.ip + "."),
+    C("mask", fix && f.mask !== v.plan.vmask, "Its subnet mask isn't the printers' network's", "Its mask is the printers' network's.", "The printer's control panel: subnet mask " + f.mask + "."),
+    C("gw", fix && f.gw !== P.gw, !f.gw ? "It has no gateway: it answers only its own network, and staff print from other networks" : inNet(f.gw, lan) ? "Its gateway is still the old network's" : "Its gateway isn't the printers' network's", "Its gateway is the printers' gateway.", "The printer's control panel: gateway " + (f.gw || "blank") + ".")];
+}
+/* staff print to it at its new address: the reception PC's printer port, the back's and the manager's PCs reaching it */
+function prPrintCauses(sim, v) {
+  const want = v.plan.printerIp, at = printerIp(sim) === want, r = sim.route("pc", want), reach = at && printsAt(sim, "pc", want), dai = at && !reach && !!r.dai, port = sim.d.pc.printer.port;
+  return [C("moved", !at, "The printer isn't at its new address yet", "The printer has its new address.", "The printer's control panel: " + printerIp(sim) + "."),
+    C("dai", dai, "ARP inspection on the printers' VLAN drops the printer: it has a fixed address, so snooping has no lease to check it against", "Nothing drops the printer's ARP.", "show ip arp inspection on the closet switch: VLAN " + prn(v).id + " is inspected; its drops count up."),
+    C("reach", at && !reach && !dai, "The " + name(sim, "pc") + " can't reach the printer at its new address", "It reaches the printer.", "ping " + want + " from the " + name(sim, "pc") + ": no replies."),
+    C("port", reach && port !== want, "The " + name(sim, "pc") + "'s printer port still names " + (inNet(port, v.plan.lan) ? "the printer's old address" : "an address the printer doesn't have"), "It prints to the printer's address.", "The " + name(sim, "pc") + "'s Printers tab: its port is " + port + "; test pages don't print."),
+    C("back", reach && !printsAt(sim, "bpc", want), "The " + name(sim, "bpc") + " can't reach the printer", "The " + name(sim, "bpc") + " reaches it.", "ping " + want + " from the " + name(sim, "bpc") + ": no replies."),
+    C("mgr", reach && !printsAt(sim, "mgr", want), "The manager's PC can't reach the printer", "The manager's PC reaches it.", "ping " + want + " from the manager's PC: no replies.")];
+}
+/* guests kept off the printers: judged on the list in on the guests' subinterface, for the ways a phone reaches a printer (raw
+   printing, IPP, its web page, a ping), to the printer and to the printers' network beyond it */
+const PRINT_WAYS = [["tcp", 9100, "printing (9100)"], ["tcp", 631, "IPP (631)"], ["tcp", 443, "its web page (443)"], ["tcp", 80, "its web page (80)"], ["icmp", null, "ping"]];
+function prGuestCauses(sim, v) {
+  const R = RT(sim), G = guest(v), P = prn(v), q = vlanSub(view(sim), v, "guest"), f = q ? R.subs[q] : null, a = f && f.aclIn, L = a ? R.acls[a] : null;
+  const src = G.net.replace(/\.0$/, ".50"), pr = v.plan.printerIp, next = P.net.replace(/\.0$/, ".200");
+  const pk = function (dst, w) { return { proto: w[0], src: src, dst: dst, sport: 50000, port: w[1] }; };
+  const open = L ? PRINT_WAYS.filter(function (w) { return aclVerdict(R, a, pk(pr, w)).permit; }) : [], all = !!L && open.length === PRINT_WAYS.length;
+  const late = all && L.lines.some(function (e) { return !e.remark && e.action === "deny" && aceMatch(e, pk(pr, PRINT_WAYS[0])); });
+  const host = !!L && !open.length && PRINT_WAYS.some(function (w) { return aclVerdict(R, a, pk(next, w)).permit; });
+  return [C("applied", !!f && !a, "The guests' subinterface has no list in on it any more", "The guests' list is applied in.", "show ip interface " + q + " on the router: Inbound access list is not set."),
+    C("missing", !!a && !L, "The list on the guests' subinterface doesn't exist: a missing list lets everything through", "The list exists.", "show access-lists on the router: no list " + a + "."),
+    C("late", late, "A line in the guests' list stops them reaching the printers, but a line above it has already let them through: the first line that matches decides", "Nothing above it lets them through.", "show access-lists " + a + " on the router: the printers' line counts no matches."),
+    C("open", all && !late, "Nothing in the guests' list stops them reaching the printers' network", "The guests' list keeps them off it.", "show access-lists " + a + " on the router: no line for " + P.net + "."),
+    C("some", !!L && open.length > 0 && !all, "The guests' list stops some of their traffic to the printer, not all of it", "It stops all of it.", "From the guest network the printer still answers to " + open.map(function (w) { return w[2]; }).join(", ") + "."),
+    C("host", host, "The guests' list keeps them off this printer, not the printers' network: the next printer on it would be open to them", "It keeps them off the whole network.", "show access-lists " + a + " on the router: the line names the printer's address, not its network.")];
+}
+function prStillCauses(sim, v) {
+  const F = fixedOf(v), cam = v.plan.cams.find(function (c) { const r = sim.fromInternet(F.ip, c.ext, "tcp"); return !(r.ok && r.who === c.id); });
+  const S = fixedStillCauses(sim).filter(function (c) { return c.id !== "print"; });
+  return S.slice(0, -1).concat([C("cams", !!cam, "A camera can't be seen from outside any more", "Both cameras open from outside.", "On the manager's phone, on mobile data: " + (cam ? cam.tag : "a camera") + "'s page doesn't open at " + F.ip + ".")], S.slice(-1));
+}
+const SB8 = {
+  id: "SB-J8", level: "business", title: "The printers' VLAN: the printer moved off the old network, onto a network of its own",
+  already: ["still", "saved", "swsaved"],
+  start(seed) {
+    const b = SB7.start(seed), sim = b.sim;
+    for (const a of SB7.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    addPrinterVlan(sim); sim.cli = {};   /* the records' printers' VLAN, and the printer's address on it */
+    return { sim: sim, v: b.v };
+  },
+  brief(v, sim) { return { quote: "The card company's follow-up letter asks why our printer is still on the same network as the switches and the wireless access point. Our records have always said printers get a network of their own, so can you move it today? Reception prints all day, and the back prints labels, so it has to keep working.", from: sim.net.client.manager + ", " + sim.net.client.name }; },
+  mason: "Moving a device to a network of its own takes three changes that have to agree: its switch port, its gateway on the router, and its own settings. Then everything that pointed at its old address. Last of all, ask who can reach it now that couldn't before.",
+  limits: function (v, sim) {
+    const p = v.plan, P = prn(v), G = guest(v);
+    return ["The records: printers get a VLAN of their own, VLAN " + P.id + ", named " + P.name + ", on " + P.net + "/24, its gateway " + P.gw + " on the router's inside port. Nothing on it is handed out by DHCP, and nothing there needs the internet.",
+      "The printer stays on the closet switch's port 3, described " + p.desc["3"] + ". Its fixed address on the printers' network is " + p.printerIp + " (mask " + p.vmask + "), set on its own control panel.",
+      "The " + name(sim, "pc") + " prints to the printer by its address; the " + name(sim, "bpc") + " and the manager's PC reach it too.",
+      "Guests (VLAN " + G.id + ") reach none of the business's own networks, the printers' included: their list is " + p.guestAcl + ".",
+      "The router and the closet switch are managed by SSH from a staff PC as " + p.user + " (password " + p.userPw + "): the router at " + staff(v).gw + ", the closet switch at " + p.swIp + ". Or at their consoles, in the closet cabinet, whose key is with " + sim.net.client.manager + ". A cabinet opened is locked again, its key taken away.",
+      "The records are as before: router " + p.rtHost + " (secret " + p.rtSecret + ", console " + p.rtConsole + "); switches " + p.swHost + " and " + p.bswHost + " (secret " + p.swSecret + ", console " + p.swConsole + ")."];
+  },
+  reqs: [{
+    id: "pvlan", text: "The printers' VLAN is on the closet switch, named as the records say",
+    causes: prVlanCauses,
+    ok: function (sim, v) { return "VLAN " + prn(v).id + " is on the closet switch, named " + prn(v).name + "."; },
+    rung1: function () { return "On the closet switch: show vlan brief."; },
+    rung2: function () { return "A VLAN is on a switch once it's made there. A VLAN made by putting a port in it is named after its number, not as anyone's records say."; }
+  }, {
+    id: "pport", text: "The printer's port is in the printers' VLAN",
+    causes: prPortCauses,
+    ok: function () { return "The printer's port is an access port in the printers' VLAN, open, described as the records say."; },
+    rung1: function () { return "On the closet switch: show interfaces status, then show vlan brief: find the printer's port, and the VLAN it's in."; },
+    rung2: function () { return "An access port carries one VLAN, untagged: the device on it never sees the number, only the network its own address is on."; }
+  }, {
+    id: "psub", text: "The router is the printers' gateway, on a subinterface of its own",
+    causes: prSubCauses,
+    ok: function () { return "The router has a subinterface tagging the printers' VLAN, with the printers' gateway address, up, and the trunk to it carries the VLAN."; },
+    rung1: function () { return "On the router: show ip interface brief. On the closet switch: show interfaces trunk."; },
+    rung2: function () { return "Each VLAN the router serves needs a subinterface that tags it, its address the gateway that VLAN's devices use. The trunk between the switch and the router has to carry the VLAN too."; }
+  }, {
+    id: "pfixed", text: "The printer has its fixed address on the printers' network, set on its control panel",
+    causes: prFixedCauses,
+    ok: function (sim, v) { return "The printer's control panel: " + v.plan.printerIp + ", the printers' mask and gateway."; },
+    rung1: function () { return "The printer's control panel: its TCP/IP settings. Then the records."; },
+    rung2: function () { return "A device's address, mask and gateway all belong to the network its port is in. An address from the old network on a port in the new VLAN reaches nothing, and without a gateway a device answers nothing beyond its own network."; }
+  }, {
+    id: "pprint", text: "Staff print to the printer at its new address",
+    causes: prPrintCauses,
+    ok: function () { return "The reception PC prints to the printer's new address, and the back's and the manager's PCs reach it."; },
+    rung1: function () { return "From each staff PC, ping the printer's new address; on the reception PC, the Printers tab: where it sends its pages. On the closet switch: show ip arp inspection."; },
+    rung2: function () { return "A PC prints to an address, not to a printer: when the printer's address changes, every PC that names the old one has to be told. ARP inspection checks each device against a lease it saw handed out, and a device with a fixed address never had one."; }
+  }, {
+    id: "pguest", text: "Guests can't reach the printers",
+    causes: prGuestCauses,
+    ok: function () { return "The guests' list stops every way a guest could reach the printers' network."; },
+    rung1: function () { return "On the router: show access-lists, and show ip interface for the guests' subinterface."; },
+    rung2: function () { return "A list is read from the top, and the first line that matches decides. A line typed into a list goes in at the end, unless it's given a sequence number that puts it ahead of the line it has to beat."; }
+  }, {
+    id: "still", text: "Everything still works: staff and guests online, the cameras seen from outside, the cabinet locked",
+    causes: prStillCauses,
+    ok: function () { return "Every staff PC is online, guests are online, the access point's page opens, both cameras open from outside, and the cabinet is locked with its key away."; },
+    rung1: function () { return "Ping out from each staff PC and the visitor's phone; try each camera from the manager's phone; look at the closet cabinet."; },
+    rung2: function () { return "Every guest's packet is read against the guests' list the moment a line goes in: a line that matches more than it should stops guests getting out."; }
+  }, L_SAVED_RT, {
+    id: "swsaved", text: "The closet switch's setup survives a power cut",
+    causes: swSavedCauses,
+    ok: function () { return "What's running on the closet switch is saved."; },
+    rung1: function () { return "On the closet switch: compare show running-config with show startup-config."; },
+    rung2: function () { return "Each device keeps its own startup configuration: saving one saves nothing on the others."; }
+  }],
+  solve(v) {
+    const p = v.plan, P = prn(v), G = guest(v), w = "0.0.0.255", m = function (l) { return { t: "cmd", dev: "mgr", line: l }; };
+    /* from the manager's PC, over SSH: the closet switch, then the router; then the printer's own panel and the reception PC */
+    return [m("ssh " + p.user + "@" + p.swIp), m(p.userPw), m("enable"), m(p.swSecret), m("configure terminal"),
+      m("vlan " + P.id), m("name " + P.name), m("exit"), m("interface gi0/3"), m("switchport access vlan " + P.id), m("end"),
+      m("copy running-config startup-config"), m(""), m("exit"),
+      m("ssh " + p.user + "@" + staff(v).gw), m(p.userPw), m("enable"), m(p.rtSecret), m("configure terminal"),
+      m("interface " + subName(v, "printers")), m("encapsulation dot1Q " + P.id), m("ip address " + P.gw + " " + p.vmask), m("exit"),
+      m("ip access-list extended " + p.guestAcl), m("35 deny ip " + G.net + " " + w + " " + P.net + " " + w), m("end"),
+      m("copy running-config startup-config"), m(""), m("exit"),
+      { t: "client", dev: "printer", values: { mode: "static", ip: p.printerIp, mask: p.vmask, gw: P.gw } }, { t: "pcprinter", ip: p.printerIp }];
+  },
+  answer(v, sim) {
+    const p = v.plan, P = prn(v), G = guest(v);
+    return ["From the manager's PC: ssh " + p.user + "@" + p.swIp + " (the closet switch). vlan " + P.id + ", name " + P.name + "; interface gi0/3: switchport access vlan " + P.id + ". Save.",
+      "ssh " + p.user + "@" + staff(v).gw + " (the router). interface " + subName(v, "printers") + ": encapsulation dot1Q " + P.id + ", ip address " + P.gw + " " + p.vmask + ".",
+      "ip access-list extended " + p.guestAcl + ": 35 deny ip " + G.net + " 0.0.0.255 " + P.net + " 0.0.0.255 (show access-lists first: it goes in ahead of the line that lets guests out). Save.",
+      "The printer's control panel: fixed, " + p.printerIp + ", " + p.vmask + ", gateway " + P.gw + ". The " + (sim ? name(sim, "pc") : "reception PC") + "'s Printers tab: its port to " + p.printerIp + ". Then a test page."];
+  },
+  summary(v, sim) {
+    const p = v.plan, P = prn(v);
+    return ["The printer is on VLAN " + P.id + " (" + P.name + "), at " + p.printerIp + ", off the network the switches and the access point are managed on; the router's " + subName(v, "printers") + " is its gateway.",
+      "Staff print to it at its new address, and the guests' list keeps guests off the printers' network.", "The router and the closet switch are saved."];
+  }
+};
+
+export const BUSINESS_JOBS = [SB1, SB2, SB3, SB4, SB5, SB6, SB7, SB8];

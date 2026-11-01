@@ -206,10 +206,10 @@ function ssh(sim, id, args, k) {
   user = user || sim.d[id].user || "user";
   const facts = { cmd: "ssh", dev: id, host: host, user: user };
   if (!isIp(host)) return { out: "ssh: Could not resolve hostname " + host.toLowerCase() + ": No such host is known.\n", facts: Object.assign(facts, { ok: false, why: "name" }) };
-  const rt = sim.route(id, host);
+  const rt = sim.route(id, host, { proto: "tcp", port: 22, sport: 50022 });   /* on this computer's own network, or across a business router, its access lists judging TCP port 22 */
   if (rt.fail === "no-link" || rt.fail === "no-route") return { out: "ssh: connect to host " + host + " port 22: Network is unreachable\n", facts: Object.assign(facts, { ok: false, why: "unreachable" }) };
-  if (rt.fail || !rt.local) return { out: "ssh: connect to host " + host + " port 22: Connection timed out\n", facts: Object.assign(facts, { ok: false, why: "timeout" }) };
-  const who = sim.turn(id, host, rt.owner), x = sim.d[who];   /* two devices on one address take turns */
+  if (rt.fail || !(rt.local || rt.routed)) return { out: "ssh: connect to host " + host + " port 22: Connection timed out\n", facts: Object.assign(facts, { ok: false, why: "timeout" }) };
+  const who = rt.local ? sim.turn(id, host, rt.owner) : rt.owner[0], x = sim.d[who];   /* two devices on one address take turns (on this computer's own network: across the router, the router's ARP decides) */
   if (x.kind !== "mswitch" && x.kind !== "brouter") return { out: x.kind === "pc" || x.kind === "laptop" ? "ssh: connect to host " + host + " port 22: Connection timed out\n" : "ssh: connect to host " + host + " port 22: Connection refused\n", facts: Object.assign(facts, { ok: false, why: "no-ssh" }) };
   const v = x.sw.vty;
   if (!x.sw.rsa || !/^(ssh|all)$/.test(v.transport)) return { out: "ssh: connect to host " + host + " port 22: Connection refused\n", facts: Object.assign(facts, { ok: false, why: "refused" }) };
@@ -239,8 +239,8 @@ function telnet(sim, id, args, k) {
   if (!host) return { out: "\nUsage: telnet [host [port]]\n", facts: Object.assign(facts, { usage: true }) };
   const fail = "Connecting To " + host + "...Could not open connection to the host, on port 23: Connect failed\n";
   if (!isIp(host)) return { out: "Connecting To " + host + "...Could not open connection to the host, on port 23: Connect failed\n", facts: Object.assign(facts, { ok: false }) };
-  const rt = sim.route(id, host);
-  if (rt.fail || !rt.local) return { out: fail, facts: Object.assign(facts, { ok: false, why: "unreachable" }) };
+  const rt = sim.route(id, host, { proto: "tcp", port: 23, sport: 50023 });
+  if (rt.fail || !(rt.local || rt.routed)) return { out: fail, facts: Object.assign(facts, { ok: false, why: "unreachable" }) };
   const who = rt.owner[0], x = sim.d[who];
   if ((x.kind !== "mswitch" && x.kind !== "brouter") || !/^(telnet|all)$/.test(x.sw.vty.transport)) return { out: fail, facts: Object.assign(facts, { ok: false, why: "refused" }) };
   if (!vtyAllowed(sim, id, x, host, 23)) return { out: fail, facts: Object.assign(facts, { ok: false, why: "access-class" }) };

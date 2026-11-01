@@ -210,12 +210,44 @@ function accessGroup(S, a, off) {
   if (off) { f[k] = null; return []; }
   f[k] = a[0]; return [];
 }
-function aclLine(S, name, type, a) {
-  if (/^remark$/i.test(a[0] || "")) { const t = a.slice(1).join(" "); if (!t) return inc; (S.sw.acls[name] = S.sw.acls[name] || { type: type, lines: [] }).lines.push({ remark: t }); return []; }
-  const e = parseAce(type, a); if (!e) return a.length > 1 ? bad : inc;
+/* each line's sequence number: its own where it was given one, otherwise ten after the line before it (a remark has none) */
+export function aclSeqs(L) { let last = 0; return L.lines.map(function (e) { if (e.remark) return null; last = e.seq != null ? e.seq : last + 10; return last; }); }
+/* the numbers fixed as they stand, so a line put in or taken out leaves the others' numbers alone, as on the real thing */
+const freezeSeqs = function (L) { const q = aclSeqs(L); L.lines.forEach(function (x, i) { if (q[i] != null) x.seq = q[i]; }); return q; };
+/* a list's match counters are kept by line: a line put in or taken out moves the counters of the lines after it */
+function shiftHits(S, name, at, by) {
+  const H = S.live && S.live("hits"), h = H && H[name]; if (!h) return;
+  const n = {}; Object.keys(h).forEach(function (k) { const i = +k; if (by < 0 && i === at) return; n[i < at ? i : i + by] = h[k]; }); H[name] = n;
+}
+const ACTIONS = ["permit", "deny", "remark"];
+const actionWord = function (w) { const l = String(w || "").toLowerCase(), m = ACTIONS.filter(function (x) { return x.indexOf(l) === 0; }); return l && m.length === 1 ? m[0] : null; };
+const seqWord = function (raw) { return +(String(raw).trim().split(/\s+/).find(function (w) { return /^\d+$/.test(w); })); };
+function aclLine(S, name, type, a, seq) {
+  let e;
+  if (/^remark$/i.test(a[0] || "")) { const t = a.slice(1).join(" "); if (!t) return inc; e = { remark: t }; }
+  else { e = parseAce(type, a); if (!e) return a.length > 1 ? bad : inc; }
   const L = S.sw.acls[name] = S.sw.acls[name] || { type: type, lines: [] };
-  if (L.type !== type) return ["% Access list " + name + " is a " + L.type + " list"];
-  L.lines.push(e); return [];
+  if (!e.remark && L.type !== type) return ["% Access list " + name + " is a " + L.type + " list"];
+  if (seq == null) { L.lines.push(e); return []; }
+  if (aclSeqs(L).indexOf(seq) >= 0) return ["% Duplicate sequence number"];
+  const q = freezeSeqs(L); if (!e.remark) e.seq = seq;
+  let at = L.lines.length; for (let i = 0; i < L.lines.length; i++) if (q[i] != null && q[i] > seq) { at = i; break; }
+  while (at > 0 && at < L.lines.length && L.lines[at - 1].remark) at--;   /* a remark stays with the line it comes before */
+  L.lines.splice(at, 0, e); shiftHits(S, name, at, 1); return [];
+}
+/* a numbered line in a named list's own mode: "35 deny ip any 10.0.0.0 0.0.0.255" goes in by its number */
+function aclSeqLine(S, a, raw) {
+  const n = seqWord(raw), act = actionWord(a[0]); if (!a.length) return inc; if (!act) return bad;
+  return aclLine(S, S.acl, S.aclType, [act].concat(a.slice(1)), n);
+}
+/* "no 40", or "no deny ip ..." word for word: that line out of the list */
+function aclDrop(S, at) {
+  const L = S.sw.acls[S.acl]; if (!L || at < 0) return [];
+  freezeSeqs(L); L.lines.splice(at, 1); shiftHits(S, S.acl, at, -1); return [];
+}
+function aclDropText(S, a) {
+  const L = S.sw.acls[S.acl], e = parseAce(S.aclType, a); if (!e) return a.length > 1 ? bad : inc;
+  const t = aceText(S.aclType, e); return aclDrop(S, L ? L.lines.findIndex(function (x) { return !x.remark && aceText(S.aclType, x) === t; }) : -1);
 }
 function natRule(S, a, off) {
   /* inside source list N interface X overload | inside source static [tcp|udp] LOCAL [LPORT] (interface X | GLOBAL) [GPORT] */
@@ -313,9 +345,15 @@ const RT_POOL = [
   ["exit", "Exit from DHCP pool configuration mode", function (S) { S.mode = "config"; S.pool = null; return []; }]
 ];
 const RT_NACL = [
-  ["permit", "Specify packets to forward", function (S, a, raw) { return aclLine(S, S.acl, S.aclType, raw.trim().split(/\s+/)); }],
-  ["deny", "Specify packets to reject", function (S, a, raw) { return aclLine(S, S.acl, S.aclType, raw.trim().split(/\s+/)); }],
-  ["remark", "Access list entry comment", function (S, a, raw) { return aclLine(S, S.acl, S.aclType, raw.trim().split(/\s+/)); }],
+  ["<1-2147483647>", "Sequence Number", aclSeqLine],
+  ["permit", "Specify packets to forward", function (S, a) { return aclLine(S, S.acl, S.aclType, ["permit"].concat(a)); }],
+  ["deny", "Specify packets to reject", function (S, a) { return aclLine(S, S.acl, S.aclType, ["deny"].concat(a)); }],
+  ["remark", "Access list entry comment", function (S, a) { return aclLine(S, S.acl, S.aclType, ["remark"].concat(a)); }],
+  ["no", "Negate a command or set its defaults", [
+    ["<1-2147483647>", "Sequence Number", function (S, a, raw) { const L = S.sw.acls[S.acl]; return aclDrop(S, L ? aclSeqs(L).indexOf(seqWord(raw)) : -1); }],
+    ["permit", "Specify packets to forward", function (S, a) { return aclDropText(S, ["permit"].concat(a)); }],
+    ["deny", "Specify packets to reject", function (S, a) { return aclDropText(S, ["deny"].concat(a)); }],
+    ["remark", "Access list entry comment", function (S, a) { const L = S.sw.acls[S.acl], t = a.join(" "); return aclDrop(S, L ? L.lines.findIndex(function (e) { return e.remark === t; }) : -1); }]]],
   ["do", "To run exec commands in config mode", null],
   ["end", "Exit from configure mode", function (S) { S.mode = "priv"; S.acl = null; return []; }],
   ["exit", "Exit from access-list configuration mode", function (S) { S.mode = "config"; S.acl = null; return []; }]
@@ -398,7 +436,7 @@ function rtAcls(r, only, live) {
   Object.keys(r.acls).filter(function (k) { return !only || k === only; }).sort(function (a, b) { const x = /^\d+$/.test(a), y = /^\d+$/.test(b); return x && y ? +a - +b : x ? -1 : y ? 1 : a < b ? -1 : 1; }).forEach(function (k) {
     const A = r.acls[k], num = /^\d+$/.test(k);
     L.push((A.type === "standard" ? "Standard" : "Extended") + " IP access list " + k);
-    let seq = 0; A.lines.forEach(function (e, i) { if (e.remark) return; seq += 10; const h = hits[k] && hits[k][i]; L.push("    " + seq + " " + aceText(A.type, e) + (h ? " (" + h + " match" + (h === 1 ? "" : "es") + ")" : "")); });
+    const q = aclSeqs(A); A.lines.forEach(function (e, i) { if (e.remark) return; const h = hits[k] && hits[k][i]; L.push("    " + q[i] + " " + aceText(A.type, e) + (h ? " (" + h + " match" + (h === 1 ? "" : "es") + ")" : "")); });
     if (!num && !A.lines.filter(function (e) { return !e.remark; }).length) L.push("    (no entries: everything is denied by the implicit deny at the end)");
   });
   return L;

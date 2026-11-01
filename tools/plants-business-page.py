@@ -36,6 +36,11 @@ PLANTS = [
  ('SB-J7: the diagram labels the router by its public address', 'js/desk/draw.js', '.filter(function (k) { return !(x.sw.links[k] && x.sw.links[k].far === "modem"); })', '', 'SB-J7'),
  ("SB-J7: the provider's letter spells the mask out", 'js/build/business.js', 'from today the line has the fixed address " + F.ip + "/" + F.len + ".', 'from today the line has the fixed address " + F.ip + "/" + F.len + " (" + F.mask + ").', 'SB-J7'),
  ("SB-J7: the provider's letter leaves out the gateway", 'js/build/business.js', ' The provider\'s gateway for it is " + F.gw + ".",', '",', 'SB-J7'),
+ ("SB-J8: the printer's control panel saves no gateway", 'js/desk/window.js', 'mask: String(d.get("mask")).trim(), gw: String(d.get("gw")).trim() };\n    const x = ctx.act({ t: "client", dev: "printer", values: values });', 'mask: String(d.get("mask")).trim(), gw: "" };\n    const x = ctx.act({ t: "client", dev: "printer", values: values });', 'SB-J8'),
+ ("SB-J8: the Printers tab's port form saves nothing", 'js/desk/window.js', 'const r = ctx.act({ t: "pcprinter", ip: new FormData(f).get("port") });', 'const r = { result: { ok: true } };', 'SB-J8'),
+ ('SB-J8: show access-lists numbers the lines by position', 'js/net/rtcli.js', 'L.push("    " + q[i] + " " + aceText(A.type, e)', 'L.push("    " + (10 * (i + 1)) + " " + aceText(A.type, e)', 'SB-J8'),
+ ('SB-J8: the diagram labels the printer with its old address', 'js/desk/draw.js', 'if (id === "printer") return x.ifaces[0].cfg.mode === "static" ? x.ifaces[0].cfg.ip : "DHCP";', 'if (id === "printer") return x.sub;', 'SB-J8'),
+ ("SB-J8: the limits leave out the printer's new address", 'js/build/business.js', 'Its fixed address on the printers\' network is " + p.printerIp + " (mask', "Its fixed address on the printers' network is in the records (mask", 'SB-J8'),
 ]
 only = sys.argv[1:]
 caught = 0; run = 0

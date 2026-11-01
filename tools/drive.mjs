@@ -1169,6 +1169,12 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       await dev(p, a.dev); await tab(p, "Wi-Fi"); const li = p.locator(".pane .cabs li", { hasText: a.ssid });
       await li.locator('input[name="pass"]').fill(a.pass); await li.locator("button").click(); await p.waitForTimeout(60); return;
     }
+    if (a.t === "client" && a.dev === "printer") {   /* the printer's own control panel (SB-J8) */
+      await dev(p, "printer"); await tab(p, "Control panel"); await p.check('.pane input[name="mode"][value="' + a.values.mode + '"]');
+      if (a.values.mode === "static") for (const k of ["ip", "mask", "gw"]) await p.fill('.pane input[name="' + k + '"]', a.values[k] || "");
+      await p.click('.pane .devform button[type="submit"]'); await p.waitForTimeout(60); return;
+    }
+    if (a.t === "pcprinter") { await dev(p, "pc"); await tab(p, "Printers"); await p.fill('.pane input[name="port"]', a.ip); await p.click('.pane form:has(input[name="port"]) button[type="submit"]'); await p.waitForTimeout(60); return; }   /* the reception PC's printer port */
     throw new Error("no page step for " + JSON.stringify(a));
   };
   const promptNow = (p) => p.$eval(".term .prompt", (n) => n.textContent);
@@ -1537,6 +1543,45 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       check(new RegExp(F.gw.replace(/\./g, "\\.")).test((await term(p)).split("tracert 8.8.8.8").pop()), tag + "tracert from the reception PC goes out by the provider's gateway for the fixed block");
       await p.click("#vLog"); await p.waitForTimeout(40);
       check((await rtrSub()).indexOf(plan.lanGw) >= 0 && (await rtrSub()).indexOf(F.ip) < 0, tag + "after: the diagram still labels the router with the gateway, not its public address");
+      const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished business's logical diagram: every name and port dot clear" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(40);
+      await dysClear(p, tag + "the finished business");
+      await p.reload(); await p.waitForTimeout(350);
+      check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)), tag + "still done after a reload");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0] + (process.env.STACK ? " " + (String(e.stack).match(/drive\.mjs:\d+/g) || []).join(" ") : "")); }
+    await ctx.close();
+  }
+  /* SB-J8: the printers' VLAN, worked entirely through the page, as the walk-through does it: over SSH from the manager's PC to the
+     closet switch (across the router) and then the router, the guests' line put in by its sequence number; the printer's own
+     control panel; the reception PC's printer port. Test pages before and after, the guests' list read back with its numbers */
+  for (const seed of !process.env.JOB || process.env.JOB === "SB-J8" ? [11, 2025, 777777] : []) {
+    const job = "SB-J8", { p, ctx } = await zpage("build.html", { net: solvedTo(2), build: { current: job, j: { [job]: { seed } }, done: doneTo(2) } });
+    const tag = "business " + job + " " + seed + ": ";
+    try {
+      const plan = await BJ(p, () => window.__e4b.T.sim.net.plan), P = plan.vlans.printers, G = plan.vlans.guest, old = await BJ(p, () => window.__e4b.T.sim.d.printer.ifaces[0].cfg.ip);
+      check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed, tag + "opens the job on the business asked for");
+      const lim = await p.$eval(".limits", (n) => n.textContent);
+      check([String(P.id), P.name, P.net, P.gw, plan.printerIp, plan.guestAcl, plan.swIp, plan.user, plan.userPw].every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the printers' VLAN, the printer's new address, the guests' list and the SSH login");
+      await checkJob(p);
+      check((await p.$$("#check .rq.bad")).length === 6, tag + "the first check finds the six lines to do");
+      await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); await p.waitForTimeout(40);
+      check(new RegExp("Test page sent to " + old.replace(/\./g, "\\.") + ": it printed").test(await p.$eval(".pane .res", (n) => n.textContent)), tag + "before: the reception PC's test page prints, through the router, at the printer's old address");
+      const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
+      for (const a of sol) await step(p, a);
+      await dev(p, "mgr"); await tab(p, "Command Prompt"); const t = await term(p);
+      check(t.indexOf(plan.swHost + "(config-if)#") >= 0 && t.indexOf(plan.rtHost + "(config-ext-nacl)#") >= 0 && !/% Invalid|% Incomplete|% Ambiguous|% Duplicate|timed out/.test(t), tag + "SSH from the manager's PC to the closet switch and the router: in each one's configuration, every line taken");
+      for (const l of ["ssh " + plan.user + "@" + plan.vlans.staff.gw, plan.userPw, "enable", plan.rtSecret, "show access-lists " + plan.guestAcl]) await type(p, l);
+      const acl = (await term(p)).split("show access-lists " + plan.guestAcl).pop();
+      check(new RegExp("30 deny ip [^\\n]*\\n\\s*35 deny ip " + G.net.replace(/\./g, "\\.") + " 0\\.0\\.0\\.255 " + P.net.replace(/\./g, "\\.") + " 0\\.0\\.0\\.255\\s*\\n\\s*40 permit ip").test(acl), tag + "show access-lists: the printers' line went in as 35, between 30 and 40");
+      await type(p, "exit");
+      const done = await checkJob(p), n = await BJ(p, () => window.__e4b.T.def.reqs.length);
+      check(new RegExp(n + " of " + n + " met").test(done) && /Job .* done/.test(done), tag + "every line met through the page (" + (done.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
+      await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); await p.waitForTimeout(40);
+      check(new RegExp("Test page sent to " + plan.printerIp.replace(/\./g, "\\.") + ": it printed").test(await p.$eval(".pane .res", (n) => n.textContent)), tag + "after: the test page prints at the printer's new address");
+      await dev(p, "printer"); await tab(p, "Control panel");
+      check((await p.$eval('.pane input[name="ip"]', (n) => n.value)) === plan.printerIp && (await p.$eval('.pane input[name="gw"]', (n) => n.value)) === P.gw, tag + "the printer's control panel shows its new address and gateway");
+      await p.click("#vLog"); await p.waitForTimeout(40);
+      check((await p.$eval('#net [data-d="printer"]', (n) => n.textContent)).indexOf(plan.printerIp) >= 0, tag + "the diagram labels the printer with its new address");
       const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished business's logical diagram: every name and port dot clear" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
       await p.click("#vPhy"); await p.waitForTimeout(40);
       await dysClear(p, tag + "the finished business");

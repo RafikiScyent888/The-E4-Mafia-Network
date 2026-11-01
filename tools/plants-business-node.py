@@ -73,6 +73,22 @@ PLANTS = [
  ('SB-J7 sim: the old address keeps working after the move', 'js/net/sim.js', '    if (dst !== w.addr) return { fail: "timeout", why: dst === fixedIp ? "notyet" : "old" };', '    if (dst !== w.addr && dst === fixedIp) return { fail: "timeout", why: "notyet" };'),
  ('SB-J7 sim: an answer from outside needs no way back out', 'js/net/sim.js', '    if (!back || back.iface !== w.iface || !this.wanHopOk(w, back)) return { fail: "timeout", why: "back",', '    if (false) return { fail: "timeout", why: "back",'),
  ('SB-J7 sim: everyone goes out on the old address', 'js/net/sim.js', 'return Object.assign({ internet: true, nat: { inside: a.ip, global: w.addr },', 'return Object.assign({ internet: true, nat: { inside: a.ip, global: this.net.isp.wanIp },'),
+ ("SB-J8 job: the printers' VLAN made by its port (named after its number), accepted", 'js/build/business.js', 'C("name", !!vl && vl.name !== P.name, "The printers\' VLAN', 'C("name", false, "The printers\' VLAN'),
+ ("SB-J8 job: the printer's port left in the old VLAN, accepted", 'js/build/business.js', 'C("vlan", !!c && c.untagged !== P.id,', 'C("vlan", false,'),
+ ("SB-J8 job: the trunk to the router not carrying the printers' VLAN, accepted", 'js/build/business.js', 'C("uplink", !!sw.vlans[P.id] && !!uc', 'C("uplink", false && !!uc'),
+ ("SB-J8 job: the printer's gateway never checked", 'js/build/business.js', 'C("gw", fix && f.gw !== P.gw,', 'C("gw", false,'),
+ ('SB-J8 job: the reception PC still printing to the old address, accepted', 'js/build/business.js', 'C("port", reach && port !== want,', 'C("port", false,'),
+ ('SB-J8 job: ARP inspection dropping the printer read as merely unreachable', 'js/build/business.js', 'C("dai", dai,', 'C("dai", false,'),
+ ('SB-J8 job: the guests kept off this printer only, accepted', 'js/build/business.js', 'const host = !!L && !open.length && PRINT_WAYS.some(', 'const host = false && PRINT_WAYS.some('),
+ ('SB-J8 job: only raw printing checked for guests', 'js/build/business.js', 'const PRINT_WAYS = [["tcp", 9100, "printing (9100)"], ["tcp", 631, "IPP (631)"], ["tcp", 443, "its web page (443)"], ["tcp", 80, "its web page (80)"], ["icmp", null, "ping"]];', 'const PRINT_WAYS = [["tcp", 9100, "printing (9100)"]];'),
+ ("SB-J8 job: a hint names the printers' subinterface", 'js/build/business.js', 'rung1: function () { return "On the router: show ip interface brief. On the closet switch: show interfaces trunk."; }', 'rung1: function (v) { return "On the router: show ip interface brief " + v.plan.lanPort + "." + v.plan.vlans.printers.id + ". On the closet switch: show interfaces trunk."; }'),
+ ('SB-J8 CLI: a numbered line goes in at the end', 'js/net/rtcli.js', 'let at = L.lines.length; for (let i = 0; i < L.lines.length; i++) if (q[i] != null && q[i] > seq) { at = i; break; }', 'let at = L.lines.length;'),
+ ('SB-J8 CLI: a line taken out renumbers the ones after it', 'js/net/rtcli.js', 'freezeSeqs(L); L.lines.splice(at, 1); shiftHits(S, S.acl, at, -1); return [];', 'L.lines.splice(at, 1); shiftHits(S, S.acl, at, -1); return [];'),
+ ('SB-J8 CLI: a line put in leaves the match counts where they were', 'js/net/rtcli.js', 'L.lines.splice(at, 0, e); shiftHits(S, name, at, 1); return [];', 'L.lines.splice(at, 0, e); return [];'),
+ ('SB-J8 CLI: a duplicate sequence number taken', 'js/net/rtcli.js', 'if (aclSeqs(L).indexOf(seq) >= 0) return ["% Duplicate sequence number"];', ''),
+ ('SB-J8 cmd: SSH across the router never judged by its lists', 'js/net/cmd.js', 'const rt = sim.route(id, host, { proto: "tcp", port: 22, sport: 50022 });', 'const rt = sim.route(id, host);'),
+ ("SB-J8 cmd: SSH only on the PC's own network, as before", 'js/net/cmd.js', 'if (rt.fail || !(rt.local || rt.routed)) return { out: "ssh: connect to host "', 'if (rt.fail || !rt.local) return { out: "ssh: connect to host "'),
+ ("the business PC's test page counts only a printer on its own network (the old bug)", 'js/net/sim.js', 'if (r.routed && !r.local) return !r.fail && r.owner', 'if (false) return !r.fail && r.owner'),
  ("an access port's missing VLAN never made", "js/net/swcli.js", 'if (!S.sw.vlans[v]) { S.sw.vlans[v] = { name: "VLAN" + String(v).padStart(4, "0") }; out.push("% Access VLAN does not exist. Creating vlan " + v); }', 'if (!S.sw.vlans[v]) { out.push("% Access VLAN does not exist. Creating vlan " + v); }'),
  ("interface range takes no list", "js/net/swcli.js", '.replace(/\\s+/g, " ").split(","), out = [];', '.replace(/\\s+/g, " ").split(/(?!)/), out = [];'),
  ("a cable refused names devices in capitals mid-sentence", "js/net/sim.js", 'const theDev = function (x) { return /^your /i.test(x.label) ? x.label.toLowerCase() : "the " + x.label.replace(', 'const theDev = function (x) { return "the " + x.label; return "the " + x.label.replace('),
@@ -87,7 +103,7 @@ for name, f, a, b in PLANTS:
     shutil.copy(f, BAK)
     open(f, "w").write(src.replace(a, b))
     try:
-        r = subprocess.run(["node", "--test", "tests/business-jobs.test.js", "tests/business-sim.test.js", "tests/business-cli.test.js", "tests/business-cams.test.js", "tests/business-harden.test.js", "tests/business-sb6.test.js", "tests/business-sb7.test.js", "tests/office.test.js"], env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=1200)
+        r = subprocess.run(["node", "--test", "tests/business-jobs.test.js", "tests/business-sim.test.js", "tests/business-cli.test.js", "tests/business-cams.test.js", "tests/business-harden.test.js", "tests/business-sb6.test.js", "tests/business-sb7.test.js", "tests/business-sb8.test.js", "tests/business-page.test.js", "tests/office.test.js"], env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=1200)
         fails = [l.strip() for l in r.stdout.splitlines() if l.startswith("not ok")]
         caught += 1 if r.returncode else 0
         print(("CAUGHT" if r.returncode else "MISSED") + " · " + name + " · " + (", ".join(fails)[:200]), flush=True)

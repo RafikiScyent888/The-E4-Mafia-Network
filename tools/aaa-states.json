@@ -1210,5 +1210,40 @@
   "name": "business: SB-J7 done, the manager's phone on mobile data at the fixed address",
   "page": "build.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J7',true,4242); const J=c.T, p=J.v.plan, F=p.fixed, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; sol.forEach(a=>c.act(a)); c.check(); dev('mphone'); tab('Web browser'); go('https://'+F.ip+':'+p.cams[0].ext);"
+ },
+ {
+  "name": "business: SB-J8 first check, the work order with the printers' records",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J8',true,4242); const J=c.T, p=J.v.plan, P=p.vlans.printers, G=p.vlans.guest, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const deny=sol.findIndex(a=>/^35 deny/.test(a.line||'')); c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J8 the closet switch over SSH from the manager's PC, the printers' VLAN made",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J8',true,4242); const J=c.T, p=J.v.plan, P=p.vlans.printers, G=p.vlans.guest, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const deny=sol.findIndex(a=>/^35 deny/.test(a.line||'')); sol.slice(0,10).forEach(a=>c.act(a)); c.act({t:'cmd',dev:'mgr',line:'do show vlan brief'}); dev('mgr'); tab('Command Prompt');"
+ },
+ {
+  "name": "business: SB-J8 the guests' list read back, the printers' line in as 35",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J8',true,4242); const J=c.T, p=J.v.plan, P=p.vlans.printers, G=p.vlans.guest, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const deny=sol.findIndex(a=>/^35 deny/.test(a.line||'')); sol.slice(0,deny+1).forEach(a=>c.act(a)); c.act({t:'cmd',dev:'mgr',line:'do show access-lists '+p.guestAcl}); dev('mgr'); tab('Command Prompt');"
+ },
+ {
+  "name": "business: SB-J8 the printers' line typed in at the end, Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J8',true,4242); const J=c.T, p=J.v.plan, P=p.vlans.printers, G=p.vlans.guest, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const deny=sol.findIndex(a=>/^35 deny/.test(a.line||'')); sol.forEach((a,i)=>c.act(i===deny?Object.assign({},a,{line:a.line.replace(/^35 /,'')}):a)); for(let i=0;i<5;i++) c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J8 done, the printer's control panel with its new address",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J8',true,4242); const J=c.T, p=J.v.plan, P=p.vlans.printers, G=p.vlans.guest, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const deny=sol.findIndex(a=>/^35 deny/.test(a.line||'')); sol.forEach(a=>c.act(a)); c.check(); dev('printer'); tab('Control panel');"
+ },
+ {
+  "name": "business: SB-J8 done, the reception PC's test page at the new address",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J8',true,4242); const J=c.T, p=J.v.plan, P=p.vlans.printers, G=p.vlans.guest, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const deny=sol.findIndex(a=>/^35 deny/.test(a.line||'')); sol.forEach(a=>c.act(a)); c.check(); dev('pc'); tab('Printers'); [...document.querySelectorAll('.pane button')].find(b=>b.textContent==='Print a test page').click();"
+ },
+ {
+  "name": "business: SB-J8 done, the logical diagram with the printer's new address",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J8',true,4242); const J=c.T, p=J.v.plan, P=p.vlans.printers, G=p.vlans.guest, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const deny=sol.findIndex(a=>/^35 deny/.test(a.line||'')); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('vLog').click();"
  }
 ]

@@ -63,6 +63,16 @@ PLANTS = [
  ('SB-J6 engine: a cabinet action not recorded, so a replay loses it', 'js/build/engine.js', 'radio: 1, cabinet: 1 };', 'radio: 1 };'),
  ('SB-J6 page: a refused power-cycle says it restarted', 'js/net/pages.js', '  if (done.ok === false && done.errs) return {', '  if (false) return {'),
  ('SB-J6 CLI: transport input ssh telnet read as SSH only', 'js/net/swcli.js', 'return setTransport(S, a.some(function (w) { return /^te/i.test(w); }) ? "all" : "ssh");', 'return setTransport(S, "ssh");'),
+ ('SB-J7 job: a /24 mask accepted', 'js/build/business.js', 'C("mask", hand && f.mask !== F.mask,', 'C("mask", false,'),
+ ("SB-J7 job: the gateway's address read as merely the wrong address", 'js/build/business.js', 'C("gwaddr", hand && f.ip === F.gw,', 'C("gwaddr", false,'),
+ ('SB-J7 job: no default route accepted', 'js/build/business.js', 'C("none", !d.length, "There\'s no default route set by hand', 'C("none", false, "There\'s no default route set by hand'),
+ ('SB-J7 job: the default route to the old gateway accepted', 'js/build/business.js', 'C("old", !mine && !!old,', 'C("old", false,'),
+ ("SB-J7 job: a hint names the provider's gateway", 'js/build/business.js', 'rung1: function () { return "On the router: show ip route (is there a gateway of last resort, and where from?)', 'rung1: function (v) { return "On the router: show ip route " + v.plan.fixed.gw + " (is there a gateway of last resort, and where from?)'),
+ ('SB-J7 job: the cabinet left unlocked accepted', 'js/build/business.js', 'C("rack", !!K && (!K.locked || K.key),', 'C("rack", false,'),
+ ('SB-J7 sim: any next hop goes out to the provider', 'js/net/sim.js', '  wanHopOk(w, rt) { return !!w && !!rt && (!!rt.dhcp || (!!rt.nh && rt.nh === w.gw)); }', '  wanHopOk(w, rt) { return !!w && !!rt; }'),
+ ('SB-J7 sim: the old address keeps working after the move', 'js/net/sim.js', '    if (dst !== w.addr) return { fail: "timeout", why: dst === fixedIp ? "notyet" : "old" };', '    if (dst !== w.addr && dst === fixedIp) return { fail: "timeout", why: "notyet" };'),
+ ('SB-J7 sim: an answer from outside needs no way back out', 'js/net/sim.js', '    if (!back || back.iface !== w.iface || !this.wanHopOk(w, back)) return { fail: "timeout", why: "back",', '    if (false) return { fail: "timeout", why: "back",'),
+ ('SB-J7 sim: everyone goes out on the old address', 'js/net/sim.js', 'return Object.assign({ internet: true, nat: { inside: a.ip, global: w.addr },', 'return Object.assign({ internet: true, nat: { inside: a.ip, global: this.net.isp.wanIp },'),
  ("an access port's missing VLAN never made", "js/net/swcli.js", 'if (!S.sw.vlans[v]) { S.sw.vlans[v] = { name: "VLAN" + String(v).padStart(4, "0") }; out.push("% Access VLAN does not exist. Creating vlan " + v); }', 'if (!S.sw.vlans[v]) { out.push("% Access VLAN does not exist. Creating vlan " + v); }'),
  ("interface range takes no list", "js/net/swcli.js", '.replace(/\\s+/g, " ").split(","), out = [];', '.replace(/\\s+/g, " ").split(/(?!)/), out = [];'),
  ("a cable refused names devices in capitals mid-sentence", "js/net/sim.js", 'const theDev = function (x) { return /^your /i.test(x.label) ? x.label.toLowerCase() : "the " + x.label.replace(', 'const theDev = function (x) { return "the " + x.label; return "the " + x.label.replace('),
@@ -77,7 +87,7 @@ for name, f, a, b in PLANTS:
     shutil.copy(f, BAK)
     open(f, "w").write(src.replace(a, b))
     try:
-        r = subprocess.run(["node", "--test", "tests/business-jobs.test.js", "tests/business-sim.test.js", "tests/business-cli.test.js", "tests/business-cams.test.js", "tests/business-harden.test.js", "tests/business-sb6.test.js", "tests/office.test.js"], env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=1200)
+        r = subprocess.run(["node", "--test", "tests/business-jobs.test.js", "tests/business-sim.test.js", "tests/business-cli.test.js", "tests/business-cams.test.js", "tests/business-harden.test.js", "tests/business-sb6.test.js", "tests/business-sb7.test.js", "tests/office.test.js"], env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=1200)
         fails = [l.strip() for l in r.stdout.splitlines() if l.startswith("not ok")]
         caught += 1 if r.returncode else 0
         print(("CAUGHT" if r.returncode else "MISSED") + " · " + name + " · " + (", ".join(fails)[:200]), flush=True)

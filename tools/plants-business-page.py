@@ -33,6 +33,9 @@ PLANTS = [
  ("SB-J6: the router doesn't say it's in the cabinet", 'js/net/physical.js', '  if (cab) says.push("It\'s in the closet cabinet:', '  if (false) says.push("It\'s in the closet cabinet:', 'SB-J6'),
  ('SB-J6: a refused pull said as pulled', 'js/build/app.js', 'ctx.said = x && x.ok === false ? { k: "u", ok: false', 'ctx.said = false ? { k: "u", ok: false', 'SB-J6'),
  ("SB-J6: the cabinet's model drawn open whatever its door", 'js/net/physical.js', 'x.kind === "cabinet" ? (x.open ? "cabinetOpen" : "cabinet") :', 'x.kind === "cabinet" ? "cabinetOpen" :', 'SB-J6'),
+ ('SB-J7: the diagram labels the router by its public address', 'js/desk/draw.js', '.filter(function (k) { return !(x.sw.links[k] && x.sw.links[k].far === "modem"); })', '', 'SB-J7'),
+ ("SB-J7: the provider's letter spells the mask out", 'js/build/business.js', 'from today the line has the fixed address " + F.ip + "/" + F.len + ".', 'from today the line has the fixed address " + F.ip + "/" + F.len + " (" + F.mask + ").', 'SB-J7'),
+ ("SB-J7: the provider's letter leaves out the gateway", 'js/build/business.js', ' The provider\'s gateway for it is " + F.gw + ".",', '",', 'SB-J7'),
 ]
 only = sys.argv[1:]
 caught = 0; run = 0

@@ -2243,22 +2243,64 @@ Built and checked so far:
   dropped: this router never had one (SB-J3 checks its address is refused in a browser), so line 8 is LLDP off on the
   outside port only.
 
-Next, when the owner says go back:
-1. **The work order** `SB6` in `js/build/business.js` (start from SB5's solve; `already`: still, saved, swsaved,
-   bswsaved). Lines, in order: `ssh` (router: domain, keys of 768 bits or more, `login local`, the records' user, `transport
-   input ssh`); `vtyacl` (the records' list in on the vty lines, permitting the staff VLAN only; a list that doesn't exist
-   lets everyone in); `pwenc` (no plain or type-7 enable password, `service password-encryption`, on all three);
-   `idle` (con and vty on all three, 0 < timeout <= the records' minutes; `0 0` never logs out); `psec` (the staff PCs'
-   ports, closet 1 and 2, back 1: on, maximum 1, shutdown, sticky holding that PC's address; none on the access point's
-   port or the uplinks); `park` (every spare copper port on both switches shut, access, in the parking VLAN, named
-   PARKING); `access` (every port with a device on it set as access: the printer's port 3 is still left to negotiate);
-   `lldp` (no LLDP sent on the router's outside port, or `no lldp run`); `snoop` and `dai` (staff and guest VLANs on both
-   switches, trusting the way to the router: closet 24, back 24; trusting the inter-switch trunk too is accepted, a device's
-   port is not); `rack` (locked, key taken away; the cabinet was approved 31 October); `still`; `saved`, `swsaved`, `bswsaved`.
-   The walk-through renews the staff PCs and rejoins the visitor's phone after snooping.
-2. Its tests (tempting wrong ways: Telnet left on, `permit any`, a type-7 enable password, `exec-timeout 0 0`, no sticky,
-   restrict, port security on the access point's port, the router's port untrusted, inspection on the cameras' VLAN or
-   VLAN 1, clients never renewed), then the page, drive, AAA, plants, totals and go-live, as for SB-J5.
+**Built 1 November 2026, the work order** (`SB6` in `js/build/business.js`; on `save/level3-stage5`, not live):
+- **Its start:** SB-J5 done, then `addCabinet` (`js/net/business.js`): `net.cabinet = { open: true, locked: false, key:
+  true, holds: ["rtr", "msw"] }`, the door standing open, unlocked, its key in the lock. `already`: still, saved, swsaved,
+  bswsaved; every other line starts unmet for its real reason (checked on 25 businesses).
+- **The cabinet in the simulation** (`sim.js`): the action `{ t: "cabinet", values: { open | locked | key } }`, one at a
+  time; the lock turns only with the key in and the door shut, a locked door doesn't open. `cabinetBars`: with the door
+  shut, a cable laid or pulled at the router or the closet switch, or either powered off and on, is refused ("... is in the
+  closet cabinet, and its door is shut: open it first"); the back switch isn't in it. Recorded for replay (`engine.js`
+  STATE). A refused power-cycle now says so (`pages.js` `physical`), not "Restarted".
+- **The lines and their causes, in order** (each first cause still on is the one shown; rung 3 strikes those before it):
+  - `ssh`: domain, keys, small (under 768 bits), user, userpw, login (not `login local`), telnet (`telnet` or `all`), none.
+  - `vtyacl`: none, out (applied out), missing (a list that doesn't exist lets everyone in), staff (shut out too), wide
+    (lets in the guest or cameras' network, the old network or the internet), name (works, but not the records' name).
+  - `pwenc`: per device (router, closet, back), `-enable` (an enable password beside the secret: plain, or type 7 with
+    the words saying anyone can reverse it), `-service` (no `service password-encryption`).
+  - `idle`: per device, `-never` (`exec-timeout 0 0` on con or vty), `-long` (none set, the default ten minutes, or over
+    the records' minutes; seconds count, so `exec-timeout 0 300` is five minutes).
+  - `psec`: the first staff PC whose port isn't right: cable, off, err (err-disabled), max, viol (restrict or protect),
+    sticky (none stuck), wrong (another device's address stuck); then ap (port security on the access point's port) and
+    uplink (on a trunk to the router or the other switch).
+  - `park`: cvlan, cname, bvlan, bname (the parking VLAN on each switch, named PARKING), open, mode (left to negotiate or
+    a trunk), vlan (a spare in a VLAN that's in use). Spare means a copper port with nothing cabled to it.
+  - `access`: dyn, trunk: the ports with a PC, the printer, a camera or a laptop at the far end (followed through an
+    injector); the access point's port is a trunk and isn't counted.
+  - `lldp`: inside (turned off on the inside port instead), rx (`no lldp receive` only), wan. `no lldp run` passes.
+  - `snoop`, per switch: `-vlans` (not every staff and guest VLAN it carries), `-on` (set but never turned on), `-trust`
+    (the way to the router untrusted), `-device` (a device's or the access point's port trusted).
+  - `dai`, per switch: `-vlans`, `-blind` (inspected where it doesn't snoop), `-fixed` (the cameras' VLAN or VLAN 1:
+    fixed addresses have no bindings), `-trust`, `-device`.
+  - `rack`: open, unlocked, key (locked, the key left in the lock).
+  - `still`: err (a staff PC's port shut by port security), lease (no address: answers dropped), stale (its lease from
+    before snooping), arp (dropped by inspection though bound), net, print, guest, cams (from outside), ap.
+- **The walk-through:** the router (domain, keys of 2048, the user, the standard list, the lines, the timeouts,
+  password-encryption, `no lldp transmit` on Gi0/0, saved); the closet switch (encryption, timeouts, port security on 1 and
+  2 with sticky, the printer's port 3 set as access, the parking VLAN, the spares `gi0/4 , gi0/7 - 22` parked and shut,
+  snooping and inspection on staff and guest trusting 24, saved); the laptop to the back room, the back switch the same
+  (port security on 1, spares `gi0/3 - 23`, staff only, trusting 24); every staff PC renews, the visitor's phone rejoins;
+  then the cabinet shut, locked, its key taken out.
+- **Fixed while building:** `transport input ssh telnet` (or `telnet ssh`) read as SSH only, so Telnet left on would
+  have passed; both words now take both (`all`), as on the real thing.
+- **Checks:** `tests/business-sb6.test.js` (7 tests, 25 businesses): as found and solved; the router's wrong ways
+  (Telnet left on, both taken, 512-bit keys, no `login local`, `permit any`, a list shutting staff out, applied out, a
+  missing list, the wrong name, a type 7 enable password, encryption left off, `0 0`, fifteen minutes, LLDP left on, only
+  `no lldp receive`, LLDP off inside, not saved), each failing its own line and nothing else where that's the point; the
+  switches' (no sticky, restrict, maximum 2, port security on the access point's port, which then shuts the visitor out,
+  and on the trunk, the parking VLAN made by the access line and never named, spares unparked, left to negotiate, opened,
+  the printer's port left negotiating or made a trunk or put in staff, which stops printing, the router's port untrusted
+  for DHCP (nobody renewing gets an address) or for ARP, snooping never turned on, a PC's or the access point's port
+  trusted, inspection on the cameras' VLAN or VLAN 1, the back switch not snooping, not saved); clients never renewed; the
+  cabinet's three wrong ways; other right ways (1024-bit keys, an extended list, seconds, `no lldp run`, the settings in
+  full, the inter-switch trunk trusted, the cabinet locked first and opened again); the cabinet's rules (refusals change
+  nothing; it replays); checking changes nothing. In `tests/business-jobs.test.js`: SB-J6's names (its list, the domain,
+  PARKING, the parking VLAN, the idle minutes) added to what no hint may say, a VLAN's number now caught in any case ("VLAN
+  998" was missed), Mason's words at each count of failing checks read straight from the first unmet line (the same words,
+  a sixth of the time), and SB-J6's random walk given its own hardening lines and cabinet actions.
+
+Next: the page (the cabinet on the router's and closet switch's Physical tabs, its 3D model, the records), the drive,
+AAA, the page plants, totals, the owner's preview and go-live, as for SB-J5.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

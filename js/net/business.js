@@ -134,6 +134,13 @@ export function addCameraKit(sim) {
   ["cam1", "cam2", "cinj1", "cinj2", "mphone"].forEach(function (id) { sim.arp[id] = {}; });
 }
 
+/* what SB-J6 finds: the closet cabinet the router and the closet switch have always been in (modelled from the owner's
+   photographs and approved on 31 October 2026), its door standing open, unlocked, its key left in the lock. Nothing drawn
+   from the seed, so every business before it comes out exactly as it always has */
+export function addCabinet(sim) {
+  sim.net.cabinet = { open: true, locked: false, key: true, holds: ["rtr", "msw"] };
+}
+
 export function makeBusiness(seed) {
   const r = rng(seed ^ 0x3b17);
   const biz = r.pick(BUSINESSES), k = r.int(0, PREFIXES.length - 1), prefix = PREFIXES[k], range = RANGES[k], mask = "255.255.255.0", gw = prefix + ".1";

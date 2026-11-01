@@ -6,12 +6,12 @@
    devices and the network as they really are. Each line is an ordered list of
    causes, as on the other levels, so Mason's third rung can strike the ones
    the network has ruled out and leave two. None of it ever says what to type. */
-import { makeBusiness, addGuestKit, addBackSwitch, addCameraKit } from "../net/business.js";
+import { makeBusiness, addGuestKit, addBackSwitch, addCameraKit, addCabinet } from "../net/business.js";
 import { Sim } from "../net/sim.js";
 import { exec } from "../net/cmd.js";
 import { browse } from "../net/pages.js";
-import { unsaved, pwOk, carries } from "../net/swcli.js";
-import { addrOf, rtStatus, poolFor, poolAddrs, aclVerdict, routes, netOf } from "../net/rtcli.js";
+import { unsaved, pwOk, carries, errDisabled, dotMac } from "../net/swcli.js";
+import { addrOf, rtStatus, poolFor, poolAddrs, aclVerdict, routes, netOf, lldpSends } from "../net/rtcli.js";
 import { online } from "./jobs.js";
 import { ip2n } from "../net/util.js";
 
@@ -1029,4 +1029,330 @@ const SB5 = {
   }
 };
 
-export const BUSINESS_JOBS = [SB1, SB2, SB3, SB4, SB5];
+/* ---------------------------------------------------------------- SB-J6: hardening after the card processor's PCI DSS check */
+/* the owner's decisions (28 October 2026): the reason, a card payment check; the router managed by SSH only, and only the staff
+   VLAN reaching its remote lines; no password readable on any of the three; idle sessions logged out; one device on each staff PC's
+   port, a stranger shutting it; spare ports shut and parked; device ports never trunks; the router silent to the provider (LLDP off
+   on its outside port; "its web server off" dropped on 31 October, as it never had one); DHCP snooping with ARP inspection; the
+   closet cabinet locked and its key taken away (the cabinet approved on 31 October); everything still working; every device saved */
+const THREE = [["rtr", "router"], ["msw", "closet switch"], ["bsw", "back switch"]];
+const SWS = [["msw", "closet switch"], ["bsw", "back switch"]];
+const parking = function (v) { return VL(v, "parking"); };
+const gi = function (n) { return String(n || "").replace("GigabitEthernet", "Gi"); };
+const PS_NONE = { on: false, max: 1, viol: "shutdown", sticky: false, macs: [] };
+const psRead = function (p) { return (p && p.ps) || PS_NONE; };   /* read only: a port never secured has no settings, and checking adds none */
+const STAFF_PCS = [["pc", "msw"], ["mgr", "msw"], ["bpc", "bsw"]];
+const NEVER = function (t) { return !!t && t[0] === 0 && t[1] === 0; };
+const idleSecs = function (t) { return t ? t[0] * 60 + t[1] : 600; };   /* no exec-timeout: the default, ten minutes */
+/* the ports with something at the far end, and what's really there: through an injector to the camera or the access point it powers.
+   kind: "device" (a PC, the printer, a camera, a laptop), "ap", or "link" (the other switch, the router) */
+function farEnds(sim, id) {
+  const out = []; if (!sim.d[id]) return out;
+  for (let k = 1; k <= 24; k++) {
+    const c = sim.cableAt(id, String(k)); if (!c) continue;
+    let far = c.a.dev === id ? c.b : c.a, x = sim.d[far.dev];
+    if (x && x.kind === "injector") { const o = sim.cableAt(far.dev, far.port === "PoE OUT" ? "DATA IN" : "PoE OUT"); far = o ? (o.a.dev === far.dev ? o.b : o.a) : null; x = far ? sim.d[far.dev] : null; }
+    const kind = !x ? null : x.kind === "bap" ? "ap" : /^(mswitch|brouter|router|modem)$/.test(x.kind) ? "link" : "device";
+    if (kind) out.push({ n: port(k), p: sim.d[id].sw.ports[port(k)], dev: far.dev, kind: kind });
+  }
+  return out;
+}
+const spareOf = function (sim, id) { const out = []; for (let k = 1; k <= 24; k++) if (!sim.cableAt(id, String(k))) out.push(port(k)); return out; };
+/* each switch's way to the router: the closet switch's port the router is in, the back switch's end of the trunk to the closet */
+function towardRouter(sim, id) {
+  if (id === "msw") { const u = between(sim, "rtr", "msw"); return u ? port(u.far) : null; }
+  const L = trunkLink(sim); return L ? port(L.back) : null;
+}
+/* the staff and guest VLANs a switch carries: snooping and inspection go on each of them */
+const vlanWords = function (l) { return l.length > 1 ? "VLANs " + l.join(",") + " aren't" : "VLAN " + l[0] + " isn't"; };
+const guarded = function (sim, v, id) { const sw = sim.d[id].sw; return [staff(v).id, guest(v).id].filter(function (x) { return !!sw.vlans[x]; }); };
+
+function sshCauses(sim, v) {
+  const R = RT(sim), p = v.plan, u = R.users[p.user], t = R.vty.transport;
+  return [C("domain", !R.domain, "The router has no domain name: SSH's keys are named from its hostname and a domain", "It has a domain name.", "show running-config on the router: no ip domain-name."),
+    C("keys", !R.rsa, "The router has no RSA keys, so it can't speak SSH", "It has its keys.", "show crypto key mypubkey rsa on the router: no RSA keys."),
+    C("small", !!R.rsa && R.rsa < 768, "Its keys are too short: under 768 bits it offers only SSH version 1, which nothing should use", "Its keys are long enough for SSH version 2.", "show crypto key mypubkey rsa on the router: RSA KEYS " + R.rsa + " bits."),
+    C("user", !u, "The router has no local user from the business's records", "The records' user is on it.", "show running-config on the router: no username " + p.user + "."),
+    C("userpw", !!u && !pwOk(u, p.userPw), "The records' user is on it, but not with the records' password", "The user's password is the records'.", "The business's password for " + p.user + " isn't accepted."),
+    C("login", R.vty.login !== "local", "The remote lines don't ask for a user from the router's own list", "The remote lines log in with the router's users.", "show running-config on the router: line vty 0 4 has " + (R.vty.login ? "login (a line password only)" : "no login") + "."),
+    C("telnet", /^(telnet|all)$/.test(t), "Telnet is still taken on the remote lines: logins cross the network in plain text", "Only SSH is taken.", "show running-config on the router: line vty 0 4, transport input " + t + "."),
+    C("none", !/^(ssh|telnet|all)$/.test(t), "The remote lines take no connections at all", "The remote lines take SSH.", "show running-config on the router: line vty 0 4, transport input " + t + ".")];
+}
+function vtyCauses(sim, v) {
+  const R = RT(sim), p = v.plan, S = staff(v), a = R.vty.acl, L = !!a && !!R.acls[a];
+  const lets = function (src) { return L && aclVerdict(R, a, { proto: "tcp", src: src, dst: S.gw, sport: 50000, port: 22 }).permit; };
+  const m = sim.addr("mgr"), mine = m && m.kind !== "apipa" && inNet(m.ip, S.net) ? m.ip : S.net.replace(/\.0$/, ".50"), h = function (net) { return net.replace(/\.0$/, ".50"); };
+  const wide = [["the guest network", h(guest(v).net)], ["the cameras' network", h(cams(v).net)], ["the old network", h(p.lan)], ["the internet", "203.0.113.80"]].find(function (o) { return lets(o[1]); });
+  return [C("none", !a && !R.vty.aclOut, "Nothing limits who can reach the router's remote lines", "A list guards the remote lines.", "show running-config on the router: line vty 0 4 has no access-class."),
+    C("out", !a && !!R.vty.aclOut, "A list is on the remote lines, but outbound: it limits where the lines connect to, not who logs in", "The list is applied in.", "show running-config on the router: line vty 0 4, access-class " + R.vty.aclOut + " out."),
+    C("missing", !!a && !L, "The list on the remote lines doesn't exist: a missing list lets everyone in", "The list exists.", "show access-lists on the router: no list " + a + "."),
+    C("staff", L && !lets(mine), "The list shuts out the staff VLAN too", "Staff get through it.", "ssh from the manager's PC to the router: Connection refused."),
+    C("wide", L && !!wide, "The list lets in more than the staff VLAN", "Only staff get through.", "show access-lists on the router: " + a + " lets in " + (wide ? wide[0] : "") + "."),
+    C("name", !!a && a !== p.vtyAcl, "The list isn't the one named in the business's records", "It's the records' list.", "show running-config on the router: line vty 0 4, access-class " + a + " in.")];
+}
+function pwCauses(sim) {
+  return [].concat.apply([], THREE.map(function (d) {
+    const sw = sim.d[d[0]].sw, ep = sw.enablePassword, seven = !!ep && (sw.encrypt || /^\$7\$/.test(ep));
+    return [C(d[0] + "-enable", !!ep, "The " + d[1] + " has an enable password beside its secret" + (seven ? ": encrypted, it's type 7, which anyone can reverse" : ", in plain text"), "The " + d[1] + " has only its secret.", "show running-config on the " + d[1] + ": enable password " + (seven ? "7 (scrambled, reversible)" : "in plain text") + "."),
+      C(d[0] + "-service", !sw.encrypt, "The " + d[1] + "'s line passwords show in plain text in its configuration", "The " + d[1] + "'s passwords are encrypted.", "show running-config on the " + d[1] + ": no service password-encryption; line con 0's password reads as typed.")];
+  }));
+}
+function idleCauses(sim, v) {
+  const lim = v.plan.idle * 60;
+  return [].concat.apply([], THREE.map(function (d) {
+    const sw = sim.d[d[0]].sw, rows = [["con", "line con 0"], ["vty", d[0] === "rtr" ? "line vty 0 4" : "line vty 0 15"]].map(function (l) { return { l: l[1], t: sw[l[0]].timeout || null }; });
+    const never = rows.find(function (r) { return NEVER(r.t); }), long = rows.find(function (r) { return !NEVER(r.t) && idleSecs(r.t) > lim; });
+    return [C(d[0] + "-never", !!never, "The " + d[1] + "'s console or remote lines never log out: a timeout of zero turns the timer off", "None of the " + d[1] + "'s lines is set to never log out.", "show running-config on the " + d[1] + ": " + (never ? never.l : "a line") + ", exec-timeout 0 0."),
+      C(d[0] + "-long", !!long, "The " + d[1] + "'s console or remote lines keep an idle session longer than the records allow", "The " + d[1] + "'s lines log out in time.", "show running-config on the " + d[1] + ": " + (long ? long.l + (long.t ? ", exec-timeout " + long.t.join(" ") : " has no exec-timeout (the default: ten minutes)") : "") + ".")];
+  }));
+}
+/* each staff PC's port, as the records set it: the first PC whose port isn't, and what's wrong with it */
+function psecCauses(sim, v) {
+  const rows = STAFF_PCS.map(function (x) { const m = between(sim, x[0], x[1]), sw = sim.d[x[1]].sw, n = m ? port(m.far) : null; return { id: x[0], at: x[1] === "msw" ? "closet switch" : "back switch", m: m, n: n, sw: sw, P: psRead(n && sw.ports[n]), mac: dotMac(sim.macOf(x[0])) }; });
+  const stuck = function (r) { return r.P.macs.filter(function (k) { return k.sticky; }); };
+  const bad = function (r) { return !r.m || !r.P.on || errDisabled(r.sw, r.n) || r.P.max > 1 || r.P.viol !== "shutdown" || !stuck(r).some(function (k) { return k.mac === r.mac; }); };
+  const r = rows.find(bad) || rows[0], P = r.P, who = name(sim, r.id), g = gi(r.n), st = stuck(r), other = st.find(function (k) { return k.mac !== r.mac; });
+  const M = SW(sim), ap = farEnds(sim, "msw").find(function (e) { return e.kind === "ap"; }), apOn = !!ap && psRead(ap.p).on;
+  const ups = SWS.map(function (d) { return farEnds(sim, d[0]).filter(function (e) { return e.kind === "link" && psRead(e.p).on; }).map(function (e) { return gi(e.n) + " on the " + d[1]; }); }).reduce(function (a, b) { return a.concat(b); }, []);
+  return [C("cable", !r.m, "The " + who + " isn't on its switch", "Each staff PC is on its switch.", "The " + who + "'s cable doesn't reach the " + r.at + "."),
+    C("off", !!r.m && !P.on, "The " + who + "'s port has no port security: any device plugged in there gets on the network", "Its port has port security.", "show port-security interface " + g + " on the " + r.at + ": Port Security : Disabled."),
+    C("err", !!r.m && P.on && errDisabled(r.sw, r.n), "The " + who + "'s port has been shut by a violation: the PC is cut off until the port is reset", "Its port is up.", "show interfaces status on the " + r.at + ": " + g + " err-disabled."),
+    C("max", P.on && P.max > 1, "Its port takes more than one device", "It takes one device.", "show port-security interface " + g + " on the " + r.at + ": Maximum MAC Addresses : " + P.max + "."),
+    C("viol", P.on && P.viol !== "shutdown", "A stranger on its port is " + (P.viol === "protect" ? "dropped" : "counted") + ", but the port stays up", "A stranger shuts the port.", "show port-security interface " + g + " on the " + r.at + ": Violation Mode : " + cap(P.viol) + "."),
+    C("sticky", P.on && !st.length, "Its port learns the PC's address but doesn't keep it: unplugged, another device takes its place", "The PC's address is stuck in the configuration.", "show running-config on the " + r.at + ": " + g + " has no sticky address."),
+    C("wrong", P.on && st.length > 0 && !st.some(function (k) { return k.mac === r.mac; }), "Its port has stuck another device's address, not the PC's", "It holds the PC's address.", "show port-security address on the " + r.at + ": " + g + " holds " + (other ? other.mac : "") + "."),
+    C("ap", apOn, "Port security is on the access point's port: every visitor's phone counts as another device", "The access point's port has none.", "show port-security on the closet switch: " + (ap ? gi(ap.n) : "the access point's port") + " is secured."),
+    C("uplink", ups.length > 0, "Port security is on a trunk to the router or the other switch: everything behind it counts as another device", "The trunks have none.", "show port-security: " + ups.join(", ") + " is secured.")];
+}
+function parkCauses(sim, v) {
+  const P = parking(v), rows = SWS.map(function (d) { return spareOf(sim, d[0]).map(function (n) { return { d: d, n: n, p: sim.d[d[0]].sw.ports[n] }; }); }).reduce(function (a, b) { return a.concat(b); }, []);
+  const open = rows.find(function (r) { return !r.p.shutdown; }), neg = rows.find(function (r) { return r.p.mode !== "access"; }), off = rows.find(function (r) { return r.p.access !== P.id; });
+  const vl = function (id) { return sim.d[id].sw.vlans[P.id]; }, at = function (r) { return r ? gi(r.n) + " on the " + r.d[1] : ""; };
+  return [C("cvlan", !vl("msw"), "The closet switch has no parking VLAN", "The closet switch has it.", "show vlan brief on the closet switch: no VLAN " + P.id + "."),
+    C("cname", !!vl("msw") && vl("msw").name !== P.name, "The closet switch's parking VLAN isn't named as the records say", "It's named as the records say.", "show vlan brief on the closet switch: VLAN " + P.id + " is " + (vl("msw") ? vl("msw").name : "") + "."),
+    C("bvlan", !vl("bsw"), "The back switch has no parking VLAN", "The back switch has it.", "show vlan brief on the back switch: no VLAN " + P.id + "."),
+    C("bname", !!vl("bsw") && vl("bsw").name !== P.name, "The back switch's parking VLAN isn't named as the records say", "It's named as the records say.", "show vlan brief on the back switch: VLAN " + P.id + " is " + (vl("bsw") ? vl("bsw").name : "") + "."),
+    C("open", !!open, "A spare port is open: anyone can plug in there", "Every spare port is shut.", "show interfaces status: " + at(open) + " is notconnect, not disabled."),
+    C("mode", !!neg, neg && neg.p.mode === "trunk" ? "A spare port is set as a trunk" : "A spare port is left to negotiate: plugged into, it could become a trunk", "Every spare port is set as an access port.", "show interfaces " + (neg ? gi(neg.n) : "") + " switchport on the " + (neg ? neg.d[1] : "") + ": administrative mode " + (neg ? neg.p.mode : "") + "."),
+    C("vlan", !!off, "A spare port still sits in a VLAN that's in use: opened by mistake, it would land on that network", "Every spare port is in the parking VLAN.", "show vlan brief: " + at(off) + " is in VLAN " + (off ? off.p.access : "") + ".")];
+}
+function accessCauses(sim) {
+  const rows = SWS.map(function (d) { return farEnds(sim, d[0]).filter(function (e) { return e.kind === "device"; }).map(function (e) { return Object.assign({ d: d }, e); }); }).reduce(function (a, b) { return a.concat(b); }, []);
+  const dyn = rows.find(function (r) { return /^dynamic/.test(r.p.mode); }), tr = rows.find(function (r) { return r.p.mode === "trunk"; });
+  const ev = function (r) { return r ? "show interfaces " + gi(r.n) + " switchport on the " + r.d[1] + " (" + name(sim, r.dev) + "): administrative mode " + r.p.mode + "." : ""; };
+  return [C("dyn", !!dyn, "A port with a device on it is still left to negotiate: whatever is plugged in there could ask it for a trunk", "No device's port negotiates.", ev(dyn)),
+    C("trunk", !!tr, "A port with a device on it is set as a trunk: whoever is plugged in there reaches every VLAN on it", "Every device's port is an access port.", ev(tr))];
+}
+function lldpCauses(sim, v) {
+  const R = RT(sim), w = v.plan.wanPort, sends = lldpSends(R, w), f = R.ifs[w], lan = R.ifs[v.plan.lanPort];
+  return [C("inside", sends && !!lan && lan.lldpTx === false, "LLDP is off on the router's inside port, not on the provider's side", "The inside port isn't where it was turned off.", "show running-config on the router: no lldp transmit on " + v.plan.lanPort + ", not on " + w + "."),
+    C("rx", sends && f.lldpRx === false, "The router stops listening for LLDP on the provider's side, but still sends its own", "It sends nothing there.", "show running-config on the router: " + w + " has no lldp receive, and still transmits."),
+    C("wan", sends, "The router announces itself on the provider's side: its name, model and software to whoever listens there", "It sends nothing there.", "show running-config on the router: LLDP runs, and " + w + " still transmits.")];
+}
+function snoopCauses(sim, v) {
+  return [].concat.apply([], SWS.map(function (d) {
+    const sw = sim.d[d[0]].sw, S = sw.snoop, miss = guarded(sim, v, d[0]).filter(function (x) { return S.vlans.indexOf(x) < 0; }), up = towardRouter(sim, d[0]);
+    const dev = farEnds(sim, d[0]).find(function (e) { return e.kind !== "link" && e.p.dtrust; }), w = d[1];
+    return [C(d[0] + "-vlans", miss.length > 0, "The " + w + " doesn't snoop on every staff and guest VLAN it carries", "The " + w + " snoops on them.", "show ip dhcp snooping on the " + w + ": " + vlanWords(miss) + " snooped."),
+      C(d[0] + "-on", !miss.length && !S.on, "The " + w + " has snooping set for its VLANs but never turned on", "Snooping is on at the " + w + ".", "show ip dhcp snooping on the " + w + ": Switch DHCP snooping is disabled."),
+      C(d[0] + "-trust", !!up && !sw.ports[up].dtrust, "The " + w + " doesn't trust the way to the router: the router's own answers are dropped", "It trusts the way to the router.", "show ip dhcp snooping on the " + w + ": " + gi(up) + " isn't trusted."),
+      C(d[0] + "-device", !!dev, "The " + w + " trusts a port " + (dev && dev.kind === "ap" ? "the access point" : "a device") + " is on: a rogue DHCP server there would be believed", "It trusts no device's port.", "show ip dhcp snooping on the " + w + ": " + (dev ? gi(dev.n) : "") + " is trusted.")];
+  }));
+}
+function daiCauses(sim, v) {
+  const fixed = [cams(v).id, 1];
+  return [].concat.apply([], SWS.map(function (d) {
+    const sw = sim.d[d[0]].sw, A = sw.dai.vlans, S = sw.snoop, need = guarded(sim, v, d[0]), miss = need.filter(function (x) { return A.indexOf(x) < 0; }), up = towardRouter(sim, d[0]);
+    const blind = A.filter(function (x) { return need.indexOf(x) >= 0 && !(S.on && S.vlans.indexOf(x) >= 0); }), fx = A.filter(function (x) { return fixed.indexOf(x) >= 0; });
+    const dev = farEnds(sim, d[0]).find(function (e) { return e.kind !== "link" && e.p.atrust; }), w = d[1];
+    return [C(d[0] + "-vlans", miss.length > 0, "The " + w + " doesn't inspect ARP on every staff and guest VLAN it carries", "The " + w + " inspects them.", "show ip arp inspection on the " + w + ": " + vlanWords(miss) + " inspected."),
+      C(d[0] + "-blind", blind.length > 0, "The " + w + " inspects ARP where it doesn't snoop: with no bindings to check against, everything there is dropped", "It snoops wherever it inspects.", "show ip dhcp snooping on the " + w + ": " + (blind.length > 1 ? "VLANs " + blind.join(",") + " are" : "VLAN " + blind[0] + " is") + " inspected but not snooped."),
+      C(d[0] + "-fixed", fx.length > 0, "The " + w + " inspects ARP on a VLAN of fixed addresses: they never had leases, so they're all dropped", "It inspects no VLAN of fixed addresses.", "show ip arp inspection on the " + w + ": " + (fx.length > 1 ? "VLANs " + fx.join(",") + " are" : "VLAN " + fx[0] + " is") + " inspected."),
+      C(d[0] + "-trust", !!up && !sw.ports[up].atrust, "The " + w + " doesn't trust ARP from the way to the router: the router's own replies are dropped", "It trusts the way to the router.", "show ip arp inspection interfaces on the " + w + ": " + gi(up) + " is Untrusted."),
+      C(d[0] + "-device", !!dev, "The " + w + " trusts ARP from a port " + (dev && dev.kind === "ap" ? "the access point" : "a device") + " is on: a spoofed reply there would be believed", "It trusts no device's port.", "show ip arp inspection interfaces on the " + w + ": " + (dev ? gi(dev.n) : "") + " is Trusted.")];
+  }));
+}
+function cabinetCauses(sim) {
+  const K = sim.net.cabinet || { open: true, locked: false, key: true };
+  return [C("open", K.open, "The closet cabinet's door is standing open", "Its door is shut.", "The closet cabinet's door is standing open."),
+    C("unlocked", !K.open && !K.locked, "Its door is shut, but not locked: anyone in the closet can open it", "It's locked.", "The cabinet's door is shut; its handle lifts and it opens."),
+    C("key", K.locked && K.key, "It's locked, but the key is still in the lock", "Its key has been taken away.", "The cabinet is locked, with its key still in the lock.")];
+}
+/* everything still works: the first staff PC that's offline and why (its port shut, no address, its old lease dropped by inspection) */
+function hardStillCauses(sim, v) {
+  const down = PCS.find(function (id) { return !online(sim, id); }), who = down ? name(sim, down) : "", a = down ? sim.addr(down) : null, rr = down ? sim.route(down, "8.8.8.8") : null;
+  const sp = down && (function () { const x = STAFF_PCS.find(function (q) { return q[0] === down; }), m = between(sim, down, x[1]); return m ? { sw: sim.d[x[1]].sw, n: port(m.far), at: x[1] === "msw" ? "closet switch" : "back switch" } : null; })();
+  const err = !!sp && errDisabled(sp.sw, sp.n), noAddr = !!down && !err && (!a || a.kind === "apipa"), dai = !!down && !err && !noAddr && !!(rr && rr.dai);
+  const bound = function (id) { const m = dotMac(sim.macOf(id)); return SWS.some(function (d) { return (sim.d[d[0]].sw.snoopBind || []).some(function (b) { return b.mac === m; }); }); };
+  const noPrint = ["pc", "bpc"].find(function (id) { return !printOk(sim, id); }), g = sim.route("guest", "8.8.8.8");
+  const camBad = v.plan.cams.find(function (c) { const r = sim.fromInternet(sim.net.isp.wanIp, c.ext, "tcp"); return !(r.ok && r.who === c.id); }), ip = apAddr(sim), r = ip ? sim.route("mgr", ip) : null;
+  return [C("err", err, "The " + who + "'s port has been shut by port security", "No staff PC's port is shut.", "show interfaces status on the " + (sp ? sp.at : "") + ": " + (sp ? gi(sp.n) : "") + " err-disabled."),
+    C("lease", noAddr, "The " + who + " can't get an address: its DHCP answers are dropped on the way", "Every staff PC has an address.", "ipconfig on the " + who + ": " + (a ? a.ip : "no address") + "."),
+    C("stale", dai && !bound(down), "The " + who + "'s lease is from before snooping: ARP inspection drops it until it asks again", "Snooping knows every staff PC's lease.", "ping from the " + who + ": no replies; show ip dhcp snooping binding: nothing for its address."),
+    C("arp", dai && bound(down), "The " + who + "'s traffic is dropped by ARP inspection on its way", "ARP inspection lets staff through.", "ping from the " + who + ": no replies; show ip arp inspection: its drops count up."),
+    C("net", !!down && !err && !noAddr && !dai, "The " + who + " is offline", "Every staff PC is online.", "ping from the " + who + ": no replies from the internet."),
+    C("print", !!noPrint, "The " + (noPrint ? name(sim, noPrint) : "") + " can't print", "Staff print.", "Test pages from the " + (noPrint ? name(sim, noPrint) : "") + " don't print."),
+    C("guest", !online(sim, "guest"), "The visitor's phone is offline" + (g.dai ? ": ARP inspection drops it" : ""), "Guests are online.", "The visitor's phone: no internet."),
+    C("cams", !!camBad, "A camera can't be seen from outside any more", "Both cameras open from outside.", "On the manager's phone, on mobile data: " + (camBad ? camBad.tag : "a camera") + "'s page doesn't open."),
+    C("ap", !!r && !((r.local || r.routed) && !r.fail), "The manager's PC can't reach the access point's page", "The access point's page opens from the manager's PC.", "From the manager's PC the access point's address doesn't answer.")];
+}
+/* the spare copper ports from the records' cabling, as an interface range: "gi0/4 , gi0/7 - 22" */
+function spareRange(used) {
+  const u = used.map(Number), n = []; for (let k = 1; k <= 24; k++) if (u.indexOf(k) < 0) n.push(k);
+  const out = []; for (let i = 0; i < n.length;) { let j = i; while (j + 1 < n.length && n[j + 1] === n[j] + 1) j++; out.push("gi0/" + n[i] + (j > i ? " - " + n[j] : "")); i = j + 1; }
+  return out.join(" , ");
+}
+const closetUsed = function (p) { return ["1", "2", "3", p.apPort, p.cams[0].port, p.trunk.closet, "24"]; };
+const backUsed = function (p) { return [p.backPort, p.cams[1].port, p.trunk.back]; };
+const SB6 = {
+  id: "SB-J6", level: "business", title: "After a card payment check: SSH only, no readable passwords, guarded ports, the cabinet locked",
+  already: ["still", "saved", "swsaved", "bswsaved"],
+  start(seed) {
+    const b = SB5.start(seed), sim = b.sim;
+    for (const a of SB5.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    addCabinet(sim); sim.cli = {};   /* the closet cabinet as the processor's check found it: door open, unlocked, its key in the lock */
+    return { sim: sim, v: b.v };
+  },
+  brief(v, sim) { return { quote: "The company that handles our card payments ran its PCI DSS check on our network, and we failed. Their findings are in our records now: how the router is managed, passwords anyone with a copy of the settings could read, ports anyone could plug into, and the closet cabinet left standing open. We have thirty days to put it right, and nothing can stop working while you do.", from: sim.net.client.manager + ", " + sim.net.client.name }; },
+  mason: "A check like this asks for the same few things on every device it covers, so work through them one device at a time, at each one's own console, and save it before you move on. Anything that guards DHCP only knows the leases given out after it's on. The cabinet is the last thing you touch.",
+  limits: function (v, sim) {
+    const p = v.plan, S = staff(v), G = guest(v), P = parking(v);
+    return ["The processor's findings, from the records. The router is managed by SSH only: the business's domain (" + p.domain + "), RSA keys of 2048 bits, and the business's user (" + p.user + ", password " + p.userPw + ") from its own list. Telnet off.",
+      "Only the staff VLAN (" + S.id + ", " + S.net + "/24) may reach the router's remote lines: a standard access list named " + p.vtyAcl + ", in on the lines.",
+      "No password readable in any configuration, on the router and both switches: no enable password beside the secret, and every line password encrypted.",
+      "Idle sessions log out after " + p.idle + " minutes, on the console and the remote lines of all three.",
+      "Each staff PC's port (the closet switch's 1 and 2, the back switch's " + p.backPort + ") takes one device, the PC there now, stuck in the configuration; a stranger shuts the port. None on the access point's port or the trunks.",
+      "Every spare copper port on both switches is shut, set as an access port, in VLAN " + P.id + " (" + P.name + "), which goes nowhere. Every port with a device on it is set as an access port.",
+      "The router tells the provider nothing about itself: no LLDP sent on " + p.wanPort + ".",
+      "DHCP snooping and ARP inspection on the staff (" + S.id + ") and guest (" + G.id + ") VLANs, on both switches; only the way to the router is trusted. The cameras' fixed addresses and the old network stay as they are.",
+      "The closet cabinet locked, and its key given to " + sim.net.client.manager + ", not left in the lock. Everything that works now still works.",
+      "The records are as before: router " + p.rtHost + " (secret " + p.rtSecret + ", console " + p.rtConsole + "); switches " + p.swHost + " and " + p.bswHost + " (secret " + p.swSecret + ", console " + p.swConsole + ")."];
+  },
+  reqs: [{
+    id: "ssh", text: "The router is managed by SSH only, logging in as the business's user",
+    causes: sshCauses,
+    ok: function () { return "The router has its domain and keys, the records' user, and its remote lines take SSH only, logging in from its own list."; },
+    rung1: function () { return "On the router: show running-config (its domain, its users, line vty), then show crypto key mypubkey rsa."; },
+    rung2: function () { return "SSH needs keys, and the keys are named from the router's hostname and a domain. Logging in as a user from the router's own list needs the lines told to use that list, and the lines take only the protocols they're told to take."; }
+  }, {
+    id: "vtyacl", text: "Only the staff VLAN can reach the router's remote lines",
+    causes: vtyCauses,
+    ok: function () { return "The records' list is in on the remote lines, and only the staff VLAN gets through it."; },
+    rung1: function () { return "On the router: show access-lists, and line vty in show running-config. Then try SSH from a staff PC, and from somewhere that isn't staff."; },
+    rung2: function () { return "An access class on the lines checks where a login comes from before anything else. A standard list judges by the source alone, and ends with a deny you never see; a list that doesn't exist lets everyone through."; }
+  }, {
+    id: "pwenc", text: "No password can be read in any configuration: the router and both switches",
+    causes: pwCauses,
+    ok: function () { return "The router and both switches have only their secrets for privileged mode, and every line password is encrypted."; },
+    rung1: function () { return "show running-config on each device: read its enable lines and each line's password as anyone holding a copy of the file would."; },
+    rung2: function () { return "A secret is kept as a hash. A password is kept as typed unless the device is told to scramble its passwords, and that scrambling (type 7) can be undone by anyone: it hides a password from a glance, not from an attacker."; }
+  }, {
+    id: "idle", text: "Idle sessions log out in time: console and remote lines, on all three",
+    causes: idleCauses,
+    ok: function () { return "The console and remote lines of all three log an idle session out within the records' minutes."; },
+    rung1: function () { return "On each device: line con 0 and line vty in show running-config."; },
+    rung2: function () { return "A line logs an idle session out after ten minutes unless it's told otherwise. A timeout of zero minutes and zero seconds turns the timer off for good."; }
+  }, {
+    id: "psec", text: "Each staff PC's port takes that PC only: one device, its address stuck, a stranger shutting the port",
+    causes: psecCauses,
+    ok: function () { return "The three staff PCs' ports each hold their PC's address, stuck, one device at most, and shut on a stranger; the access point's port and the trunks are left alone."; },
+    rung1: function () { return "show port-security on both switches, then show port-security interface for each staff PC's port, and the sticky lines in show running-config."; },
+    rung2: function () { return "Port security learns the addresses on a port up to its maximum. Sticky writes them into the configuration, so the port still knows its PC after a power cut or an unplugged cable. What a stranger meets depends on the violation mode, and only one mode shuts the port."; }
+  }, {
+    id: "park", text: "Every spare port on both switches is shut, set as an access port, and parked in a VLAN that goes nowhere",
+    causes: parkCauses,
+    ok: function () { return "Both switches' spare copper ports are shut, set as access ports, in the parking VLAN, named as the records say."; },
+    rung1: function () { return "show interfaces status and show vlan brief on both switches: which ports have nothing in them, and where they sit."; },
+    rung2: function () { return "A spare port that's shut can still be opened by mistake. Kept as an access port in a VLAN that carries nothing, it lands nowhere if it ever is."; }
+  }, {
+    id: "access", text: "Every port with a device on it is set as an access port: none can be talked into a trunk",
+    causes: accessCauses,
+    ok: function () { return "Every port with a PC, the printer or a camera on it is set as an access port."; },
+    rung1: function () { return "show interfaces switchport for each port with a device on it, on both switches: look at the administrative mode."; },
+    rung2: function () { return "A port left to negotiate becomes a trunk if whatever is plugged in asks it to, and a trunk carries every VLAN: that's VLAN hopping. A port set as an access port never negotiates."; }
+  }, {
+    id: "lldp", text: "The router tells the provider nothing about itself",
+    causes: lldpCauses,
+    ok: function (sim, v) { return "The router sends no LLDP on " + v.plan.wanPort + "."; },
+    rung1: function () { return "On the router: the lldp lines under each port in show running-config, and show lldp neighbors."; },
+    rung2: function () { return "LLDP announces a device's name, model and software to whatever is on the other end of each port. It can be stopped on one port, sending and listening separately, or everywhere at once."; }
+  }, {
+    id: "snoop", text: "DHCP snooping guards the staff and guest VLANs on both switches, trusting only the way to the router",
+    causes: snoopCauses,
+    ok: function () { return "Both switches snoop on the staff and guest VLANs they carry, trusting only their way to the router."; },
+    rung1: function () { return "show ip dhcp snooping on both switches: which VLANs, whether it's on, and which ports are trusted."; },
+    rung2: function () { return "Snooping drops DHCP answers coming in by any port that isn't trusted, so a rogue server can't hand out addresses. The real server's answers come from the router's side; every other port stays untrusted. It does nothing until it's turned on as well as set for its VLANs."; }
+  }, {
+    id: "dai", text: "ARP inspection guards the staff and guest VLANs on both switches, trusting only the way to the router",
+    causes: daiCauses,
+    ok: function () { return "Both switches inspect ARP on the staff and guest VLANs they carry, against snooping's bindings, trusting only their way to the router."; },
+    rung1: function () { return "show ip arp inspection and show ip arp inspection interfaces on both switches, beside show ip dhcp snooping binding."; },
+    rung2: function () { return "ARP inspection checks each ARP coming in by an untrusted port against the bindings snooping learned. A device with a fixed address never had a lease, so it has no binding; the router's side is trusted, as for snooping."; }
+  }, {
+    id: "rack", text: "The closet cabinet is locked, and its key taken away",
+    causes: cabinetCauses,
+    ok: function (sim) { return "The cabinet's door is shut and locked, and its key is with " + sim.net.client.manager + "."; },
+    rung1: function () { return "Look at the closet cabinet: its door, its lock, and where its key is."; },
+    rung2: function () { return "A lock is only as good as its key. A key left in the lock opens the door for whoever walks into the closet."; }
+  }, {
+    id: "still", text: "Everything still works: staff online and printing, guests online, the cameras seen from outside",
+    causes: hardStillCauses,
+    ok: function () { return "Every staff PC is online and prints, guests are online, both cameras open from outside, and the access point's page opens from the manager's PC."; },
+    rung1: function () { return "Ping out from each staff PC and the visitor's phone; print a test page; try each camera from the manager's phone; ipconfig on anything offline."; },
+    rung2: function () { return "Snooping and ARP inspection only know the leases given out after they were turned on: a client still using an older lease is dropped until it asks again."; }
+  }, L_SAVED_RT, {
+    id: "swsaved", text: "The closet switch's setup survives a power cut",
+    causes: swSavedCauses,
+    ok: function () { return "What's running on the closet switch is saved."; },
+    rung1: function () { return "On the closet switch: compare show running-config with show startup-config."; },
+    rung2: function () { return "Each device keeps its own startup configuration: saving one saves nothing on the others."; }
+  }, {
+    id: "bswsaved", text: "The back switch's setup survives a power cut",
+    causes: function (sim) { return savedCauses(sim, "bsw"); },
+    ok: function () { return "What's running on the back switch is saved."; },
+    rung1: function () { return "On the back switch: compare show running-config with show startup-config."; },
+    rung2: function () { return "Each device keeps its own startup configuration: saving one saves nothing on the others."; }
+  }],
+  solve(v, sim) {
+    const p = v.plan, S = staff(v), G = guest(v), P = parking(v), T = p.trunk, t = function (l) { return { t: "cmd", dev: "tech", line: l, cli: true }; };
+    const runs = sim ? sim.net.extra.runs || 0 : 19;   /* runs are numbered in the order they're laid: SB-J1 to SB-J5 laid nineteen, the last the console to the router */
+    const idle = "exec-timeout " + p.idle + " 0", both = S.id + "," + G.id;
+    const sw = function (spare, secured, up, vlans) { return [t(""), t(p.swConsole), t("enable"), t(p.swSecret), t("configure terminal"), t("service password-encryption"),
+      t("line console 0"), t(idle), t("line vty 0 15"), t(idle), t("exit"),
+      t("interface range " + secured), t("switchport port-security"), t("switchport port-security mac-address sticky"), t("exit"),
+      t("vlan " + P.id), t("name " + P.name), t("exit"),
+      t("interface range " + spare), t("switchport mode access"), t("switchport access vlan " + P.id), t("shutdown"), t("exit"),
+      t("ip dhcp snooping vlan " + vlans), t("ip dhcp snooping"), t("ip arp inspection vlan " + vlans),
+      t("interface gi0/" + up), t("ip dhcp snooping trust"), t("ip arp inspection trust"), t("end"), t("copy running-config startup-config"), t("")]; };
+    const closet = sw(spareRange(closetUsed(p)), "gi0/1 - 2", "24", both);
+    closet.splice(closet.findIndex(function (a) { return a.line === "vlan " + P.id; }), 0, t("interface gi0/3"), t("switchport mode access"), t("exit"));   /* the printer's port, left to negotiate since the start */
+    return [t(""), t(p.rtConsole), t("enable"), t(p.rtSecret), t("configure terminal"),
+      t("ip domain-name " + p.domain), t("crypto key generate rsa modulus 2048"), t("username " + p.user + " secret " + p.userPw),
+      t("ip access-list standard " + p.vtyAcl), t("permit " + S.net + " 0.0.0.255"), t("exit"),
+      t("line vty 0 4"), t("login local"), t("transport input ssh"), t("access-class " + p.vtyAcl + " in"), t(idle), t("line console 0"), t(idle), t("exit"),
+      t("service password-encryption"), t("interface " + p.wanPort), t("no lldp transmit"), t("end"), t("copy running-config startup-config"), t(""),
+      { t: "pull", cable: "c-console-" + runs }, { t: "lay", a: E("tech", "USB-C"), b: E("msw", "CONSOLE") }]
+      .concat(closet,
+        [{ t: "pull", cable: "c-console-" + (runs + 1) }, { t: "place", dev: "tech", room: "back" }, { t: "lay", a: E("tech", "USB-C"), b: E("bsw", "CONSOLE") }],
+        sw(spareRange(backUsed(p)), "gi0/" + p.backPort, T.back, String(S.id)),
+        PCS.map(function (id) { return { t: "cmd", dev: id, line: "ipconfig /renew" }; }),
+        [{ t: "rejoin", dev: "guest" }, { t: "cabinet", values: { open: false } }, { t: "cabinet", values: { locked: true } }, { t: "cabinet", values: { key: false } }]);
+  },
+  answer(v, sim) {
+    const p = v.plan, S = staff(v), G = guest(v), P = parking(v), T = p.trunk, idle = "exec-timeout " + p.idle + " 0", both = S.id + "," + G.id;
+    return ["On the router (console): ip domain-name " + p.domain + "; crypto key generate rsa modulus 2048; username " + p.user + " secret (the records'); ip access-list standard " + p.vtyAcl + ": permit " + S.net + " 0.0.0.255.",
+      "line vty 0 4: login local, transport input ssh, access-class " + p.vtyAcl + " in, " + idle + ". line console 0: " + idle + ". service password-encryption. interface " + p.wanPort + ": no lldp transmit. Save.",
+      "Console to the closet switch: service password-encryption; " + idle + " on line console 0 and line vty 0 15; interface range gi0/1 - 2: switchport port-security, switchport port-security mac-address sticky; interface gi0/3: switchport mode access.",
+      "vlan " + P.id + ", name " + P.name + "; interface range " + spareRange(closetUsed(p)) + ": switchport mode access, switchport access vlan " + P.id + ", shutdown. ip dhcp snooping vlan " + both + "; ip dhcp snooping; ip arp inspection vlan " + both + "; interface gi0/24: ip dhcp snooping trust, ip arp inspection trust. Save.",
+      "Your laptop to the back room, console to the back switch: the same passwords and timeouts; gi0/" + p.backPort + ": port security, sticky; vlan " + P.id + " " + P.name + "; interface range " + spareRange(backUsed(p)) + ": access, VLAN " + P.id + ", shutdown; snooping and inspection on VLAN " + S.id + ", trusting gi0/" + T.back + ". Save.",
+      "ipconfig /renew on each staff PC, and the visitor's phone joins again. Shut the cabinet's door, lock it, and take the key out for " + (sim ? sim.net.client.manager : "the manager") + "."];
+  },
+  summary(v, sim) {
+    const p = v.plan;
+    return ["The router is managed by SSH only, as " + p.user + ", and only the staff VLAN reaches its remote lines; no password reads in any configuration, and idle sessions log out after " + p.idle + " minutes.",
+      "Each staff PC's port takes that PC alone; spare ports are shut and parked in VLAN " + parking(v).id + "; no device's port can become a trunk; the router says nothing to the provider.",
+      "DHCP snooping and ARP inspection guard the staff and guest VLANs; the cabinet is locked and its key is with " + sim.net.client.manager + ". Everything still works, and all three devices are saved."];
+  }
+};
+
+export const BUSINESS_JOBS = [SB1, SB2, SB3, SB4, SB5, SB6];

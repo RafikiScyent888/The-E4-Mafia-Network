@@ -36,17 +36,45 @@ PLANTS = [
  ("SB-J6: no lldp transmit on a port does nothing", "js/net/rtcli.js", "return r.lldp !== false && !(f && f.lldpTx === false); }", "return r.lldp !== false; }"),
  ("SB-J6: a reload keeps what the switch learned", "js/net/swcli.js", "  sw.psRun = {}; sw.snoopBind = [];   /* what it learned", "  /* what it learned"),
  ("SB-J6: an older save reads as changed (keys compared in their saved order)", "js/net/swcli.js", "keys.forEach(function (k) { o[k] = st[k]; }); return now !== JSON.stringify(o); }", "return now !== JSON.stringify(st); }"),
+ ("SB-J6 job: Telnet left on the router's lines, accepted", 'js/build/business.js', 'C("telnet", /^(telnet|all)$/.test(t),', 'C("telnet", false,'),
+ ('SB-J6 job: keys under 768 bits, accepted', 'js/build/business.js', 'C("small", !!R.rsa && R.rsa < 768,', 'C("small", false,'),
+ ('SB-J6 job: a vty list letting in more than staff, accepted', 'js/build/business.js', 'C("wide", L && !!wide,', 'C("wide", false,'),
+ ('SB-J6 job: a vty list applied out, accepted', 'js/build/business.js', 'C("out", !a && !!R.vty.aclOut,', 'C("out", false,'),
+ ('SB-J6 job: an enable password beside the secret, accepted', 'js/build/business.js', 'C(d[0] + "-enable", !!ep,', 'C(d[0] + "-enable", false,'),
+ ('SB-J6 job: exec-timeout 0 0 read as in time', 'js/build/business.js', 'const NEVER = function (t) { return !!t && t[0] === 0 && t[1] === 0; };', 'const NEVER = function (t) { return false; };'),
+ ('SB-J6 job: port security without sticky, accepted', 'js/build/business.js', 'C("sticky", P.on && !st.length,', 'C("sticky", false,'),
+ ('SB-J6 job: restrict, accepted', 'js/build/business.js', 'C("viol", P.on && P.viol !== "shutdown",', 'C("viol", false,'),
+ ("SB-J6 job: port security on the access point's port, accepted", 'js/build/business.js', 'C("ap", apOn,', 'C("ap", false,'),
+ ('SB-J6 job: spares left in a working VLAN, accepted', 'js/build/business.js', 'C("vlan", !!off,', 'C("vlan", false,'),
+ ("SB-J6 job: the printer's port left to negotiate, accepted", 'js/build/business.js', 'C("dyn", !!dyn,', 'C("dyn", false,'),
+ ('SB-J6 job: the access point counted as a device', 'js/build/business.js', 'const kind = !x ? null : x.kind === "bap" ? "ap" :', 'const kind = !x ? null : x.kind === "bap" ? "device" :'),
+ ('SB-J6 job: LLDP checked on the inside port', 'js/build/business.js', 'sends = lldpSends(R, w),', 'sends = lldpSends(R, v.plan.lanPort),'),
+ ('SB-J6 job: snooping never turned on, accepted', 'js/build/business.js', 'C(d[0] + "-on", !miss.length && !S.on,', 'C(d[0] + "-on", false,'),
+ ('SB-J6 job: the way to the router untrusted for DHCP, accepted', 'js/build/business.js', 'C(d[0] + "-trust", !!up && !sw.ports[up].dtrust,', 'C(d[0] + "-trust", false,'),
+ ("SB-J6 job: inspection on the cameras' VLAN, accepted", 'js/build/business.js', 'const fixed = [cams(v).id, 1];', 'const fixed = [1];'),
+ ('SB-J6 job: the key left in the lock, accepted', 'js/build/business.js', 'C("key", K.locked && K.key,', 'C("key", false,'),
+ ("SB-J6 job: the cabinet's line with only one cause", 'js/build/business.js', 'return [C("open", K.open, "The closet cabinet\'s door is standing open", "Its door is shut.", "The closet cabinet\'s door is standing open."),', 'return [C("open", K.open, "The closet cabinet\'s door is standing open", "Its door is shut.", "The closet cabinet\'s door is standing open.")]; [0,'),
+ ('SB-J6 job: the walk-through never renews the staff PCs', 'js/build/business.js', 'PCS.map(function (id) { return { t: "cmd", dev: id, line: "ipconfig /renew" }; }),\n        [{ t: "rejoin"', '[],\n        [{ t: "rejoin"'),
+ ("SB-J6 job: a hint names the remote lines' list", 'js/build/business.js', 'rung1: function () { return "On the router: show access-lists, and line vty in show running-config.', 'rung1: function (v) { return "On the router: show access-lists " + v.plan.vtyAcl + ", and line vty in show running-config.'),
+ ("SB-J6 job: a struck cause names the parking VLAN's number", 'js/build/business.js', 'C("cvlan", !vl("msw"), "The closet switch has no parking VLAN", "The closet switch has it."', 'C("cvlan", !vl("msw"), "The closet switch has no parking VLAN", "The closet switch has VLAN " + P.id + "."'),
+ ("SB-J6 sim: the cabinet's door never bars the rack", 'js/net/sim.js', 'const K = this.net.cabinet; if (!K || K.open) return null;', 'return null;'),
+ ('SB-J6 sim: the lock turns with the door open', 'js/net/sim.js', 'if (v.locked && K.open) return { ok: false, errs: ["Shut the door first: the lock\'s bolt turns into the frame"] };', ''),
+ ('SB-J6 sim: the cabinet found shut', 'js/net/business.js', 'sim.net.cabinet = { open: true,', 'sim.net.cabinet = { open: false,'),
+ ('SB-J6 engine: a cabinet action not recorded, so a replay loses it', 'js/build/engine.js', 'radio: 1, cabinet: 1 };', 'radio: 1 };'),
+ ('SB-J6 page: a refused power-cycle says it restarted', 'js/net/pages.js', '  if (done.ok === false && done.errs) return {', '  if (false) return {'),
+ ('SB-J6 CLI: transport input ssh telnet read as SSH only', 'js/net/swcli.js', 'return setTransport(S, a.some(function (w) { return /^te/i.test(w); }) ? "all" : "ssh");', 'return setTransport(S, "ssh");'),
  ("an access port's missing VLAN never made", "js/net/swcli.js", 'if (!S.sw.vlans[v]) { S.sw.vlans[v] = { name: "VLAN" + String(v).padStart(4, "0") }; out.push("% Access VLAN does not exist. Creating vlan " + v); }', 'if (!S.sw.vlans[v]) { out.push("% Access VLAN does not exist. Creating vlan " + v); }'),
  ("interface range takes no list", "js/net/swcli.js", '.replace(/\\s+/g, " ").split(","), out = [];', '.replace(/\\s+/g, " ").split(/(?!)/), out = [];'),
  ("a cable refused names devices in capitals mid-sentence", "js/net/sim.js", 'const theDev = function (x) { return /^your /i.test(x.label) ? x.label.toLowerCase() : "the " + x.label.replace(', 'const theDev = function (x) { return "the " + x.label; return "the " + x.label.replace('),
 ]
+BAK = "/tmp/bplant-" + str(os.getpid()) + ".bak"   # one per run, so copies of the checkout can run their plants side by side
 only = sys.argv[1:]
 caught = 0
 for name, f, a, b in PLANTS:
     if only and not any(o in name for o in only): continue
     src = open(f).read()
     assert src.count(a) == 1, (name, src.count(a))
-    shutil.copy(f, "/tmp/bplant.bak")
+    shutil.copy(f, BAK)
     open(f, "w").write(src.replace(a, b))
     try:
         r = subprocess.run(["node", "--test", "tests/business-jobs.test.js", "tests/business-sim.test.js", "tests/business-cli.test.js", "tests/business-cams.test.js", "tests/business-harden.test.js", "tests/office.test.js"], env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=1200)
@@ -54,5 +82,5 @@ for name, f, a, b in PLANTS:
         caught += 1 if r.returncode else 0
         print(("CAUGHT" if r.returncode else "MISSED") + " · " + name + " · " + (", ".join(fails)[:200]), flush=True)
     finally:
-        shutil.copy("/tmp/bplant.bak", f)
+        shutil.copy(BAK, f)
 print(str(caught) + " caught")

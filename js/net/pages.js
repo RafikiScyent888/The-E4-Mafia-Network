@@ -328,6 +328,7 @@ export function physical(sim, act) {
   }
   const before = c ? JSON.stringify([c.a, c.b, c.cond]) : null;
   const done = sim.apply(act) || {};
+  if (done.ok === false && done.errs) return { text: done.errs[0], facts: { phys: act.t, dev: act.dev, cable: act.cable, refused: true } };   /* refused (the closet cabinet shut, SB-J6): said, and nothing done */
   if (act.t === "reseat") return { text: c[act.end].seated && before === JSON.stringify([c.a, c.b, c.cond]) ? "Pushed it home: it was already clicked in." : "Plugged it back in until it clicked.", facts: { phys: "reseat", cable: act.cable, end: act.end } };
   if (act.t === "replace") return { text: "Swapped in a new, tested patch cable (straight-through).", facts: { phys: "replace", cable: act.cable } };
   if (act.t === "polarity") return { text: done.polarity === "flipped" ? "Unclipped the LC duplex plug at this end and swapped its two fibres over: each end's transmit now meets the other end's transmit." : "Swapped the LC pair back over: each end's transmit meets the other end's receive again.", facts: { phys: "polarity", cable: act.cable, polarity: done.polarity } };

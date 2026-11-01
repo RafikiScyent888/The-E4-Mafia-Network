@@ -884,6 +884,8 @@ export class Sim {
     this.n++;
     const before = this.links();
     let res = null;
+    const barred = this.cabinetBars(act);
+    if (barred) { this.relink(before); return { ok: false, errs: [barred] }; }
     switch (act.t) {
       case "reseat": { const c = this.cable(act.cable), e = c[act.end]; if (c.kind === "coax") e.tight = true; else e.seated = true; res = { ok: true }; break; }
       case "unplug": { const c = this.cable(act.cable); c[act.end].seated = false; res = { ok: true }; break; }
@@ -938,6 +940,7 @@ export class Sim {
         if (!was) x.ssids.push(w);
         res = { ok: true, ssid: ssid }; break;
       }
+      case "cabinet": res = this.cabinet(act.values || {}); break;   /* the closet cabinet (SB-J6): its door, its lock, its key */
       case "pcprinter": { const ip = String(act.ip || "").trim(); if (!isIp(ip)) { res = { ok: false, errs: ["The printer port must be an IPv4 address"] }; break; } this.d.pc.printer.port = ip; res = { ok: true }; break; }
       case "client": res = this.setClient(act.dev, act.values); break;
       case "cmd": res = { ok: true }; break;                    /* commands are replayed by the command runner */
@@ -1034,6 +1037,37 @@ export class Sim {
     return { ok: false, errs: ["Unknown page"] };
   }
   /* build mode: take a device out of its box and put it in a room (or move it: its cables must come out first) */
+  /* the closet cabinet (SB-J6): what's in it (the business router and the closet switch) is reached only with its door open,
+     to lay or pull a cable at it or to power it off and on. Nothing else is barred, and a level without the cabinet has no bar */
+  cabinetBars(act) {
+    const K = this.net.cabinet; if (!K || K.open) return null;
+    let devs = [];
+    if (act.t === "lay") devs = [act.a && act.a.dev, act.b && act.b.dev];
+    else if (act.t === "pull") { const c = this.net.cables.find(function (x) { return x.id === act.cable; }); if (c) devs = [c.a.dev, c.b.dev]; }
+    else if (act.t === "power" || act.t === "place") devs = [act.dev];
+    const d = devs.find(function (x) { return K.holds.indexOf(x) >= 0; }); if (!d) return null;
+    return cap(theDev(this.d[d])) + " is in the closet cabinet, and its door is " + (K.locked ? "locked: unlock it and open it first" : "shut: open it first");
+  }
+  /* its door opened or shut, its lock turned, its key put in or taken out: one at a time. The lock turns only with the key in
+     it and the door shut (its bolt goes into the frame); a locked door doesn't open */
+  cabinet(v) {
+    const K = this.net.cabinet; if (!K) return { ok: false, errs: ["There's no cabinet here"] };
+    const say = function () { return { ok: true, open: K.open, locked: K.locked, key: K.key }; };
+    if ("key" in v) {
+      if (!!v.key === K.key) return { ok: false, errs: [K.key ? "The key is already in the lock" : "The key isn't in the lock: you have it"] };
+      K.key = !!v.key; return say();
+    }
+    if ("locked" in v) {
+      if (!K.key) return { ok: false, errs: ["Put the key in the lock first"] };
+      if (v.locked && K.open) return { ok: false, errs: ["Shut the door first: the lock's bolt turns into the frame"] };
+      K.locked = !!v.locked; return say();
+    }
+    if ("open" in v) {
+      if (v.open && K.locked) return { ok: false, errs: ["It's locked: unlock it first"] };
+      K.open = !!v.open; return say();
+    }
+    return { ok: false, errs: ["Open or shut the door, turn the lock, or take the key"] };
+  }
   place(id, room) {
     const x = this.d[id];
     if (!x) return { ok: false, errs: ["No such device"] };

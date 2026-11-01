@@ -1136,5 +1136,54 @@
   "page": "build.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); sol.forEach(a=>c.act(a)); c.check(); dev('cam2'); tab('Physical');",
   "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "business: SB-J6 first check, the work order with the processor's findings",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J6',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const btn=t=>[...document.querySelectorAll('.win-body button')].find(b=>b.textContent===t).click(); c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J6 the closet cabinet's Physical tab, its door standing open",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J6',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const btn=t=>[...document.querySelectorAll('.win-body button')].find(b=>b.textContent===t).click(); dev('cab'); tab('Physical');",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "business: SB-J6 the cabinet shut, locked, its key taken out",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J6',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const btn=t=>[...document.querySelectorAll('.win-body button')].find(b=>b.textContent===t).click(); dev('cab'); tab('Physical'); btn('Shut the door'); btn('Lock it'); btn('Take the key out');",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "business: SB-J6 the cabinet locked: opening it refused, in words",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J6',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const btn=t=>[...document.querySelectorAll('.win-body button')].find(b=>b.textContent===t).click(); dev('cab'); tab('Physical'); btn('Shut the door'); btn('Lock it'); btn('Open the door'); document.querySelector('.win-body .res').scrollIntoView();",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "business: SB-J6 the floor plan: the cabinet's frame round the router and the closet switch",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J6',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const btn=t=>[...document.querySelectorAll('.win-body button')].find(b=>b.textContent===t).click(); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('vPhy').click(); dev('cab');"
+ },
+ {
+  "name": "business: SB-J6 the router in its cabinet, its 3D model and words",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J6',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const btn=t=>[...document.querySelectorAll('.win-body button')].find(b=>b.textContent===t).click(); dev('rtr'); tab('Physical');",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
+ },
+ {
+  "name": "business: SB-J6 the closet switch's port security and snooping, on its console",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J6',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const btn=t=>[...document.querySelectorAll('.win-body button')].find(b=>b.textContent===t).click(); const k=sol.findIndex(a=>a.t==='lay'&&a.b.dev==='bsw'); sol.slice(0,k-2).forEach(a=>c.act(a)); ['show port-security','show ip dhcp snooping','show ip arp inspection interfaces'].forEach(l=>c.act({t:'cmd',dev:'tech',line:'do '+l,cli:true})); dev('tech');"
+ },
+ {
+  "name": "business: SB-J6 port security without sticky, Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J6',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const btn=t=>[...document.querySelectorAll('.win-body button')].find(b=>b.textContent===t).click(); sol.filter(a=>a.line!=='switchport port-security mac-address sticky').forEach(a=>c.act(a)); for(let i=0;i<5;i++) c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J6 done, every line met",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J6',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const btn=t=>[...document.querySelectorAll('.win-body button')].find(b=>b.textContent===t).click(); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('check').scrollIntoView();"
  }
 ]

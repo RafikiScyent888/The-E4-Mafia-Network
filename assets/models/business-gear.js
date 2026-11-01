@@ -536,7 +536,7 @@ export function closetCabinet(o = {}) {
   }
   /* the front door, on its hinges down the left edge: the solid frame round the hexagon perforation, wider on the latch side */
   const DW = W - 8, DH = bodyH - 6, BAND = 34, LB = 86, door = new THREE.Group();
-  door.position.set(-W / 2 + 4, PL + 3, 0); door.rotation.y = -(o.open || 0) * Math.PI / 180; g.add(door);
+  door.position.set(-W / 2 + 4, PL + 3, 0); door.rotation.y = -(o.open || 0) * Math.PI / 180; g.add(door); named(door, "door", { open: o.open || 0 });   /* named for the checks: how far it has swung */
   const pw = DW - BAND - LB, ph = DH - 2 * BAND;
   door.add(at(box(BAND, DH, 20, black), BAND / 2, DH / 2, -10));
   door.add(at(box(LB, DH, 20, black), DW - LB / 2, DH / 2, -10));

@@ -64,6 +64,12 @@ const SETUP = {
      cable's coupler), and the wall dome on its junction box by the back door. No bench: each is where it's mounted */
   domeCeiling: { build: function (o) { return BIZ.ceilingDome({ cable: o.cable, status: o.status }); }, stage: "none", view: [0.35, -0.5, 1], light: [0.4, -1.2, 0.8], frame: [-85, -85, -85, 85, 10, 85],
     views: [["In its ceiling", { view: [0.6, -0.55, 0.9], frame: [-750, -100, -200, 200, 20, 760] }], ["Above the tile", { view: [0.35, 1, 0.75], frame: [-20, 0, -140, 380, 140, 70], light: [0.3, 1.3, 0.6] }], ["Its pigtail close up", { view: [0.15, 1, 0.6], frame: [30, 10, -10, 120, 30, 60], light: [0.3, 1.3, 0.6] }]] },
+  /* the closet cabinet (SB-J6), as approved: standing on the closet floor, seen from the front left as in the owner's photograph;
+     its door open, framed wider to take the swung door in. Each state is its own model so the view is framed afresh */
+  cabinet: { build: function (o) { return BIZ.closetCabinet({ open: 0, locked: o.locked, key: o.key }); }, stage: "concrete", view: [-0.42, 0.06, 1], light: [-0.3, 1.2, 1.0], frame: [-330, 60, -60, 330, 1990, 60],
+    views: [["The latch close up", { view: [0.02, 0.04, 1], frame: [150, 900, -10, 310, 1070, 40], light: [-0.2, 1.1, 1.0] }], ["Its top and back", { view: [0.5, 0.55, -1], frame: [-340, 0, -1060, 340, 2040, 40], light: [0.3, 1.3, -0.8] }]] },
+  cabinetOpen: { build: function (o) { return BIZ.closetCabinet({ open: 105, locked: o.locked, key: o.key }); }, stage: "concrete", view: [0.55, 0.18, 1], light: [0.3, 1.2, 1.0], frame: [-700, 0, -1000, 380, 2000, 650],
+    views: [["The gear inside", { view: [0.15, 0.08, 1], frame: [-260, 1150, -330, 260, 1720, 20], light: [0.3, 1.2, 1.0] }]] },
   domeWall: { build: function (o) { return BIZ.wallDome({ cable: o.cable, status: o.status }); }, stage: "none", view: [0.45, 0.12, 1], light: [0.5, 1.2, 1.0], frame: [-130, 60, -10, 130, 360, 150],
     views: [["Its cables close up", { view: [0.4, 0.1, 1], frame: [-70, 20, 0, 70, 210, 90] }]] },
   camera: { build: function (o) { return END.ipCamera({ ipLine: o.ipLine, poe: o.poe }); }, stage: "concrete", view: [1, 0.5, 0.75], light: [0.7, 1.3, 0.9], frame: [-70, 0, -70, 125, 112, 125],
@@ -277,7 +283,7 @@ export function mount(holder, S) {
   V.canvas.setAttribute("role", "img");
   V.canvas.setAttribute("aria-label", "3D model of the " + S.label + ". Drag to turn it; the list below says what it shows.");
   const k = stateKey(S);
-  if (V.id !== S.id || !V.model) { V.id = S.id; V.skey = k; setModel(S); size(); look(); }
+  if (V.id !== S.id || !V.model || V.setup !== SETUP[S.model]) { V.id = S.id; V.skey = k; setModel(S); size(); look(); }   /* another device, or the same one drawn as another model (the cabinet's door opened): framed afresh */
   else if (V.skey !== k) {   /* the same device, changed: keep the student's view */
     const p = V.camera.position.clone(), t = V.controls.target.clone();
     V.skey = k; setModel(S); V.camera.position.copy(p); V.controls.target.copy(t); V.controls.update();

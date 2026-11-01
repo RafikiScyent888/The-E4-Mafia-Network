@@ -1173,7 +1173,7 @@ function daiCauses(sim, v) {
   }));
 }
 function cabinetCauses(sim) {
-  const K = sim.net.cabinet || { open: true, locked: false, key: true };
+  const K = sim.d.cab || { open: true, locked: false, key: true };
   return [C("open", K.open, "The closet cabinet's door is standing open", "Its door is shut.", "The closet cabinet's door is standing open."),
     C("unlocked", !K.open && !K.locked, "Its door is shut, but not locked: anyone in the closet can open it", "It's locked.", "The cabinet's door is shut; its handle lifts and it opens."),
     C("key", K.locked && K.key, "It's locked, but the key is still in the lock", "Its key has been taken away.", "The cabinet is locked, with its key still in the lock.")];
@@ -1336,7 +1336,7 @@ const SB6 = {
         [{ t: "pull", cable: "c-console-" + (runs + 1) }, { t: "place", dev: "tech", room: "back" }, { t: "lay", a: E("tech", "USB-C"), b: E("bsw", "CONSOLE") }],
         sw(spareRange(backUsed(p)), "gi0/" + p.backPort, T.back, String(S.id)),
         PCS.map(function (id) { return { t: "cmd", dev: id, line: "ipconfig /renew" }; }),
-        [{ t: "rejoin", dev: "guest" }, { t: "cabinet", values: { open: false } }, { t: "cabinet", values: { locked: true } }, { t: "cabinet", values: { key: false } }]);
+        [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }, { t: "cabinet", values: { open: false } }, { t: "cabinet", values: { locked: true } }, { t: "cabinet", values: { key: false } }]);
   },
   answer(v, sim) {
     const p = v.plan, S = staff(v), G = guest(v), P = parking(v), T = p.trunk, idle = "exec-timeout " + p.idle + " 0", both = S.id + "," + G.id;
@@ -1345,7 +1345,7 @@ const SB6 = {
       "Console to the closet switch: service password-encryption; " + idle + " on line console 0 and line vty 0 15; interface range gi0/1 - 2: switchport port-security, switchport port-security mac-address sticky; interface gi0/3: switchport mode access.",
       "vlan " + P.id + ", name " + P.name + "; interface range " + spareRange(closetUsed(p)) + ": switchport mode access, switchport access vlan " + P.id + ", shutdown. ip dhcp snooping vlan " + both + "; ip dhcp snooping; ip arp inspection vlan " + both + "; interface gi0/24: ip dhcp snooping trust, ip arp inspection trust. Save.",
       "Your laptop to the back room, console to the back switch: the same passwords and timeouts; gi0/" + p.backPort + ": port security, sticky; vlan " + P.id + " " + P.name + "; interface range " + spareRange(backUsed(p)) + ": access, VLAN " + P.id + ", shutdown; snooping and inspection on VLAN " + S.id + ", trusting gi0/" + T.back + ". Save.",
-      "ipconfig /renew on each staff PC, and the visitor's phone joins again. Shut the cabinet's door, lock it, and take the key out for " + (sim ? sim.net.client.manager : "the manager") + "."];
+      "ipconfig /renew on each staff PC; turn the visitor's phone's Wi-Fi off and on. Shut the cabinet's door, lock it, and take the key out for " + (sim ? sim.net.client.manager : "the manager") + "."];
   },
   summary(v, sim) {
     const p = v.plan;

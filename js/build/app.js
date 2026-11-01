@@ -22,7 +22,7 @@ import { cableMap } from "../desk/cablemapui.js";
 const KEY = "e4-build-v1";
 const ALL = JOBS.concat(OFFICE_JOBS, BUSINESS_JOBS);   /* every level's work orders */
 const DEFS = {}; ALL.forEach(function (d) { DEFS[d.id] = d; });
-const ORDER = ["modem", "router", "rtr", "switch", "pp", "msw", "bsw", "pc", "mgr", "bpc", "hire", "printer", "mpc", "ojack", "mjack", "tv", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "cinj1", "cam1", "cinj2", "cam2", "mphone", "tech"];
+const ORDER = ["modem", "router", "rtr", "switch", "pp", "msw", "bsw", "cab", "pc", "mgr", "bpc", "hire", "printer", "mpc", "ojack", "mjack", "tv", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "cinj1", "cam1", "cinj2", "cam2", "mphone", "tech"];
 const ROOM_ORDER = ["living", "office", "kitchen", "garage", "upstairs", "landing", "porch"];
 /* the site's own rooms, names and fixed places: a house, the small office or the small business */
 const roomsOf = function (sim) { return sim.net.roomNames ? Object.keys(sim.net.roomNames) : ROOM_ORDER; };
@@ -235,7 +235,7 @@ function renderRuns() {
     const len = c.kind === "coax" ? "2 m" : c.length + " m" + (sim.net.rooms[c.a.dev] !== sim.net.rooms[c.b.dev] ? ", " + inRoom(sim, sim.net.rooms[c.a.dev]) + " to " + inRoom(sim, sim.net.rooms[c.b.dev]) : "");
     tb.appendChild(el("tr", { class: up ? "" : "down" }, el("td", { "data-label": "From" }, endLabel(sim, c.a)), el("td", { "data-label": "To" }, endLabel(sim, c.b)), el("td", { "data-label": "Length" }, len),
       el("td", { class: up ? "ok-t" : "bad-t", "data-label": "Link" }, (up ? "✓ " : "✕ ") + link),
-      el("td", { class: "pullc" }, c.kind === "coax" ? el("span", { class: "note" }, "The provider's") : el("button", { type: "button", class: "btn ghost small", "aria-label": "Pull the cable from " + endLabel(sim, c.a) + " to " + endLabel(sim, c.b), onclick: function () { ctx.act({ t: "pull", cable: c.id }); ctx.said = { k: "u", ok: true, text: "Pulled the cable from " + endLabel(sim, c.a) + " to " + endLabel(sim, c.b) + "." }; renderBuild(); renderWin(); } }, "Pull"))));
+      el("td", { class: "pullc" }, c.kind === "coax" ? el("span", { class: "note" }, "The provider's") : el("button", { type: "button", class: "btn ghost small", "aria-label": "Pull the cable from " + endLabel(sim, c.a) + " to " + endLabel(sim, c.b), onclick: function () { const r = ctx.act({ t: "pull", cable: c.id }), x = r && r.result; ctx.said = x && x.ok === false ? { k: "u", ok: false, text: "Not pulled: " + (x.errs || ["it stayed where it is"]).join(". ") + "." } : { k: "u", ok: true, text: "Pulled the cable from " + endLabel(sim, c.a) + " to " + endLabel(sim, c.b) + "." }; renderBuild(); renderWin(); } }, "Pull"))));
   });
   host.appendChild(el("div", { class: "tablewrap" }, el("table", { class: "grid runs" }, el("thead", null, el("tr", null, el("th", { scope: "col" }, "From"), el("th", { scope: "col" }, "To"), el("th", { scope: "col" }, "Length"), el("th", { scope: "col" }, "Link"), el("th", { scope: "col" }, el("span", { class: "sr" }, "Pull")))), tb)));
 }
@@ -308,9 +308,9 @@ function setView(phy) {
   $("net").toggleAttribute("hidden", phy); $("plan").toggleAttribute("hidden", !phy);
   $("vLog").setAttribute("aria-pressed", String(!phy)); $("vPhy").setAttribute("aria-pressed", String(phy));
   if (ctx.T) renderDiagram();   /* drawn while hidden, nothing could be measured: drawn again now it's shown, so markers and port names keep off the labels */
-  plates(phy ? $("plan") : $("net"), phy ? ".rl, .ns" : ".nl, .ns, .pl", phy ? "#f4f6fb" : null);
+  plates(phy ? $("plan") : $("net"), phy ? ".rl, .ns, .cabl" : ".nl, .ns, .pl", phy ? "#f4f6fb" : null);
 }
-function replateAll() { if (!ctx.T) return; if (!$("net").hasAttribute("hidden")) plates($("net"), ".nl, .ns, .pl"); if (!$("plan").hasAttribute("hidden")) plates($("plan"), ".rl, .ns", "#f4f6fb"); }
+function replateAll() { if (!ctx.T) return; if (!$("net").hasAttribute("hidden")) plates($("net"), ".nl, .ns, .pl"); if (!$("plan").hasAttribute("hidden")) plates($("plan"), ".rl, .ns, .cabl", "#f4f6fb"); }
 function chromeH() { document.documentElement.style.setProperty("--chromeH", document.querySelector(".chrome").offsetHeight + "px"); }
 function deviceClicks(svg) {
   const go = function (e) { const g = e.target.closest("[data-d]"); if (!g) return; if (e.type === "keydown") { if (e.key !== "Enter" && e.key !== " ") return; e.preventDefault(); } openDevice(g.dataset.d); };

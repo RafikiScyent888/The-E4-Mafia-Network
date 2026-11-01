@@ -31,7 +31,9 @@ const PORTS = {
   /* the ceiling access point: its one port, in the bay on its top */
   ceilingAP: [["ETH", "ETH"]],   /* "port:ETH" on the model; printed ETH (PoE IN) beside it */
   /* the dome cameras (SB-J5): the waterproof RJ45 coupler on the end of each one's pigtail */
-  domeCeiling: [["LAN", "LAN"]], domeWall: [["LAN", "LAN"]]
+  domeCeiling: [["LAN", "LAN"]], domeWall: [["LAN", "LAN"]],
+  /* the closet cabinet (SB-J6): no ports of its own; what it holds has them */
+  cabinet: [], cabinetOpen: []
 };
 /* what the installer wrote on the panel's tabs, from his map */
 const TAB = { front: "FRONT", open: "OPEN", manager: "MGR", meeting: "MEET" };
@@ -40,7 +42,7 @@ const SAY_PORT = { brouter: function (p) { return p === "CONSOLE" ? "CON (consol
 
 export function physicalState(sim, id) {
   const x = sim.d[id]; if (!x) return null;
-  const model = x.kind === "patchpanel" ? "rack" : x.kind === "jack" ? "wallplate" : x.kind === "injector" ? (x.dual ? "injectorDual" : "injector") : x.kind === "mswitch" ? "msw" : x.kind === "brouter" ? "brouter" : x.kind === "bap" ? "ceilingAP" : x.kind === "dcam" ? (x.mount === "ceiling" ? "domeCeiling" : "domeWall") : x.kind === "techlaptop" ? "techlaptop" : x.kind === "switch" && x.ports === 8 ? "switch8" : MODEL_OF[id]; if (!model) return null;   /* build mode's PoE+ injector is the dual-port one; the office has the managed switch and an old 8-port */
+  const model = x.kind === "patchpanel" ? "rack" : x.kind === "jack" ? "wallplate" : x.kind === "injector" ? (x.dual ? "injectorDual" : "injector") : x.kind === "mswitch" ? "msw" : x.kind === "brouter" ? "brouter" : x.kind === "bap" ? "ceilingAP" : x.kind === "dcam" ? (x.mount === "ceiling" ? "domeCeiling" : "domeWall") : x.kind === "techlaptop" ? "techlaptop" : x.kind === "cabinet" ? (x.open ? "cabinetOpen" : "cabinet") : x.kind === "switch" && x.ports === 8 ? "switch8" : MODEL_OF[id]; if (!model) return null;   /* build mode's PoE+ injector is the dual-port one; the office has the managed switch and an old 8-port */
   const ports = [], leds = [], says = [], opts = {};
   /* the device an injector output powers right now (its PoE light lit), or null */
   const feeds = function (port) { const c = sim.cableAt(id, port); if (!c) return null; const o = c.a.dev === id ? c.b.dev : c.a.dev; return sim.d[o] && sim.d[o].poe && sim.on(o) && sim.poeSource(o) === x ? o : null; };
@@ -148,6 +150,14 @@ export function physicalState(sim, id) {
     says.push("At the back of the panel: runs punched down behind ports " + back.join(", ") + ". Nothing on them says where they go.");
     return { id: id, model: model, label: x.label, ports: ports, leds: leds, opts: opts, says: says };
   }
+  if (model === "cabinet" || model === "cabinetOpen") {   /* the closet cabinet (SB-J6): its door, its lock, its key, in words as on the model */
+    const inside = x.holds.filter(function (h) { return !!sim.d[h]; }).map(function (h) { return "the " + sim.d[h].label.replace(/^([A-Z])(?=[a-z]+(\s|$))/, function (m) { return m.toLowerCase(); }); });
+    opts.open = !!x.open; opts.locked = !!x.locked; opts.key = !!x.key;
+    says.push("Its door: " + (x.open ? "standing open, swung out on its hinges down the left edge." : "shut."));
+    says.push("Its lock, in the latch on the door's right: " + (x.locked ? "locked, the keyway turned across." : x.open ? "not locked." : "not locked: the paddle handle lifts and the door opens.") + " " + (x.key ? "The key is in the lock, its blue tag hanging below it." : "No key in it: the key has been taken out."));
+    says.push("Inside, on its rails: the patch panel, " + inside.join(" and ") + (x.open ? "." : ", seen through the perforated door.") + (x.open ? " With the door open, their ports can be reached." : " With the door shut, their ports can't be reached."));
+    return { id: id, model: model, label: x.label, ports: ports, leds: leds, opts: opts, says: says };
+  }
   if (model === "ceilingAP") {   /* the ceiling access point: its light ring says power, its uplink and its networks (in words too) */
     const c = sim.cableAt(id, "ETH"), up = on && !!c && sim.cableUp(c), n = (x.ssids || []).length, p0 = ports[0];
     const ring = !on ? ["off", null, "off: no power (it takes its power down its cable)"] : !up ? ["on", "amber", "on, amber: it has power, but no link on its uplink"] : !n ? ["blinking", "blue", "blinking blue: on the network, but broadcasting nothing (no networks set up on it yet)"] : ["on", "blue", "on, blue: on the network, broadcasting " + n + (n === 1 ? " network" : " networks")];
@@ -190,6 +200,8 @@ export function physicalState(sim, id) {
   if (model === "mesh") says.push("No network cables: it reaches the router over Wi-Fi.");
   if (model === "msw") Object.keys(x.sfp || {}).forEach(function (k) { const m = x.sfp[k] && SFP_MODULES[x.sfp[k]]; if (m) says.push(k + ": a module, its label " + m.label + ", its bail latch " + m.bail + "."); });
   if (model === "brouter") { [8, 9].forEach(function (n) { const m = x.sfp && x.sfp["Gi0/" + n] && SFP_MODULES[x.sfp["Gi0/" + n]]; if (m) says.push("GE 0/" + n + ": a module, its label " + m.label + ", its bail latch " + m.bail + "."); }); if (!ports.some(function (p) { return p.plug !== "none"; })) says.push("Nothing plugged into it yet."); says.push("Printed on the front: BUSINESS ROUTER, MODEL: BR-4200; WAN 0/8 and WAN 0/9 over the SFP slots. Its settings are on its command line, not on lights or buttons."); }
+  const cab = (model === "msw" || model === "brouter") && sim.d.cab && sim.d.cab.holds.indexOf(id) >= 0 ? sim.d.cab : null;   /* in the closet cabinet (SB-J6) */
+  if (cab) says.push("It's in the closet cabinet: the door is " + (cab.open ? "open, so its ports can be reached." : (cab.locked ? "shut and locked" : "shut") + ", so its ports can't be reached until the door is opened."));
   if (model === "msw") { if (!ports.some(function (p) { return p.plug !== "none"; })) says.push("Nothing plugged into it yet."); says.push("Printed on the front: MANAGED SWITCH 24-PORT + 4 SFP, MODEL: MSW-2800G. Its settings are on its command line, not on lights or buttons."); }
   if (x.labelText) says.push("Its label: " + x.labelText + ".");
   if (model === "printer") says.push("Control panel screen: " + opts.screen.status + ", IP address " + opts.screen.ip + ".");

@@ -27,6 +27,12 @@ PLANTS = [
  ("SB-J5: the visitor's phone left where the camera's injector goes", "js/net/business.js", ', cams: { x: 735, y: 600 } },', ' },', "SB-J5"),
  ("SB-J5: plain http to a camera's secure page answered as if secure", "js/net/pages.js", '    if (+r.lport === 443 && scheme === "http") return fail("badreq"', '    if (false) return fail("badreq"', "SB-J5"),
  ("SB-J5: a powered camera off the network said to be on it", "js/net/physical.js", ': !net ? ["blinking", "blinking blue: it has power, but isn\'t on the network yet"', ': !net ? ["on", "on, blue: on the network"', "SB-J5"),
+ ('SB-J6: the closet cabinet has no device button', 'js/build/app.js', '"msw", "bsw", "cab", ', '"msw", "bsw", ', 'SB-J6'),
+ ('SB-J6: Lock it turns nothing', 'js/desk/window.js', 'b(K.locked ? "Unlock it" : "Lock it", { locked: !K.locked }', 'b(K.locked ? "Unlock it" : "Lock it", { locked: K.locked }', 'SB-J6'),
+ ("SB-J6: the plan doesn't say the cabinet's state in words", 'js/desk/draw.js', 't.textContent = "CABINET: " + st;', 't.textContent = "CABINET";', 'SB-J6'),
+ ("SB-J6: the router doesn't say it's in the cabinet", 'js/net/physical.js', '  if (cab) says.push("It\'s in the closet cabinet:', '  if (false) says.push("It\'s in the closet cabinet:', 'SB-J6'),
+ ('SB-J6: a refused pull said as pulled', 'js/build/app.js', 'ctx.said = x && x.ok === false ? { k: "u", ok: false', 'ctx.said = false ? { k: "u", ok: false', 'SB-J6'),
+ ("SB-J6: the cabinet's model drawn open whatever its door", 'js/net/physical.js', 'x.kind === "cabinet" ? (x.open ? "cabinetOpen" : "cabinet") :', 'x.kind === "cabinet" ? "cabinetOpen" :', 'SB-J6'),
 ]
 only = sys.argv[1:]
 caught = 0; run = 0

@@ -269,6 +269,16 @@ export function drawPlan(svg, sim, o) {
     for (const d of r.d) h += '<path class="' + (up ? (r.c.kind === "coax" ? "run-coax" : r.c.kind === "console" ? "run-con" : r.c.kind === "fibre" ? "run-fib" : "run") : "run-bad") + '" d="' + d + '"/>';
   }
   svg.innerHTML += h + names;
+  const K = sim.d.cab, inK = K ? K.holds.filter(function (d) { return !!P[d]; }) : [];
+  if (K && inK.length) {   /* the closet cabinet (SB-J6): a frame round what it holds, its state in words between them; it opens the cabinet's window */
+    const xs = inK.map(function (d) { return P[d].px; }), ys = inK.map(function (d) { return P[d].py; }), x0 = Math.min.apply(null, xs) - 32, x1 = Math.max.apply(null, xs) + 32, y0 = Math.min.apply(null, ys) - 32, y1 = Math.max.apply(null, ys) + 32;
+    const st = K.open ? "OPEN" : K.locked ? (K.key ? "LOCKED, KEY IN" : "LOCKED") : "SHUT";
+    const g = mk("g", { class: "pcab" + (o.open === "cab" ? " open" : ""), tabindex: "0", role: "button", "aria-label": "Open the closet cabinet in the terminal. Its door: " + st.toLowerCase() + "." });
+    g.dataset.d = "cab";
+    g.appendChild(mk("rect", { class: "cabframe", x: x0, y: y0, width: x1 - x0, height: y1 - y0, rx: 10 }));
+    const t = mk("text", { class: "cabl", x: (x0 + x1) / 2, y: (y0 + y1) / 2 + 20, "text-anchor": "middle" }); t.textContent = "CABINET: " + st; g.appendChild(t);
+    svg.appendChild(g);
+  }
   for (const id of ids) {
     const p = P[id];
     const g = mk("g", { class: "pdev" + (o.open === id ? " open" : ""), tabindex: "0", role: "button", transform: "translate(" + p.px + " " + p.py + ")", "aria-label": "Open " + sim.d[id].label + " in the terminal" });
@@ -285,7 +295,7 @@ export function drawPlan(svg, sim, o) {
     svg.appendChild(mk("rect", { x: x - 8, y: y - 8, width: 16, height: 16, transform: "rotate(45 " + x + " " + y + ")", class: "pd-down" }));
   }
   if (anyDown) { const t = mk("text", { class: "ns", x: 46, y: 505 }); t.textContent = "red dashed run: no link"; svg.appendChild(t); }   /* on the garage floor (the office's entrance): nothing else is there */
-  plates(svg, ".rl, .ns", "#f4f6fb");
+  plates(svg, ".rl, .ns, .cabl", "#f4f6fb");
 }
 /* the small office: the network closet (the provider's line comes in on its wall), the front desk, the manager's office,
    the open-plan office, the meeting room, and the entrance under the closet */

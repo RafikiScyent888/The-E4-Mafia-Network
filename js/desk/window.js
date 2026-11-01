@@ -386,7 +386,18 @@ function physicalPane(id, P, ctx, rerender) {
     });
     ul.appendChild(el("li", null, el("p", { class: "nm" }, c.name), acts, res));
   });
-  if (P.cables.length) wrap.appendChild(ul); else wrap.appendChild(el("p", { class: "note" }, "No cables: this device is on Wi-Fi."));
+  if (P.cabinet) {   /* the closet cabinet (SB-J6): its door, its lock and its key, as they are, and the hands-on actions; a refusal says why */
+    const K = P.cabinet, cr = el("p", { class: "res", role: "status" }); if (physLog[id]["cab"]) cr.textContent = physLog[id]["cab"]; else cr.hidden = true;
+    const row = function (k, v) { return el("tr", null, el("th", { scope: "row" }, k), el("td", null, v)); };
+    const doIt = function (values, said) { const r = ctx.act({ t: "cabinet", values: values }), x = r && r.result; physLog[id]["cab"] = x && x.ok ? said : x && x.errs ? x.errs[0] + "." : "Nothing changed."; rerender(); };
+    const b = function (text, values, said) { return el("button", { type: "button", class: "btn ghost small", onclick: function () { doIt(values, said); } }, text); };
+    wrap.appendChild(el("table", { class: "kv" }, el("tbody", null, row("Door", K.open ? "Standing open" : "Shut"), row("Lock", K.locked ? "Locked" : "Not locked"), row("Key", K.key ? "In the lock" : "Taken out: you have it"), row("Inside", K.holds.join(", ")))));
+    wrap.appendChild(el("div", { class: "acts", style: "margin-top:10px" },
+      b(K.open ? "Shut the door" : "Open the door", { open: !K.open }, K.open ? "Shut the door." : "Opened the door: what's inside can be reached."),
+      b(K.locked ? "Unlock it" : "Lock it", { locked: !K.locked }, K.locked ? "Unlocked it: the keyway turned back." : "Locked it: the keyway turned across."),
+      b(K.key ? "Take the key out" : "Put the key in", { key: !K.key }, K.key ? "Took the key out: you have it." : "Put the key back in the lock.")));
+    wrap.appendChild(cr);
+  } else if (P.cables.length) wrap.appendChild(ul); else wrap.appendChild(el("p", { class: "note" }, "No cables: this device is on Wi-Fi."));
   if (P.sfp && P.sfp.length) {   /* the switch's SFP modules (SO-10): each one, and the other kind of 1 Gb/s module from the van */
     const sr = el("p", { class: "res", role: "status" }); if (physLog[id]["sfp"]) sr.textContent = physLog[id]["sfp"]; else sr.hidden = true;
     P.sfp.forEach(function (m) {

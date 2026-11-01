@@ -2299,8 +2299,36 @@ Built and checked so far:
   998" was missed), Mason's words at each count of failing checks read straight from the first unmet line (the same words,
   a sixth of the time), and SB-J6's random walk given its own hardening lines and cabinet actions.
 
-Next: the page (the cabinet on the router's and closet switch's Physical tabs, its 3D model, the records), the drive,
-AAA, the page plants, totals, the owner's preview and go-live, as for SB-J5.
+**The page (1 November 2026):**
+- **The cabinet is a device of its own,** `sim.d.cab` (kind `cabinet`, `holds: ["rtr", "msw"]`, its state `open`, `locked`,
+  `key`), so it has a button (after the back switch) and one tab, **Physical**: its 3D model (`closetCabinet`, approved), the
+  model's words (door, lock and key, what's inside and whether it can be reached), a table (Door, Lock, Key, Inside), and
+  three buttons that name what they do ("Shut the door" / "Open the door", "Lock it" / "Unlock it", "Take the key out" /
+  "Put the key in"); a refusal is said in the result line ("It's locked: unlock it first."). The 3D viewer draws one model at
+  a time, which is why it isn't on the router's tab. Shut and open are two models (`cabinet`, `cabinetOpen` in `model3d.js`),
+  each framed afresh (`mount` now reframes when a device's model changes); the shut one offers "The latch close up" and "Its
+  top and back", the open one "The gear inside". It stands on the concrete stage.
+- **The floor plan:** a dashed frame round the router and the closet switch, "CABINET: OPEN / SHUT / LOCKED / LOCKED, KEY IN"
+  between them; the frame opens the cabinet's window. Not on the logical diagram (it's the network).
+- **The router and the closet switch** say on their Physical tabs that they're in the cabinet and whether the door lets
+  their ports be reached. With the door shut, reseating, unplugging or swapping a cable at them is refused too.
+- **Fixed:** the cable table's Pull said "Pulled the cable" even when refused; it now says "Not pulled: ..." with why.
+- **The visitor's phone has its Wi-Fi switch now** ("Turn Wi-Fi off" / "Turn Wi-Fi on", as the manager's phone has): once
+  connected, its Wi-Fi tab offered nothing that made it ask again for an address, so after snooping a student had no way
+  to give it a lease snooping could see. The walk-through turns its Wi-Fi off and on (`radio`).
+- **The plan's cabinet label** paints with `currentColor` and sits on a plate like every name on the plan (`.cabl` in the
+  plates' selectors): AAA found it at 1.04:1 first (the checker hides lettering by its colour, and a fixed fill hid
+  nothing), then down to 1.00:1 on a phone (the cable runs showing through its letters with only a halo behind them).
+- **Checks:** `tools/drive.mjs` SB-J6 (three businesses, the whole job through the page: the limits, the cabinet's button and
+  tab, the plan's words, the switch's `show port-security` and `show ip dhcp snooping`, a cable laid at the rack with the
+  door shut refused in words, Open the door refused when locked, every line met, the plan and the router's tab after, a
+  reload); nine states in `tools/aaa-states.json`; `tools/wip/sb6page.mjs` screenshots the page.
+- **Plants:** 27 Node plants for SB-J6 in `tools/plants-business-node.py` (the job's causes, the cabinet, the engine, the
+  page's refused power-cycle, the transport fix); 6 page plants in `tools/plants-business-page.py`.
+- **Found by the plants:** the plant tool never ran `tests/business-sb6.test.js` (an edit to its run list built the change
+  and never wrote it), so every SB-J6 plant came back missed with no failing test; the list now has it.
+
+Next: the page plants, totals, the owner's preview and go-live, as for SB-J5.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

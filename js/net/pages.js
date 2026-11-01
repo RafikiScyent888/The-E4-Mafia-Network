@@ -8,7 +8,7 @@ import { portName as printedPort, SFP_MODULES } from "./sim.js";
 const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc", bpc: "pc" };   /* the business's back PC (the treatment room's, the kitchen's) too; the office's back office (SO-04) and the manager's PC (SO-08): the same housings */
 
 export function tabsFor(sim, id) {
-  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" || k === "brouter" || k === "techlaptop" || k === "patchpanel" || k === "jack" || k === "bap" || k === "dcam" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
+  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" || k === "brouter" || k === "techlaptop" || k === "patchpanel" || k === "jack" || k === "bap" || k === "dcam" || k === "cabinet" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
   const T = {
     pc: [["cmd", "Command Prompt"], ["settings", "Network settings"], ["printers", "Printers"], ["browser", "Web browser"]],   /* a business PC's browser: how the ceiling access point's page is reached */
     laptop: [["cmd", "Command Prompt"], ["wifi", "Wi-Fi"]],
@@ -139,6 +139,10 @@ export function page(sim, id, key, opts) {
       facts: { page: "tech-tftp", on: s.on, addr: a && a.ip, files: s.files.map(function (f) { return f.name; }) } };
   }
   const yes = function (b) { return b ? "Yes" : "No"; };
+  if (key === "physical" && x.kind === "cabinet") {   /* the closet cabinet (SB-J6): its door, its lock, its key, and what it holds */
+    const cab = { open: !!x.open, locked: !!x.locked, key: !!x.key, holds: x.holds.filter(function (h) { return !!sim.d[h]; }).map(function (h) { return sim.d[h].label; }) };
+    return { kind: "physical", label: x.label, cables: [], restart: false, cabinet: cab, facts: { page: id + "-physical", cabinet: cab } };
+  }
   if (key === "physical") {
     const cables = sim.cablesOf(id).map(function (c) {
       const end = c.a.dev === id ? "a" : "b", me = c[end], far = c[end === "a" ? "b" : "a"], pp = x.kind === "patchpanel", toPanelBack = sim.d[far.dev].kind === "patchpanel" && /R$/.test(far.port);
@@ -297,7 +301,7 @@ export function page(sim, id, key, opts) {
     const nets = [], seen = {};
     for (const ap of sim.aps()) { const sg = sim.heardAt(ap, sim.net.rooms[id]); if (sg < 15) continue; const k = ap.ssid + (ap.sec === "Open" ? "|open" : "|sec"); if (seen[k]) { seen[k].signal = Math.max(seen[k].signal, sg); continue; } seen[k] = { ssid: ap.ssid, open: ap.sec === "Open", sec: ap.sec, signal: sg, now: !!(l && l.connected && l.ap.ssid === ap.ssid) }; nets.push(seen[k]); }
     if (x.cell) rows.push(["Mobile data", l && l.connected ? "On, but the phone uses the Wi-Fi while it's connected" : "On (5G)"]);
-    return { kind: "rows", title: "Wi-Fi", rows: rows, heard: nets, radio: x.cell ? { on: true } : null, facts: { page: id + "-wifi", internet: up, ip: a && a.ip, apipa: !!(a && a.kind === "apipa"), connected: !!(l && l.connected), reason: l && l.reason, heard: nets.map(function (n) { return n.ssid; }) } };
+    return { kind: "rows", title: "Wi-Fi", rows: rows, heard: nets, radio: { on: true }, facts: { page: id + "-wifi", internet: up, ip: a && a.ip, apipa: !!(a && a.kind === "apipa"), connected: !!(l && l.connected), reason: l && l.reason, heard: nets.map(function (n) { return n.ssid; }) } };
   }
   if (x.kind === "phone" && key === "wifi") {
     const l = sim.wifiLink(id), a = sim.addr(id), up = !!(a && sim.route(id, "203.0.113.80").internet);

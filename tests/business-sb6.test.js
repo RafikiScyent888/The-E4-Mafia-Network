@@ -138,7 +138,7 @@ test("SB-J6: clients never asked again, and the cabinet left the tempting ways",
     const J0 = B.open(def, s), sol = def.solve(J0.v, J0.sim), T = (acts) => tryIt(s, acts);
     let J = T(drop(sol, (a) => a.line === "ipconfig /renew"));
     assert.equal(real(J, "still"), "stale", "leases from before snooping: dropped by inspection");
-    J = T(drop(sol, (a) => a.t === "rejoin"));
+    J = T(drop(sol, (a) => a.t === "radio"));
     assert.equal(real(J, "still"), "guest", "the visitor's phone never joined again"); assert.match(line(J, "still").real.text, /ARP inspection drops it/);
     J = T(drop(sol, (a) => a.t === "cabinet" && "key" in a.values));
     assert.equal(real(J, "rack"), "key", "locked, the key left in the lock"); onlyThese(J, ["rack"], "the key left in");

@@ -135,10 +135,13 @@ export function addCameraKit(sim) {
 }
 
 /* what SB-J6 finds: the closet cabinet the router and the closet switch have always been in (modelled from the owner's
-   photographs and approved on 31 October 2026), its door standing open, unlocked, its key left in the lock. Nothing drawn
-   from the seed, so every business before it comes out exactly as it always has */
+   photographs and approved on 31 October 2026), its door standing open, unlocked, its key left in the lock. A device of its
+   own, so it has a button and a Physical tab (its model, its door, lock and key), and it's on the floor plan round what it
+   holds; not on the logical diagram, which is the network. Nothing drawn from the seed, so every business before it comes out
+   exactly as it always has */
 export function addCabinet(sim) {
-  sim.net.cabinet = { open: true, locked: false, key: true, holds: ["rtr", "msw"] };
+  sim.net.devices.cab = { id: "cab", kind: "cabinet", label: "Closet cabinet", sub: "lockable rack", on: true, open: true, locked: false, key: true, holds: ["rtr", "msw"], fixed: ["closet", "in the network closet, round the router and the closet switch"] };
+  sim.net.rooms.cab = "closet";
 }
 
 export function makeBusiness(seed) {

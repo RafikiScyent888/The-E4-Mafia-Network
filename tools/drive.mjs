@@ -1160,6 +1160,15 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
     if (a.t === "pull") { const i = await p.evaluate((id) => window.__e4b.T.sim.net.cables.findIndex((c) => c.id === id), a.cable); check(i >= 0, "the cable to pull, " + a.cable + ", is in the runs table"); await p.click("#runs tbody tr:nth-child(" + (i + 1) + ") button"); await p.waitForTimeout(40); return; }
     if (a.t === "cmd" && a.cli) { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== "tech") await dev(p, "tech"); if (!(await p.$('.win-tabs button[aria-selected="true"]:text-is("Serial terminal")'))) await tab(p, "Serial terminal"); return type(p, a.line); }
     if (a.t === "cmd") { await dev(p, a.dev); await tab(p, "Command Prompt"); return type(p, a.line); }
+    if (a.t === "cabinet") {   /* the closet cabinet's buttons, on its Physical tab (SB-J6) */
+      const k = Object.keys(a.values)[0], v = a.values[k], t = k === "open" ? (v ? "Open the door" : "Shut the door") : k === "locked" ? (v ? "Lock it" : "Unlock it") : v ? "Put the key in" : "Take the key out";
+      await dev(p, "cab"); await tab(p, "Physical"); await p.click('.win-body button:text-is("' + t + '")'); await p.waitForTimeout(40); return;
+    }
+    if (a.t === "radio") { await dev(p, a.dev); await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("' + (a.on ? "Turn Wi-Fi on" : "Turn Wi-Fi off") + '")'); await p.waitForTimeout(60); return; }   /* a phone's Wi-Fi switch */
+    if (a.t === "joinssid") {   /* a phone joins a network it hears, its password typed in */
+      await dev(p, a.dev); await tab(p, "Wi-Fi"); const li = p.locator(".pane .cabs li", { hasText: a.ssid });
+      await li.locator('input[name="pass"]').fill(a.pass); await li.locator("button").click(); await p.waitForTimeout(60); return;
+    }
     throw new Error("no page step for " + JSON.stringify(a));
   };
   const promptNow = (p) => p.$eval(".term .prompt", (n) => n.textContent);
@@ -1427,6 +1436,69 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       await p.reload(); await p.waitForTimeout(350);
       check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)), tag + "still done after a reload");
     } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0] + (process.env.STACK ? " " + (String(e.stack).match(/drive\.mjs:\d+/g) || []).join(" ") + " open=" + (await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "?")) + " tabs=" + (await p.$$eval(".win-tabs button", (l) => l.map((b) => b.textContent).join("|")).catch(() => "?")) + " devtabs=" + (await p.$$eval("#devtabs [data-d]", (l) => l.map((b) => b.dataset.d).join(",")).catch(() => "?")) : "")); }
+    await ctx.close();
+  }
+  /* SB-J6 (stage 5): hardening after the card processor's PCI DSS check, worked entirely through the page: the router on its console
+     (SSH only, its list, encryption, timeouts, LLDP off outside), the closet switch and the back switch on theirs (port security,
+     parked spares, the printer's port, snooping and ARP inspection), every staff PC renewed and the visitor's phone joined again, and
+     the closet cabinet shut, locked and its key taken out on its own Physical tab. A cable laid at the rack with the door shut is
+     refused, and the page says why */
+  for (const seed of !process.env.JOB || process.env.JOB === "SB-J6" ? [11, 2025, 777777] : []) {
+    const job = "SB-J6", { p, ctx } = await zpage("build.html", { net: solvedTo(2), build: { current: job, j: { [job]: { seed } }, done: doneTo(2) } });
+    const tag = "business " + job + " " + seed + ": ";
+    try {
+      const plan = await BJ(p, () => window.__e4b.T.sim.net.plan), mgr = await BJ(p, () => window.__e4b.T.sim.net.client.manager);
+      check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed, tag + "opens the job on the business asked for");
+      const lim = await p.$eval(".limits", (n) => n.textContent);
+      check([plan.vtyAcl, plan.domain, plan.user, plan.userPw, "VLAN " + plan.vlans.parking.id, plan.vlans.parking.name, plan.idle + " minutes", plan.wanPort, mgr].every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the findings' records: the list's name, the domain, the user, the parking VLAN, the minutes, the outside port, who gets the key");
+      check(/PCI DSS/.test(await p.$eval("#tk", (n) => n.textContent)), tag + "the manager's words name the PCI DSS check");
+      /* the closet cabinet: a device button, its Physical tab, on the plan round the router and the closet switch, not on the diagram */
+      check(!!(await p.$('#devtabs [data-d="cab"]')) && !(await p.$('#net [data-d="cab"]')) && !!(await p.$('#plan [data-d="cab"]')), tag + "the closet cabinet: a device button and a frame on the plan, not on the logical diagram");
+      check(/CABINET: OPEN/.test(await p.$eval("#plan", (n) => n.textContent)), tag + "the plan says the cabinet is open, in words");
+      await dev(p, "cab"); check((await p.$$eval(".win-tabs button", (l) => l.map((b) => b.textContent).join("|"))) === "Physical", tag + "the cabinet has one tab, Physical"); await tab(p, "Physical"); await p.waitForTimeout(300);
+      check(/Its door: standing open/.test(await p.$eval(".m3d-says", (n) => n.textContent).catch(() => "")) && /DoorStanding open/.test(await p.$eval(".win-body", (n) => n.textContent)), tag + "its Physical tab: the door standing open, in the model's words and in its table");
+      const d0 = await p.waitForFunction(() => import("./js/desk/model3d.js").then((m) => { const g = m.debug() && m.debug().id === "cab" && m.debug().model; if (!g) return null; const d = g.getObjectByName("door"); return d ? { open: d.userData.open, key: !!g.getObjectByName("key") } : null; }), null, { timeout: 60000, polling: 250 }).then((h) => h.jsonValue());
+      check(d0.open > 90 && d0.key === true, tag + "the cabinet's 3D model as drawn: its door swung open, the key in the lock (" + JSON.stringify(d0) + ")");
+      await checkJob(p);
+      check((await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do");
+      const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
+      const shut = sol.findIndex((a) => a.t === "cabinet" && a.values.open === false), back = sol.findIndex((a) => a.t === "lay" && a.b.dev === "bsw" && a.b.port === "CONSOLE");
+      for (let k = 0; k < sol.length; k++) {
+        await step(p, sol[k]);
+        if (k === back - 3) {   /* the closet switch done and saved, the console still in it: what the student would read off it */
+          await dev(p, "tech"); await tab(p, "Serial terminal");
+          for (const l of ["show port-security", "show ip dhcp snooping"]) await type(p, l);
+          const t = await term(p);
+          check(/Gi0\/1\s+1\s+1\s+0\s+Shutdown/.test(t) || /GigabitEthernet0\/1\s+1\s+1\s+0\s+Shutdown/.test(t), tag + "show port-security on the closet switch: the front PC's port, one address, shut on a violation");
+          check(/Switch DHCP snooping is enabled/.test(t) && /GigabitEthernet0\/24\s+yes/.test(t), tag + "show ip dhcp snooping on the closet switch: on, its way to the router trusted");
+        }
+        if (k === shut) {   /* the door shut: a cable at the rack is refused, and the page says why */
+          await lay(p, "pc", "NIC", "msw", "10");
+          check(/Not laid: Closet switch is in the closet cabinet, and its door is shut: open it first/.test(await p.$eval("#bm", (n) => n.textContent)), tag + "with the cabinet's door shut, a cable laid at the closet switch is refused, in words");
+          const pc = await p.evaluate(() => window.__e4b.T.sim.net.cables.findIndex((c) => (c.a.dev === "pc" || c.b.dev === "pc") && (c.a.dev === "msw" || c.b.dev === "msw")));
+          await p.click("#runs tbody tr:nth-child(" + (pc + 1) + ") button"); await p.waitForTimeout(40);
+          check(/Not pulled: Closet switch is in the closet cabinet, and its door is shut: open it first/.test(await p.$eval("#bm", (n) => n.textContent)) && (await p.evaluate(() => window.__e4b.T.sim.net.cables.some((c) => c.a.dev === "pc" || c.b.dev === "pc"))), tag + "and Pull on the front PC's run: refused, said so, the cable still in");
+          await dev(p, "cab"); await tab(p, "Physical");
+        }
+      }
+      check(!/% Invalid|% Incomplete|% Ambiguous|Command rejected/.test(await term(p)), tag + "no line was refused on the back switch");
+      await dev(p, "cab"); await tab(p, "Physical"); await p.click('.win-body button:text-is("Open the door")'); await p.waitForTimeout(40);
+      check(/It's locked: unlock it first/.test(await p.$eval(".win-body .res", (n) => n.textContent)), tag + "the cabinet locked: Open the door is refused, in words");
+      check(/Its door: shut/.test(await p.$eval(".m3d-says", (n) => n.textContent).catch(() => "")) && /No key in it/.test(await p.$eval(".m3d-says", (n) => n.textContent).catch(() => "")) && /KeyTaken out/.test(await p.$eval(".win-body", (n) => n.textContent)), tag + "its Physical tab: shut, locked, no key in it");
+      const drawn = async () => { await p.waitForFunction(() => import("./js/desk/model3d.js").then((m) => !!(m.debug() && m.debug().model && m.debug().id === "cab")), null, { timeout: 60000, polling: 250 }); return p.evaluate(() => import("./js/desk/model3d.js").then((m) => { const g = m.debug().model, d = g.getObjectByName("door"), l = g.getObjectByName("latch"); return { open: d ? d.userData.open : null, locked: l ? l.userData.locked : null, key: !!g.getObjectByName("key") }; })); };
+      const dl = await drawn(); check(dl.open === 0 && dl.locked === true && dl.key === false, tag + "the cabinet's 3D model as drawn: its door shut, the latch locked, no key (" + JSON.stringify(dl) + ")");
+      const t = await checkJob(p), n = await BJ(p, () => window.__e4b.T.def.reqs.length);
+      check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
+      await p.click("#vPhy"); await p.waitForTimeout(40);
+      check(/CABINET: LOCKED/.test(await p.$eval("#plan", (n) => n.textContent)) && !/KEY IN/.test(await p.$eval("#plan", (n) => n.textContent)), tag + "the plan says the cabinet is locked");
+      const fp = await labelsClear(p, "plan"); check(fp.n > 0 && !fp.out.length, tag + "the finished business's floor plan: every name clear" + (fp.out.length ? " (" + fp.out.join("; ") + ")" : ""));
+      await dev(p, "rtr"); await tab(p, "Physical"); await p.waitForTimeout(300);
+      check(/It's in the closet cabinet: the door is shut and locked/.test(await p.$eval(".m3d-says", (n) => n.textContent).catch(() => "")), tag + "the router's Physical tab says it's in the locked cabinet");
+      await dysClear(p, tag + "the finished business");
+      await p.reload(); await p.waitForTimeout(350);
+      check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)), tag + "still done after a reload");
+      check(await BJ(p, () => window.__e4b.T.sim.d.cab.locked && !window.__e4b.T.sim.d.cab.key), tag + "the cabinet still locked, its key out, after a reload");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0] + (process.env.STACK ? " " + (String(e.stack).match(/drive\.mjs:\d+/g) || []).join(" ") : "")); }
     await ctx.close();
   }
 }

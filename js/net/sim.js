@@ -1038,20 +1038,22 @@ export class Sim {
   }
   /* build mode: take a device out of its box and put it in a room (or move it: its cables must come out first) */
   /* the closet cabinet (SB-J6): what's in it (the business router and the closet switch) is reached only with its door open,
-     to lay or pull a cable at it or to power it off and on. Nothing else is barred, and a level without the cabinet has no bar */
+     to lay, pull, reseat, unplug or swap a cable at it, or to power it off and on. Nothing else is barred, and a level without the cabinet has no bar */
   cabinetBars(act) {
-    const K = this.net.cabinet; if (!K || K.open) return null;
+    const K = this.d.cab; if (!K || K.open) return null;
     let devs = [];
     if (act.t === "lay") devs = [act.a && act.a.dev, act.b && act.b.dev];
     else if (act.t === "pull") { const c = this.net.cables.find(function (x) { return x.id === act.cable; }); if (c) devs = [c.a.dev, c.b.dev]; }
     else if (act.t === "power" || act.t === "place") devs = [act.dev];
+    else if (/^(reseat|unplug|tighten)$/.test(act.t)) { const c = this.cable(act.cable); if (c && c[act.end]) devs = [c[act.end].dev]; }   /* a plug at that end */
+    else if (/^(replace|crossover|polarity)$/.test(act.t)) { const c = this.cable(act.cable); if (c) devs = [c.a.dev, c.b.dev]; }        /* the whole cable, both ends */
     const d = devs.find(function (x) { return K.holds.indexOf(x) >= 0; }); if (!d) return null;
     return cap(theDev(this.d[d])) + " is in the closet cabinet, and its door is " + (K.locked ? "locked: unlock it and open it first" : "shut: open it first");
   }
   /* its door opened or shut, its lock turned, its key put in or taken out: one at a time. The lock turns only with the key in
      it and the door shut (its bolt goes into the frame); a locked door doesn't open */
   cabinet(v) {
-    const K = this.net.cabinet; if (!K) return { ok: false, errs: ["There's no cabinet here"] };
+    const K = this.d.cab; if (!K) return { ok: false, errs: ["There's no cabinet here"] };
     const say = function () { return { ok: true, open: K.open, locked: K.locked, key: K.key }; };
     if ("key" in v) {
       if (!!v.key === K.key) return { ok: false, errs: [K.key ? "The key is already in the lock" : "The key isn't in the lock: you have it"] };

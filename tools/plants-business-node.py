@@ -57,9 +57,9 @@ PLANTS = [
  ('SB-J6 job: the walk-through never renews the staff PCs', 'js/build/business.js', 'PCS.map(function (id) { return { t: "cmd", dev: id, line: "ipconfig /renew" }; }),\n        [{ t: "rejoin"', '[],\n        [{ t: "rejoin"'),
  ("SB-J6 job: a hint names the remote lines' list", 'js/build/business.js', 'rung1: function () { return "On the router: show access-lists, and line vty in show running-config.', 'rung1: function (v) { return "On the router: show access-lists " + v.plan.vtyAcl + ", and line vty in show running-config.'),
  ("SB-J6 job: a struck cause names the parking VLAN's number", 'js/build/business.js', 'C("cvlan", !vl("msw"), "The closet switch has no parking VLAN", "The closet switch has it."', 'C("cvlan", !vl("msw"), "The closet switch has no parking VLAN", "The closet switch has VLAN " + P.id + "."'),
- ("SB-J6 sim: the cabinet's door never bars the rack", 'js/net/sim.js', 'const K = this.net.cabinet; if (!K || K.open) return null;', 'return null;'),
+ ("SB-J6 sim: the cabinet's door never bars the rack", 'js/net/sim.js', 'const K = this.d.cab; if (!K || K.open) return null;', 'return null;'),
  ('SB-J6 sim: the lock turns with the door open', 'js/net/sim.js', 'if (v.locked && K.open) return { ok: false, errs: ["Shut the door first: the lock\'s bolt turns into the frame"] };', ''),
- ('SB-J6 sim: the cabinet found shut', 'js/net/business.js', 'sim.net.cabinet = { open: true,', 'sim.net.cabinet = { open: false,'),
+ ('SB-J6 sim: the cabinet found shut', 'js/net/business.js', 'sim.net.devices.cab = { id: "cab", kind: "cabinet", label: "Closet cabinet", sub: "lockable rack", on: true, open: true,', 'sim.net.devices.cab = { id: "cab", kind: "cabinet", label: "Closet cabinet", sub: "lockable rack", on: true, open: false,'),
  ('SB-J6 engine: a cabinet action not recorded, so a replay loses it', 'js/build/engine.js', 'radio: 1, cabinet: 1 };', 'radio: 1 };'),
  ('SB-J6 page: a refused power-cycle says it restarted', 'js/net/pages.js', '  if (done.ok === false && done.errs) return {', '  if (false) return {'),
  ('SB-J6 CLI: transport input ssh telnet read as SSH only', 'js/net/swcli.js', 'return setTransport(S, a.some(function (w) { return /^te/i.test(w); }) ? "all" : "ssh");', 'return setTransport(S, "ssh");'),
@@ -77,7 +77,7 @@ for name, f, a, b in PLANTS:
     shutil.copy(f, BAK)
     open(f, "w").write(src.replace(a, b))
     try:
-        r = subprocess.run(["node", "--test", "tests/business-jobs.test.js", "tests/business-sim.test.js", "tests/business-cli.test.js", "tests/business-cams.test.js", "tests/business-harden.test.js", "tests/office.test.js"], env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=1200)
+        r = subprocess.run(["node", "--test", "tests/business-jobs.test.js", "tests/business-sim.test.js", "tests/business-cli.test.js", "tests/business-cams.test.js", "tests/business-harden.test.js", "tests/business-sb6.test.js", "tests/office.test.js"], env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=1200)
         fails = [l.strip() for l in r.stdout.splitlines() if l.startswith("not ok")]
         caught += 1 if r.returncode else 0
         print(("CAUGHT" if r.returncode else "MISSED") + " · " + name + " · " + (", ".join(fails)[:200]), flush=True)

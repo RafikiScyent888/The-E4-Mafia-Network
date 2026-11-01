@@ -1185,5 +1185,30 @@
   "name": "business: SB-J6 done, every line met",
   "page": "build.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J6',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const btn=t=>[...document.querySelectorAll('.win-body button')].find(b=>b.textContent===t).click(); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J7 first check, the work order with the provider's letter",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J7',true,4242); const J=c.T, p=J.v.plan, F=p.fixed, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J7 SSH from the manager's PC to the router, the fixed address typed",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J7',true,4242); const J=c.T, p=J.v.plan, F=p.fixed, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; sol.slice(0,8).forEach(a=>c.act(a)); c.act({t:'cmd',dev:'mgr',line:'do show ip interface brief'}); dev('mgr'); tab('Command Prompt');"
+ },
+ {
+  "name": "business: SB-J7 the default route to the old gateway, Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J7',true,4242); const J=c.T, p=J.v.plan, F=p.fixed, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; sol.forEach(a=>c.act(a.line==='ip route 0.0.0.0 0.0.0.0 '+F.gw?Object.assign({},a,{line:'ip route 0.0.0.0 0.0.0.0 '+J.sim.net.isp.gw}):a)); for(let i=0;i<5;i++) c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J7 done, every line met",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J7',true,4242); const J=c.T, p=J.v.plan, F=p.fixed, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; sol.forEach(a=>c.act(a)); c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J7 done, the manager's phone on mobile data at the fixed address",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J7',true,4242); const J=c.T, p=J.v.plan, F=p.fixed, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; sol.forEach(a=>c.act(a)); c.check(); dev('mphone'); tab('Web browser'); go('https://'+F.ip+':'+p.cams[0].ext);"
  }
 ]

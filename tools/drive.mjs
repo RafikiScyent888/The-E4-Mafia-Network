@@ -1502,6 +1502,49 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
     } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0] + (process.env.STACK ? " " + (String(e.stack).match(/drive\.mjs:\d+/g) || []).join(" ") : "")); }
     await ctx.close();
   }
+  /* SB-J7: the provider's fixed address, worked entirely through the page, as the walk-through does it: over SSH from the manager's
+     PC (SB-J6 let the staff VLAN in), the address from the letter's CIDR, the default route to the provider's gateway, saved; then
+     the manager's phone on mobile data at the fixed address, and the old address reaching nothing */
+  for (const seed of !process.env.JOB || process.env.JOB === "SB-J7" ? [11, 2025, 777777] : []) {
+    const job = "SB-J7", { p, ctx } = await zpage("build.html", { net: solvedTo(2), build: { current: job, j: { [job]: { seed } }, done: doneTo(2) } });
+    const tag = "business " + job + " " + seed + ": ";
+    try {
+      const plan = await BJ(p, () => window.__e4b.T.sim.net.plan), F = plan.fixed, old = await BJ(p, () => window.__e4b.T.sim.net.isp.wanIp), gw = plan.vlans.staff.gw;
+      check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed, tag + "opens the job on the business asked for");
+      const lim = await p.$eval(".limits", (n) => n.textContent);
+      check([F.ip + "/" + F.len, F.gw, old, plan.user, plan.userPw].every((x) => lim.indexOf(x) >= 0) && lim.indexOf(F.mask) < 0, tag + "the limits carry the provider's letter in CIDR only (no mask spelled out), the old address, the SSH login");
+      const rtrSub = async () => p.$eval('#net [data-d="rtr"]', (n) => n.textContent).catch(() => "");
+      await p.click("#vLog"); await p.waitForTimeout(40);
+      check((await rtrSub()).indexOf(plan.lanGw) >= 0, tag + "the diagram labels the router with the business's gateway");
+      await p.click("#vPhy"); await p.waitForTimeout(40);
+      await checkJob(p);
+      check((await p.$$("#check .rq.bad")).length === 3, tag + "the first check finds the three lines to do");
+      await dev(p, "mphone"); await tab(p, "Web browser"); await go(p, "https://" + F.ip + ":" + plan.cams[0].ext);
+      check(/took too long to respond/.test(await p.$eval(".browser", (n) => n.textContent)), tag + "before the move: the fixed address reaches nothing from the phone");
+      await go(p, "https://" + old + ":" + plan.cams[0].ext);
+      check(/Camera name/.test(await p.$eval(".browser", (n) => n.textContent)), tag + "before the move: the old address still opens the camera (switch-over day)");
+      const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
+      for (const a of sol) await step(p, a);
+      const t = await term(p);
+      check(/Permanently added/.test(t) && /#$|#\s*$/.test((t.match(/[^\n]*$/) || [""])[0]) || /closed/.test(t), tag + "SSH from the manager's PC to the router: its key added, logged in, and out again");
+      check(!/% Invalid|% Incomplete|% Ambiguous|Bad mask/.test(t), tag + "no line was refused on the router");
+      const done = await checkJob(p), n = await BJ(p, () => window.__e4b.T.def.reqs.length);
+      check(new RegExp(n + " of " + n + " met").test(done) && /Job .* done/.test(done), tag + "every line met through the page (" + (done.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
+      await dev(p, "mphone"); await tab(p, "Web browser");
+      for (const c of plan.cams) { await go(p, "https://" + F.ip + ":" + c.ext); check(new RegExp("Camera name" + c.tag).test(await p.$eval(".browser", (n) => n.textContent)), tag + "after: the phone on mobile data opens " + c.tag + " at the fixed address"); }
+      await go(p, "https://" + old + ":" + plan.cams[0].ext); check(/took too long to respond/.test(await p.$eval(".browser", (n) => n.textContent)), tag + "after: the old address reaches nothing");
+      await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "tracert 8.8.8.8");
+      check(new RegExp(F.gw.replace(/\./g, "\\.")).test((await term(p)).split("tracert 8.8.8.8").pop()), tag + "tracert from the reception PC goes out by the provider's gateway for the fixed block");
+      await p.click("#vLog"); await p.waitForTimeout(40);
+      check((await rtrSub()).indexOf(plan.lanGw) >= 0 && (await rtrSub()).indexOf(F.ip) < 0, tag + "after: the diagram still labels the router with the gateway, not its public address");
+      const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished business's logical diagram: every name and port dot clear" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(40);
+      await dysClear(p, tag + "the finished business");
+      await p.reload(); await p.waitForTimeout(350);
+      check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)), tag + "still done after a reload");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0] + (process.env.STACK ? " " + (String(e.stack).match(/drive\.mjs:\d+/g) || []).join(" ") : "")); }
+    await ctx.close();
+  }
 }
 
 console.log(errs.length ? "PAGE ERRORS\n" + [...new Set(errs)].join("\n") : "no page errors");

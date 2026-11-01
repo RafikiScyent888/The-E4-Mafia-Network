@@ -83,7 +83,7 @@ const shown = function (sim, id) { return !!sim.d[id] && !sim.d[id].boxed; };   
 function subOf(sim, id) {
   const x = sim.d[id];
   if (id === "router") return x.lan.ip;
-  if (x.kind === "brouter") { const f = Object.keys(x.sw.ifs).map(function (k) { return x.sw.ifs[k]; }).find(function (q) { return q.ip && q.ip !== "dhcp" && !q.shutdown; }); return f ? f.ip : x.sub; }   /* its first address set by hand once it has one */
+  if (x.kind === "brouter") { const f = Object.keys(x.sw.ifs).filter(function (k) { return !(x.sw.links[k] && x.sw.links[k].far === "modem"); }).map(function (k) { return x.sw.ifs[k]; }).find(function (q) { return q.ip && q.ip !== "dhcp" && !q.shutdown; }); return f ? f.ip : x.sub; }   /* its first address set by hand once it has one, on the business's side: the provider's side, even with the fixed address set by hand (SB-J7), isn't the gateway anyone here uses */
   if (id === "printer") return x.ifaces[0].cfg.mode === "static" ? x.ifaces[0].cfg.ip : "DHCP";
   if (x.kind === "mswitch") return x.sw.vlan1.ip && !x.sw.vlan1.shutdown ? x.sw.vlan1.ip : x.sub;   /* its management address once it has one */
   if (x.kind === "bap") return "DHCP";   /* the ceiling access point: its address is the student's to find (the router's DHCP list, the switch's neighbours), so the diagram doesn't give it */

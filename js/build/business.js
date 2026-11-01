@@ -6,7 +6,7 @@
    devices and the network as they really are. Each line is an ordered list of
    causes, as on the other levels, so Mason's third rung can strike the ones
    the network has ruled out and leave two. None of it ever says what to type. */
-import { makeBusiness, addGuestKit, addBackSwitch, addCameraKit, addCabinet } from "../net/business.js";
+import { makeBusiness, addGuestKit, addBackSwitch, addCameraKit, addCabinet, addFixedLine } from "../net/business.js";
 import { Sim } from "../net/sim.js";
 import { exec } from "../net/cmd.js";
 import { browse } from "../net/pages.js";
@@ -1355,4 +1355,118 @@ const SB6 = {
   }
 };
 
-export const BUSINESS_JOBS = [SB1, SB2, SB3, SB4, SB5, SB6];
+/* ---------------------------------------------------------------- SB-J7: the provider's fixed address */
+/* the owner's answers (1 November 2026): switch-over day, the old changing address still working until the router moves ("Still
+   online"); the provider's letter gives the block in CIDR only, so the mask is worked out by hand ("CIDR only, e.g. /29").
+   Built in size order (the owner: "Keep building everything in order of increasing in size"), so numbered as it goes live */
+const fixedOf = function (v) { return v.plan.fixed; };
+const defaultsOf = function (R) { return R.routes.filter(function (s) { return s.net === "0.0.0.0" && s.mask === "0.0.0.0"; }); };
+const inBlock = function (F, ip) { return !!ip && netOf(ip, F.mask) === F.net; };
+function fixedWanCauses(sim, v) {
+  const R = view(sim), p = v.plan, F = fixedOf(v), f = R.ifs[p.wanPort], hand = !f.dhcp && !!f.ip;
+  return [C("shut", f.shutdown, "The provider's port is shut down", "The provider's port is up.", "show ip interface brief on the router: " + p.wanPort + " administratively down."),
+    C("dhcp", f.dhcp, "It still takes its address from the provider's DHCP: an address that can change", "Its address is set by hand.", "show ip interface brief on the router: " + p.wanPort + " " + sim.net.isp.wanIp + ", method DHCP."),
+    C("none", !f.dhcp && !f.ip, "It has no address at all", "It has an address.", "show ip interface brief on the router: " + p.wanPort + " unassigned."),
+    C("gwaddr", hand && f.ip === F.gw, "Its address is the one the letter gives the provider's gateway, not the business's own", "It isn't the provider's gateway's address.", "show ip interface brief on the router: " + p.wanPort + " " + f.ip + "."),
+    C("edge", hand && (f.ip === F.net || f.ip === F.bcast), "Its address is the block's network or broadcast address, which no device can have", "It's a usable address.", "show ip interface brief on the router: " + p.wanPort + " " + f.ip + "."),
+    C("ip", hand && f.ip !== F.ip, "Its address isn't the one in the provider's letter", "Its address is the letter's.", "show ip interface brief on the router: " + p.wanPort + " " + f.ip + "."),
+    C("mask", hand && f.mask !== F.mask, "Its mask doesn't match the size of the block in the letter", "Its mask fits the block.", "show running-config on the router: ip address " + f.ip + " " + f.mask + " on " + p.wanPort + ".")];
+}
+function fixedRouteCauses(sim, v) {
+  const R = view(sim), L = live(sim), p = v.plan, F = fixedOf(v), d = defaultsOf(R), isp = sim.net.isp;
+  const mine = d.find(function (s) { return s.nh === F.gw; }), table = routes(R, L).some(function (t) { return t.code === "S*" && !t.dhcp && t.nh === F.gw; });
+  const old = d.find(function (s) { return s.nh === isp.gw; }), iface = d.find(function (s) { return !s.nh && s.iface; });
+  const hop = d.find(function (s) { return s.nh && s.nh !== F.gw && inBlock(F, s.nh); }), gone = d.find(function (s) { return s.nh && s.nh !== F.gw && s.nh !== isp.gw && !inBlock(F, s.nh); });
+  const rr = table ? sim.route("rtr", "8.8.8.8") : null;
+  return [C("none", !d.length, "There's no default route set by hand: an address from DHCP brings one with it, an address set by hand doesn't", "A default route is set.", "show ip route on the router: " + (R.ifs[p.wanPort].dhcp ? "the only default route is the one DHCP brought (S* via " + isp.gw + ")" : "Gateway of last resort is not set") + "."),
+    C("old", !mine && !!old, "The default route points at the old gateway: it isn't on the new block, so the route never goes into the table", "It doesn't point at the old gateway.", "show running-config on the router: ip route 0.0.0.0 0.0.0.0 " + isp.gw + "; show ip route: no S* from it."),
+    C("gone", !mine && !old && !!gone, "The default route points at an address the router has no network for, so it never goes into the table", "Its next hop is on the block.", "show running-config on the router: ip route 0.0.0.0 0.0.0.0 " + (gone ? gone.nh : "") + "."),
+    C("iface", !mine && !!iface, "The default route names the port, not the provider's gateway: the router would ask by ARP for every address on the internet, and the provider doesn't answer for them", "It names the gateway.", "show running-config on the router: ip route 0.0.0.0 0.0.0.0 " + (iface ? iface.iface : "") + "; ping 8.8.8.8 from the router: no replies."),
+    C("hop", !mine && !!hop, "The default route points at an address in the block that isn't the provider's gateway", "It points at the provider's gateway.", "show running-config on the router: ip route 0.0.0.0 0.0.0.0 " + (hop ? hop.nh : "") + "; ping 8.8.8.8 from the router: no replies."),
+    C("pending", !!mine && !table, "The default route is set, but it isn't in the routing table: its gateway isn't on any network the router has yet", "It's in the routing table.", "show ip route on the router: no S* via " + F.gw + "."),
+    C("reach", !!mine && table && !(rr && rr.internet), "The default route is in the table, but the router still can't reach the internet", "The router reaches the internet.", "ping 8.8.8.8 from the router: no replies.")];
+}
+/* the manager's phone on mobile data: each camera's page at the fixed address, on its port from the records */
+function fixedRemoteCauses(sim, v) {
+  const F = fixedOf(v), rows = v.plan.cams.map(function (c) { return { c: c, r: sim.fromInternet(F.ip, c.ext, "tcp") }; });
+  const r = rows.find(function (x) { return !x.r.ok || x.r.who !== x.c.id || +x.r.lport !== 443; }) || rows[0], y = r.r.why, bad = !r.r.ok || r.r.who !== r.c.id;
+  const tried = "On the manager's phone, on mobile data, https://" + F.ip + ":" + r.c.ext;
+  return [C("notyet", y === "notyet", "The fixed address doesn't reach the router yet: the router isn't using it", "The fixed address reaches the router.", tried + " times out."),
+    C("wan", y === "wan" || y === "provider", "The router's provider side is down", "The provider's side is up.", tried + " times out; show ip interface brief on the router: " + v.plan.wanPort + " down."),
+    C("back", y === "back", "The cameras' answers have no way back out: the router has no route to the internet that goes to the provider's gateway", "Answers find their way out.", tried + " times out; show ip route on the router: no default route via the provider's gateway."),
+    C("forward", y === "no-forward" || y === "outside", "The router doesn't send it on to the camera any more", "The forwards still send it on.", tried + " is refused; show ip nat translations on the router."),
+    C("other", bad, "A camera's page doesn't open from outside at the fixed address", "Both cameras' pages open from outside.", tried + ": " + (y || "the wrong page") + ".")];
+}
+function fixedStillCauses(sim) {
+  const down = PCS.find(function (id) { return !online(sim, id); }), noPrint = ["pc", "bpc"].find(function (id) { return !printOk(sim, id); }), K = sim.d.cab, ip = apAddr(sim), r = ip ? sim.route("mgr", ip) : null;
+  return [C("net", !!down, "The " + (down ? name(sim, down) : "") + " is offline", "Every staff PC is online.", "ping from the " + (down ? name(sim, down) : "") + ": no replies from the internet."),
+    C("print", !!noPrint, "The " + (noPrint ? name(sim, noPrint) : "") + " can't print", "Staff print.", "Test pages from the " + (noPrint ? name(sim, noPrint) : "") + " don't print."),
+    C("guest", !online(sim, "guest"), "The visitor's phone is offline", "Guests are online.", "The visitor's phone: no internet."),
+    C("ap", !!r && !((r.local || r.routed) && !r.fail), "The manager's PC can't reach the access point's page", "The access point's page opens from the manager's PC.", "From the manager's PC the access point's address doesn't answer."),
+    C("rack", !!K && (!K.locked || K.key), "The closet cabinet was left " + (K && K.locked ? "with its key in the lock" : "unlocked"), "The cabinet is locked again, its key taken away.", "The closet cabinet: " + (K && K.open ? "its door standing open" : K && !K.locked ? "shut, not locked" : "locked, its key in the lock") + ".")];
+}
+const SB7 = {
+  id: "SB-J7", level: "business", title: "The provider's fixed address: set by hand, with a way out of its own",
+  already: ["still", "saved"],
+  start(seed) {
+    const b = SB6.start(seed), sim = b.sim;
+    for (const a of SB6.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    addFixedLine(sim); sim.cli = {};   /* the provider's letter has come: the fixed block, the old address still working until the router moves */
+    return { sim: sim, v: b.v };
+  },
+  brief(v, sim) { return { quote: "Twice this month I couldn't see the cameras from home, and the provider says it's because our address changed. We pay for a fixed one now, and their letter came this morning. It's in our records. Can you move us over today, without anything being down for long?", from: sim.net.client.manager + ", " + sim.net.client.name }; },
+  mason: "An address set by hand comes with nothing: the mask is worked out from the size of the block, and the way out is a route you add yourself, to the provider's gateway on that block. Then test it from outside, as the manager will.",
+  limits: function (v, sim) {
+    const p = v.plan, F = fixedOf(v), isp = sim.net.isp;
+    return ["The provider's letter, in the records: from today the line has the fixed address " + F.ip + "/" + F.len + ". The provider's gateway for it is " + F.gw + ".",
+      "Until the router moves over, the old address (" + isp.wanIp + ") keeps working; once it has, the old one stops. The provider's DNS servers stay " + isp.dns.join(" and ") + ".",
+      "The manager reaches the cameras from outside at the fixed address, on the same ports as before (" + p.cams.map(function (c) { return c.ext; }).join(" and ") + "). Test it as they will: on their phone, Wi-Fi off.",
+      "The router is managed by SSH from a staff PC as " + p.user + " (password " + p.userPw + "), or at its console in the closet cabinet, whose key is with " + sim.net.client.manager + ". A cabinet opened is locked again, its key taken away.",
+      "The records are as before: router " + p.rtHost + " (secret " + p.rtSecret + ", console " + p.rtConsole + "); switches " + p.swHost + " and " + p.bswHost + " (secret " + p.swSecret + ", console " + p.swConsole + ")."];
+  },
+  reqs: [{
+    id: "wan", text: "The router's provider port has the fixed address from the provider's letter",
+    causes: fixedWanCauses,
+    ok: function (sim, v) { return v.plan.wanPort + " has " + fixedOf(v).ip + ", set by hand, with the block's mask."; },
+    rung1: function () { return "On the router: show ip interface brief, and the provider's port in show running-config. Then the provider's letter in the records."; },
+    rung2: function () { return "A block written with a slash says how many bits are the network; the rest are the hosts. A block of a few addresses keeps its first for the network and its last for broadcast, and the provider's gateway takes one of the rest."; }
+  }, {
+    id: "route", text: "The router's way out is a default route to the provider's gateway",
+    causes: fixedRouteCauses,
+    ok: function () { return "A default route to the provider's gateway is in the routing table, and the router reaches the internet."; },
+    rung1: function () { return "On the router: show ip route (is there a gateway of last resort, and where from?), then ping out from the router itself."; },
+    rung2: function () { return "DHCP hands out a gateway with the address, and the router makes a default route from it. Set the address by hand and that route goes with the lease. A static route only goes into the table if its next hop is on a network the router is on."; }
+  }, {
+    id: "remote", text: "From the manager's phone on mobile data, both cameras open at the fixed address",
+    causes: fixedRemoteCauses,
+    ok: function (sim, v) { return "From outside, the fixed address opens each camera's page on its port."; },
+    rung1: function () { return "Try it as the manager will: their phone, Wi-Fi off, the fixed address and each camera's port. Then show ip route and show ip nat translations on the router."; },
+    rung2: function () { return "A forward that names the router's port follows whatever address that port has. The camera's answer goes back out by the router's own routes, so it needs the way out too."; }
+  }, {
+    id: "still", text: "Everything still works: staff online and printing, guests online, the cabinet locked",
+    causes: fixedStillCauses,
+    ok: function () { return "Every staff PC is online and prints, guests are online, the access point's page opens, and the cabinet is locked with its key away."; },
+    rung1: function () { return "Ping out from each staff PC and the visitor's phone; print a test page; look at the closet cabinet."; },
+    rung2: function () { return "Between the address changing and the new way out going in, nobody gets out: the order of the two lines decides how long that is."; }
+  }, L_SAVED_RT],
+  solve(v) {
+    const p = v.plan, F = fixedOf(v), m = function (l) { return { t: "cmd", dev: "mgr", line: l }; };
+    /* from the manager's PC, over SSH (SB-J6 let the staff VLAN in): the address and the way out, saved */
+    return [m("ssh " + p.user + "@" + staff(v).gw), m(p.userPw), m("enable"), m(p.rtSecret), m("configure terminal"),
+      m("interface " + p.wanPort), m("ip address " + F.ip + " " + F.mask), m("exit"), m("ip route 0.0.0.0 0.0.0.0 " + F.gw), m("end"),
+      m("copy running-config startup-config"), m(""), m("exit")];
+  },
+  answer(v, sim) {
+    const p = v.plan, F = fixedOf(v);
+    return ["From the manager's PC: ssh " + p.user + "@" + staff(v).gw + " (the records' password), enable, configure terminal. (Or the console, in the closet cabinet: unlock it, then lock it again after.)",
+      "interface " + p.wanPort + ": ip address " + F.ip + " " + F.mask + " (/" + F.len + "). Then ip route 0.0.0.0 0.0.0.0 " + F.gw + ".",
+      "end, copy running-config startup-config. Then the manager's phone, Wi-Fi off: https://" + F.ip + ":" + p.cams[0].ext + " and :" + p.cams[1].ext + "."];
+  },
+  summary(v, sim) {
+    const p = v.plan, F = fixedOf(v);
+    return ["The router's provider port has the business's fixed address, " + F.ip + "/" + F.len + ", and a default route to the provider's gateway, " + F.gw + ".",
+      "Everyone gets out on the fixed address, and the manager opens both cameras from outside at it.", "The router is saved."];
+  }
+};
+
+export const BUSINESS_JOBS = [SB1, SB2, SB3, SB4, SB5, SB6, SB7];

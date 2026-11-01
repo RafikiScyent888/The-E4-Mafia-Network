@@ -422,7 +422,7 @@ function trace(sim, id, ip, rt, ok) {
   const r = sim.d[rt.via];
   if (rt.fail === "net-unreachable") { steps.push({ at: r.label, what: "No route to the internet (WAN down): sends back Destination net unreachable", ok: false }); return steps; }
   if (rt.internet && r.kind === "router") {
-    steps.push({ at: r.label, what: "NAT: private " + a.ip + " becomes public " + sim.net.isp.wanIp + "; TTL down by 1", l3: sim.net.isp.wanIp + " → " + ip + "  TTL " + (sim.ttlOf(id) - 1), ok: true });
+    steps.push({ at: r.label, what: "NAT: private " + a.ip + " becomes public " + sim.net.isp.wanIp + "; TTL down by 1", l3: sim.net.isp.wanIp + " → " + ip + "  TTL " + (sim.ttlOf(id) - 1), ok: true });   /* the house's router (r.kind router): always the provider's changing address */
     steps.push({ at: "Cable modem", what: "Bridges the frame onto the provider's cable network", ok: true });
     steps.push({ at: "Provider", what: "Routes it across the internet: " + sim.net.isp.gw + ", " + sim.net.isp.core, ok: true });
     steps.push({ at: ip, what: ok ? "ICMP echo reply comes back the same way; the router reverses the NAT" : "No reply", ok: ok });

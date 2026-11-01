@@ -467,6 +467,9 @@ test("the business jobs replay exactly, and undo takes back the last line typed"
     assert.equal(JSON.stringify(K.sim.net), JSON.stringify(J.sim.net)); assert.equal(prompt(K.sim, "tech"), prompt(J.sim, "tech"));
     assert.deepEqual([K.checks, K.done, K.notes], [J.checks, J.done, J.notes]);
     const con = J.sim.cablesOf("tech").find((c) => c.kind === "console"), id = con.a.dev === "tech" ? con.b.dev : con.a.dev, was = J.sim.d[id].sw.hostname;
+    /* a job worked over SSH (SB-J7) leaves the console as it found it, waiting: log in on it first */
+    const P = J.v.plan, pw = id === "rtr" ? [P.rtConsole, P.rtSecret] : [P.swConsole, P.swSecret];
+    if (!/#\s*$/.test(prompt(J.sim, "tech"))) [""].concat(pw[0], "enable", pw[1]).forEach((l) => B.act(J, cli(l)));
     B.act(J, cli("configure terminal")); B.act(J, cli("hostname TEMP")); assert.equal(J.sim.d[id].sw.hostname, "TEMP");
     const gone = B.undo(J); assert.equal(gone.line, "hostname TEMP"); assert.equal(J.sim.d[id].sw.hostname, was);
   }
@@ -525,7 +528,9 @@ test("random work on the business never breaks the checker; an unmet line always
       "copy running-config startup-config", "reload", "no", "show ip interface brief", "show ip nat translations", "show vlan brief", "show interfaces trunk", "?"];
     /* SB-J6's hardening lines too, only on its own walk (the other jobs' walks pick from the same list as always) */
     const S6 = p.vlans.staff, G6 = p.vlans.guest, P6 = p.vlans.parking;
-    const L6 = def.id !== "SB-J6" ? LINES : LINES.concat(["service password-encryption", "no service password-encryption", "enable password 7 0822455D0A16", "enable password Plain1", "line vty 0 4", "line vty 0 15", "line console 0",
+    const F7 = p.fixed;   /* SB-J7's provider letter (only in its own walk) */
+    const L6 = def.id !== "SB-J6" && def.id !== "SB-J7" ? LINES : (def.id === "SB-J7" && F7 ? ["interface gi0/0", "ip address " + F7.ip + " " + F7.mask, "ip address " + F7.ip + " 255.255.255.0", "ip address " + F7.gw + " " + F7.mask, "ip address dhcp",
+      "ip route 0.0.0.0 0.0.0.0 " + F7.gw, "ip route 0.0.0.0 0.0.0.0 198.51.100.1", "ip route 0.0.0.0 0.0.0.0 gi0/0", "no ip route 0.0.0.0 0.0.0.0 " + F7.gw, "show ip route"] : []).concat(LINES, ["service password-encryption", "no service password-encryption", "enable password 7 0822455D0A16", "enable password Plain1", "line vty 0 4", "line vty 0 15", "line console 0",
       "exec-timeout 0 0", "exec-timeout " + p.idle + " 0", "exec-timeout 15 0", "transport input ssh", "transport input telnet", "transport input ssh telnet", "login local", "ip domain-name " + p.domain, "crypto key generate rsa modulus 512", "crypto key generate rsa modulus 2048",
       "username " + p.user + " secret " + p.userPw, "access-class " + p.vtyAcl + " in", "access-class " + p.vtyAcl + " out", "ip access-list standard " + p.vtyAcl, "permit " + S6.net + " 0.0.0.255", "permit any", "interface gi0/3", "interface range gi0/7 - 22",
       "switchport port-security", "switchport port-security mac-address sticky", "switchport port-security violation restrict", "switchport port-security maximum 2", "no switchport port-security",

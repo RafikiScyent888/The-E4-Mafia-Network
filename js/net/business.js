@@ -144,6 +144,20 @@ export function addCabinet(sim) {
   sim.net.rooms.cab = "closet";
 }
 
+/* what SB-J10 brings: the provider's letter, a fixed address for the line. A small block from the documentation range 192.0.2.0/24,
+   given in CIDR only (the owner, 1 November 2026: "CIDR only, e.g. /29"), so the mask is worked out by hand: a /28, /29 or /30;
+   the provider's gateway is the block's first or last usable address, the business's address another usable one. Until the
+   router takes it the old changing address still works (the owner: "Still online"). From a stream of its own, so every
+   business before it comes out exactly as it always has */
+export function addFixedLine(sim) {
+  const r = rng(sim.net.seed ^ 0x7f10), len = r.pick([28, 29, 30]), size = Math.pow(2, 32 - len), base = size * r.int(1, 256 / size - 2);
+  const first = base + 1, last = base + size - 2, gwAt = r.pick(["first", "last"]), gw = gwAt === "first" ? first : last;
+  const usable = []; for (let k = first; k <= last; k++) if (k !== gw) usable.push(k);
+  const mask = [24, 16, 8, 0].map(function (b) { return Math.floor((Math.pow(2, 32) - size) / Math.pow(2, b)) % 256; }).join(".");
+  const fixed = { ip: "192.0.2." + r.pick(usable), len: len, mask: mask, gw: "192.0.2." + gw, net: "192.0.2." + base, bcast: "192.0.2." + (base + size - 1) };
+  sim.net.isp.fixed = fixed; sim.net.plan.fixed = fixed;
+}
+
 export function makeBusiness(seed) {
   const r = rng(seed ^ 0x3b17);
   const biz = r.pick(BUSINESSES), k = r.int(0, PREFIXES.length - 1), prefix = PREFIXES[k], range = RANGES[k], mask = "255.255.255.0", gw = prefix + ".1";

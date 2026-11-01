@@ -772,8 +772,15 @@ export class Sim {
     R = R || this.rtView(id);
     const n = RT.RT_PORTS.find(function (k) { return R.links[k] && R.links[k].far === "modem"; }); if (!n) return null;
     const f = R.ifs[n], up = R.links[n].up && !f.shutdown && this.modemSynced(), isp = this.net.isp;
-    return { iface: n, up: up, lease: up && f.dhcp ? { ip: isp.wanIp, mask: isp.mask || "255.255.255.0", gw: isp.gw } : null, ok: up && (f.dhcp || (f.ip === isp.wanIp && f.mask === (isp.mask || "255.255.255.0"))) };
+    const dyn = f.dhcp || (f.ip === isp.wanIp && f.mask === (isp.mask || "255.255.255.0")), fx = isp.fixed, fixed = !f.dhcp && !!fx && f.ip === fx.ip && f.mask === fx.mask;
+    /* addr: the business's public address as the internet sees it; gw: the provider's gateway for it, the only next hop out */
+    return { iface: n, up: up, lease: up && f.dhcp ? { ip: isp.wanIp, mask: isp.mask || "255.255.255.0", gw: isp.gw } : null, ok: up && (dyn || fixed), addr: up && dyn ? isp.wanIp : up && fixed ? fx.ip : null, gw: fixed ? fx.gw : isp.gw, fixed: fixed };
   }
+  /* the way out to the provider: the route's next hop has to be the provider's gateway for the address in use. A route that names
+     only the port would have the router ask by ARP for every address on the internet, and the provider doesn't answer for them */
+  wanHopOk(w, rt) { return !!w && !!rt && (!!rt.dhcp || (!!rt.nh && rt.nh === w.gw)); }
+  /* the business's public address now (the router's provider side as it's really set), or the provider's changing one */
+  publicIp() { const rid = Object.keys(this.d).find(function (id) { return this.d[id].kind === "brouter" && this.on(id); }, this), w = rid && this.rtWan(rid); return w && w.addr ? w.addr : this.net.isp.wanIp; }
   /* what the router's command line asks the network: the provider's lease, its leases, its translations, its hit counts */
   rtLive(id) {
     const self = this, x = this.d[id];
@@ -813,12 +820,13 @@ export class Sim {
     if (!pass(outIf, "out", req)) return Object.assign({ fail: "blocked", hops: [gwIp], acl: { iface: outIf, dir: "out" } }, base);
     if (w && outIf === w.iface) {   /* towards the provider */
       if (!w.ok) return Object.assign({ fail: "net-unreachable", hops: [gwIp], why: "wan" }, base);
-      if (!isPublic(dst)) return Object.assign({ fail: "beyond", hops: [gwIp, this.net.isp.gw] }, base);
+      if (!this.wanHopOk(w, rt)) return Object.assign({ fail: "no-reply", hops: [gwIp], why: rt.nh ? "next-hop" : "no-arp" }, base);   /* sent to a next hop that isn't the provider's: nothing comes back */
+      if (!isPublic(dst)) return Object.assign({ fail: "beyond", hops: [gwIp, w.gw] }, base);
       const fin = (inIf.indexOf(".") > 0 ? R.subs[inIf] : R.ifs[inIf]).nat, fout = R.ifs[outIf].nat;
       const rule = R.nat.find(function (x) { return x.iface === outIf && RT.aclVerdict(R, x.list, { proto: "ip", src: a.ip, dst: dst }).permit && R.acls[x.list]; });
       if (isPrivate(a.ip) && !(fin === "inside" && fout === "outside" && rule && rule.overload)) return Object.assign({ fail: "no-nat", hops: [gwIp], why: !rule ? "no rule" : fin !== "inside" ? "inside" : fout !== "outside" ? "outside" : "overload" }, base);   /* a private source the provider won't route: no reply ever comes */
-      if (!pass(outIf, "in", Object.assign({}, rep, { dst: this.net.isp.wanIp })) || !pass(inIf, "out", rep)) return Object.assign({ fail: "no-reply", hops: [gwIp] }, base);
-      return Object.assign({ internet: true, nat: { inside: a.ip, global: this.net.isp.wanIp }, hops: [gwIp, this.net.isp.gw, this.net.isp.core, dst] }, base);
+      if (!pass(outIf, "in", Object.assign({}, rep, { dst: w.addr })) || !pass(inIf, "out", rep)) return Object.assign({ fail: "no-reply", hops: [gwIp] }, base);
+      return Object.assign({ internet: true, nat: { inside: a.ip, global: w.addr }, hops: [gwIp, w.gw, this.net.isp.core, dst] }, base);
     }
     /* out onto another of the business's own networks */
     const odom = this.domain(this.rtNode(rid, outIf)), next = rt.nh || dst, oa = RT.addrOf(R, outIf, live);
@@ -844,8 +852,9 @@ export class Sim {
     const inOk = function (n, pk) { const f = n.indexOf(".") > 0 ? R.subs[n] : R.ifs[n]; if (!f || !f.aclIn) return true; const v = RT.aclVerdict(R, f.aclIn, pk); if (!v.missing) acls.push([f.aclIn, v.line]); return v.permit; };
     if (w && outIf === w.iface) {
       if (!w.ok) return { fail: "net-unreachable", src: src };
-      if (!isPublic(dst)) return { fail: "beyond", src: src, hops: [this.net.isp.gw] };
-      return inOk(outIf, rep) ? { internet: true, src: src, outIf: outIf, hops: [this.net.isp.gw, this.net.isp.core, dst], acls: acls } : { fail: "no-reply", src: src, acls: acls };
+      if (!this.wanHopOk(w, rt)) return { fail: "no-reply", src: src, why: rt.nh ? "next-hop" : "no-arp" };
+      if (!isPublic(dst)) return { fail: "beyond", src: src, hops: [w.gw] };
+      return inOk(outIf, rep) ? { internet: true, src: src, outIf: outIf, hops: [w.gw, this.net.isp.core, dst], acls: acls } : { fail: "no-reply", src: src, acls: acls };
     }
     const odom = this.domain(this.rtNode(rid, outIf)), next = rt.nh || dst;
     let blk = null; const owners = this.owners(next, odom).filter(function (o) { if (o === rid) return false; const b = src && this.arpBlocked(this.rtNode(rid, outIf), this.macOf(rid), src, o, next, odom); if (b) blk = blk || b; return !b; }, this);
@@ -1151,8 +1160,12 @@ export class Sim {
     const P = proto || "tcp", isp = this.net.isp, src = isp.cell || "172.58.14.97", sport = 51544;
     if (!isp.up || isp.outage) return { fail: "timeout", why: "provider" };
     const rid = Object.keys(this.d).find(function (id) { return this.d[id].kind === "brouter" && this.on(id); }, this);
-    if (!rid || dst !== isp.wanIp) return { fail: "timeout", why: "nobody" };
-    const R = this.rtView(rid), live = this.rtLive(rid), w = this.rtWan(rid, R); if (!w || !w.ok) return { fail: "timeout", why: "wan" };
+    if (!rid) return { fail: "timeout", why: "nobody" };
+    const R = this.rtView(rid), live = this.rtLive(rid), w = this.rtWan(rid, R);
+    const fixedIp = isp.fixed ? isp.fixed.ip : null;
+    if (dst !== isp.wanIp && dst !== fixedIp) return { fail: "timeout", why: "nobody" };   /* not the business's address at all */
+    if (!w || !w.ok) return { fail: "timeout", why: "wan" };
+    if (dst !== w.addr) return { fail: "timeout", why: dst === fixedIp ? "notyet" : "old" };   /* the fixed address reaches nothing until the router takes it; the old one, nothing after */
     const f = function (n) { return n.indexOf(".") > 0 ? R.subs[n] : R.ifs[n]; };
     const pass = function (n, dir, pk) { const x = f(n), L = x && (dir === "in" ? x.aclIn : x.aclOut); return !L || RT.aclVerdict(R, L, pk).permit; };
     if (!pass(w.iface, "in", { proto: P, src: src, dst: dst, port: port, sport: sport })) return { fail: "timeout", why: "acl-in", iface: w.iface };
@@ -1172,6 +1185,8 @@ export class Sim {
     if (!a || !gw || a.gw !== gw.ip) return { fail: "timeout", why: "gateway", who: who, local: local, lport: lport };   /* its reply goes to its gateway: it must be the router */
     const rep = { proto: P, src: local, dst: src, port: sport, sport: lport };
     if (!pass(outIf, "in", rep) || !pass(w.iface, "out", Object.assign({}, rep, { src: dst, sport: port }))) return { fail: "timeout", why: "reply", who: who, local: local, lport: lport, outIf: outIf };
+    const back = RT.lookup(R, src, live);   /* the answer goes back out by the router's own routes: to the provider's gateway */
+    if (!back || back.iface !== w.iface || !this.wanHopOk(w, back)) return { fail: "timeout", why: "back", who: who, local: local, lport: lport, outIf: outIf };
     return { ok: true, who: who, local: local, lport: lport, outIf: outIf, src: src };
   }
   /* a connection from the internet to the house's public address on a port (port forwarding, NAT) */

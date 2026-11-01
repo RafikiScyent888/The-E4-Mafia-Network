@@ -114,3 +114,19 @@ test("the DHCP trap: a guests' access list with no DHCP line leaves the visitor 
     const K = solved(s); assert.doesNotMatch(q.rung1(K.v, K.sim), /access-lists/);
   }
 });
+
+/* found 1 November 2026: since SB-J2 staff print through the router, and the reception PC's "Print a test page" counted only a
+   printer on the PC's own network, so it said "nothing printed" on every business while the work order's check said printing
+   worked. The button now says what the check says, and still says nothing printed when the router can't get the page there */
+test("the reception PC's test page prints through the router, as the work orders' check says; refused when nothing gets there", () => {
+  const SB2 = BUSINESS_JOBS.find((d) => d.id === "SB-J2");
+  for (const s of seeds.slice(0, 12)) {
+    const J = B.open(SB2, s); for (const a of SB2.solve(J.v, J.sim)) B.act(J, a);
+    assert.equal(B.evaluate(SB2.reqs.find((q) => q.id === "moved"), J.sim, J.v).ok, true, "the work order's check: staff print");
+    const before = J.sim.route("pc", J.sim.d.pc.printer.port); assert.ok(before.routed && !before.local, "across the router, seed " + s);
+    const r = B.act(J, { t: "print" }); assert.equal(r.facts.print, "ok", "the test page prints, seed " + s);
+    const K = B.open(SB2, s); for (const a of SB2.solve(K.v, K.sim)) B.act(K, a);
+    B.act(K, { t: "client", dev: "printer", values: { mode: "static", ip: K.sim.d.printer.ifaces[0].cfg.ip, mask: "255.255.255.0", gw: "" } });   /* its gateway cleared: its answers never get back */
+    assert.equal(B.act(K, { t: "print" }).facts.print, "fail", "no way back from the printer: nothing printed, seed " + s);
+  }
+});

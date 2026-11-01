@@ -2351,6 +2351,36 @@ built as SB-J7, on `save/level3-stage6`):
 - **At the start: "Still online"**: switch-over day; the old changing address works until the technician moves the router.
 - **The letter: "CIDR only, e.g. /29"**: the student works out the mask by hand (the subnetting-by-hand rule).
 
+### Level 3, SB-J7: the provider's fixed address (built 1 November 2026, on `save/level3-stage6`)
+
+Built after SB-J6 and goes live after it (stage 6 merges into `main` once stage 5 is there).
+- **The records** (`addFixedLine` in `js/net/business.js`, its own random stream `seed ^ 0x7f10`, so every business before it
+  comes out as it always has): a /28, /29 or /30 from 192.0.2.0/24 (the documentation range); the provider's gateway is the
+  block's first or last usable address, the business's address another usable one. Set on `isp.fixed` and `plan.fixed`
+  (`ip`, `len`, `mask`, `gw`, `net`, `bcast`). The limits give the block in CIDR only, never the mask.
+- **The simulation** (`js/net/sim.js`): the router's provider side (`rtWan`) carries its address and gateway, by DHCP or set
+  by hand; a default route only goes out to the provider if it's DHCP's or its next hop is the provider's gateway
+  (`wanHopOk`); NAT translates to whatever address that port has (`publicIp`). From outside (`fromInternet`): the fixed
+  address reaches nothing until the router has it (`notyet`); once moved, the old address reaches nothing (`old`); an answer
+  needs a way back out (`back`).
+- **SB-J7** (`js/build/business.js`), 5 lines: the provider port has the letter's address (causes: shut, still DHCP, none,
+  the gateway's address typed as the router's, the block's network or broadcast address, another address, the wrong mask);
+  the way out is a default route to the provider's gateway (none: an address set by hand brings no route; the old gateway,
+  which isn't on the block so never goes in the table; a next hop on no network; the port named instead of the gateway; a
+  next hop in the block that isn't the gateway; set but not in the table yet; in the table but no internet); both cameras
+  open from the manager's phone at the fixed address (not yet, the provider side down, no way back, no forward); everything
+  still works (staff, printing, guests, the access point's page, the cabinet locked again if opened); the router saved.
+  `already`: still, saved. The walk-through works over SSH from the manager's PC (SB-J6 let the staff VLAN in); the console
+  in the cabinet also passes, as long as the cabinet is locked again with its key taken away.
+- **Realistic on the way:** the block's network address typed with the block's mask is refused at the router ("Bad mask /29
+  for address"), as on the real thing; typed with a /24 it's taken, and the line says what's wrong.
+- **The page:** the diagram labels the business router by its inside address, never its provider side (`subOf` leaves out the
+  port whose link goes to the modem), so the fixed address set by hand doesn't take over the router's label.
+- **Checks:** `tests/business-sb7.test.js` (4 tests, 25 businesses: as found, the tempting wrong ways, the other right ways,
+  checking changes nothing); `ONLY=business JOB=SB-J7 node tools/drive.mjs` 59 checks on three businesses (the letter in the
+  limits with no mask, the phone before and after, SSH from the manager's PC, tracert through the provider's gateway, both
+  drawings in both fonts, a reload); 5 AAA states in `tools/aaa-states.json`; Node plants 10 (all caught); page plants 3.
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

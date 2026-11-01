@@ -507,7 +507,8 @@ test("no help on the business jobs names the answer: no name, password, VLAN num
     assert.ok(said.length > 3);
     for (const q of def.reqs) said.push(q.rung1(J.v, J.sim), q.rung2(J.v, J.sim));
     const V = p.vlans, vre = new RegExp("\\bvlans?\\s+(" + [V.staff, V.guest, V.cameras, V.mgmt, V.native, V.parking, V.printers].filter(Boolean).map((x) => x.id).join("|") + ")\\b", "i");   /* a VLAN's number, in any case */
-    for (const t of said) { assert.ok(!vre.test(t), def.id + " names a VLAN's number: " + t); for (const b of bad) assert.ok(!t.includes(b), def.id + " gives away " + b + ": " + t); assert.ok(!new RegExp("\\b" + p.pool + "\\b").test(t), def.id + " names the pool: " + t); assert.deepEqual(t.match(/\d+\.\d+\.\d+\.\d+/g) || [], [], def.id + " names an address: " + t); }
+    const sre = new RegExp("\\b(gi|gigabitethernet)[\\d/]*\\.(" + [V.staff, V.guest, V.cameras, V.printers].filter(Boolean).map((x) => x.id).join("|") + ")\\b", "i");   /* a subinterface named by its VLAN's number gives the number away too */
+    for (const t of said) { assert.ok(!vre.test(t), def.id + " names a VLAN's number: " + t); assert.ok(!sre.test(t), def.id + " names a VLAN's subinterface: " + t); for (const b of bad) assert.ok(!t.includes(b), def.id + " gives away " + b + ": " + t); assert.ok(!new RegExp("\\b" + p.pool + "\\b").test(t), def.id + " names the pool: " + t); assert.deepEqual(t.match(/\d+\.\d+\.\d+\.\d+/g) || [], [], def.id + " names an address: " + t); }
   }
 });
 

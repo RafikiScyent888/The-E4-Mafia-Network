@@ -143,6 +143,9 @@ test("a named access list takes sequence numbers: a line put in by its number, o
   assert.match(x("no 999"), /^$/, "a number not in the list: nothing happens");
   x("end"); const cfg = x("show running-config"); assert.match(cfg, /ip access-list extended L\n deny ip 10\.1\.40\.0 0\.0\.0\.255 10\.1\.10\.0 0\.0\.0\.255\n/, "the configuration lists the lines in order, without their numbers");
   assert.equal(x("show access-lists").split("\n")[1].trim().split(" ")[0], "20");
+  /* a list whose numbers were never fixed by an insert: a line taken out still leaves the others theirs */
+  ["configure terminal", "ip access-list standard M", "permit 10.0.0.0 0.0.0.255", "permit 10.0.1.0 0.0.0.255", "permit 10.0.2.0 0.0.0.255", "no 20", "end"].forEach(x);
+  assert.deepEqual(x("show access-lists M").split("\n").slice(1).map((l) => +l.trim().split(" ")[0]), [10, 30], "taken out, the last line keeps 30");
 });
 
 test("SSH crosses the business router, judged by its access lists as TCP port 22; ping and SSH are told apart", () => {

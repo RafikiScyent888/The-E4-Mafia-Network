@@ -2330,6 +2330,25 @@ Built and checked so far:
 
 Next: the page plants, totals, the owner's preview and go-live, as for SB-J5.
 
+**The order from here, set by the owner on 1 November 2026: "Keep building everything in order of increasing in
+size."** Smallest first, as sized that day from what the engine already had: SB-J6 finished and live; SB-J10 (the
+provider's fixed address: a static outside address and a default route, both already in the router's command line);
+SB-J8 (the printers' VLAN: a VLAN, a subinterface, the printer's panel and the PCs' printer port, all there already);
+SB-J9 (the router rebuilt from its backup: a replacement router, and the router copying a file in over TFTP, which only
+the switch does today); SB-J7 (a new department end to end: new devices, a VLAN, a pool, kept apart); the 15 tickets (no
+business tickets exist yet: the Ticket Desk for the business first, then each ticket, smallest first); Level 4 (Campus);
+Level 5 (Enterprise). Each piece still has its objectives shown and its details talked out with the owner before it's
+built.
+
+**The owner's answers, 1 November 2026, after the SB-J6 preview** (the work order, the cabinet's Physical tab open and
+locked, the latch, the plan's frame): SB-J6 **"Go live when checks pass"**. For SB-J10, the objectives shown (Network+
+IPv4 addressing: public vs. private, subnetting, CIDR; routing technologies: static routing, NAT, PAT; troubleshooting
+routing issues: default routes, incorrect gateway/IP/subnet mask) and the lines proposed (the router's provider port gets
+the fixed address and mask from the provider's letter; a default route to the provider's gateway for that block; everyone
+still online through PAT, printing still works; both cameras open from the manager's phone at the fixed address; saved):
+- **At the start: "Still online"**: switch-over day; the old changing address works until the technician moves the router.
+- **The letter: "CIDR only, e.g. /29"**: the student works out the mask by hand (the subnetting-by-hand rule).
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

@@ -1214,6 +1214,8 @@ export class Sim {
   /* the office PC sends a test page to its printer port; with two devices on one address, it goes to whoever answers ARP */
   printTest() {
     const ip = this.d.pc.printer.port, r = this.route("pc", ip);
+    /* on the PC's own network, or through a business router (staff print across it since SB-J2): there, the PC's ARP is for its gateway */
+    if (r.routed && !r.local) return !r.fail && r.owner && r.owner.length ? (r.owner[0] === "printer" ? { ok: true, port: ip } : { ok: false, why: "wrong-device", who: r.owner[0], port: ip }) : { ok: false, why: r.fail || "beyond", port: ip };
     if (!r.local) return { ok: false, why: r.fail || "beyond", port: ip };
     const who = this.turn("pc", ip, r.owner);
     this.arp.pc[ip] = this.macOf(who);

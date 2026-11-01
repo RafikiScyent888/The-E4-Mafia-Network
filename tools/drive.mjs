@@ -1474,13 +1474,14 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
         }
         if (k === shut) {   /* the door shut: a cable at the rack is refused, and the page says why */
           await lay(p, "pc", "NIC", "msw", "10");
-          check(/Not laid: Closet switch is in the closet cabinet, and its door is shut: open it first/.test(await p.$eval("#bm", (n) => n.textContent)), tag + "with the cabinet's door shut, a cable laid at the closet switch is refused, in words");
+          check(/Not laid: The closet switch is in the closet cabinet, and its door is shut: open it first/.test(await p.$eval("body", (n) => n.innerText)), tag + "with the cabinet's door shut, a cable laid at the closet switch is refused, in words");
           const pc = await p.evaluate(() => window.__e4b.T.sim.net.cables.findIndex((c) => (c.a.dev === "pc" || c.b.dev === "pc") && (c.a.dev === "msw" || c.b.dev === "msw")));
           await p.click("#runs tbody tr:nth-child(" + (pc + 1) + ") button"); await p.waitForTimeout(40);
-          check(/Not pulled: Closet switch is in the closet cabinet, and its door is shut: open it first/.test(await p.$eval("#bm", (n) => n.textContent)) && (await p.evaluate(() => window.__e4b.T.sim.net.cables.some((c) => c.a.dev === "pc" || c.b.dev === "pc"))), tag + "and Pull on the front PC's run: refused, said so, the cable still in");
+          check(/Not pulled: The closet switch is in the closet cabinet, and its door is shut: open it first/.test(await p.$eval("body", (n) => n.innerText)) && (await p.evaluate(() => window.__e4b.T.sim.net.cables.some((c) => c.a.dev === "pc" || c.b.dev === "pc"))), tag + "and Pull on the front PC's run: refused, said so, the cable still in");
           await dev(p, "cab"); await tab(p, "Physical");
         }
       }
+      await dev(p, "tech"); await tab(p, "Serial terminal");
       check(!/% Invalid|% Incomplete|% Ambiguous|Command rejected/.test(await term(p)), tag + "no line was refused on the back switch");
       await dev(p, "cab"); await tab(p, "Physical"); await p.click('.win-body button:text-is("Open the door")'); await p.waitForTimeout(40);
       check(/It's locked: unlock it first/.test(await p.$eval(".win-body .res", (n) => n.textContent)), tag + "the cabinet locked: Open the door is refused, in words");

@@ -2205,10 +2205,13 @@ banks' new score card, question map, filters and retest-the-wrong-ones option, w
 Security+, CySA+), then back here. That plan: the owner's doc "Test banks: score card, question map and filters (plan)"
 (https://claude.ai/artifact/6vcGwyvSsrwfHBWaKp6rq5); the order is also in `/root/.claude/CLAUDE.md`. Everything below is on `save/level3-stage5`, not live; `main` is SB-J5.
 
+**Resumed 1 November 2026** (the owner: "Lets get back to the E4 mafia network"), the test banks done and live. The
+objectives doc was re-read that day: its Network+ (V9) section is unchanged from the 30 September copy.
+
 Built and checked so far:
 - **The cabinet** (`closetCabinet` in `assets/models/business-gear.js`; `cabinetLatch`, `cabinetKey`, `phillips`,
   `rrExtrude`): five views on `preview/models.html` (`cab`, `cab-latch`, `cab-locked`, `cab-open`, `cab-back`), shots sent
-  to the owner on 28 October. **Waiting for the owner's approval**; SB-J6's lock line waits for it. Options: `open`
+  to the owner on 28 October. **Approved by the owner, 31 October 2026** ("Approved"), for SB-J6's lock line. Options: `open`
   (degrees), `locked`, `key` (false: taken out), `contents`. The perforation is blended (not cut at a threshold) so it
   doesn't break into a grid of dots from across the room; holes `d: 4.0` at `pitch: 6` read as dark as the photograph.
 - **The engine** (`js/net/swcli.js`, `rtcli.js`, `sim.js`, `cmd.js`):
@@ -2236,8 +2239,9 @@ Built and checked so far:
   every earlier business comes out exactly as before.
 - **Checks:** `tests/business-harden.test.js` (5 tests, 20 businesses); 10 Node plants in `tools/plants-business-node.py`,
   all caught; business tests 75 of 75.
-- **One change from the lines shown to the owner, to tell them:** "its web server off" is dropped: this router never had
-  one (SB-J3 checks its address is refused in a browser), so line 8 is LLDP off on the outside port only.
+- **One change from the lines shown to the owner, agreed 31 October 2026** ("OK, drop it"): "its web server off" is
+  dropped: this router never had one (SB-J3 checks its address is refused in a browser), so line 8 is LLDP off on the
+  outside port only.
 
 Next, when the owner says go back:
 1. **The work order** `SB6` in `js/build/business.js` (start from SB5's solve; `already`: still, saved, swsaved,
@@ -2250,7 +2254,7 @@ Next, when the owner says go back:
    PARKING); `access` (every port with a device on it set as access: the printer's port 3 is still left to negotiate);
    `lldp` (no LLDP sent on the router's outside port, or `no lldp run`); `snoop` and `dai` (staff and guest VLANs on both
    switches, trusting the way to the router: closet 24, back 24; trusting the inter-switch trunk too is accepted, a device's
-   port is not); `rack` (locked, key taken away: after the cabinet is approved); `still`; `saved`, `swsaved`, `bswsaved`.
+   port is not); `rack` (locked, key taken away; the cabinet was approved 31 October); `still`; `saved`, `swsaved`, `bswsaved`.
    The walk-through renews the staff PCs and rejoins the visitor's phone after snooping.
 2. Its tests (tempting wrong ways: Telnet left on, `permit any`, a type-7 enable password, `exec-timeout 0 0`, no sticky,
    restrict, port security on the access point's port, the router's port untrusted, inspection on the cameras' VLAN or

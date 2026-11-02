@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (27 October 2026): Level 3 (the small business) goes live stage by stage: stage 1 (the business, its router and switch on the page, work orders SB-J1 and SB-J2), stage 2 (SB-J3, guest Wi-Fi on a ceiling access point: the access point's page through a business PC's web browser, the visitor's phone, the ring in 3D), stage 3 (SB-J4, the back of house on its own switch over a trunk with its allowed list and native VLAN) and stage 4 (SB-J5, two dome cameras on PoE injectors on a VLAN of their own, each one's fixed address set on its own page, port forwards tested from the manager's phone on mobile data) are live; the level opens once the small office is finished, with `planned: 25` until all its work orders and tickets exist. See "Level 3, the small business" below.**
+**Status (2 November 2026): Level 3 (the small business) goes live stage by stage: stage 1 (the business, its router and switch on the page, work orders SB-J1 and SB-J2), stage 2 (SB-J3, guest Wi-Fi on a ceiling access point: the access point's page through a business PC's web browser, the visitor's phone, the ring in 3D), stage 3 (SB-J4, the back of house on its own switch over a trunk with its allowed list and native VLAN), stage 4 (SB-J5, two dome cameras on PoE injectors on a VLAN of their own, each one's fixed address set on its own page, port forwards tested from the manager's phone on mobile data) and stage 5 (SB-J6, hardening after a card-payment check: SSH only, no readable passwords, guarded ports, DHCP snooping and ARP inspection, the closet cabinet locked, live 2 November 2026) are live; the level opens once the small office is finished, with `planned: 25` until all its work orders and tickets exist. See "Level 3, the small business" below.**
 **After E4 (the owner, 28 October 2026): proof of hands-on skill built into the labs** (technician's reports, resume lines, level certificates with a verify page on the hub, an Add to LinkedIn button, interview cards; two tiers, "Completed" and "Instructor verified"). The plan and its open questions are in the owner's doc "Hands-on proof from the labs: plan" (https://claude.ai/artifact/SpwGhuG7e4gNufyTvhJhRk). The owner: finish E4 first, build this after, and have everything finished and updated before presenting it to anyone.
 **Status (19 October 2026): Level 2 (the small office) is complete and live: the level lock, work orders SO-J1 to SO-J10, tickets SO-01 to SO-15 with the office's records on each, the managed switch, the closet rack and patch panel, SFP modules and fibre, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05", "Level 2, tickets SO-06, SO-07 and SO-09", "Level 2, ticket SO-08", "Level 2, ticket SO-10", "Level 2: the office's records on office tickets; tickets SO-11 to SO-15" and "Level 2: work orders SO-J6 to SO-J10, the small office complete" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
@@ -2172,7 +2172,7 @@ SB-J5 and finish it"**):
   tabs, screenshotted), `camshot.mjs` (the dome previews at a pixel density), `aptime.mjs` (how long a click takes with the
   access point's 3D view open, and the page's long tasks).
 
-### Level 3, stage 5: SB-J6, hardening after a card-payment check (in progress, 28 October 2026)
+### Level 3, stage 5: SB-J6, hardening after a card-payment check (live 2 November 2026)
 
 The Network+ (V9) objectives were read from the owner's doc on 28 October 2026: the Network+ section is word for word
 the copy saved on 30 September (`Network-quizzes/verify/objectives-netplus-2026-09-30.md`). SB-J6 draws on Network
@@ -2328,7 +2328,20 @@ Built and checked so far:
 - **Found by the plants:** the plant tool never ran `tests/business-sb6.test.js` (an edit to its run list built the change
   and never wrote it), so every SB-J6 plant came back missed with no failing test; the list now has it.
 
-Next: the page plants, totals, the owner's preview and go-live, as for SB-J5.
+**Going live (the owner, 1 November 2026: "Go live when checks pass").** Found and fixed on the way:
+- **The business PC's test page**: since SB-J2 staff print through the router, and "Print a test page" counted only a
+  printer on the PC's own network, so it said nothing printed on every business while the work order's check said printing
+  worked (live since stage 1; no drive ever pressed it). It now says what the check says, and still says nothing printed when
+  the router can't get the page there (`printTest` in `js/net/sim.js`; tested both ways, failing on the old code).
+- **The camera picture's LIVE** measured 6.33:1 on a phone with easier reading on (the wider font reached the edge of its
+  white plate). The plate is bigger and LIVE is held to 36 units on it (`textLength`). The live site's own copy passed the
+  same state, so it sat at the margin; both camera-page states pass.
+- **Two SB-J5 states** that open a camera's window now wait for its 3D view to settle: under load one combination in eight
+  read a heading while the first frame drew (1.71:1); alone they passed.
+- **Totals before going live:** `npm test` 361 of 361; `node tools/drive.mjs` in full 3,936 checks (the SB-J5 drive alone
+  125, after the test page and badge changes); `node tools/models.mjs` 202 of 202; AAA on painted pixels, all 216 states and
+  528,064 text runs passing (the SB-J3, SB-J5 and SB-J6 states on the branch, the other 187 in four parts on a
+  snapshot of it); plants: 27 Node and 6 page for SB-J6, all caught.
 
 **The order from here, set by the owner on 1 November 2026: "Keep building everything in order of increasing in
 size."** Smallest first, as sized that day from what the engine already had: SB-J6 finished and live; SB-J7, the

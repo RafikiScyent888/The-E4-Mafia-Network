@@ -2424,8 +2424,12 @@ address); router and closet switch saved. Goes live after SB-J7.
   the router). `tests/business-jobs.test.js` covers SB-J8 in its shared tests (the printers' VLAN's name and number added to
   what no hint may say; its own random walk lines and printer actions). `ONLY=business JOB=SB-J8 node tools/drive.mjs`: 47
   checks on three businesses (the test page before and after, `show access-lists` read back with 35 between 30 and 40,
-  the printer's panel, the diagram's new address, both drawings in both fonts, a reload). 7 AAA states; 16 Node plants;
-  5 page plants.
+  the printer's panel, the diagram's new address, both drawings in both fonts, a reload). 7 AAA states; 5 page plants.
+- **Node plants: 16, all caught.** Two were missed at first, and each showed a gap in the tests, both closed: a hint naming
+  the printers' subinterface (`GigabitEthernet0/1.150`) passed the no-giveaway test, which banned `vlan 150` and `dot1Q 150`
+  but not the number after a subinterface's dot (now banned for every VLAN, on every business job); and a line taken out of
+  a list renumbering the rest passed, because the test only took lines out after an insert had already fixed every number
+  (it now takes one out of a list whose numbers were never fixed).
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

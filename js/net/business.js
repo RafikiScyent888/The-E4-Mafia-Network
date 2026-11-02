@@ -20,6 +20,16 @@ export const BUSINESSES = [
   { name: "Spoke & Chain Bike Shop", tag: "SC", manager: "Mei", street: "9 Canal Street", counter: "Shop counter", guest: "Shop floor", back: "Workshop", backPc: "Workshop PC", pc: "Counter PC", wifi: "SpokeChain-Guest", wifiPw: "Ride*Free44" },
   { name: "Chapter & Bean Bookshop Café", tag: "CB", manager: "Lars", street: "21 Library Row", counter: "Till", guest: "Café corner", back: "Stock room", backPc: "Stock room PC", pc: "Till PC", wifi: "ChapterBean-Guest", wifiPw: "Read&Sip19" }
 ];
+/* each business's new department (SB-J10; the owner, 2 November 2026: "Each business its own"), by its tag: the room's name, its
+   VLAN's name and its two PCs */
+export const DEPARTMENTS = {
+  HL: { room: "Pharmacy", vlan: "PHARMACY", pcs: ["Pharmacy PC", "Dispensing PC"], user: "pharmacy" },
+  BSD: { room: "Billing office", vlan: "BILLING", pcs: ["Billing PC", "Claims PC"], user: "billing" },
+  GC: { room: "Office", vlan: "OFFICE", pcs: ["Office PC", "Accounts PC"], user: "office" },
+  EP: { room: "Billing desk", vlan: "BILLING", pcs: ["Billing PC", "Claims PC"], user: "billing" },
+  SC: { room: "Parts desk", vlan: "PARTS", pcs: ["Parts PC", "Orders PC"], user: "parts" },
+  CB: { room: "Office", vlan: "OFFICE", pcs: ["Office PC", "Accounts PC"], user: "office" }
+};
 const PREFIXES = ["192.168.10", "192.168.30", "192.168.60", "172.16.40"];
 const RANGES = [[100, 199], [50, 150], [120, 220], [60, 180]];
 const SECRETS = ["Rack&Route7", "Closet!Key26", "Uplink#Bay9", "Trunk*Line42", "Vlan!Wall88", "Router&Rack5"];
@@ -35,7 +45,7 @@ const VLAN_SETS = [
 ];
 
 /* the rooms, for the floor plan, the Place form and the length of a run between two rooms (metres, as it really goes) */
-export const BUSINESS_RUN = { closet: { counter: 16, office: 24, guest: 14, back: 30 }, counter: { office: 12, guest: 10, back: 20 }, office: { guest: 14, back: 12 }, guest: { back: 16 } };
+export const BUSINESS_RUN = { closet: { counter: 16, office: 24, guest: 14, back: 30, dept: 38 }, counter: { office: 12, guest: 10, back: 20, dept: 28 }, office: { guest: 14, back: 12, dept: 20 }, guest: { back: 16, dept: 22 }, back: { dept: 8 } };   /* dept: SB-J10's new room, off the back room */
 export const BUSINESS_FIXED = { modem: ["closet", "on the closet shelf, where the provider's line comes in"], router: ["closet", "on the closet shelf, beside the modem"], mswitch: ["closet", "in the closet rack"], brouter: ["closet", "in the closet rack, above the switch"] };
 /* where things sit: the logical diagram (x, y) and the floor plan (px, py) */
 export const BUSINESS_LAYOUT = {
@@ -67,9 +77,13 @@ export const BUSINESS_LAYOUT = {
   cam1: { x: 490, y: 600, px: 560, py: 330, room: "guest" },
   cinj2: { x: 265, y: 600, px: 720, py: 450, room: "back" },
   cam2: { x: 110, y: 600, px: 720, py: 562, room: "back" },   /* on the plan, on the wall outside the back door */
-  mphone: { px: 720, py: 215, room: "office" }
+  mphone: { px: 720, py: 215, room: "office" },
+  /* SB-J10's department: its two PCs in the new room off the back room, on the plan below it (beside the strip outside the back
+     door); on the diagram, a row of their own under the back switch's camera row */
+  dpc1: { x: 330, y: 740, px: 840, py: 600, room: "dept" },
+  dpc2: { x: 520, y: 740, px: 930, py: 600, room: "dept" }
 };
-export const BUSINESS_ROOM_BOX = { closet: [30, 30, 300, 370], counter: [300, 30, 640, 270], office: [640, 30, 980, 270], guest: [300, 270, 660, 520], back: [660, 270, 980, 520] };
+export const BUSINESS_ROOM_BOX = { closet: [30, 30, 300, 370], counter: [300, 30, 640, 270], office: [640, 30, 980, 270], guest: [300, 270, 660, 520], back: [660, 270, 980, 520], dept: [780, 520, 980, 660] };   /* dept: SB-J10's, drawn once it's there */
 
 /* the managed switch as the business has it: set up as the small office's was, its records the business's */
 function closetSwitch(r, plan, desc) {
@@ -91,8 +105,10 @@ export const BUSINESS_SIGNAL = {
   counter: { counter: [86, 76], guest: [62, 50], office: [56, 44], back: [36, 22], closet: [44, 32] },
   office: { office: [86, 76], counter: [56, 44], back: [56, 44], guest: [40, 28], closet: [26, 12] },
   back: { back: [86, 76], guest: [56, 44], office: [56, 44], counter: [36, 22], closet: [20, 10] },
-  closet: { closet: [86, 76], counter: [44, 32], guest: [30, 18], office: [20, 10], back: [16, 6] }
+  closet: { closet: [86, 76], counter: [44, 32], guest: [30, 18], office: [20, 10], back: [16, 6], dept: [12, 4] },
+  dept: { dept: [86, 76], back: [62, 50], office: [36, 22], guest: [40, 28], counter: [30, 18], closet: [12, 4] }   /* SB-J10's room, off the back room */
 };
+["guest", "counter", "office", "back"].forEach(function (k) { BUSINESS_SIGNAL[k].dept = { guest: [40, 28], counter: [30, 18], office: [36, 22], back: [62, 50] }[k]; });
 /* what SB-J3 brings: the ceiling access point and a PoE injector in their boxes (the switch gives no power), and a visitor
    waiting with their phone. From a stream of its own, so the business is drawn as before */
 export function addGuestKit(sim) {
@@ -144,7 +160,7 @@ export function addCabinet(sim) {
   sim.net.rooms.cab = "closet";
 }
 
-/* what SB-J10 brings: the provider's letter, a fixed address for the line. A small block from the documentation range 192.0.2.0/24,
+/* what SB-J7 brings: the provider's letter, a fixed address for the line. A small block from the documentation range 192.0.2.0/24,
    given in CIDR only (the owner, 1 November 2026: "CIDR only, e.g. /29"), so the mask is worked out by hand: a /28, /29 or /30;
    the provider's gateway is the block's first or last usable address, the business's address another usable one. Until the
    router takes it the old changing address still works (the owner: "Still online"). From a stream of its own, so every
@@ -186,6 +202,28 @@ export function addRouterFailure(sim) {
   sw.unit = 2;
   Object.assign(x, { boxed: true, sw: sw });
   p.backup = { name: name, text: text };
+}
+
+/* what SB-J10 brings: a department of the business's own (the owner, 2 November 2026: "Each business its own") in a new room off
+   the back room ("A new room"), its two PCs in their boxes, their runs to come to the back switch; its VLAN from the business's
+   VLAN set, its network a smaller block given in CIDR only ("A block to work out"): a /26, /27 or /28 inside 10.<site>.<vlan>.0,
+   never its first block, its gateway the block's first usable address. Only the manager's PC is to reach the department's PCs
+   ("Only the manager's PC"), so the manager's PC is to keep an address of its own from the staff network's kept-back ten, which
+   the department's list names. From a stream of its own, so every business before it comes out exactly as it always has */
+export function addDepartment(sim) {
+  const net = sim.net, p = net.plan, r = rng(net.seed ^ 0xd10a), D = DEPARTMENTS[net.client.tag], S = p.vlans.staff, b = S.net.split(".")[1];
+  const V = VLAN_SETS.find(function (x) { return x.staff === S.id; }), len = r.pick([26, 27, 28]), size = Math.pow(2, 32 - len), base = size * r.int(1, 256 / size - 1);
+  const pre = "10." + b + "." + V.dept + ".", mask = "255.255.255." + (256 - size);
+  p.vlans.dept = { id: V.dept, name: D.vlan, net: pre + base, gw: pre + (base + 1), len: len, mask: mask, wild: "0.0.0." + (size - 1), first: pre + (base + 2), last: pre + (base + size - 2), bcast: pre + (base + size - 1) };
+  p.dept = { room: D.room, ports: ["3", "4"], desc: D.pcs.map(function (n) { return n.toUpperCase().replace(/[^A-Z0-9]+/g, "-"); }), acl: D.vlan + "-ACCESS" };
+  p.mgrIp = S.net.replace(/\.0$/, "." + r.pick([7, 8, 9]));
+  D.pcs.forEach(function (label, k) {
+    const id = "dpc" + (k + 1);
+    net.devices[id] = { id: id, kind: "pc", label: label, sub: "DHCP", on: true, boxed: true, os: "windows", user: D.user, host: net.client.tag + "-" + p.dept.desc[k],
+      ifaces: [{ name: "Ethernet", type: "eth", port: "NIC", mac: mac(r), desc: "Gigabit Network Connection", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] };
+    net.rooms[id] = "back"; sim.arp[id] = {};   /* delivered to the back room in their boxes */
+  });
+  net.roomNames.dept = D.room;
 }
 
 export function makeBusiness(seed) {

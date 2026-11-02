@@ -6,12 +6,12 @@
    devices and the network as they really are. Each line is an ordered list of
    causes, as on the other levels, so Mason's third rung can strike the ones
    the network has ruled out and leave two. None of it ever says what to type. */
-import { makeBusiness, addGuestKit, addBackSwitch, addCameraKit, addCabinet, addFixedLine, addPrinterVlan, addRouterFailure } from "../net/business.js";
+import { makeBusiness, addGuestKit, addBackSwitch, addCameraKit, addCabinet, addFixedLine, addPrinterVlan, addRouterFailure, addDepartment } from "../net/business.js";
 import { Sim } from "../net/sim.js";
 import { exec } from "../net/cmd.js";
 import { browse } from "../net/pages.js";
 import { unsaved, pwOk, carries, errDisabled, dotMac, configText, hostKey } from "../net/swcli.js";
-import { addrOf, rtStatus, poolFor, poolAddrs, aclVerdict, aceMatch, routes, netOf, lldpSends } from "../net/rtcli.js";
+import { addrOf, rtStatus, poolFor, poolAddrs, aclVerdict, aceMatch, aceText, routes, netOf, bits, lldpSends, clientIdOf, dotHex } from "../net/rtcli.js";
 import { online } from "./jobs.js";
 import { ip2n } from "../net/util.js";
 
@@ -1781,4 +1781,354 @@ const SB9 = {
   }
 };
 
-export const BUSINESS_JOBS = [SB1, SB2, SB3, SB4, SB5, SB6, SB7, SB8, SB9];
+/* ---------------------------------------------------------------- SB-J10: a new department, end to end */
+/* the owner's answers (2 November 2026): each business its own department ("Each business its own"), in a new room off the back
+   room ("A new room"); only the manager's PC reaches its PCs, through a list on its own subinterface naming the manager's fixed
+   address ("Only the manager's PC"); its network a smaller block, given in CIDR only and worked out by hand ("A block to work out") */
+const dept = function (v) { return VL(v, "dept"); };
+const DPCS = ["dpc1", "dpc2"];
+const addrIp = function (sim, id) { const a = sim.on(id) && sim.addr(id); return a && a.kind !== "apipa" ? a.ip : null; };
+const inDept = function (v, ip) { const D = dept(v); return !!ip && netOf(ip, D.mask) === D.net; };
+const uniq = function (x, i, l) { return l.indexOf(x) === i; };
+/* where each of the department's PCs is plugged into the back switch, or the records' port for it */
+const dRows = function (sim, v) { const dp = v.plan.dept; return DPCS.map(function (id, k) { const m = between(sim, id, "bsw"); return { id: id, k: k, m: m, n: port(m ? m.far : dp.ports[k]) }; }); };
+function dPlaceCauses(sim, v) {
+  const dp = v.plan.dept, room = roomOf(sim, "dept");
+  const rows = DPCS.map(function (id, k) { const c = sim.cableAt(id, "NIC"); return { id: id, x: sim.d[id], m: between(sim, id, "bsw"), c: c, far: c ? (c.a.dev === id ? c.b : c.a) : null, want: dp.ports[k] }; });
+  const r = rows.find(function (q) { return q.x.boxed || sim.net.rooms[q.id] !== "dept" || !q.m || q.m.far !== q.want; }) || rows[0], who = name(sim, r.id), at = roomOf(sim, sim.net.rooms[r.id]);
+  return [C("box", r.x.boxed, "The " + who + " is still in its box", "Both PCs are out of their boxes.", "The " + who + " is still in its box, in " + at + "."),
+    C("room", !r.x.boxed && sim.net.rooms[r.id] !== "dept", "The " + who + " isn't in " + room, "Both PCs are in " + room + ".", "The floor plan: the " + who + " is in " + at + "."),
+    C("none", !r.x.boxed && !r.c, "Nothing is plugged into the " + who, "Both PCs are cabled.", "The " + who + "'s Physical tab: nothing in its network port."),
+    C("where", !!r.c && !r.m, "The " + who + "'s run doesn't go to the back switch", "Both runs go to the back switch.", "The Cable runs table: the " + who + " to the " + (r.far ? name(sim, r.far.dev) : "") + "."),
+    C("port", !!r.m && r.m.far !== r.want, "The " + who + " is on a back switch port the records don't give it", "Each PC is on its port from the records.", "The Cable runs table: the " + who + " to the back switch's port " + (r.m ? r.m.far : "") + ".")];
+}
+/* the VLAN on both switches, and the trunk between them carrying it: added to its allowed list, not put in place of it */
+function dVlanCauses(sim, v) {
+  const D = dept(v), mv = SW(sim).vlans[D.id], bv = BSW(sim).vlans[D.id], L = trunkLink(sim);
+  const ends = L ? [{ w: "back switch", n: port(L.back), p: L.bp, c: L.bc, vl: bv }, { w: "closet switch", n: port(L.closet), p: L.cp, c: L.cc, vl: mv }] : [];
+  const rep = ends.find(function (e) { return e.p.allowed !== "all" && [staff(v).id, cams(v).id].some(function (x) { return e.p.allowed.indexOf(x) < 0; }); });
+  const notOn = function (e) { return !!e && !!e.vl && e.c.mode === "trunk" && e.c.tagged.indexOf(D.id) < 0 && e.c.untagged !== D.id; };
+  return [C("bnone", !bv, "The back switch has no VLAN for the department", "The back switch has the department's VLAN.", "show vlan brief on the back switch: no VLAN " + D.id + "."),
+    C("bname", !!bv && bv.name !== D.name, "The back switch's VLAN for the department isn't named as the records say", "It's named as the records say.", "show vlan brief on the back switch: VLAN " + D.id + " is " + (bv ? bv.name : "") + "."),
+    C("cnone", !mv, "The closet switch has no VLAN for the department: a switch carries a VLAN across its trunks only once it's made there", "The closet switch has it too.", "show vlan brief on the closet switch: no VLAN " + D.id + "."),
+    C("cname", !!mv && mv.name !== D.name, "The closet switch's VLAN for the department isn't named as the records say", "It's named as the records say.", "show vlan brief on the closet switch: VLAN " + D.id + " is " + (mv ? mv.name : "") + "."),
+    C("replaced", !!rep, "An allowed list on the trunk was replaced, not added to: the VLANs it carried before are cut off", "The trunk still carries everything it did.", "show interfaces trunk on the " + (rep ? rep.w : "") + ": " + (rep ? (rep.p.allowed.length > 1 ? "only VLANs " : "only VLAN ") + rep.p.allowed.join(",") + " allowed on " + gi(rep.n) : "") + "."),
+    C("bend", notOn(ends[0]), "The back switch's end of the trunk doesn't carry the department's VLAN", "The back switch's end carries it.", "show interfaces trunk on the back switch: VLAN " + D.id + " isn't allowed and active on " + (ends[0] ? gi(ends[0].n) : "the trunk") + "."),
+    C("cend", notOn(ends[1]), "The closet switch's end of the trunk doesn't carry the department's VLAN", "The closet switch's end carries it.", "show interfaces trunk on the closet switch: VLAN " + D.id + " isn't allowed and active on " + (ends[1] ? gi(ends[1].n) : "the trunk") + ".")];
+}
+function dPortCauses(sim, v) {
+  const D = dept(v), P = parking(v), dp = v.plan.dept, sw = BSW(sim), rows = dRows(sim, v);
+  const bad = function (r) { const sp = sw.ports[r.n]; return sp.shutdown || sp.mode !== "access" || sp.access !== D.id || String(sp.desc || "").toUpperCase() !== dp.desc[r.k]; };
+  const r = rows.find(bad) || rows[0], who = name(sim, r.id), g = gi(r.n), sp = sw.ports[r.n];
+  return [C("shut", sp.shutdown, "The " + who + "'s port is shut down", "Its port is open.", "show interfaces status on the back switch: " + g + " disabled."),
+    C("mode", sp.mode !== "access", sp.mode === "trunk" ? "The " + who + "'s port is set as a trunk" : "The " + who + "'s port is left to negotiate", "It's set as an access port.", "show interfaces " + g + " switchport on the back switch: administrative mode " + sp.mode + "."),
+    C("park", sp.mode === "access" && sp.access === P.id, "The " + who + "'s port is still in the parking VLAN, which goes nowhere", "It's out of the parking VLAN.", "show vlan brief on the back switch: " + g + " is in VLAN " + P.id + " (" + P.name + ")."),
+    C("vlan", sp.mode === "access" && sp.access !== P.id && sp.access !== D.id, "The " + who + "'s port is in a VLAN that isn't the department's", "It's in the department's VLAN.", "show vlan brief on the back switch: " + g + " is in VLAN " + sp.access + "."),
+    C("desc", String(sp.desc || "").toUpperCase() !== dp.desc[r.k], "The " + who + "'s port isn't described as the records say", "It's described as the records say.", "show interfaces status on the back switch: " + g + "'s name is " + (sp.desc || "blank") + ".")];
+}
+/* each port as every staff PC's is (SB-J6): one device, the PC there, stuck in the configuration, a stranger shutting the port */
+function dPsecCauses(sim, v) {
+  const sw = BSW(sim), rows = dRows(sim, v).map(function (r) { return Object.assign(r, { P: psRead(sw.ports[r.n]), mac: dotMac(sim.macOf(r.id)) }); });
+  const stuck = function (r) { return r.P.macs.filter(function (q) { return q.sticky; }); };
+  const r = rows.find(function (q) { return !q.P.on || errDisabled(sw, q.n) || q.P.max > 1 || q.P.viol !== "shutdown" || !stuck(q).some(function (k) { return k.mac === q.mac; }); }) || rows[0];
+  const P = r.P, who = name(sim, r.id), g = gi(r.n), st = stuck(r), other = st.find(function (k) { return k.mac !== r.mac; });
+  return [C("off", !P.on, "The " + who + "'s port has no port security: any device plugged in there gets on the department's network", "Its port has port security.", "show port-security interface " + g + " on the back switch: Port Security : Disabled."),
+    C("err", P.on && errDisabled(sw, r.n), "The " + who + "'s port has been shut by a violation: the PC is cut off until the port is reset", "Its port is up.", "show interfaces status on the back switch: " + g + " err-disabled."),
+    C("max", P.on && P.max > 1, "Its port takes more than one device", "It takes one device.", "show port-security interface " + g + " on the back switch: Maximum MAC Addresses : " + P.max + "."),
+    C("viol", P.on && P.viol !== "shutdown", "A stranger on its port is " + (P.viol === "protect" ? "dropped" : "counted") + ", but the port stays up", "A stranger shuts the port.", "show port-security interface " + g + " on the back switch: Violation Mode : " + cap(P.viol) + "."),
+    C("sticky", P.on && !st.length, P.sticky ? "Its port hasn't stuck the PC's address yet: it learns it once the PC is plugged in and the port is up" : "Its port learns the PC's address but doesn't keep it: unplugged, another device takes its place", "The PC's address is stuck in the configuration.", "show running-config on the back switch: " + g + " has no sticky address."),
+    C("wrong", P.on && st.length > 0 && !st.some(function (k) { return k.mac === r.mac; }), "Its port has stuck another device's address, not the PC's", "It holds the PC's address.", "show port-security address on the back switch: " + g + " holds " + (other ? other.mac : "") + ".")];
+}
+/* the router as the department's gateway: the block's first usable address and the block's mask, worked out from its CIDR */
+function dSubCauses(sim, v) {
+  const R = view(sim), D = dept(v), q = vlanSub(R, v, "dept"), n = q || subName(v, "dept"), f = q ? R.subs[q] : null, any = Object.keys(R.subs).find(function (z) { return R.subs[z].vlan === D.id; });
+  const sw = SW(sim), up = between(sim, "rtr", "msw"), uc = up ? carries(sw, port(up.far), null) : null, ip = f && f.ip, set = !!f && f.vlan === D.id && !!ip;
+  const say = "show ip interface brief on the router: " + n + " " + ip + ".", cfg = "show running-config on the router: " + n + ", ip address " + ip + " " + (f && f.mask) + ".";
+  return [C("none", !f && !any, "The router has no subinterface for the department's VLAN", "There's a subinterface for the department's VLAN.", "show ip interface brief on the router: no " + n + "."),
+    C("other", !f && !!any, "The department's subinterface is on a port the switch isn't cabled to", "It's on the inside port.", "show ip interface brief on the router: the department's VLAN is on " + any + "."),
+    C("tag", !!f && f.vlan !== D.id, "The subinterface doesn't tag the department's VLAN", "It tags the department's VLAN.", "show running-config on the router: " + n + (f && f.vlan ? " has encapsulation dot1Q " + f.vlan : " has no encapsulation line") + "."),
+    C("noaddr", !!f && f.vlan === D.id && !ip, "It has no address", "It has an address.", "show ip interface brief on the router: " + n + " unassigned."),
+    C("edge", set && (ip === D.net || ip === D.bcast), "Its address is the block's network or broadcast address, which no device can have", "It's a usable address.", say),
+    C("last", set && ip === D.last, "Its address is the block's last usable address: the records give the gateway the first", "It isn't the block's last address.", say),
+    C("addr", set && [D.gw, D.net, D.bcast, D.last].indexOf(ip) < 0, "Its address isn't the department's gateway from the records", "Its address is the department's gateway.", say),
+    C("wide", set && f.mask === v.plan.vmask, "Its mask is the /24 every other VLAN has, not the department's block's", "Its mask is the block's.", cfg),
+    C("mask", set && f.mask !== D.mask && f.mask !== v.plan.vmask, "Its mask doesn't match the size of the department's block", "Its mask fits the block.", cfg),
+    C("shut", !!f && rtStatus(R, n)[1] !== "up", "The subinterface is down", "It's up.", "show ip interface brief on the router: " + n + " is down."),
+    C("uplink", !!sw.vlans[D.id] && !!uc && uc.mode === "trunk" && uc.tagged.indexOf(D.id) < 0 && uc.untagged !== D.id, "The trunk to the router doesn't carry the department's VLAN", "The trunk to the router carries it.", "show interfaces trunk on the closet switch: VLAN " + D.id + " isn't allowed and active on Gi0/" + (up ? up.far : "") + ".")];
+}
+/* the department's own pool: the block, its gateway, the business's DNS servers */
+function dPoolCauses(sim, v) {
+  const r = RT(sim), D = dept(v), p = v.plan, third = function (ip) { return ip.split(".").slice(0, 3).join("."); };
+  const keys = Object.keys(r.pools).filter(function (k) { const q = r.pools[k]; return q.network && third(q.network) === third(D.net); });
+  const k = keys.find(function (z) { return r.pools[z].network === D.net && r.pools[z].mask === D.mask; }) || keys[0] || null, P = k ? r.pools[k] : null;
+  const at = P ? "show ip dhcp pool on the router: pool " + k + ", " + P.network + " " + P.mask + "." : "";
+  const q = vlanSub(view(sim), v, "dept"), f = q ? r.subs[q] : null, inL = f && f.aclIn && r.acls[f.aclIn] ? f.aclIn : null, sa = f && f.ip && f.mask ? { ip: f.ip, mask: f.mask } : null;
+  const ask = inL && !aclVerdict(r, inL, { proto: "udp", src: "0.0.0.0", dst: "255.255.255.255", sport: 68, port: 67 }).permit;
+  const drop = DPCS.map(function (id) { return sim.on(id) && sim.hasLink(id) ? { id: id, d: sim.snoopDrops(id)[0] } : null; }).find(function (x) { return x && x.d; });
+  return [C("none", !P, "The router has no pool for the department's network", "There's a pool for the department.", "show ip dhcp pool on the router: no pool for " + D.net + "."),
+    C("wide", !!P && P.mask === p.vmask, "The pool's network is a whole /24, not the department's block", "Its network is the block.", at),
+    C("net", !!P && P.mask !== p.vmask && (P.network !== D.net || P.mask !== D.mask), "The pool's network isn't the department's block", "Its network is the block.", at),
+    C("router", !!P && P.router[0] !== D.gw, P && !P.router.length ? "The pool hands out no gateway: the PCs reach nothing past their own block" : "The pool hands out a gateway that isn't the department's", "It hands out the department's gateway.", "show running-config on the router: pool " + k + (P && P.router.length ? ", default-router " + P.router.join(" ") : " has no default-router") + "."),
+    C("dns", !!P && !P.dns.length, "The pool hands out no DNS servers: the PCs reach addresses, not names", "It hands out DNS servers.", "show running-config on the router: pool " + k + " has no dns-server."),
+    C("nomatch", !!P && !!sa && !(P.network === netOf(sa.ip, sa.mask) && P.mask === sa.mask), "The pool's network doesn't match the department's subinterface's, so it answers nobody there", "It matches the subinterface's network.", "show ip interface brief on the router: " + q + " " + (sa ? sa.ip + "/" + bits(sa.mask) : "") + "; the pool is " + (P ? P.network + " " + P.mask : "") + "."),
+    C("ask", !!ask, "The list in on the department's subinterface stops the PCs asking for an address: a request comes from 0.0.0.0 to everyone", "Nothing stops their requests.", "show access-lists " + inL + " on the router: no line lets in UDP 67 from 0.0.0.0."),
+    C("drop", !!drop, "Snooping drops the router's answers on their way to the " + (drop ? name(sim, drop.id) : ""), "Their answers get through.", "show ip dhcp snooping on the " + (drop ? (drop.d.dev === "msw" ? "closet" : "back") + " switch: " + gi(drop.d.port) + " isn't trusted" : "") + ".")];
+}
+/* the department prints and gets online: each PC's lease, NAT for the block, its list letting the replies back, the printer reached */
+function dNetCauses(sim, v) {
+  const R = RT(sim), D = dept(v), p = v.plan, want = p.printerIp, q = vlanSub(view(sim), v, "dept"), f = q ? R.subs[q] : null;
+  const rows = DPCS.map(function (id) { const a = sim.on(id) ? sim.addr(id) : null, has = !!a && a.kind !== "apipa"; return { id: id, a: a, has: has, on: has && online(sim, id), pr: has && printsAt(sim, id, want) }; });
+  const r = rows.find(function (x) { return !x.on || !x.pr; }) || rows[0], who = name(sim, r.id), a = r.a, has = r.has, rr = has && !r.on ? sim.route(r.id, "8.8.8.8") : null;
+  const nat = R.nat.find(function (x) { return x.iface === p.wanPort && x.overload; }), list = nat && R.acls[nat.list] ? nat.list : null;
+  const natOk = function (ip) { return !!list && aclVerdict(R, list, { proto: "ip", src: ip, dst: "8.8.8.8" }).permit; }, first = natOk(D.first), last = natOk(D.last);
+  const maskLine = list ? R.acls[list].lines.find(function (e) { return !e.remark && e.src && e.src.wild === D.mask; }) : null;
+  const out = f && f.aclOut && R.acls[f.aclOut] ? f.aclOut : null, inL = f && f.aclIn && R.acls[f.aclIn] ? f.aclIn : null;
+  const P = Object.keys(R.pools).map(function (k) { return R.pools[k]; }).find(function (x) { return x.network === D.net && x.mask === D.mask; });
+  const stale = has && (!inDept(v, a.ip) || a.mask !== D.mask || a.gw !== D.gw) && !!P && P.router[0] === D.gw;
+  const bound = has && BSW(sim).snoopBind && BSW(sim).snoopBind.some(function (b) { return b.mac === dotMac(sim.macOf(r.id)) && b.ip === a.ip; });
+  const dsw = rr && rr.dai ? sim.d[rr.dai.dev].sw : null, watched = !dsw || !!(dsw.snoop.on && dsw.snoop.vlans.indexOf(rr.dai.vlan) >= 0);   /* the switch that drops it snoops that VLAN */
+  const pk = function (s, d2, w) { return { proto: w[0], src: s, dst: d2, sport: w[0] === "tcp" ? 9100 : null, port: 50000 }; };
+  return [C("noaddr", !has, "The " + who + " has no address yet", "Both PCs have addresses.", "ipconfig on the " + who + ": " + (a ? a.ip : "no address") + "."),
+    C("stale", stale, "The " + who + " still has the lease it was handed before the pool was put right: it keeps it until it asks again", "Both PCs have the pool's settings.", "ipconfig on the " + who + ": " + (a ? a.ip + ", mask " + a.mask + ", gateway " + (a.gw || "blank") : "") + "."),
+    C("gw", has && !stale && a.gw !== D.gw, "The " + who + "'s gateway isn't the department's", "Its gateway is the department's.", "ipconfig on the " + who + ": default gateway " + (a && a.gw || "blank") + "."),
+    C("natin", has && !r.on && !!f && f.nat !== "inside", "The department's subinterface isn't marked as NAT's inside: its PCs' traffic leaves untranslated", "It's NAT's inside.", "show running-config on the router: " + (q || subName(v, "dept")) + " has no ip nat inside."),
+    C("natmask", !first && !!maskLine, "NAT's list names the department's block with its mask where the wildcard goes", "NAT's list names the block with its wildcard.", "show access-lists " + list + " on the router: " + (maskLine ? aceText("standard", maskLine) : "") + "."),
+    C("natlist", has && !first && !last && !maskLine, "NAT's list doesn't name the department's block: its PCs' addresses are never translated", "NAT's list names the block.", "show access-lists " + (list || "1") + " on the router: nothing matches " + D.net + "/" + D.len + "."),
+    C("natpart", first !== last, "NAT's list names part of the department's block, not all of it: a PC handed an address in the rest never gets out", "It names the whole block.", "show access-lists " + (list || "1") + " on the router: " + (first ? D.first : D.last) + " matches, " + (first ? D.last : D.first) + " doesn't."),
+    C("reply", has && !r.on && !!out && !aclVerdict(R, out, { proto: "icmp", src: "8.8.8.8", dst: a.ip }).permit, "The department's list stops the replies coming back to its PCs: a list ends with a deny you never see", "Its list lets the replies back.", "show access-lists " + out + " on the router: nothing in it lets the internet's replies through to " + D.net + "."),
+    C("inlist", has && !r.on && !!inL && !aclVerdict(R, inL, { proto: "icmp", src: a.ip, dst: "8.8.8.8" }).permit, "The list in on the department's subinterface stops its PCs' own traffic", "Nothing stops what they send.", "show access-lists " + inL + " on the router: nothing in it lets " + D.net + " out."),
+    C("blind", has && !r.on && !!rr && !!rr.dai && !watched, "ARP inspection on the " + (rr && rr.dai && rr.dai.dev === "msw" ? "closet" : "back") + " switch checks the " + who + " against snooping's bindings, but snooping isn't watching its VLAN there", "Snooping watches wherever ARP is inspected.", "show ip dhcp snooping on the " + (rr && rr.dai && rr.dai.dev === "msw" ? "closet" : "back") + " switch: VLAN " + D.id + " isn't snooped; show ip arp inspection: its drops count up."),
+    C("old", has && !r.on && !!rr && !!rr.dai && watched && !bound, "The " + who + "'s lease is from before snooping knew its VLAN: ARP inspection drops it until it asks again", "Snooping knows both PCs' leases.", "ping from the " + who + ": no replies; show ip dhcp snooping binding on the back switch: nothing for its address."),
+    C("arp", has && !r.on && !!rr && !!rr.dai && watched && bound, "ARP inspection drops the " + who + "'s traffic on its way", "ARP inspection lets the department through.", "ping from the " + who + ": no replies; show ip arp inspection: its drops count up."),
+    C("dns", has && !r.on && !!rr && !!rr.internet && !a.dns.length, "The " + who + " has no DNS servers: it reaches addresses, not names", "Both PCs have DNS servers.", "ipconfig /all on the " + who + ": no DNS servers."),
+    C("net", has && !r.on, "The " + who + " is offline", "Both PCs are online.", "ping from the " + who + ": no replies from the internet."),
+    C("prlist", has && r.on && !r.pr && !!out && !aclVerdict(R, out, pk(want, a.ip, ["tcp"])).permit, "The department's list stops the printer's replies: it keeps the printers' network off the department too", "Its list lets the printer's replies back.", "show access-lists " + out + " on the router: the printer's replies to " + D.net + " meet a deny."),
+    C("print", has && r.on && !r.pr, "The " + who + " can't reach the printer", "Both PCs reach the printer.", "ping " + want + " from the " + who + ": no replies.")];
+}
+function dGuardCauses(sim, v) {
+  const D = dept(v), B = BSW(sim), M = SW(sim), S = B.snoop;
+  const tr = dRows(sim, v).find(function (r) { const p = B.ports[r.n]; return p.dtrust || p.atrust; });
+  const blind = M.dai.vlans.indexOf(D.id) >= 0 && !(M.snoop.on && M.snoop.vlans.indexOf(D.id) >= 0);
+  return [C("snoop", S.vlans.indexOf(D.id) < 0, "The back switch doesn't snoop on the department's VLAN", "It snoops on it.", "show ip dhcp snooping on the back switch: VLAN " + D.id + " isn't snooped."),
+    C("on", S.vlans.indexOf(D.id) >= 0 && !S.on, "Snooping is set for the department's VLAN, but turned off on the back switch", "Snooping is on.", "show ip dhcp snooping on the back switch: Switch DHCP snooping is disabled."),
+    C("dai", B.dai.vlans.indexOf(D.id) < 0, "The back switch doesn't inspect ARP on the department's VLAN", "It inspects ARP there.", "show ip arp inspection on the back switch: VLAN " + D.id + " isn't inspected."),
+    C("trust", !!tr, "The back switch trusts a department PC's port: a rogue server or a spoofed reply there would be believed", "It trusts neither PC's port.", "show ip dhcp snooping on the back switch: " + (tr ? gi(tr.n) : "") + " is trusted."),
+    C("cblind", blind, "The closet switch inspects ARP on the department's VLAN where it doesn't snoop: with no bindings to check against, everything there is dropped", "It inspects nothing it doesn't snoop.", "show ip dhcp snooping on the closet switch: VLAN " + D.id + " is inspected but not snooped.")];
+}
+/* the manager's PC keeps the records' address: a reservation on the router, matched on the client identifier the PC sends (01, its
+   hardware type, then its MAC), the PC renewed. Set by hand it has no lease, and ARP inspection on the staff VLAN drops it */
+function mgrIpCauses(sim, v) {
+  const r = RT(sim), p = v.plan, S = staff(v), want = p.mgrIp, f = sim.d.mgr.ifaces[0], a = sim.on("mgr") ? sim.addr("mgr") : null, has = !!a && a.kind !== "apipa";
+  const hex = String(f.mac).replace(/[^0-9a-f]/gi, "").toLowerCase(), cid = clientIdOf(f.mac), H = Object.keys(r.pools).filter(function (k) { return r.pools[k].host; });
+  const by = function (fn) { return H.find(function (k) { return fn(r.pools[k]); }) || null; };
+  const k = by(function (q) { return q.clientId === cid; }), B = k ? r.pools[k] : null;
+  const hw = by(function (q) { return q.hw === hex; }), no01 = by(function (q) { return q.clientId === hex; }), other = by(function (q) { return q.host === want && q.clientId !== cid; });
+  const stat = f.cfg.mode === "static", rr = stat ? sim.route("mgr", "8.8.8.8") : null, manual = (sim.d.rtr.leases || []).some(function (l) { return l.mac === f.mac && l.manual; });
+  const listed = "show ip dhcp binding on the router: " + (has && !stat ? a.ip + ", client ID " + dotHex(cid) + ", " + (manual ? "Manual" : "Automatic") : "no lease for the manager's PC") + ".";
+  const right = !!B && B.host === want && B.hostMask === p.vmask, pool = "show running-config on the router: ip dhcp pool " + k + ", host " + (B ? B.host + " " + B.hostMask : "") + ".";
+  return [C("staticdai", stat && !!rr && !!rr.dai, "The manager's PC has its address set by hand: ARP inspection on the staff VLAN has no lease to check it against, so it drops it", "Its address comes from the router.", "ipconfig /all on the manager's PC: DHCP Enabled: No; ping from it: no replies."),
+    C("static", stat && !(rr && rr.dai), "The manager's PC has its address set by hand: every staff PC's address comes from the router, where snooping and ARP inspection can check it", "Its address comes from the router.", "ipconfig /all on the manager's PC: DHCP Enabled: No."),
+    C("none", !stat && !B && !hw && !no01 && !other, "The router has no reservation for the manager's PC: it hands it whatever address is free", "There's a reservation for it.", listed),
+    C("hw", !stat && !B && !!hw, "The reservation names the PC's hardware address, but the PC names itself with a client identifier, and that's what the router matches", "The reservation names its client identifier.", listed),
+    C("no01", !stat && !B && !hw && !!no01, "The reservation's client identifier is the PC's MAC address alone: the PC puts its hardware type in front of it", "It's the identifier the PC sends.", listed),
+    C("other", !stat && !B && !hw && !no01 && !!other, "The reservation names a client identifier the manager's PC doesn't send", "It names the PC's own.", listed),
+    C("ip", !stat && !!B && B.host !== want, "The reservation hands out an address that isn't the records'", "It's the records' address.", pool),
+    C("mask", !stat && !!B && B.host === want && B.hostMask !== p.vmask, "The reservation's mask isn't the staff network's" + (B && B.hostMask === "255.0.0.0" ? ": with none given, the router uses the address's class mask" : ""), "Its mask is the staff network's.", pool),
+    C("renew", !stat && right && (!has || a.ip !== want), "The manager's PC still has its old address: a reservation is handed out when the PC next asks", "It has the records' address.", "ipconfig on the manager's PC: " + (a ? a.ip : "no address") + "."),
+    C("gw", !stat && right && has && a.ip === want && a.gw !== S.gw, "The reservation hands the PC a gateway that isn't the staff network's", "It hands out the staff gateway.", "ipconfig on the manager's PC: default gateway " + (a && a.gw || "blank") + ".")];
+}
+/* only the manager's PC reaches the department's PCs: judged on every list a packet meets on the way there and back (the staff's or
+   guests' subinterface in, the department's out; the reply the other way round), for the ways a PC is reached (file sharing,
+   remote desktop, ping), to the department's PCs and to either end of its block */
+const DEPT_WAYS = [["tcp", 445, "file sharing (445)"], ["tcp", 3389, "remote desktop (3389)"], ["icmp", null, "ping"]];
+function dApartCauses(sim, v) {
+  const R = RT(sim), Rv = view(sim), p = v.plan, D = dept(v), S = staff(v), G = guest(v), want = p.mgrIp;
+  const sub = function (k) { return vlanSub(Rv, v, k); }, ds = sub("dept"), f = ds ? R.subs[ds] : null;
+  const L = function (n, dir) { const x = n ? R.subs[n] : null, a = x && (dir === "in" ? x.aclIn : x.aclOut); return a && R.acls[a] ? a : null; };
+  const pk = function (s, d, w) { return { proto: w[0], src: s, dst: d, sport: 50000, port: w[1] }; };
+  const lets = function (from, s, d, w) {
+    const req = pk(s, d, w), rep = { proto: w[0], src: d, dst: s, sport: w[1], port: 50000 }, ok = function (n, dir, x) { const a = L(n, dir); return !a || aclVerdict(R, a, x).permit; };
+    return ok(from, "in", req) && ok(ds, "out", req) && ok(ds, "in", rep) && ok(from, "out", rep);
+  };
+  const ends = [D.first, D.last], pcs = DPCS.map(function (id) { return addrIp(sim, id); }).filter(function (ip) { return inDept(v, ip); }).filter(uniq);
+  const others = [S.net.replace(/\.0$/, ".50")].concat(["pc", "bpc"].map(function (id) { return addrIp(sim, id); }).filter(function (ip) { return !!ip && ip !== want; })).filter(uniq), visitor = [G.net.replace(/\.0$/, ".50")];
+  const open = function (from, srcs, dsts) { return DEPT_WAYS.filter(function (w) { return srcs.some(function (s) { return dsts.some(function (d) { return lets(from, s, d, w); }); }); }); };
+  const to = pcs.length ? pcs : ends, sOpen = open(sub("staff"), others, to), gOpen = open(sub("guest"), visitor, to), sEnd = open(sub("staff"), others, ends), gEnd = open(sub("guest"), visitor, ends);
+  const mShut = DEPT_WAYS.filter(function (w) { return to.concat(ends).some(function (d) { return !lets(sub("staff"), want, d, w); }); });
+  const nm = f ? f.aclOut || f.aclIn : null, missing = !!nm && !R.acls[nm], Lo = f && f.aclOut && R.acls[f.aclOut] ? R.acls[f.aclOut] : null;
+  const mp = pk(want, to[0], DEPT_WAYS[0]), late = mShut.length > 0 && !!Lo && Lo.lines.some(function (e, i) { return !e.remark && e.action === "permit" && aceMatch(e, mp) && Lo.lines.slice(0, i).some(function (x) { return !x.remark && x.action === "deny" && aceMatch(x, mp); }); });
+  const ways = function (l) { return l.map(function (w) { return w[2]; }).join(", "); }, ma = addrIp(sim, "mgr");
+  const fine = !!f && !!nm && !missing && !mShut.length && !sOpen.length && !gOpen.length && !sEnd.length && !gEnd.length;
+  return [C("nosub", !f, "The department has no subinterface yet, so nothing stands between its PCs and the rest of the network", "The department has its subinterface.", "show ip interface brief on the router: no " + subName(v, "dept") + "."),
+    C("none", !!f && !nm, "Nothing on the department's subinterface keeps anyone off its PCs", "A list is on its subinterface.", "show ip interface " + ds + " on the router: Outgoing access list is not set, Inbound access list is not set."),
+    C("missing", missing, "The list on the department's subinterface doesn't exist: a missing list lets everything through", "The list exists.", "show access-lists on the router: no list " + nm + "."),
+    C("name", !!nm && !missing && nm !== p.dept.acl, "The list on the department's subinterface isn't the one the records name", "It's the records' list.", "show ip interface " + ds + " on the router: access list " + nm + "."),
+    C("dir", !!f && !!f.aclIn && !f.aclOut && (sOpen.length > 0 || gOpen.length > 0), "The list is in on the department's subinterface: it reads what the department's PCs send, not what's sent to them", "It's out, toward the department's PCs.", "show ip interface " + ds + " on the router: Inbound access list is " + (f ? f.aclIn : "") + ", Outgoing access list is not set."),
+    C("late", late, "A line above the manager's stops the whole staff network first: the first line that matches decides", "Nothing above it stops the manager.", "show access-lists " + nm + " on the router: the manager's line counts no matches."),
+    C("mgr", mShut.length > 0 && !late, "The list stops the manager's PC too", "The manager's address gets through.", "From " + want + " (the manager's address in the records), the department's PCs don't answer to " + ways(mShut) + "."),
+    C("staff", sOpen.length === DEPT_WAYS.length, "The list lets the rest of the staff reach the department", "The rest of the staff are kept off.", "From the " + name(sim, "pc") + ", the department's PCs answer."),
+    C("ssome", sOpen.length > 0 && sOpen.length < DEPT_WAYS.length, "The list stops some of the other staff's traffic to the department, not all of it", "It stops all of it.", "From the staff network, the department's PCs still answer to " + ways(sOpen) + "."),
+    C("guest", gOpen.length === DEPT_WAYS.length, "Nothing stops guests reaching the department: their own list lets them out to any network it doesn't name", "Guests are kept off.", "From the guest network, the department's PCs answer."),
+    C("gsome", gOpen.length > 0 && gOpen.length < DEPT_WAYS.length, "Guests are kept off some ways, not all", "Guests are kept off every way.", "From the guest network, the department's PCs still answer to " + ways(gOpen) + "."),
+    C("host", !sOpen.length && !gOpen.length && (sEnd.length > 0 || gEnd.length > 0), "The list keeps them off these two PCs, not the department's network: the next PC there would be open to them", "It keeps them off the whole block.", "show access-lists " + nm + " on the router: its lines name the PCs' addresses, not the block."),
+    C("mgraddr", fine && ma !== want, "The list lets the manager's address from the records through, but the manager's PC isn't at it", "The manager's PC is at that address.", "ipconfig on the manager's PC: " + (ma || "no address") + ".")];
+}
+/* everything still works: SB-J7's checks (staff online and printing, guests online, the access point's page, the cabinet), the
+   cameras from outside, and snooping and inspection still guarding the staff and guest VLANs (turned off, a PC set by hand works) */
+function dStillCauses(sim, v) {
+  const F = fixedOf(v), X = fixedStillCauses(sim), cam = v.plan.cams.find(function (c) { const r = sim.fromInternet(F.ip, c.ext, "tcp"); return !(r.ok && r.who === c.id); });
+  const g = SWS.map(function (d) { const sw = sim.d[d[0]].sw; return { d: d, miss: guarded(sim, v, d[0]).filter(function (x) { return !sw.snoop.on || sw.snoop.vlans.indexOf(x) < 0 || sw.dai.vlans.indexOf(x) < 0; }) }; }).find(function (x) { return x.miss.length; });
+  return X.slice(0, -1).concat([C("cams", !!cam, "A camera can't be seen from outside any more", "Both cameras open from outside.", "On the manager's phone, on mobile data: " + (cam ? cam.tag : "a camera") + "'s page doesn't open at " + F.ip + "."),
+    C("guards", !!g, "Snooping and ARP inspection no longer guard every staff and guest VLAN on the " + (g ? g.d[1] : ""), "They still guard them.", "show ip dhcp snooping and show ip arp inspection on the " + (g ? g.d[1] + ": " + vlanWords(g.miss) + " guarded" : "") + ".")], X.slice(-1));
+}
+const SB10 = {
+  id: "SB-J10", level: "business", title: "A new department, end to end: its own room, its own VLAN, its own block, only the manager let in",
+  already: ["still", "saved", "swsaved", "bswsaved"],
+  start(seed) {
+    const b = SB9.start(seed), sim = b.sim;
+    for (const a of SB9.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    sim.net.cables = sim.net.cables.filter(function (c) { return c.a.dev !== "tech" && c.b.dev !== "tech"; });   /* you took your laptop and its cables with you last time */
+    addDepartment(sim); sim.cli = {};   /* the department's records, its room, and its two PCs in their boxes in the back room */
+    return { sim: sim, v: b.v };
+  },
+  brief(v, sim) {
+    const D = sim.net.roomNames.dept, lc = D.charAt(0).toLowerCase() + D.slice(1);
+    return { quote: "We've fitted out the little room off the " + String(sim.net.roomNames.back).toLowerCase() + " as our " + lc + ", and its two PCs came this morning. What it keeps is private, so our records say it gets a network of its own, and nobody gets into those PCs but me: not " + String(sim.net.roomNames.counter).toLowerCase() + ", not the rest of the staff, and certainly not the guests' Wi-Fi. It still has to print and get online.", from: sim.net.client.manager + ", " + sim.net.client.name };
+  },
+  mason: "A new department is a network of its own from end to end: its VLAN on every switch between its PCs and the router, its gateway and pool on the router, its guards on its switch. Work the block's numbers out on paper before you type any of them. Then decide who may reach it, and make sure whatever the list names can't change its address.",
+  limits: function (v, sim) {
+    const p = v.plan, D = dept(v), S = staff(v), dp = p.dept, room = sim.net.roomNames.dept, pcs = DPCS.map(function (id) { return "the " + name(sim, id); });
+    return ["The records: the " + room.toLowerCase() + " gets VLAN " + D.id + ", named " + D.name + ", on the block " + D.net + "/" + D.len + ". Its gateway is the block's first usable address, on a subinterface of the router's inside port. Its PCs get their addresses from a pool of their own, from the rest of the block, with the business's DNS servers (" + p.dns.join(" and ") + ").",
+      "Its two PCs, " + pcs.join(" and ") + ", go in the " + room.toLowerCase() + ", off " + roomOf(sim, "back") + ". Their runs go to the back switch's ports " + dp.ports.join(" and ") + ", described " + dp.desc.join(" and ") + ". Each port takes its PC only, as every staff PC's does.",
+      "The VLAN is made on both switches and carried on the trunk between them, added to what the trunk carries now. Snooping and ARP inspection guard it on the back switch, as they guard the staff VLAN.",
+      "Only the manager's PC reaches the " + room.toLowerCase() + "'s PCs; the rest of the staff and the guests are kept off them. The " + room.toLowerCase() + " prints to the printer (" + p.printerIp + ") and gets online. Its list, on its own subinterface, is named " + dp.acl + ".",
+      "The manager's PC is to have " + p.mgrIp + " from now on, so the list can name it; the staff VLAN keeps its first ten addresses back. Every staff PC is checked by snooping and ARP inspection, as SB-J6 left them.",
+      "The router and the closet switch are managed by SSH from a staff PC as " + p.user + " (password " + p.userPw + "): the router at " + S.gw + ", the closet switch at " + p.swIp + ". The back switch at its console: your laptop is in the closet, with its console cable. The cabinet's key is with " + sim.net.client.manager + ".",
+      "The records are as before: router " + p.rtHost + " (secret " + p.rtSecret + ", console " + p.rtConsole + "); switches " + p.swHost + " and " + p.bswHost + " (secret " + p.swSecret + ", console " + p.swConsole + ")."];
+  },
+  reqs: [{
+    id: "dplace", text: "The department's two PCs are out of their boxes, in their room, cabled to the back switch's ports from the records",
+    causes: dPlaceCauses,
+    ok: function (sim) { return "Both PCs are in " + roomOf(sim, "dept") + ", each on its port of the back switch."; },
+    rung1: function () { return "The floor plan, then the Cable runs table: where each of the department's PCs is, and what its cable goes to."; },
+    rung2: function () { return "A device has to be out of its box and in its room before anything can be plugged into it. Each run goes where the records say, because a switch port's VLAN and description belong to that port."; }
+  }, {
+    id: "dvlan", text: "The department's VLAN is on both switches, named as the records say, and the trunk between them carries it",
+    causes: dVlanCauses,
+    ok: function (sim, v) { return "VLAN " + dept(v).id + " is on both switches, named " + dept(v).name + ", and both ends of the trunk carry it beside everything they carried before."; },
+    rung1: function () { return "show vlan brief on both switches; show interfaces trunk on both ends of the trunk between them."; },
+    rung2: function () { return "A switch carries a VLAN across a trunk only once the VLAN is made on it, and only if the trunk's allowed list has it. Typing an allowed list puts it in place of the one there; adding to a list takes a word of its own."; }
+  }, {
+    id: "dport", text: "The department's ports are access ports in its VLAN, open, described as the records say",
+    causes: dPortCauses,
+    ok: function () { return "Both ports are access ports in the department's VLAN, open, described as the records say."; },
+    rung1: function () { return "On the back switch: show interfaces status, then show vlan brief: find the department's ports, and the VLAN each is in."; },
+    rung2: function () { return "A spare port the hardening parked is shut and sits in a VLAN that goes nowhere: bringing it into use takes it out of both."; }
+  }, {
+    id: "dpsec", text: "Each department PC's port takes that PC only, as every staff PC's does",
+    causes: dPsecCauses,
+    ok: function () { return "Both ports hold their PC's address, stuck, one device at most, and shut on a stranger."; },
+    rung1: function () { return "show port-security interface for each of the department's ports on the back switch, and the sticky lines in show running-config."; },
+    rung2: function () { return "Port security learns the addresses on a port up to its maximum, and sticky writes them into the configuration. Whatever is plugged in first is what it learns."; }
+  }, {
+    id: "dsub", text: "The router is the department's gateway: a subinterface of its own, with the block's first usable address and the block's mask",
+    causes: dSubCauses,
+    ok: function (sim, v) { return "The router's subinterface tags VLAN " + dept(v).id + ", with " + dept(v).gw + " " + dept(v).mask + ", up, and the trunk to it carries the VLAN."; },
+    rung1: function () { return "On the router: show ip interface brief, and the subinterface's lines in show running-config. Beside them, the block from the records worked out: its network, mask, first and last usable addresses, broadcast."; },
+    rung2: function () { return "A block's prefix sets its size and its mask: a /29 is 8 addresses, so its mask ends in 248. Its first address is the network and its last the broadcast; every address between is usable."; }
+  }, {
+    id: "dpool", text: "The department's PCs get their addresses from a pool of their own",
+    causes: dPoolCauses,
+    ok: function () { return "A pool for the department's block, with its gateway and DNS servers, answering on its subinterface."; },
+    rung1: function () { return "On the router: show ip dhcp pool, and the pool's lines in show running-config, beside the subinterface's address and mask."; },
+    rung2: function () { return "A pool answers on the interface whose network is the pool's network, mask and all. Its gateway and DNS servers are what every PC that asks is told."; }
+  }, {
+    id: "dnet", text: "The department prints and gets online",
+    causes: dNetCauses,
+    ok: function () { return "Both of the department's PCs are online and reach the printer."; },
+    rung1: function () { return "From each of the department's PCs: ipconfig, ping out, ping the printer. On the router: show access-lists and the NAT lines in show running-config."; },
+    rung2: function () { return "Every inside network needs its subinterface marked as NAT's inside and its addresses named in NAT's list. A list on an interface reads replies coming back as well as traffic going out, and ends with a deny you never see."; }
+  }, {
+    id: "dguard", text: "DHCP snooping and ARP inspection guard the department's VLAN on the back switch",
+    causes: dGuardCauses,
+    ok: function () { return "The back switch snoops and inspects ARP on the department's VLAN, trusting neither PC's port."; },
+    rung1: function () { return "show ip dhcp snooping and show ip arp inspection on the back switch, and on the closet switch."; },
+    rung2: function () { return "Snooping and ARP inspection guard only the VLANs they're told about: a new VLAN is added to each. A client that asked before snooping knew its VLAN has no binding until it asks again."; }
+  }, {
+    id: "mgrip", text: "The manager's PC always has the address the records give it",
+    causes: mgrIpCauses,
+    ok: function (sim, v) { return "The router keeps " + v.plan.mgrIp + " for the manager's PC, and the PC has it."; },
+    rung1: function () { return "On the manager's PC: ipconfig /all. On the router: show ip dhcp binding, and the pools in show running-config."; },
+    rung2: function () { return "A PC that must always have one address can still get it from DHCP: the router keeps the address for that PC alone, matched on exactly what the PC sends to name itself, as show ip dhcp binding shows it. Nothing changes on the PC until it next asks."; }
+  }, {
+    id: "dapart", text: "Only the manager's PC reaches the department's PCs: the rest of the staff and the guests are kept off",
+    causes: dApartCauses,
+    ok: function () { return "The department's list lets the manager's address through and keeps the rest of the staff and the guests off the whole block, every way."; },
+    rung1: function () { return "On the router: show access-lists, and show ip interface for the department's subinterface. Then try reaching a department PC from each staff PC and the visitor's phone."; },
+    rung2: function () { return "A list out on an interface reads what the router sends out of it, toward the PCs behind it; a list in reads what comes from them. The first line that matches decides, and every list ends with a deny you never see."; }
+  }, {
+    id: "still", text: "Everything still works: staff and guests online, staff printing, the cameras seen from outside, the cabinet locked",
+    causes: dStillCauses,
+    ok: function () { return "Every staff PC is online and prints, guests are online, the access point's page opens, both cameras open from outside, the staff and guest VLANs are still guarded, and the cabinet is locked."; },
+    rung1: function () { return "Ping out from each staff PC and the visitor's phone; print a test page; try each camera from the manager's phone; show interfaces trunk on both switches."; },
+    rung2: function () { return "Whatever is shared between departments (a trunk's allowed list, the guards on a switch, NAT's list) carries everyone else's traffic too: change it by adding, not by replacing."; }
+  }, L_SAVED_RT, {
+    id: "swsaved", text: "The closet switch's setup survives a power cut",
+    causes: swSavedCauses,
+    ok: function () { return "What's running on the closet switch is saved."; },
+    rung1: function () { return "On the closet switch: compare show running-config with show startup-config."; },
+    rung2: function () { return "Each device keeps its own startup configuration: saving one saves nothing on the others."; }
+  }, {
+    id: "bswsaved", text: "The back switch's setup survives a power cut",
+    causes: function (sim) { return savedCauses(sim, "bsw"); },
+    ok: function () { return "What's running on the back switch is saved."; },
+    rung1: function () { return "On the back switch: compare show running-config with show startup-config."; },
+    rung2: function () { return "Each device keeps its own startup configuration: saving one saves nothing on the others."; }
+  }],
+  /* one way: the PCs placed and cabled; from the manager's PC over SSH, the closet switch (the VLAN, the trunk added to) and the
+     router (the subinterface, the pool, the manager's reservation, NAT's list, the department's list out on its subinterface);
+     your laptop carried to the back room, on the back switch's console (the VLAN, the ports, port security, the trunk, the
+     guards), each port opened last; then the manager's PC and the department's PCs ask again */
+  solve(v, sim) {
+    const p = v.plan, D = dept(v), S = staff(v), G = guest(v), T = p.trunk, dp = p.dept, w = "0.0.0.255", cid = dotHex(clientIdOf(sim.d.mgr.ifaces[0].mac));
+    const m = function (l) { return { t: "cmd", dev: "mgr", line: l }; }, t = function (l) { return { t: "cmd", dev: "tech", line: l, cli: true }; };
+    return [{ t: "place", dev: "dpc1", room: "dept" }, { t: "place", dev: "dpc2", room: "dept" }, { t: "lay", a: E("dpc1", "NIC"), b: E("bsw", dp.ports[0]) }, { t: "lay", a: E("dpc2", "NIC"), b: E("bsw", dp.ports[1]) },
+      m("ssh " + p.user + "@" + p.swIp), m(p.userPw), m("enable"), m(p.swSecret), m("configure terminal"),
+      m("vlan " + D.id), m("name " + D.name), m("exit"), m("interface gi0/" + T.closet), m("switchport trunk allowed vlan add " + D.id), m("end"),
+      m("copy running-config startup-config"), m(""), m("exit"),
+      m("ssh " + p.user + "@" + S.gw), m(p.userPw), m("enable"), m(p.rtSecret), m("configure terminal"),
+      m("interface " + subName(v, "dept")), m("encapsulation dot1Q " + D.id), m("ip address " + D.gw + " " + D.mask), m("ip nat inside"), m("ip access-group " + dp.acl + " out"), m("exit"),
+      m("ip dhcp pool " + D.name), m("network " + D.net + " " + D.mask), m("default-router " + D.gw), m("dns-server " + p.dns.join(" ")), m("exit"),
+      m("ip dhcp pool MANAGER-PC"), m("host " + p.mgrIp + " " + p.vmask), m("client-identifier " + cid), m("exit"),
+      m("access-list 1 permit " + D.net + " " + D.wild),
+      m("ip access-list extended " + dp.acl), m("permit ip host " + p.mgrIp + " " + D.net + " " + D.wild), m("deny ip " + S.net + " " + w + " " + D.net + " " + D.wild), m("deny ip " + G.net + " " + w + " " + D.net + " " + D.wild), m("permit ip any any"), m("end"),
+      m("copy running-config startup-config"), m(""), m("exit"),
+      { t: "place", dev: "tech", room: "back" }, { t: "lay", a: E("tech", "USB-C"), b: E("bsw", "CONSOLE") },
+      t(""), t(p.swConsole), t("enable"), t(p.swSecret), t("configure terminal"), t("vlan " + D.id), t("name " + D.name), t("exit"),
+      t("interface gi0/" + T.back), t("switchport trunk allowed vlan add " + D.id), t("exit"),
+      t("ip dhcp snooping vlan " + D.id), t("ip arp inspection vlan " + D.id),
+      t("interface gi0/" + dp.ports[0]), t("description " + dp.desc[0]), t("interface gi0/" + dp.ports[1]), t("description " + dp.desc[1]),
+      t("interface range gi0/" + dp.ports[0] + " - " + dp.ports[1]), t("switchport mode access"), t("switchport access vlan " + D.id), t("switchport port-security"), t("switchport port-security mac-address sticky"), t("no shutdown"), t("end"),
+      t("copy running-config startup-config"), t(""),
+      { t: "cmd", dev: "mgr", line: "ipconfig /renew" }, { t: "cmd", dev: "dpc1", line: "ipconfig /renew" }, { t: "cmd", dev: "dpc2", line: "ipconfig /renew" }];
+  },
+  answer(v, sim) {
+    const p = v.plan, D = dept(v), S = staff(v), G = guest(v), T = p.trunk, dp = p.dept, room = sim ? sim.net.roomNames.dept.toLowerCase() : "new room", mac = sim ? sim.d.mgr.ifaces[0].mac : null;
+    return ["The block: " + D.net + "/" + D.len + " is " + Math.pow(2, 32 - D.len) + " addresses, mask " + D.mask + " (wildcard " + D.wild + "); network " + D.net + ", gateway (the first usable) " + D.gw + ", the rest " + D.first + " to " + D.last + ", broadcast " + D.bcast + ".",
+      "Place both PCs in the " + room + "; lay each to the back switch: ports " + dp.ports.join(" and ") + ".",
+      "From the manager's PC: ssh " + p.user + "@" + p.swIp + " (the closet switch). vlan " + D.id + ", name " + D.name + "; interface gi0/" + T.closet + ": switchport trunk allowed vlan add " + D.id + ". Save.",
+      "ssh " + p.user + "@" + S.gw + " (the router). interface " + subName(v, "dept") + ": encapsulation dot1Q " + D.id + ", ip address " + D.gw + " " + D.mask + ", ip nat inside, ip access-group " + dp.acl + " out. ip dhcp pool " + D.name + ": network " + D.net + " " + D.mask + ", default-router " + D.gw + ", dns-server " + p.dns.join(" ") + ".",
+      "The manager's reservation: ip dhcp pool MANAGER-PC: host " + p.mgrIp + " " + p.vmask + ", client-identifier " + (mac ? dotHex(clientIdOf(mac)) : "01 then the PC's MAC") + " (01, then its MAC, as show ip dhcp binding lists it). access-list 1 permit " + D.net + " " + D.wild + " (NAT's list).",
+      "ip access-list extended " + dp.acl + ": permit ip host " + p.mgrIp + " " + D.net + " " + D.wild + "; deny ip " + S.net + " 0.0.0.255 " + D.net + " " + D.wild + "; deny ip " + G.net + " 0.0.0.255 " + D.net + " " + D.wild + "; permit ip any any. Save.",
+      "Carry your laptop to the back room, console to the back switch: vlan " + D.id + " " + D.name + "; gi0/" + T.back + ": switchport trunk allowed vlan add " + D.id + "; ip dhcp snooping vlan " + D.id + ", ip arp inspection vlan " + D.id + "; ports " + dp.ports.join(" and ") + ": described " + dp.desc.join(" and ") + ", access, VLAN " + D.id + ", port security sticky, no shutdown. Save.",
+      "ipconfig /renew on the manager's PC (it takes " + p.mgrIp + ") and on both of the department's PCs."];
+  },
+  summary(v, sim) {
+    const p = v.plan, D = dept(v);
+    return ["The " + sim.net.roomNames.dept.toLowerCase() + "'s two PCs are in their room on the back switch, on VLAN " + D.id + " (" + D.name + "), carried to the router beside every other VLAN, their ports secured and guarded.",
+      "The router is their gateway on " + D.net + "/" + D.len + ", hands them addresses from the rest of the block, and translates them out; they print and get online.",
+      "The manager's PC keeps " + p.mgrIp + " by a reservation, and the department's list lets only that address in. All three devices are saved."];
+  }
+};
+
+export const BUSINESS_JOBS = [SB1, SB2, SB3, SB4, SB5, SB6, SB7, SB8, SB9, SB10];

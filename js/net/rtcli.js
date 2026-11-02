@@ -4,7 +4,8 @@
    - Routed ports GigabitEthernet0/0 to 0/2, shut down from the box as a real router's are, and subinterfaces
      (GigabitEthernet0/0.10) for routing between VLANs over one trunk: encapsulation dot1Q first, then the address.
    - Static routes, the default route among them (ip route 0.0.0.0 0.0.0.0 next-hop).
-   - A DHCP server: excluded addresses, and a pool per network (network, default-router, dns-server, lease).
+   - A DHCP server: excluded addresses, a pool per network (network, default-router, dns-server, lease), and manual bindings,
+     a pool of their own per host (host, client-identifier, hardware-address), matched on the client identifier a client sends.
    - Access lists: numbered standard (1-99) and extended (100-199), and named ones; applied in or out on an interface;
      first match wins, and everything not permitted is denied at the end (the implicit deny).
    - NAT: inside and outside interfaces, PAT (ip nat inside source list N interface X overload) and static NAT.
@@ -175,6 +176,23 @@ export function poolAddrs(r, name) {
   return out;
 }
 
+/* a client identifier or hardware address as typed (dotted hexadecimal, "01aa.bbcc.ddee.ff"): its hex digits, or null; and back */
+const hexId = function (s) { return /^[0-9a-f]{1,4}(\.[0-9a-f]{1,4})*$/i.test(s || "") && s.replace(/\./g, "").length % 2 === 0 ? s.replace(/\./g, "").toLowerCase() : null; };
+export function dotHex(h) { return String(h || "").match(/.{1,4}/g).join("."); }
+/* what a DHCP client sends to name itself (option 61): 01, its hardware type (Ethernet), then its MAC address */
+export function clientIdOf(mac) { return "01" + String(mac || "").replace(/[^0-9a-f]/gi, "").toLowerCase(); }
+const classMask = function (ip) { const a = +ip.split(".")[0]; return a < 128 ? "255.0.0.0" : a < 192 ? "255.255.0.0" : "255.255.255.0"; };
+/* a manual binding for a client on an interface's network: the host pool naming the client identifier it sends, its address on
+   that network. A client that sends a client identifier is matched on it alone (a hardware-address binding is for clients that
+   send none, as BOOTP's do). What the binding doesn't set (gateway, DNS, domain, lease) comes from the network pool its address
+   falls inside, as on the real thing: a binding whose mask is wider than that pool's has nothing to inherit */
+export function manualFor(r, cid, ip, mask) {
+  const k = Object.keys(r.pools).find(function (p) { const q = r.pools[p]; return q.host && q.clientId === cid && netOf(q.host, mask) === netOf(ip, mask); });
+  if (!k) return null;
+  const q = r.pools[k], par = Object.keys(r.pools).map(function (p) { return r.pools[p]; }).find(function (x) { return x.network && bits(x.mask) <= bits(q.hostMask) && netOf(q.host, x.mask) === x.network; }) || null;
+  return { name: k, host: q.host, mask: q.hostMask, router: q.router.length ? q.router : par ? par.router : [], dns: q.dns.length ? q.dns : par ? par.dns : [], domain: q.domain || (par && par.domain) || null, lease: par ? par.lease : q.lease, manual: true };
+}
+
 /* ------------------------------------------------------------ the commands */
 const has = function (list, word) { return list.find(function (c) { return c[0] === word; }); };
 const pick = function (list, words) { return words.map(function (w) { return has(list, w); }).filter(Boolean); };
@@ -328,14 +346,29 @@ const RT_POOL = [
     if (!a.length) return inc; if (!ip4(a[0])) return bad;
     let mask = a[1]; if (mask && /^\/\d+$/.test(mask)) mask = lenMask(+mask.slice(1)); if (!mask) return inc; if (!isMask(mask)) return bad;
     if (netOf(a[0], mask) !== a[0]) return ["% " + a[0] + " is not a network address with mask " + mask];
-    const P = S.sw.pools[S.pool]; P.network = a[0]; P.mask = mask; return [];
+    const P = S.sw.pools[S.pool]; if (P.host) return ["% This pool binds a host: a network needs a pool of its own"];
+    P.network = a[0]; P.mask = mask; return [];
   }, { sub: [["A.B.C.D", "Network number in dotted-decimal notation, then its mask (or /prefix)"]] }],
+  /* a manual binding (a reservation): a pool of its own for one host, matched on what the client sends to name itself */
+  ["host", "Client IP address and mask", function (S, a) {
+    if (!a.length) return inc; if (!ip4(a[0])) return bad;
+    const P = S.sw.pools[S.pool]; if (P.network) return ["% This pool hands out a network: a host binding needs a pool of its own"];
+    let mask = a[1]; if (mask && /^\/\d+$/.test(mask)) mask = lenMask(+mask.slice(1)); if (!mask) mask = classMask(a[0]); if (!isMask(mask)) return bad;   /* no mask: the address's class mask, as on the real thing */
+    const net = netOf(a[0], mask), size = Math.pow(2, 32 - bits(mask));
+    if (size > 2 && (a[0] === net || n4(a[0]) === n4(net) + size - 1)) return ["% " + a[0] + " is not a host address with mask " + mask];
+    P.host = a[0]; P.hostMask = mask; return [];
+  }, { sub: [["A.B.C.D", "IP address in dotted-decimal notation, then its mask (or /prefix)"]] }],
+  ["client-identifier", "Client identifier", function (S, a) { if (!a.length) return inc; const h = hexId(a[0]); if (!h) return bad; S.sw.pools[S.pool].clientId = h; return []; }, { sub: [["H.H.H", "Dotted-hexadecimal string"]] }],
+  ["hardware-address", "Client hardware address", function (S, a) { if (!a.length) return inc; const h = hexId(a[0]); if (!h || h.length !== 12 || (a[1] && !/^(ethernet|ieee802|1|6)$/i.test(a[1]))) return bad; S.sw.pools[S.pool].hw = h; return []; }, { sub: [["H.H.H", "Dotted-hexadecimal string"]] }],
   ["default-router", "Default routers", function (S, a) { if (!a.length) return inc; if (!a.every(ip4)) return bad; S.sw.pools[S.pool].router = a.slice(0, 8); return []; }, { sub: [["A.B.C.D", "The gateway's address, as the clients will use it"]] }],
   ["dns-server", "DNS servers", function (S, a) { if (!a.length) return inc; if (!a.every(ip4)) return bad; S.sw.pools[S.pool].dns = a.slice(0, 8); return []; }, { sub: [["A.B.C.D", "Server's address"]] }],
   ["domain-name", "Domain name", function (S, a) { if (!a.length) return inc; S.sw.pools[S.pool].domain = a[0]; return []; }],
   ["lease", "Address lease time", function (S, a) { if (!a.length) return inc; if (/^infinite$/i.test(a[0])) { S.sw.pools[S.pool].lease = "infinite"; return []; } if (!/^\d+$/.test(a[0])) return bad; S.sw.pools[S.pool].lease = [+a[0], +(a[1] || 0), +(a[2] || 0)]; return []; }, { sub: [["<0-365>", "Days, then hours and minutes"], ["infinite", "Infinite lease"]] }],
   ["no", "Negate a command or set its defaults", [
     ["network", "Network number and mask", function (S) { const P = S.sw.pools[S.pool]; P.network = null; P.mask = null; return []; }],
+    ["host", "Client IP address and mask", function (S) { const P = S.sw.pools[S.pool]; P.host = null; P.hostMask = null; return []; }],
+    ["client-identifier", "Client identifier", function (S) { S.sw.pools[S.pool].clientId = null; return []; }],
+    ["hardware-address", "Client hardware address", function (S) { S.sw.pools[S.pool].hw = null; return []; }],
     ["default-router", "Default routers", function (S) { S.sw.pools[S.pool].router = []; return []; }],
     ["dns-server", "DNS servers", function (S) { S.sw.pools[S.pool].dns = []; return []; }],
     ["domain-name", "Domain name", function (S) { S.sw.pools[S.pool].domain = null; return []; }],
@@ -372,7 +405,7 @@ const RT_CONFIG = pick(CONFIG, ["hostname", "enable", "line", "username", "crypt
     ["route", "Establish static routes", function (S, a) { return ipRoute(S, a, false); }, { sub: [["A.B.C.D", "Destination prefix, then its mask, then the next hop's address or the way-out interface"]] }],
     ["dhcp", "Configure DHCP server and relay parameters", [
       ["excluded-address", "Prevent DHCP from assigning certain addresses", function (S, a) { return excluded(S, a, false); }, { sub: [["A.B.C.D", "Low IP address, then (if a range) the high one"]] }],
-      ["pool", "Configure DHCP address pools", function (S, a) { if (!a.length) return inc; if (!S.sw.pools[a[0]]) S.sw.pools[a[0]] = { network: null, mask: null, router: [], dns: [], domain: null, lease: [1, 0, 0] }; S.mode = "dhcp"; S.pool = a[0]; return []; }, { sub: [["WORD", "Pool name"]] }]]],
+      ["pool", "Configure DHCP address pools", function (S, a) { if (!a.length) return inc; if (!S.sw.pools[a[0]]) S.sw.pools[a[0]] = { network: null, mask: null, router: [], dns: [], domain: null, lease: [1, 0, 0], host: null, hostMask: null, clientId: null, hw: null }; S.mode = "dhcp"; S.pool = a[0]; return []; }, { sub: [["WORD", "Pool name"]] }]]],
     ["access-list", "Named access-list", [
       ["standard", "Standard Access List", function (S, a) { if (!a.length) return inc; return namedAcl(S, a[0], "standard"); }],
       ["extended", "Extended Access List", function (S, a) { if (!a.length) return inc; return namedAcl(S, a[0], "extended"); }]]],
@@ -444,13 +477,14 @@ function rtAcls(r, only, live) {
 function rtBindings(r, live) {
   const B = (live && live("leases")) || [];
   const L = ["Bindings from all pools not associated with VRF:", pad("IP address", 18) + pad("Client-ID/", 22) + pad("Lease expiration", 26) + "Type", pad("", 18) + pad("Hardware address", 22)];
-  B.forEach(function (b) { const h = b.mac.replace(/[^0-9a-f]/gi, "").toLowerCase(); L.push(pad(b.ip, 18) + pad(h.slice(0, 4) + "." + h.slice(4, 8) + "." + h.slice(8, 12), 22) + pad(b.expires || "Oct 20 2026 09:14 AM", 26) + "Automatic"); });
+  B.forEach(function (b) { L.push(pad(b.ip, 18) + pad(dotHex(clientIdOf(b.mac)), 22) + pad(b.manual ? "Infinite" : b.expires || "Oct 20 2026 09:14 AM", 26) + (b.manual ? "Manual" : "Automatic")); });   /* each client by the identifier it sent */
   return L;
 }
 function rtPools(r, live) {
   const B = (live && live("leases")) || [], L = [];
   Object.keys(r.pools).forEach(function (k) {
     const P = r.pools[k], A = poolAddrs(r, k), used = B.filter(function (b) { return b.pool === k; }).length;
+    if (P.host) { L.push("", "Pool " + k + " :", " Utilization mark (high/low)    : 100 / 0", " Subnet size (first/next)       : 0 / 0", " Total addresses                : 1", " Leased addresses               : " + used, " Excluded addresses             : 0", " Pending event                  : none", " 1 subnet is currently in the pool :", " Current index        IP address range                    Leased/Excluded/Total", " " + pad(P.host, 21) + pad(P.host + "    - " + P.host, 36) + used + "    / 0     / 1"); return; }
     L.push("", "Pool " + k + " :", " Utilization mark (high/low)    : 100 / 0", " Subnet size (first/next)       : 0 / 0", " Total addresses                : " + (P.network ? Math.pow(2, 32 - bits(P.mask)) - 2 : 0), " Leased addresses               : " + used, " Excluded addresses             : " + (P.network ? Math.pow(2, 32 - bits(P.mask)) - 2 - A.length : 0), " Pending event                  : none");
     if (P.network) L.push(" 1 subnet is currently in the pool :", " Current index        IP address range                    Leased/Excluded/Total", " " + pad(A.length > used ? A[used] : "0.0.0.0", 21) + pad(s4(n4(P.network) + 1) + "    - " + s4(n4(P.network) + Math.pow(2, 32 - bits(P.mask)) - 2), 36) + used + "    / " + (Math.pow(2, 32 - bits(P.mask)) - 2 - A.length) + "     / " + (Math.pow(2, 32 - bits(P.mask)) - 2));
     else L.push(" (no network: this pool hands out nothing)");
@@ -485,7 +519,7 @@ function rtRunning(r, startup) {
   if (r.enableSecret || r.enablePassword) L.push("!");
   r.excluded.forEach(function (x) { L.push("ip dhcp excluded-address " + x[0] + (x[1] !== x[0] ? " " + x[1] : "")); });
   if (r.excluded.length) L.push("!");
-  Object.keys(r.pools).forEach(function (k) { const P = r.pools[k]; L.push("ip dhcp pool " + k); if (P.network) L.push(" network " + P.network + " " + P.mask); if (P.router.length) L.push(" default-router " + P.router.join(" ")); if (P.dns.length) L.push(" dns-server " + P.dns.join(" ")); if (P.domain) L.push(" domain-name " + P.domain); if (P.lease === "infinite") L.push(" lease infinite"); else if (P.lease.join() !== "1,0,0") L.push(" lease " + P.lease.filter(function (x, i) { return i === 0 || x; }).join(" ")); L.push("!"); });
+  Object.keys(r.pools).forEach(function (k) { const P = r.pools[k]; L.push("ip dhcp pool " + k); if (P.host) L.push(" host " + P.host + " " + P.hostMask); if (P.clientId) L.push(" client-identifier " + dotHex(P.clientId)); if (P.hw) L.push(" hardware-address " + dotHex(P.hw)); if (P.network) L.push(" network " + P.network + " " + P.mask); if (P.router.length) L.push(" default-router " + P.router.join(" ")); if (P.dns.length) L.push(" dns-server " + P.dns.join(" ")); if (P.domain) L.push(" domain-name " + P.domain); if (P.lease === "infinite") L.push(" lease infinite"); else if (P.lease.join() !== "1,0,0") L.push(" lease " + P.lease.filter(function (x, i) { return i === 0 || x; }).join(" ")); L.push("!"); });
   if (r.domain) L.push("ip domain-name " + r.domain);
   Object.keys(r.users).forEach(function (u) { L.push("username " + u + " secret " + pw(r.users[u], "secret")); });
   if (r.domain || Object.keys(r.users).length) L.push("!");

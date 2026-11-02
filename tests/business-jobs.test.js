@@ -6,6 +6,7 @@ import { BUSINESS_JOBS } from "../js/build/business.js";
 import * as B from "../js/build/engine.js";
 import { prompt } from "../js/net/cmd.js";
 import { rng } from "../js/net/util.js";
+import { dotHex, clientIdOf } from "../js/net/rtcli.js";
 
 const N = Number(process.env.SEEDS || 150);
 const byId = Object.fromEntries(BUSINESS_JOBS.map((d) => [d.id, d]));
@@ -495,7 +496,7 @@ test("no help on the business jobs names the answer: no name, password, VLAN num
       p.guestSsid, p.guestPw, p.guestAcl, p.vlans.guest.name, "dot1Q " + p.vlans.guest.id, "vlan " + p.vlans.guest.id, p.apDesc,
       p.bswHost, p.trunk.closetDesc, p.trunk.backDesc, p.desc["4"], p.vlans.native.name, "vlan " + p.vlans.native.id,
       p.camAcl, p.vlans.cameras.name, "dot1Q " + p.vlans.cameras.id, "vlan " + p.vlans.cameras.id, ...p.cams.map((c) => c.desc), ...p.cams.map((c) => String(c.ext)),
-      p.vtyAcl, p.domain, p.vlans.parking.name, "vlan " + p.vlans.parking.id, "exec-timeout " + p.idle, p.idle + " minutes"].concat(p.vlans.printers ? [p.vlans.printers.name, "dot1Q " + p.vlans.printers.id, "vlan " + p.vlans.printers.id, "35 deny"] : [], p.backup ? [p.backup.name] : []);   /* SB-J8's records and SB-J9's backup, where they have them */
+      p.vtyAcl, p.domain, p.vlans.parking.name, "vlan " + p.vlans.parking.id, "exec-timeout " + p.idle, p.idle + " minutes"].concat(p.vlans.printers ? [p.vlans.printers.name, "dot1Q " + p.vlans.printers.id, "vlan " + p.vlans.printers.id, "35 deny"] : [], p.backup ? [p.backup.name] : [], p.dept ? [p.vlans.dept.name, "dot1Q " + p.vlans.dept.id, "vlan " + p.vlans.dept.id, p.dept.acl, ...p.dept.desc, "/" + p.vlans.dept.len, dotHex(clientIdOf(J.sim.d.mgr.ifaces[0].mac)), "MANAGER-PC"] : []);   /* SB-J8's records, SB-J9's backup and SB-J10's department, where they have them */
     const said = [];
     for (let k = 0; k <= sol.length; k++) {
       /* what Mason says on the first line not met, at each count of failing checks: the same as checking six times over, as
@@ -506,18 +507,19 @@ test("no help on the business jobs names the answer: no name, password, VLAN num
     }
     assert.ok(said.length > 3);
     for (const q of def.reqs) said.push(q.rung1(J.v, J.sim), q.rung2(J.v, J.sim));
-    const V = p.vlans, vre = new RegExp("\\bvlans?\\s+(" + [V.staff, V.guest, V.cameras, V.mgmt, V.native, V.parking, V.printers].filter(Boolean).map((x) => x.id).join("|") + ")\\b", "i");   /* a VLAN's number, in any case */
-    const sre = new RegExp("\\b(gi|gigabitethernet)[\\d/]*\\.(" + [V.staff, V.guest, V.cameras, V.printers].filter(Boolean).map((x) => x.id).join("|") + ")\\b", "i");   /* a subinterface named by its VLAN's number gives the number away too */
+    const V = p.vlans, vre = new RegExp("\\bvlans?\\s+(" + [V.staff, V.guest, V.cameras, V.mgmt, V.native, V.parking, V.printers, V.dept].filter(Boolean).map((x) => x.id).join("|") + ")\\b", "i");   /* a VLAN's number, in any case */
+    const sre = new RegExp("\\b(gi|gigabitethernet)[\\d/]*\\.(" + [V.staff, V.guest, V.cameras, V.printers, V.dept].filter(Boolean).map((x) => x.id).join("|") + ")\\b", "i");   /* a subinterface named by its VLAN's number gives the number away too */
     for (const t of said) { assert.ok(!vre.test(t), def.id + " names a VLAN's number: " + t); assert.ok(!sre.test(t), def.id + " names a VLAN's subinterface: " + t); for (const b of bad) assert.ok(!t.includes(b), def.id + " gives away " + b + ": " + t); assert.ok(!new RegExp("\\b" + p.pool + "\\b").test(t), def.id + " names the pool: " + t); assert.deepEqual(t.match(/\d+\.\d+\.\d+\.\d+/g) || [], [], def.id + " names an address: " + t); }
   }
 });
 
 test("random work on the business never breaks the checker; an unmet line always has two causes or more and replays exactly", () => {
   for (const def of BUSINESS_JOBS) for (const s of seeds(def.id).slice(0, 50)) {
-    const J = B.open(def, s), p = J.v.plan, R = rng(s * 17 + 3), rooms = ["closet", "counter", "office", "back"];
-    const devs = ["rtr", "msw", "tech", "pc", "mgr", "bpc", "printer", "modem"].concat(J.sim.d.router ? ["router"] : [], J.sim.d.ap ? ["ap", "injector"] : [], J.sim.d.bsw ? ["bsw"] : [], J.sim.d.cam1 ? ["cam1", "cam2", "cinj1", "cinj2"] : []);
+    const J = B.open(def, s), p = J.v.plan, R = rng(s * 17 + 3), rooms = ["closet", "counter", "office", "back"].concat(J.sim.d.dpc1 ? ["dept"] : []);
+    const devs = ["rtr", "msw", "tech", "pc", "mgr", "bpc", "printer", "modem"].concat(J.sim.d.router ? ["router"] : [], J.sim.d.ap ? ["ap", "injector"] : [], J.sim.d.bsw ? ["bsw"] : [], J.sim.d.cam1 ? ["cam1", "cam2", "cinj1", "cinj2"] : [], J.sim.d.dpc1 ? ["dpc1", "dpc2"] : []);
     const P = { rtr: ["Gi0/0", "Gi0/1", "Gi0/2", "Gi0/7", "CONSOLE"], msw: ["1", "2", "4", "5", "6", "23", "24", "CONSOLE"], tech: ["USB-C", "ETH"], pc: ["NIC"], mgr: ["NIC"], bpc: ["NIC"], printer: ["NET"], modem: ["ETH"], router: ["LAN 1", "WAN"], ap: ["ETH"], injector: ["DATA IN", "PoE OUT"], bsw: ["1", "2", "23", "24", "CONSOLE"],
-      cam1: ["LAN"], cam2: ["LAN"], cinj1: ["DATA IN", "PoE OUT"], cinj2: ["DATA IN", "PoE OUT"] };
+      cam1: ["LAN"], cam2: ["LAN"], cinj1: ["DATA IN", "PoE OUT"], cinj2: ["DATA IN", "PoE OUT"], dpc1: ["NIC"], dpc2: ["NIC"] };
+    if (J.sim.d.dpc1) P.bsw = P.bsw.concat(["3", "4"]);   /* SB-J10's department's ports (only on its own walk) */
     const cv = p.vlans.cameras, c3 = cv.net.replace(/\.0$/, ".");
     const LINES = ["", "enable", p.rtSecret, p.swSecret, p.rtConsole, p.swConsole, "configure terminal", "end", "exit", "interface gi0/0", "interface gi0/1", "interface gi0/1." + p.vlans.staff.id, "interface gi0/24", "interface gi0/2",
       "shutdown", "no shutdown", "ip address dhcp", "ip address " + p.lanGw + " " + p.mask, "ip nat inside", "ip nat outside", "encapsulation dot1Q " + p.vlans.staff.id, "switchport mode trunk", "switchport mode access", "switchport access vlan " + p.vlans.staff.id,
@@ -536,7 +538,15 @@ test("random work on the business never breaks the checker; an unmet line always
       "permit ip " + G6.net + w8 + " any", "5 deny ip any any", "ip arp inspection vlan " + S6.id + "," + G6.id + "," + P8.id, "switchport trunk allowed vlan remove " + P8.id, "show access-lists"] : [];
     const L9 = def.id === "SB-J9" && p.backup ? ["copy tftp: startup-config", "copy tftp: running-config", "10.0.0.2", p.backup.name, "nope-confg", "reload", "yes", "no", "interface gi0/2", "ip address 10.0.0.1 255.255.255.0",
       "no ip address", "interface " + p.wanPort, "interface " + p.lanPort, "crypto key generate rsa modulus 2048", "show running-config", "show startup-config"] : [];   /* SB-J9's restore (only in its own walk) */
-    const L6 = def.id !== "SB-J6" && def.id !== "SB-J7" && def.id !== "SB-J8" && def.id !== "SB-J9" ? LINES : L8.concat(L9, def.id === "SB-J7" && F7 ? ["interface gi0/0", "ip address " + F7.ip + " " + F7.mask, "ip address " + F7.ip + " 255.255.255.0", "ip address " + F7.gw + " " + F7.mask, "ip address dhcp",
+    const D10 = p.vlans.dept, m10 = J.sim.d.mgr.ifaces[0].mac, hex10 = String(m10).replace(/[^0-9a-f]/gi, "").toLowerCase();
+    const L10 = def.id === "SB-J10" && D10 ? ["vlan " + D10.id, "name " + D10.name, "interface gi0/3", "interface gi0/4", "interface range gi0/3 - 4", "switchport access vlan " + D10.id, "switchport trunk allowed vlan add " + D10.id, "switchport trunk allowed vlan " + D10.id,
+      "interface gi0/1." + D10.id, "encapsulation dot1Q " + D10.id, "ip address " + D10.gw + " " + D10.mask, "ip address " + D10.gw + " 255.255.255.0", "ip address " + D10.last + " " + D10.mask, "ip nat inside",
+      "ip dhcp pool " + D10.name, "network " + D10.net + " " + D10.mask, "network " + D10.net.replace(/\.\d+$/, ".0") + " 255.255.255.0", "default-router " + D10.gw, "default-router " + D10.net.replace(/\.\d+$/, ".1"), "dns-server " + p.dns.join(" "),
+      "ip dhcp pool MANAGER-PC", "host " + p.mgrIp + " 255.255.255.0", "host " + p.mgrIp, "host " + p.mgrIp + " /24", "client-identifier " + dotHex(clientIdOf(m10)), "client-identifier " + dotHex(hex10), "hardware-address " + dotHex(hex10), "no client-identifier", "no host",
+      "access-list 1 permit " + D10.net + " " + D10.wild, "access-list 1 permit " + D10.net + " " + D10.mask, "ip access-list extended " + p.dept.acl, "permit ip host " + p.mgrIp + " " + D10.net + " " + D10.wild, "deny ip " + p.vlans.staff.net + " 0.0.0.255 " + D10.net + " " + D10.wild,
+      "deny ip " + p.vlans.guest.net + " 0.0.0.255 " + D10.net + " " + D10.wild, "permit ip any any", "ip access-group " + p.dept.acl + " out", "ip access-group " + p.dept.acl + " in", "no ip access-group " + p.dept.acl + " out",
+      "ip dhcp snooping vlan " + D10.id, "ip arp inspection vlan " + D10.id, "description " + p.dept.desc[0], "show ip dhcp binding", "show ip dhcp pool"] : [];   /* SB-J10's department (only in its own walk) */
+    const L6 = def.id !== "SB-J6" && def.id !== "SB-J7" && def.id !== "SB-J8" && def.id !== "SB-J9" && def.id !== "SB-J10" ? LINES : L8.concat(L9, L10, def.id === "SB-J7" && F7 ? ["interface gi0/0", "ip address " + F7.ip + " " + F7.mask, "ip address " + F7.ip + " 255.255.255.0", "ip address " + F7.gw + " " + F7.mask, "ip address dhcp",
       "ip route 0.0.0.0 0.0.0.0 " + F7.gw, "ip route 0.0.0.0 0.0.0.0 198.51.100.1", "ip route 0.0.0.0 0.0.0.0 gi0/0", "no ip route 0.0.0.0 0.0.0.0 " + F7.gw, "show ip route"] : []).concat(LINES, ["service password-encryption", "no service password-encryption", "enable password 7 0822455D0A16", "enable password Plain1", "line vty 0 4", "line vty 0 15", "line console 0",
       "exec-timeout 0 0", "exec-timeout " + p.idle + " 0", "exec-timeout 15 0", "transport input ssh", "transport input telnet", "transport input ssh telnet", "login local", "ip domain-name " + p.domain, "crypto key generate rsa modulus 512", "crypto key generate rsa modulus 2048",
       "username " + p.user + " secret " + p.userPw, "access-class " + p.vtyAcl + " in", "access-class " + p.vtyAcl + " out", "ip access-list standard " + p.vtyAcl, "permit " + S6.net + " 0.0.0.255", "permit any", "interface gi0/3", "interface range gi0/7 - 22",
@@ -551,6 +561,8 @@ test("random work on the business never breaks the checker; an unmet line always
       else if (pick < 0.85) { if (J.sim.d.cab && R() < 0.15) B.act(J, { t: "cabinet", values: R.pick([{ open: true }, { open: false }, { locked: true }, { locked: false }, { key: true }, { key: false }]) }); else B.act(J, cli(R.pick(L6))); }
       else if (pick < 0.88) B.act(J, { t: "power", dev: R.pick(["rtr", "msw"]) });
       else if (pick < 0.9 && J.sim.d.ap) B.act(J, R() < 0.5 ? { t: "apnet", dev: "ap", net: { ssid: R.pick([p.guestSsid, "Test"]), sec: R.pick(["WPA2-Personal", "Open", "WPA3-Personal"]), psk: R.pick([p.guestPw, "short", "password123"]), vlan: R.pick(["", p.vlans.guest.id, 7]) } } : { t: "joinssid", dev: "guest", ssid: R.pick([p.guestSsid, "Test"]), pass: R.pick([p.guestPw, "nope-nope"]) });
+      else if (pick < 0.91 && def.id === "SB-J10") B.act(J, R() < 0.5 ? { t: "cmd", dev: R.pick(["mgr", "dpc1", "dpc2"]), line: R.pick(["ipconfig /renew", "ipconfig /release", "ipconfig /all", "ping 8.8.8.8", "ping " + p.printerIp, "ssh " + p.user + "@" + p.vlans.staff.gw, p.userPw, "exit"]) }
+        : { t: "client", dev: R.pick(["mgr", "dpc1"]), values: R() < 0.5 ? { mode: "dhcp" } : { mode: "static", ip: R.pick([p.mgrIp, D10.first]), mask: R.pick([p.vmask, D10.mask]), gw: R.pick([p.vlans.staff.gw, D10.gw]) } });
       else if (pick < 0.91 && def.id === "SB-J9") B.act(J, R.pick([{ t: "client", dev: "tech", values: R() < 0.3 ? { mode: "dhcp" } : { mode: "static", ip: R.pick(["10.0.0.2", "10.0.1.2"]), mask: "255.255.255.0", gw: "" } }, { t: "tftp", dev: "tech", on: R() < 0.7 },
         { t: "lay", a: E("tech", "ETH"), b: E("rtr", R.pick(["Gi0/2", "Gi0/3"])) }, { t: "cmd", dev: "mgr", line: R.pick(["ssh-keygen -R " + p.vlans.staff.gw, "ssh " + p.user + "@" + p.vlans.staff.gw]) }]));
       else if (pick < 0.91 && P8 && def.id === "SB-J8") B.act(J, R() < 0.7 ? { t: "client", dev: "printer", values: R() < 0.2 ? { mode: "dhcp" } : { mode: "static", ip: R.pick([p.printerIp, P8.net.replace(/\.0$/, ".9"), p.lan.replace(/\.0$/, ".15")]), mask: R.pick([p.vmask, "255.255.0.0"]), gw: R.pick([P8.gw, p.lanGw, ""]) } } : { t: "pcprinter", ip: R.pick([p.printerIp, p.lan.replace(/\.0$/, ".15")]) });

@@ -593,6 +593,14 @@ export class Sim {
     const [rid, n] = key.split("@"), x = this.d[rid], R = x.sw, a = RT.addrOf(R, n, this.rtLive(rid)), P = RT.poolFor(R, a.ip, a.mask); if (!P) return null;
     x.leases = x.leases || []; x.conflicts = x.conflicts || [];
     const taken = new Set(x.leases.filter(function (l) { return l.mac !== mac; }).map(function (l) { return l.ip; })), dom = this.domain(this.rtNode(rid, n));
+    /* a manual binding for this client (a reservation, matched on the client identifier it sends): its address and nothing else,
+       unless something else already answers at it */
+    const M = RT.manualFor(R, RT.clientIdOf(mac), a.ip, a.mask);
+    if (M) {
+      const o = this.owners(M.host, dom).filter(function (d) { const k = this.d[d]; return d !== rid && !(k.ifaces && k.ifaces[0].mac === mac); }, this);
+      if (o.length || taken.has(M.host) || M.host === a.ip) { if (!x.conflicts.some(function (c) { return c.ip === M.host; })) x.conflicts.push({ ip: M.host, how: "Ping" }); return null; }
+      return { ip: M.host, pool: M };
+    }
     const free = RT.poolAddrs(R, P.name).filter(function (ip) { return !taken.has(ip) && ip !== a.ip; });
     const mine = x.leases.find(function (l) { return l.mac === mac && l.pool === P.name; });
     if (mine && free.indexOf(mine.ip) >= 0) return { ip: mine.ip, pool: P };
@@ -652,7 +660,7 @@ export class Sim {
   rtLease(key, x, f, o) {
     const [rid, n] = key.split("@"), r = this.d[rid], a = RT.addrOf(r.sw, n, this.rtLive(rid)), P = o.pool;
     r.leases = r.leases.filter(function (l) { return l.mac !== f.mac; });
-    r.leases.push({ mac: f.mac, ip: o.ip, pool: P.name, name: x.label, host: x.host || x.label.replace(/\s+/g, "-").toUpperCase() });
+    r.leases.push({ mac: f.mac, ip: o.ip, pool: P.name, name: x.label, host: x.host || x.label.replace(/\s+/g, "-").toUpperCase(), manual: !!P.manual });
     f.lease = { ip: o.ip, mask: P.mask, gw: P.router[0] || null, dns: P.dns.slice(), server: a.ip, obtained: this.n, hours: P.lease === "infinite" ? 0 : P.lease[0] * 24 + (P.lease[1] || 0), domain: P.domain || null };
   }
   release(id) {

@@ -7,7 +7,7 @@
    its addresses and its records: the router's and switches' names and
    passwords, the VLANs it's moving to, the subnets and the DHCP pools. */
 import { rng, mac } from "./util.js";
-import { newSwitch, session, exec } from "./swcli.js";
+import { newSwitch, session, exec, configText, hostKey } from "./swcli.js";
 import { newRouter } from "./rtcli.js";
 
 /* each business: its name, its tag (in every hostname), its manager, where it is, what its rooms are called, and what
@@ -166,6 +166,26 @@ export function addPrinterVlan(sim) {
   const host = String(sim.d.printer.ifaces[0].cfg.ip).split(".")[3], net = "10." + b + "." + V.printers;
   p.vlans.printers = { id: V.printers, name: "PRINTERS", net: net + ".0", gw: net + ".1" };
   p.printerIp = net + "." + host;
+}
+
+/* what SB-J9 finds: the router's power supply died overnight (the owner, 2 November 2026: "Its power supply"). Your backup
+   of it, taken right after the printers' VLAN went in ("Current"), is on your laptop's TFTP server under the router's own
+   name. The manager unlocked the cabinet, pulled the dead router's cables, let the supplier take it away and locked the
+   cabinet again; the replacement, the same model, is in its box (a unit of its own, so its SSH keys differ). The manager's
+   PC remembers the old router's key from its SSH logins (SB-J7, SB-J8). From a stream of its own, so every business before
+   it comes out exactly as it always has */
+export function addRouterFailure(sim) {
+  const net = sim.net, p = net.plan, x = net.devices.rtr, old = x.sw, r = rng(net.seed ^ 0x9b01), tech = net.devices.tech;
+  const name = String(old.hostname).toLowerCase() + "-confg", text = configText(old, "startup");
+  tech.tftp.files = tech.tftp.files.filter(function (f) { return f.name !== name; }).concat([{ name: name, text: text, bytes: text.length, from: p.lanGw, which: "startup", unsaved: false, at: 0 }]);
+  tech.tftp.log.push("Write request from " + p.lanGw + " for " + name + ": received " + text.length + " bytes");
+  tech.tftp.on = false;
+  const mgr = net.devices.mgr; mgr.knownHosts = mgr.knownHosts || {}; mgr.knownHosts[p.vlans.staff.gw] = hostKey(old);
+  net.cables = net.cables.filter(function (c) { return c.a.dev !== "rtr" && c.b.dev !== "rtr"; });
+  const sw = newRouter({ mac: "00e0.4d" + [r.int(16, 255), r.int(0, 255), r.int(0, 255)].map(function (b) { return b.toString(16).padStart(2, "0"); }).join("").replace(/^(..)(....)$/, "$1.$2") });
+  sw.unit = 2;
+  Object.assign(x, { boxed: true, sw: sw });
+  p.backup = { name: name, text: text };
 }
 
 export function makeBusiness(seed) {

@@ -125,6 +125,8 @@ function ifRange(rest) {
 const ip4 = function (s) { return /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(s || "") && s.split(".").every(function (p) { return +p <= 255; }); };
 const isMask = function (s) { if (!ip4(s)) return false; const b = s.split(".").map(function (p) { return (+p).toString(2).padStart(8, "0"); }).join(""); return /^1*0*$/.test(b); };
 
+/* whether a port is up, as status reads it (the console's own link messages use it) */
+export function portUp(sw, n) { return status(sw, n)[0] === "up"; }
 function status(sw, n) {
   if (n === "Vlan1") return sw.vlan1.shutdown ? ["administratively down", "down"] : [sw.vlan1.ip ? "up" : "up", sw.vlan1.ip ? "up" : "up"];
   if (isSvi(n)) { const s = sviOf(sw, n); if (!s) return ["down", "down"]; return s.shutdown ? ["administratively down", "down"] : ["up", vlanActive(sw, +n.slice(4)) ? "up" : "down"]; }   /* the switch's own interface on a VLAN is up only while the VLAN exists and a port that's up carries it */

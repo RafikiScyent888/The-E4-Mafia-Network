@@ -18,7 +18,7 @@ export function tabsFor(sim, id) {
     switch: [["lights", "Lights"]],
     mswitch: [["lights", "Lights"]],
     brouter: [["lights", "Lights"]],
-    techlaptop: [["cmd", "Serial terminal"], ["wcmd", "Command Prompt"], ["tftp", "TFTP server"]],   /* its serial terminal on the console cable, Windows' own prompt, and the TFTP server (SO-J5) */
+    techlaptop: [["cmd", "Serial terminal"], ["wcmd", "Command Prompt"], ["settings", "Network settings"], ["tftp", "TFTP server"]],   /* its serial terminal on the console cable, Windows' own prompt, its network settings (an address by hand, for a device fresh from its box: SB-J9), and the TFTP server (SO-J5) */
     printer: [["panel", "Control panel"]],
     camera: [["web", "Web page"]],
     tv: [["net", "Network status"]],
@@ -230,13 +230,13 @@ export function page(sim, id, key, opts) {
     }
     return { kind: "lights-ports", title: "Lights", ports: rows, note: "Unmanaged: no console and no settings. Read the lights: green is 1 Gb/s, amber is 10/100 Mb/s." + (x.labelText ? " Its label: " + x.labelText + "." : ""), facts: { page: id + "-lights", ports: rows } };
   }
-  if (x.kind === "pc" && key === "settings") {   /* every PC's, not only the front desk's */
+  if ((x.kind === "pc" || x.kind === "techlaptop") && key === "settings") {   /* every PC's, not only the front desk's; your laptop's too */
     const a = sim.addr(id), f = x.ifaces[0], c = sim.cableAt(id, f.port), sp = c ? sim.speed(c) : 0;
     const rows = [["Ethernet", a ? "Connected" : "Not connected (unplugged)"], ["IP assignment", f.cfg.mode === "dhcp" ? "Automatic (DHCP)" : "Manual"], ["DNS server assignment", f.cfg.dnsMode === "static" ? "Manual" : "Automatic (DHCP)"],
       ["Link speed (Receive/Transmit)", sp ? sp + "/" + sp + " (Mbps)" : "--"], ["IPv4 address", a ? a.ip : "--"], ["IPv4 DNS servers", a && a.dns.length ? a.dns.join(", ") : "--"], ["Physical address (MAC)", f.mac.toUpperCase()]];
     rows.splice(4, 0, ["Speed & duplex", "Auto negotiation" + (x.maxMbps ? " (a 10/" + x.maxMbps + " Mbps adapter)" : "")]);
     const st = f.cfg.mode === "static", dns = st ? (f.cfg.dns || []) : [];
-    return { kind: "rows", title: "Network settings", rows: rows, speedTest: true, ipForm: { mode: f.cfg.mode, ip: st ? f.cfg.ip : "", mask: st ? f.cfg.mask : "", gw: st ? f.cfg.gw || "" : "", dns1: dns[0] || "", dns2: dns[1] || "" },
+    return { kind: "rows", title: "Network settings", rows: rows, speedTest: x.kind === "pc", ipForm: { mode: f.cfg.mode, ip: st ? f.cfg.ip : "", mask: st ? f.cfg.mask : "", gw: st ? f.cfg.gw || "" : "", dns1: dns[0] || "", dns2: dns[1] || "" },
       facts: { page: id === "pc" ? "pc-settings" : id + "-settings", speed: sp, connected: !!a, mode: f.cfg.mode, ip: st ? f.cfg.ip : a && a.ip, mask: st ? f.cfg.mask : a && a.mask, gw: st ? f.cfg.gw : a && a.gw } };
   }
   if (x.kind === "brouter" && key === "lights") {   /* the business router: its status lights, and a light for each port with a cable (copper, then the two SFP slots) */

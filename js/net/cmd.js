@@ -22,6 +22,7 @@ export const HELP = [
   ["netsh wlan show interfaces", "Wi-Fi: the network, signal, band and channel (Wi-Fi only)"],
   ["netsh wlan show networks mode=bssid", "Wi-Fi: every network this computer can hear (Wi-Fi only)"],
   ["netsh wlan show drivers", "Wi-Fi: what this computer's Wi-Fi adapter supports (Wi-Fi only)"],
+  ["netsh interface ipv4 set address name=\"Ethernet\" static <address> <mask> [gateway]", "give the wired adapter a fixed address by hand (source=dhcp to go back to automatic)"],
   ["getmac", "show this computer's hardware address"],
   ["hostname", "show this computer's name"],
   ["ssh <user>@<address>", "log in to a switch's command line over the network (SSH, encrypted)"],
@@ -140,6 +141,19 @@ function tftpGetFrom(sim, sw) {
 function opts(sim, tgt, via) { const o = { via: via, reach: reachFrom(sim, tgt), tftp: tftpFrom(sim, tgt), tftpGet: tftpGetFrom(sim, tgt) }; if (sim.d[tgt].kind === "brouter") o.live = sim.rtLive(tgt); return o; }
 const sync = function (sim, id) { return sim.d[id].kind === "brouter" ? sim.syncRouter(id) : sim.syncSwitch(id); };
 const lines = function (L) { return L.length ? L.join("\n") + "\n" : ""; };
+/* no shutdown is answered before the links are worked out again, so a cabled port read as down: once they are, a port that
+   came up says so, with its line protocol, as the real thing does a moment later (found 2 November 2026: since SB-J1 a
+   cabled router port opened said "changed state to down") */
+function linkNews(sim, tgt, out) {
+  if (!out.some(function (l) { return /^%LINK-3-UPDOWN: Interface \S+, changed state to down$/.test(l); })) return out;
+  sync(sim, tgt);
+  const x = sim.d[tgt];
+  return [].concat.apply([], out.map(function (l) {
+    const m = /^%LINK-3-UPDOWN: Interface (\S+), changed state to down$/.exec(l); if (!m) return [l];
+    const up = x.kind === "brouter" ? RT.rtStatus(x.sw, m[1])[0] === "up" : SW.portUp(x.sw, m[1]);
+    return up ? [l.replace(/down$/, "up"), "%LINEPROTO-5-UPDOWN: Line protocol on Interface " + m[1] + ", changed state to up"] : [l];
+  }));
+}
 function serial(sim, id, raw) {
   sim.cli = sim.cli || {};
   const tgt = consoleTarget(sim, id);
@@ -147,7 +161,7 @@ function serial(sim, id, raw) {
   if (!tgt) return { out: "(Nothing answers on COM3: the console cable isn't joined to a powered switch's or router's CONSOLE port.)\n", facts: { cmd: "serial", connected: false }, serial: true };
   sync(sim, tgt);
   if (!st || st.sw !== tgt) st = sim.cli[id] = { S: SW.session(sim.d[tgt].sw, opts(sim, tgt, "console")), sw: tgt, via: "console" };
-  const r = SW.exec(st.S, raw); st.prompt = r.prompt;
+  const r = SW.exec(st.S, raw); st.prompt = r.prompt; r.out = linkNews(sim, tgt, r.out);
   const dup = sim.d[tgt].kind === "mswitch" && dupAddr(sim, tgt); if (dup && st.dup !== dup) { st.dup = dup; r.out = r.out.concat([dup]); }   /* once a session, as the console log shows it */
   const sl = sfpLog(sim, tgt), sk = sl.join("|"); if (sl.length && st.sfp !== sk) { st.sfp = sk; r.out = r.out.concat(sl); }
   return { out: lines(r.out), facts: { cmd: "serial", dev: id, connected: true, mode: st.S.mode, line: raw.trim(), out: r.out.join("\n"), asked: !!r.secret }, secret: !!r.secret, cli: true, keep: r.keep };   /* asked: the switch is asking for a password next */
@@ -169,7 +183,7 @@ function remote(sim, id, raw, k) {
     return { out: st.via === "ssh" ? "Permission denied, please try again.\n" : "% Login invalid\n", facts: { cmd: st.via, dev: id, denied: true, user: A.user }, secret: true, cli: true };
   }
   sync(sim, st.sw);
-  const r = SW.exec(st.S, raw);
+  const r = SW.exec(st.S, raw); r.out = linkNews(sim, st.sw, r.out);
   if (st.S.mode === "gone") { delete sim.cli[k]; return { out: lines(r.out.filter(function (l) { return !/con0 is now available|Press RETURN/.test(l); })).replace(/\n+$/, "\n") + (st.via === "ssh" ? "Connection to " + st.host + " closed.\n" : "\nConnection to host lost.\n"), facts: { cmd: st.via, closed: true } }; }
   st.prompt = r.prompt;
   return { out: lines(r.out), facts: { cmd: st.via, dev: id, line: raw.trim(), mode: st.S.mode, out: r.out.join("\n") }, secret: !!r.secret, cli: true, keep: r.keep };
@@ -494,8 +508,28 @@ function arp(sim, id, args) {
 function bcast(a) { const p = a.ip.split(".").map(Number), m = a.mask.split(".").map(Number); return p.map(function (v, i) { return (v & m[i]) | (255 - m[i]); }).join("."); }
 
 function colonMac(m) { return m.replace(/-/g, ":"); }
+/* netsh interface ipv4 set address: an adapter given a fixed address by hand, or put back on DHCP, as Windows does it. A
+   technician's laptop needs this with a device fresh from its box, which hands out no addresses (SB-J9). Windows says
+   nothing when it works */
+function netshAddress(sim, id, raw) {
+  const x = sim.d[id], f = x.ifaces[0], facts = { cmd: "netsh-address", dev: id };
+  const m = /^interface\s+(?:ipv4|ip)\s+set\s+address\s+(?:name\s*=\s*)?("([^"]*)"|(\S+))\s*(.*)$/i.exec(raw.trim());
+  if (!m) return { out: "The syntax supplied for this command is not valid. Check help for the correct syntax.\n\nUsage: set address [name=]<string> [[source=]dhcp|static] [[address=]<IPv4 address>[/<integer>] [[mask=]<IPv4 mask>] [[gateway=]<IPv4 address>|none]]\n", facts: Object.assign(facts, { ok: false, why: "syntax" }) };
+  const nm = (m[2] != null ? m[2] : m[3]).replace(/^"|"$/g, ""), rest = m[4].trim().split(/\s+/).filter(Boolean).map(function (w) { return w.replace(/^(source|address|mask|gateway)=/i, ""); });
+  if (nm.toLowerCase() !== String(f.name).toLowerCase()) return { out: "The interface name you entered was not found. Check the name and try again: this computer's wired adapter is \"" + f.name + "\".\n", facts: Object.assign(facts, { ok: false, why: "name" }) };
+  if (f.type === "wifi") return { out: "The interface name you entered was not found.\n", facts: Object.assign(facts, { ok: false, why: "name" }) };
+  const mode = (rest[0] || "").toLowerCase();
+  if (mode === "dhcp") { sim.apply({ t: "client", dev: id, values: { mode: "dhcp" } }); return { out: "\n", facts: Object.assign(facts, { ok: true, mode: "dhcp" }) }; }
+  if (mode !== "static" || !rest[1]) return { out: "The syntax supplied for this command is not valid. Check help for the correct syntax.\n", facts: Object.assign(facts, { ok: false, why: "syntax" }) };
+  let ip = rest[1], mask = rest[2] || "", gw = rest[3] && !/^none$/i.test(rest[3]) ? rest[3] : "";
+  if (/\//.test(ip)) { const q = ip.split("/"), n = +q[1]; ip = q[0]; mask = n >= 0 && n <= 32 ? [24, 16, 8, 0].map(function (b) { return (Math.pow(2, 32) - Math.pow(2, 32 - n)) / Math.pow(2, b) % 256 | 0; }).join(".") : ""; gw = rest[2] && !/^none$/i.test(rest[2]) ? rest[2] : ""; }
+  const r = sim.apply({ t: "client", dev: id, values: { mode: "static", ip: ip, mask: mask, gw: gw, dns: (f.cfg.dns || []).slice() } });
+  if (!r || r.ok === false) return { out: ((r && r.errs) || ["The parameter is incorrect."]).map(function (e) { return e.replace(/^That subnet mask isn't valid.*$/, "The parameter is incorrect: the subnet mask isn't valid."); }).join("\n") + "\n", facts: Object.assign(facts, { ok: false, why: "value" }) };
+  return { out: "\n", facts: Object.assign(facts, { ok: true, mode: "static", ip: ip, mask: mask }) };
+}
 function netsh(sim, id, args) {
   const s = args.join(" ").toLowerCase().replace(/\s+/g, " ");
+  if (/^interface\s+(ipv4|ip)\s+set\s+address\b/.test(s)) return netshAddress(sim, id, args.join(" "));
   const x = sim.d[id], f = x.ifaces[0];
   if (f.type !== "wifi") return { out: "There is no wireless interface on the system.\n", facts: { cmd: "netsh", dev: id, none: true } };
   if (/^wlan show int/.test(s)) {

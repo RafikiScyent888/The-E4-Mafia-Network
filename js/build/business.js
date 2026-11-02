@@ -6,11 +6,11 @@
    devices and the network as they really are. Each line is an ordered list of
    causes, as on the other levels, so Mason's third rung can strike the ones
    the network has ruled out and leave two. None of it ever says what to type. */
-import { makeBusiness, addGuestKit, addBackSwitch, addCameraKit, addCabinet, addFixedLine, addPrinterVlan } from "../net/business.js";
+import { makeBusiness, addGuestKit, addBackSwitch, addCameraKit, addCabinet, addFixedLine, addPrinterVlan, addRouterFailure } from "../net/business.js";
 import { Sim } from "../net/sim.js";
 import { exec } from "../net/cmd.js";
 import { browse } from "../net/pages.js";
-import { unsaved, pwOk, carries, errDisabled, dotMac } from "../net/swcli.js";
+import { unsaved, pwOk, carries, errDisabled, dotMac, configText, hostKey } from "../net/swcli.js";
 import { addrOf, rtStatus, poolFor, poolAddrs, aclVerdict, aceMatch, routes, netOf, lldpSends } from "../net/rtcli.js";
 import { online } from "./jobs.js";
 import { ip2n } from "../net/util.js";
@@ -1633,4 +1633,152 @@ const SB8 = {
   }
 };
 
-export const BUSINESS_JOBS = [SB1, SB2, SB3, SB4, SB5, SB6, SB7, SB8];
+/* ---------------------------------------------------------------- SB-J9: the router rebuilt from its backup */
+/* the owner's answers (2 November 2026): the backup is current, taken right after the printers' VLAN went in; the old
+   router's power supply died; copied into the running configuration and saved, or into startup and reloaded, either passes */
+/* the part of the router's configuration a line belongs to, as a technician would name it */
+function rtSectionOf(lines, i) {
+  let k = Math.min(i, lines.length - 1); while (k > 0 && (/^\s/.test(lines[k]) || lines[k] === "!")) k--;
+  const t = lines[k] || "";
+  const m = [[/^hostname/, "the router's name"], [/^service password-encryption|^no service/, "the password encryption"], [/^enable/, "the enable secret"], [/^username/, "the remote login's user"],
+    [/^ip domain-name/, "the domain name"], [/^ip dhcp excluded-address/, "the addresses kept back from DHCP"], [/^ip dhcp pool (\S+)/, "the DHCP pool $1"], [/^ip nat/, "the NAT rules"], [/^ip route/, "the routes"],
+    [/^ip access-list \S+ (\S+)/, "the access list $1"], [/^access-list (\S+)/, "access list $1"], [/^(no )?lldp/, "LLDP"], [/^banner/, "the banner"], [/^line con/, "the console line"], [/^line vty/, "the remote (vty) lines"]];
+  const iface = /^interface (\S+)/.exec(t); if (iface) return "interface " + gi(iface[1]);
+  for (const r of m) if (r[0].test(t)) return t.replace(/^.*$/, function () { const g = r[0].exec(t); return r[1].replace("$1", g && g[1] ? g[1] : ""); });
+  return "a line near " + (t.trim() || "the end");
+}
+const rtDiff = function (a, b) { const A = a.split("\n"), Bl = b.split("\n"); for (let i = 0; i < Math.max(A.length, Bl.length); i++) if (A[i] !== Bl[i]) return rtSectionOf(i < A.length ? A : Bl, i); return null; };
+function rtCabledCauses(sim, v) {
+  const p = v.plan, md = between(sim, "rtr", "modem"), sw = between(sim, "rtr", "msw");
+  return [boxCause(sim),
+    C("modem", !md, "The provider's modem isn't cabled to the router", "The modem is cabled to the router.", "No cable joins the modem and the router."),
+    C("wan", !!md && md.me !== gi(p.wanPort), "The modem is on another port from the one the backup sets up for the provider", "The modem is on the provider's port.", "The modem's cable is in the router's " + (md ? md.me : "") + "; the backup gives the provider's side " + gi(p.wanPort) + "."),
+    C("switch", !sw, "The closet switch isn't cabled to the router", "The closet switch is cabled to it.", "No cable joins the router and the closet switch."),
+    C("lan", !!sw && sw.me !== gi(p.lanPort), "The closet switch is on another router port from the one the backup sets up for the inside", "It's on the inside port.", "The closet switch's cable is in the router's " + (sw ? sw.me : "") + "; the backup's subinterfaces are on " + gi(p.lanPort) + "."),
+    C("trunk", !!sw && sw.far !== "24", "The router's cable is in a closet switch port that isn't the trunk to the router", "It's in the switch's trunk port.", "The router's cable is in the closet switch's port " + (sw ? sw.far : "") + "; port 24 is the one set up as the trunk to the router.")];
+}
+function rtRestoredCauses(sim, v) {
+  const R = RT(sim), run = configText(R), st = R.startup ? configText(R, "startup") : "", want = v.plan.backup.text;
+  return [boxCause(sim),
+    C("factory", R.hostname === "Router" && st !== want, "None of the backup is on the router yet: it's still on its factory settings", "The backup has reached the router.", "The prompt still says Router."),
+    C("startup", st === want && run !== want, "The backup is in the startup configuration, but the router is still running what it started with: a saved configuration takes effect only when the router starts", "What's running is the backup.", "show startup-config is the backup; show running-config isn't."),
+    C("part", run !== want, "Part of what's running isn't as the backup has it", "What's running is the backup, line for line.", "show running-config: " + (rtDiff(run, want) || "a line") + " isn't as the backup has it.")];
+}
+function rtSshCauses(sim, v) {
+  const R = RT(sim), p = v.plan, gw = staff(v).gw, r = sim.route("mgr", gw), kh = sim.d.mgr.knownHosts || {}, vty = R.vty;
+  return [boxCause(sim),
+    C("reach", !(r.local && r.owner && r.owner.indexOf("rtr") >= 0), "The manager's PC can't reach the router at the staff network's gateway", "The manager's PC reaches it.", "ping " + gw + " from the manager's PC: no reply."),
+    C("keys", !R.rsa, "The router has no SSH keys: a configuration file never carries them", "It has SSH keys of its own.", "ssh from the manager's PC: connection refused."),
+    C("short", !!R.rsa && R.rsa < 768, "Its keys are too short for SSH version 2 (768 bits or more)", "Its keys are long enough for SSH version 2.", "ssh from the manager's PC is turned away: the router offers only the old SSH version 1."),
+    C("lines", !(/^(ssh|all)$/.test(vty.transport) && vty.login === "local" && pwOk(R.users[p.user], p.userPw)), "The remote lines don't take the business's SSH login", "The remote lines take the business's SSH login.", "ssh from the manager's PC can't log in with the business's user."),
+    C("known", !!kh[gw] && kh[gw] !== hostKey(R), "The manager's PC remembers the old router's key, and stops at the new one's", "The manager's PC doesn't hold the old router's key.", "ssh from the manager's PC: REMOTE HOST IDENTIFICATION HAS CHANGED, and it stops.")];
+}
+function rtBackCauses(sim, v) {
+  const down = PCS.find(function (id) { return !online(sim, id); }), noPrint = ["pc", "bpc"].find(function (id) { return !printOk(sim, id); }), ip = apAddr(sim), r = ip ? sim.route("mgr", ip) : null;
+  const near = guestReaches(sim, v, v.plan.printerIp) || guestReaches(sim, v, sim.addr("pc") && sim.addr("pc").ip);
+  return [boxCause(sim),
+    C("net", !!down, "The " + (down ? name(sim, down) : "") + " is offline", "Every staff PC is online.", "ping from the " + (down ? name(sim, down) : "") + ": no replies from the internet."),
+    C("print", !!noPrint, "The " + (noPrint ? name(sim, noPrint) : "") + " can't print", "Staff print.", "Test pages from the " + (noPrint ? name(sim, noPrint) : "") + " don't print."),
+    C("guest", !online(sim, "guest"), "The visitor's phone is offline", "Guests are online.", "The visitor's phone: no internet."),
+    C("apart", near, "Guests reach the business's own devices", "Guests are kept apart.", "From the guest network, a staff PC or the printer answers."),
+    C("ap", !!r && !((r.local || r.routed) && !r.fail), "The manager's PC can't reach the access point's page", "The access point's page opens from the manager's PC.", "From the manager's PC the access point's address doesn't answer.")];
+}
+function rtTidyCauses(sim) {
+  const eth = sim.cableAt("tech", "ETH"), far = eth ? (eth.a.dev === "tech" ? eth.b : eth.a) : null;
+  return [C("eth", !!eth, "Your laptop's network cable is still plugged in", "Your laptop's network cable is out.", "The Cable runs table: your laptop's ETHERNET to the " + (far ? name(sim, far.dev) : "") + ".")].concat(cabinetCauses(sim));
+}
+const SB9 = {
+  id: "SB-J9", level: "business", title: "The router rebuilt from its backup",
+  already: ["tidy"],
+  start(seed) {
+    const b = SB8.start(seed), sim = b.sim;
+    for (const a of SB8.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    addRouterFailure(sim); sim.cli = {};   /* the power supply died overnight; the replacement is in its box, the backup on your laptop */
+    return { sim: sim, v: b.v };
+  },
+  brief(v, sim) { return { quote: "The router died overnight. Its power supply went, and it won't even light up, so nobody can get online and I can't see the cameras from home. The supplier sent the same model this morning; it's in its box. I pulled the old one's cables so they could take it away, and locked the cabinet again. You keep a copy of everything, don't you?", from: sim.net.client.manager + ", " + sim.net.client.name }; },
+  mason: "Get the new router talking to your laptop first, then bring the backup across. Then check what came back against the backup, line by line, not against what you expect to see.",
+  limits: function (v, sim) {
+    const p = v.plan;
+    return ["Your backup of the router is on your laptop's TFTP server: " + p.backup.name + ", taken right after the printers' VLAN went in.",
+      "The replacement is the same model, fresh from its box: no address, no passwords, every port shut. The manager pulled the dead router's cables; the backup says which port each was on. The cabinet is locked, and its key is with " + sim.net.client.manager + ".",
+      "Your laptop has its console cable, its Ethernet port, its network settings and its TFTP server; take its network cable with you when you leave, and lock the cabinet again.",
+      "The manager's PC has logged in to the old router over SSH (as " + p.user + ", password " + p.userPw + ").",
+      "The records are as before: router " + p.rtHost + " (secret " + p.rtSecret + ", console " + p.rtConsole + "); switches " + p.swHost + " and " + p.bswHost + " (secret " + p.swSecret + ", console " + p.swConsole + ")."];
+  },
+  reqs: [{
+    id: "rack", text: "The replacement is in the closet cabinet, with your laptop on its console",
+    causes: rackCauses,
+    ok: function () { return "The replacement is in the rack; your laptop's serial terminal reaches its console."; },
+    rung1: function () { return "Look at what's still in its box, at the closet cabinet, then at your laptop's Serial terminal: does anything answer?"; },
+    rung2: function () { return "A router fresh from its box has no address and no passwords: the only way in is its console port, and the cabinet has to be open to reach it."; }
+  }, {
+    id: "cabled", text: "The provider's modem and the closet switch are back on the ports the backup sets up for them",
+    causes: rtCabledCauses,
+    ok: function () { return "The modem is on the provider's port and the closet switch's trunk on the inside port, as the backup has them."; },
+    rung1: function () { return "Read the backup in your laptop's TFTP server tab: which interface is the provider's side, and which carries the subinterfaces? Then the Cable runs table."; },
+    rung2: function () { return "A configuration belongs to the ports, not to the cables: the provider's address and the subinterfaces only work on the ports the file gives them, and the switch's end has to be the port it set up as the trunk."; }
+  }, {
+    id: "restored", text: "It runs the business's configuration again, from your backup",
+    causes: rtRestoredCauses,
+    ok: function () { return "What's running is the backup, line for line."; },
+    rung1: function () { return "Your laptop's TFTP server tab: read the backup. Then show running-config on the router beside it, and show ip interface brief."; },
+    rung2: function () { return "A router can copy a file from a TFTP server into its running configuration (merged at once with what's there, so a port the file never opens stays as it was) or into its startup configuration (as it will be when it next starts). To reach the server at all, the router and your laptop each need an address on the same network."; }
+  }, {
+    id: "ssh", text: "SSH from the manager's PC works again",
+    causes: rtSshCauses,
+    ok: function () { return "The router has SSH keys of its own, and the manager's PC doesn't hold the old router's key."; },
+    rung1: function () { return "From the manager's PC: ssh to the router, and read every line it prints. On the router: show crypto key mypubkey rsa."; },
+    rung2: function () { return "SSH keys are made on the router and kept in its own memory, never in a configuration file. A computer remembers each router's key and stops if it ever changes: check the new key against the router's own before telling the computer to forget the old one."; }
+  }, {
+    id: "back", text: "Everyone is back: staff online and printing, guests online and kept apart, the access point's page",
+    causes: rtBackCauses,
+    ok: function () { return "Every staff PC is online and prints, guests are online and kept apart, and the access point's page opens."; },
+    rung1: function () { return "Ping out from each staff PC and the visitor's phone; print a test page; on the router, show ip interface brief."; },
+    rung2: function () { return "Every VLAN reaches the rest of the network through the router's subinterfaces: until each one is back, up, with its address, nothing on that VLAN gets past its own switch."; }
+  }, {
+    id: "remote", text: "From the manager's phone on mobile data, both cameras open at the fixed address",
+    causes: function (sim, v) { return [boxCause(sim)].concat(fixedRemoteCauses(sim, v)); },
+    ok: function () { return "From outside, the fixed address opens each camera's page on its port."; },
+    rung1: function () { return "Try it as the manager will: their phone, Wi-Fi off, the fixed address and each camera's port. Then show ip interface brief and show ip nat translations on the router."; },
+    rung2: function () { return "The forwards and the fixed address come back with the configuration, but only work once the provider's port is up and the way out is in the routing table."; }
+  }, L_SAVED_RT, {
+    id: "tidy", text: "Your laptop's network cable is out, and the cabinet is locked again",
+    causes: rtTidyCauses,
+    ok: function (sim) { return "Your laptop's network cable is out, and the cabinet is locked with its key back with " + sim.net.client.manager + "."; },
+    rung1: function () { return "The Cable runs table, then the closet cabinet: its door, its lock and its key."; },
+    rung2: function () { return "Whatever was opened or plugged in for the job is put back when it's done: a laptop left on a router port, or a cabinet left unlocked, undoes the business's own security."; }
+  }],
+  /* one way: the cabinet opened with the manager's key, the router racked and cabled as the backup has it, your laptop
+     carried to the closet, on the console and on a spare router port with an address of its own; the backup copied into
+     startup and the router reloaded (no: saving then would put the factory settings over the file), keys made again,
+     saved; the laptop's cable pulled, the old key taken off the manager's PC, the cabinet locked again */
+  solve(v, sim) {
+    const p = v.plan, t = function (l) { return { t: "cmd", dev: "tech", line: l, cli: true }; };
+    const con = sim ? sim.cablesOf("tech").find(function (c) { return c.kind === "console"; }) : null, n = sim ? sim.net.extra.runs || 0 : 0;
+    return [{ t: "cabinet", values: { key: true } }, { t: "cabinet", values: { locked: false } }, { t: "cabinet", values: { open: true } },
+      { t: "place", dev: "rtr", room: "closet" }, { t: "lay", a: E("modem", "ETH"), b: E("rtr", gi(p.wanPort)) }, { t: "lay", a: E("rtr", gi(p.lanPort)), b: E("msw", "24") },
+      { t: "pull", cable: con ? con.id : "c-console-" + n }, { t: "place", dev: "tech", room: "closet" }, { t: "lay", a: E("tech", "USB-C"), b: E("rtr", "CONSOLE") }, { t: "lay", a: E("tech", "ETH"), b: E("rtr", "Gi0/2") },
+      { t: "client", dev: "tech", values: { mode: "static", ip: "10.0.0.2", mask: "255.255.255.0", gw: "" } }, { t: "tftp", dev: "tech", on: true },
+      t(""), t("enable"), t("configure terminal"), t("interface gi0/2"), t("ip address 10.0.0.1 255.255.255.0"), t("no shutdown"), t("end"),
+      t("copy tftp: startup-config"), t("10.0.0.2"), t(p.backup.name), t(""), t("reload"), t("no"), t(""),
+      t(p.rtConsole), t("enable"), t(p.rtSecret), t("configure terminal"), t("crypto key generate rsa modulus 2048"), t("end"), t("copy running-config startup-config"), t(""),
+      { t: "pull", cable: "c-run-" + (n + 4) }, { t: "cmd", dev: "mgr", line: "ssh-keygen -R " + staff(v).gw },
+      { t: "cabinet", values: { open: false } }, { t: "cabinet", values: { locked: true } }, { t: "cabinet", values: { key: false } }];
+  },
+  answer(v, sim) {
+    const p = v.plan;
+    return ["Unlock and open the closet cabinet (the manager's key). Place the router in the closet; the modem's ETH to " + gi(p.wanPort) + ", " + gi(p.lanPort) + " to the closet switch's port 24 (as the backup has them).",
+      "Carry your laptop to the closet: its console cable to the router's CONSOLE, its ETHERNET to a spare router port (Gi0/2). Give the laptop an address by hand (Network settings, or netsh interface ipv4 set address name=\"Ethernet\" static 10.0.0.2 255.255.255.0) and start its TFTP server.",
+      "On the router's console (it asks for nothing yet): enable, configure terminal, interface gi0/2, ip address 10.0.0.1 255.255.255.0, no shutdown, end.",
+      "copy tftp: startup-config (your laptop's address, " + p.backup.name + "), then reload, and answer no when it asks to save (saving would put the factory settings over the file). Log in with the records' console password and secret.",
+      "configure terminal, crypto key generate rsa (2048 bits): a file never carries the keys; end; copy running-config startup-config. (Or: copy tftp: running-config, then no shutdown on each port the file names, since a merge never opens a port, then the keys and a save.)",
+      "Pull your laptop's network cable. On the manager's PC: ssh to the router shows the changed key; check it against show crypto key mypubkey rsa, then ssh-keygen -R " + staff(v).gw + ". Shut, lock and take the key out of the cabinet."];
+  },
+  summary(v, sim) {
+    return ["The replacement is in the cabinet, cabled as the backup has it and running the business's configuration from your backup, line for line.",
+      "It has SSH keys of its own (no file carries them), and the manager's PC trusts the new key, checked against the router's own.", "Everyone is back online, the cameras open from outside at the fixed address, it's saved, and the cabinet is locked."];
+  }
+};
+
+export const BUSINESS_JOBS = [SB1, SB2, SB3, SB4, SB5, SB6, SB7, SB8, SB9];

@@ -1,4 +1,4 @@
-// SB-J7's and SB-J8's pages, screenshotted for the owner's preview: each work order, the work part done, Mason's third rung on
+// SB-J7's, SB-J8's and SB-J9's pages, screenshotted for the owner's preview: each work order, the work part done, Mason's third rung on
 // the trap, and the finished job. Not part of the site.
 // node tools/wip/sb78page.mjs <out dir> [seed]
 import http from "node:http"; import fs from "node:fs"; import path from "node:path"; import url from "node:url";
@@ -45,5 +45,14 @@ await at("8-5-printer-panel", "SB-J8", "sol.forEach((a)=>c.act(a)); c.check(); d
 await at("8-6-test-page", "SB-J8", "sol.forEach((a)=>c.act(a)); c.check(); dev('pc'); tab('Printers'); [...document.querySelectorAll('.pane button')].find((b)=>b.textContent==='Print a test page').click();", ".win-body");
 await at("8-7-done", "SB-J8", "sol.forEach((a)=>c.act(a)); c.check(); " + chk, "#check");
 await at("8-8-diagram", "SB-J8", "sol.forEach((a)=>c.act(a)); c.check(); document.getElementById('vLog').click();", "#net");
+/* SB-J9 */
+const rt = "const at=(l)=>sol.findIndex((a)=>a.line===l);";
+await at("9-1-order", "SB-J9", tk, "#tk");
+await at("9-2-laptop-address", "SB-J9", "sol.slice(0,sol.findIndex((a)=>a.t==='client')+1).forEach((a)=>c.act(a)); dev('tech'); tab('Network settings');", ".win-body");
+await at("9-3-tftp-backup-read", "SB-J9", rt + "sol.slice(0,at('reload')).forEach((a)=>c.act(a)); dev('tech'); tab('TFTP server');", ".win-body");
+await at("9-4-console-after-reload", "SB-J9", rt + "sol.slice(0,at('reload')+3).forEach((a)=>c.act(a)); dev('tech'); tab('Serial terminal');", ".win-body");
+await at("9-5-mason-merge-ports-shut", "SB-J9", rt + "const cp=at('copy tftp: startup-config'); sol.slice(0,cp).forEach((a)=>c.act(a)); ['copy tftp: running-config','10.0.0.2',p.backup.name,''].forEach((l)=>c.act({t:'cmd',dev:'tech',line:l,cli:true})); for(let i=0;i<5;i++) c.check(); " + chk, "#check");
+await at("9-6-ssh-key-changed", "SB-J9", "const k=sol.findIndex((a)=>a.t==='cmd'&&a.dev==='mgr'); sol.slice(0,k).forEach((a)=>c.act(a)); c.act({t:'cmd',dev:'mgr',line:'ssh '+p.user+'@'+p.vlans.staff.gw}); dev('mgr'); tab('Command Prompt');", ".win-body");
+await at("9-7-done", "SB-J9", "sol.forEach((a)=>c.act(a)); c.check(); " + chk, "#check");
 console.log(errs.length ? "PAGE ERRORS: " + [...new Set(errs)].join(" | ") : "no page errors");
 await B.close(); srv.close();

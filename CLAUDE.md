@@ -2485,11 +2485,11 @@ unplugged, the cabinet locked again with its key away.
   actions). `ONLY=business JOB=SB-J9 node tools/drive.mjs`: 62 checks on three businesses (the cabinet refusing the router
   while locked, the TFTP tab listing the backup, the address set in the laptop's Network settings, `[OK - n bytes]`, the
   reload, the manager's PC's changed-key warning with its fingerprint matched to `show crypto key mypubkey rsa` on the
-  console, SSH asking for the password after, a test page, both drawings in both fonts, a reload). 13 Node plants (the
-  plant tool takes `TESTS="..."` to run just the tests named), 3 page plants, 6 AAA states.
+  console, SSH asking for the password after, a test page, both drawings in both fonts, a reload). 13 Node plants, all
+  caught (the plant tool takes `TESTS="..."` to run just the tests named), 3 page plants, 6 AAA states.
   - A first plant (the replacement given the old router's keys by taking away its unit number) was missed: the replacement
     has a hardware address of its own and the key is made from it too, so the plant never planted what it named. It now
-    makes the replacement a copy of the old router (its hardware address, no unit of its own).
+    makes the replacement a copy of the old router (its hardware address, no unit of its own), and is caught.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

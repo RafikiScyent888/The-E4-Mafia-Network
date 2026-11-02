@@ -2491,6 +2491,29 @@ unplugged, the cabinet locked again with its key away.
     has a hardware address of its own and the key is made from it too, so the plant never planted what it named. It now
     makes the replacement a copy of the old router (its hardware address, no unit of its own), and is caught.
 
+### Level 3, SB-J10: a new department, end to end (talked out 2 November 2026, on `save/level3-stage9`)
+
+The Network+ (V9) objectives read from the owner's doc on 2 November 2026 and shown: Network implementation (switching:
+"VLANs, interface configuration"; routing: "NAT, PAT ... subinterfaces"), Networking concepts ("IPv4 addressing: ...
+subnetting (VLSM, CIDR)"), Network operations ("Network services: DHCP", "Documentation: ... IPAM", "Change management:
+request process tracking"), Network security ("Network segmentation: ... guest, and BYOD", "Security features and defense:
+device hardening ... ACL ... trusted vs. untrusted zones", "Logical security: ... least privilege, role-based access
+control"). Lines proposed: the department's two PCs out of their boxes, in their room, cabled to the records' switch ports;
+its VLAN on both switches and the trunk between them carrying it (added to, not replaced); their ports access, described,
+port-secured as SB-J6 set the staff PCs', out of the parking VLAN; the router's subinterface as their gateway, NAT and a
+pool of their own; snooping and inspection on the new VLAN; kept apart as the records say, printing and online; everything
+else still works; all three devices saved.
+
+**The owner's answers, 2 November 2026:**
+- **The department: "Each business its own"**: the vet clinic's pharmacy, the dental practice's billing office, the
+  bakery's office, the physio clinic's billing desk, the bike shop's parts desk, the bookshop's office.
+- **Where: "A new room"**: a small room added to the floor plan, off the back room, its runs to the back switch.
+- **Kept apart: "Only the manager's PC"**: guests and the other staff are kept off the department's PCs; the department
+  still prints and gets online. An access list on the department's own subinterface, and the manager's PC given a fixed
+  address so the list can name it.
+- **Its subnet: "A block to work out"**: the records give a smaller block in CIDR only (a /27 for up to 30 devices, say),
+  as the provider's letter did in SB-J7, so the mask, the gateway and the pool's range are worked out by hand.
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

@@ -1118,12 +1118,14 @@
  {
   "name": "business: SB-J5 done, the logical diagram drawn taller with the cameras",
   "page": "build.html",
-  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('vLog').click(); dev('cam1');"
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('vLog').click(); dev('cam1');",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
  },
  {
   "name": "business: SB-J5 done, the floor plan: the back door camera outside the back door",
   "page": "build.html",
-  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('vPhy').click(); dev('cam2');"
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J5',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim), cv=p.vlans.cameras, n3=cv.net.replace(/\\.0$/,'.'), wan=J.sim.net.isp.wanIp; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const go=u=>{const f=document.querySelector('.browser form'); f.querySelector('input[name=url]').value=u; f.requestSubmit();}; const fc=sol.findIndex(a=>a.t==='client'); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('vPhy').click(); dev('cam2');",
+  "wait": "import('./js/desk/model3d.js').then(m => !!(m.debug() && m.debug().fineFrames > 0 && document.querySelector('.m3d-bar button')))"
  },
  {
   "name": "business: SB-J5 done, the ceiling camera's 3D model",

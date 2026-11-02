@@ -2449,6 +2449,48 @@ unplugged, the cabinet locked again with its key away.
 - **The restore: "Either way passes"**: copied into the running configuration and saved, or copied into startup and
   reloaded, as on SO-J6; a copy into startup never reloaded is caught.
 
+**What was built** (2 November 2026, on `save/level3-stage8`):
+- **The failure** (`addRouterFailure` in `js/net/business.js`, its own random stream `seed ^ 0x9b01`, so every business before
+  it is unchanged): the router's saved configuration becomes the backup on your laptop's TFTP server, under the router's own
+  name (`<hostname>-confg`), with the write in the server's log; the server stopped. The manager's PC remembers the old
+  router's key (`knownHosts`, as the office's front desk PC does in SO-J6). The dead router's cables are pulled; the
+  replacement is the same model with a hardware address and a unit of its own, so its keys differ, boxed; the cabinet stays
+  locked with its key with the manager. `plan.backup` holds the name and the text.
+- **SB-J9** (`js/build/business.js`), 8 lines: `rack` (SB-J1's: in its box, no console, not seated); `cabled` (the modem and
+  the closet switch on the ports the backup sets up: the modem missing or in another port, the switch missing, in another
+  router port, or in a switch port that isn't the trunk); `restored` (factory, in startup and never reloaded, a part not as
+  the backup has it, named by `rtSectionOf`: "interface Gi0/0", "the access list GUEST-IN", "the DHCP pool ..."); `ssh` (the
+  manager's PC can't reach it, no keys, short keys, the lines, the old key remembered); `back` (staff online and printing,
+  guests online and kept apart, the access point's page); `remote` (both cameras at the fixed address, with "still in its
+  box" first); saved; `tidy` (your laptop's network cable out, then the cabinet's three causes). `already`: tidy.
+- **The real behaviour the job teaches:** a merge into the running configuration never opens a port (a running
+  configuration prints `shutdown` for a shut port and nothing for an open one, and a router's ports come shut from the box),
+  so after `copy tftp: running-config` the provider's port and the inside port stay shut and the line names them; copied
+  into startup and reloaded, every interface the file names comes up. Answering yes to "save?" before the reload saves the
+  factory settings over the file. The temporary address on the laptop's port goes when the file is applied (the file shuts
+  that port and clears its address).
+- **Your laptop's address by hand**: a router fresh from its box hands out nothing, so the laptop needs a fixed address on
+  the port it's cabled to. Its new **Network settings** tab is the PCs' (the Edit IP settings form, no speed test), and its
+  Command Prompt takes Windows' `netsh interface ipv4 set address name="Ethernet" static <address> <mask> [gateway]`
+  (also `address/prefix`, `none`, and `source=dhcp`), with Windows' own errors for a wrong name or mask (`netshAddress` in
+  `js/net/cmd.js`; in Help).
+- **Fixed for every level:** `no shutdown` on the console was answered before the links were worked out again, so a cabled
+  port read as down (since SB-J1, every cabled router port opened said "changed state to down"). The console now syncs after
+  the command and reports a port that came up as up, with its `%LINEPROTO-5-UPDOWN` line (`linkNews` in `js/net/cmd.js`;
+  `portUp` in `js/net/swcli.js`). A port with nothing plugged in still says down.
+- **Checks:** `tests/business-sb9.test.js` (5 tests, 12 businesses: as found and solved, the backup current with the
+  printers' subinterface in it; 13 tempting wrong ways; other right ways: the merge with each port opened by hand, the
+  address by netsh, another network for the transfer; checking changes nothing; the laptop's tab, netsh and the link
+  message). The shared tests cover SB-J9 (the backup's name in what no hint may say; its own random walk lines and
+  actions). `ONLY=business JOB=SB-J9 node tools/drive.mjs`: 62 checks on three businesses (the cabinet refusing the router
+  while locked, the TFTP tab listing the backup, the address set in the laptop's Network settings, `[OK - n bytes]`, the
+  reload, the manager's PC's changed-key warning with its fingerprint matched to `show crypto key mypubkey rsa` on the
+  console, SSH asking for the password after, a test page, both drawings in both fonts, a reload). 13 Node plants (the
+  plant tool takes `TESTS="..."` to run just the tests named), 3 page plants, 6 AAA states.
+  - A first plant (the replacement given the old router's keys by taking away its unit number) was missed: the replacement
+    has a hardware address of its own and the key is made from it too, so the plant never planted what it named. It now
+    makes the replacement a copy of the old router (its hardware address, no unit of its own).
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

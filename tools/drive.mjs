@@ -1627,7 +1627,7 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
         }
         await step(p, a);
         if (a.t === "cmd" && a.cli && a.line === "" && sol[k - 1] && sol[k - 1].line === plan.backup.name) check(/\[OK - \d+ bytes\]/.test(await term(p)), tag + "the backup came across from your laptop: [OK - n bytes]");
-        if (a.t === "client") { await tab(p, "Network settings"); check(/Saved/.test(await p.$eval(".pane", (n) => n.textContent)) && (await p.$eval('.pane input[name="ip"]', (n) => n.value)) === a.values.ip, tag + "your laptop's address set by hand in its Network settings"); }
+        if (a.t === "client") { check(/Saved/.test(await p.$eval(".pane", (n) => n.textContent)) && (await p.$eval('.pane input[name="ip"]', (n) => n.value)) === a.values.ip, tag + "your laptop's address set by hand in its Network settings"); }
       }
       await step(p, { t: "cmd", dev: "mgr", line: "ssh " + plan.user + "@" + gw });
       check(/password/i.test(await p.$eval(".term .prompt", (n) => n.textContent).catch(() => "")) || /password/i.test((await term(p)).split("\n").slice(-2).join(" ")), tag + "after: SSH from the manager's PC asks for the password");

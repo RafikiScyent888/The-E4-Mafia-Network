@@ -41,6 +41,9 @@ PLANTS = [
  ('SB-J8: show access-lists numbers the lines by position', 'js/net/rtcli.js', 'L.push("    " + q[i] + " " + aceText(A.type, e)', 'L.push("    " + (10 * (i + 1)) + " " + aceText(A.type, e)', 'SB-J8'),
  ('SB-J8: the diagram labels the printer with its old address', 'js/desk/draw.js', 'if (id === "printer") return x.ifaces[0].cfg.mode === "static" ? x.ifaces[0].cfg.ip : "DHCP";', 'if (id === "printer") return x.sub;', 'SB-J8'),
  ("SB-J8: the limits leave out the printer's new address", 'js/build/business.js', 'Its fixed address on the printers\' network is " + p.printerIp + " (mask', "Its fixed address on the printers' network is in the records (mask", 'SB-J8'),
+ ("SB-J9: your laptop's Network settings form saves nothing", 'js/desk/window.js', 'const x = ctx.act({ t: "client", dev: id, values: values });\n    if (x && x.result && x.result.ok) { ctx.flash = "Saved. Windows applied the new IP settings."; rerender(); }', 'const x = { result: { ok: true } };\n    if (x && x.result && x.result.ok) { ctx.flash = "Saved. Windows applied the new IP settings."; rerender(); }', 'SB-J9'),
+ ('SB-J9: the TFTP server tab lists no files', 'js/net/pages.js', 'files: s.files.map(function (f) { return { name: f.name, bytes: f.bytes, from: f.from, text: f.text }; }), log: s.log.slice(-8),', 'files: [], log: s.log.slice(-8),', 'SB-J9'),
+ ("SB-J9: the limits leave out the backup's name", 'js/build/business.js', '"Your backup of the router is on your laptop\'s TFTP server: " + p.backup.name + ", taken', '"Your backup of the router is on your laptop\'s TFTP server, taken', 'SB-J9'),
 ]
 only = sys.argv[1:]
 caught = 0; run = 0

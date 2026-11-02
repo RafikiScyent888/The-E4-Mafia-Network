@@ -1,7 +1,7 @@
 import subprocess, shutil, os, sys
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))   # this checkout, wherever it is
 # Level 3's Node defects: each planted in turn, the business tests run on 20 businesses, and each must fail.
-# python3 tools/plants-business-node.py [part of a name ...]
+# python3 tools/plants-business-node.py [part of a name ...]   (TESTS="tests/a.test.js tests/b.test.js" runs just those)
 PLANTS = [
  ("SB-J4: a native VLAN that differs at the two ends, accepted", "js/build/business.js", 'C("split", split,', 'C("split", false,'),
  ("SB-J4: a trunk end left to negotiate read as not trunking at all", "js/build/business.js", "cc: carries(SW(sim), port(m.me), dtp(bp)), bc: carries(BSW(sim), port(m.far), dtp(cp)),", "cc: carries(SW(sim), port(m.me), null), bc: carries(BSW(sim), port(m.far), null),"),
@@ -89,6 +89,19 @@ PLANTS = [
  ('SB-J8 cmd: SSH across the router never judged by its lists', 'js/net/cmd.js', 'const rt = sim.route(id, host, { proto: "tcp", port: 22, sport: 50022 });', 'const rt = sim.route(id, host);'),
  ("SB-J8 cmd: SSH only on the PC's own network, as before", 'js/net/cmd.js', 'if (rt.fail || !(rt.local || rt.routed)) return { out: "ssh: connect to host "', 'if (rt.fail || !rt.local) return { out: "ssh: connect to host "'),
  ("the business PC's test page counts only a printer on its own network (the old bug)", 'js/net/sim.js', 'if (r.routed && !r.local) return !r.fail && r.owner', 'if (false) return !r.fail && r.owner'),
+ ('SB-J9 job: none of the backup on the router read as merely a part', 'js/build/business.js', 'C("factory", R.hostname === "Router" && st !== want,', 'C("factory", false,'),
+ ('SB-J9 job: the backup in startup, never reloaded, read as merely a part', 'js/build/business.js', 'C("startup", st === want && run !== want, "The backup is in the startup configuration, but the router', 'C("startup", false, "The backup is in the startup configuration, but the router'),
+ ("SB-J9 job: what's running never compared with the backup", 'js/build/business.js', 'C("part", run !== want, "Part of what\'s running isn\'t as the backup has it", "What\'s running is the backup, line for line.", "show running-config: " + (rtDiff(', 'C("part", false, "Part of what\'s running isn\'t as the backup has it", "What\'s running is the backup, line for line.", "show running-config: " + (rtDiff('),
+ ('SB-J9 job: the router with no keys, accepted', 'js/build/business.js', 'C("keys", !R.rsa, "The router has no SSH keys', 'C("keys", false, "The router has no SSH keys'),
+ ("SB-J9 job: the old key on the manager's PC, accepted", 'js/build/business.js', 'C("known", !!kh[gw] && kh[gw] !== hostKey(R),', 'C("known", false,'),
+ ('SB-J9 job: the modem on the inside port, accepted', 'js/build/business.js', 'C("wan", !!md && md.me !== gi(p.wanPort),', 'C("wan", false,'),
+ ("SB-J9 job: the router's cable in a parked switch port, accepted", 'js/build/business.js', 'C("trunk", !!sw && sw.far !== "24",', 'C("trunk", false,'),
+ ("SB-J9 job: your laptop's cable left in, accepted", 'js/build/business.js', 'C("eth", !!eth,', 'C("eth", false,'),
+ ("SB-J9 job: a hint names the backup's file", 'js/build/business.js', 'rung1: function () { return "Your laptop\'s TFTP server tab: read the backup. Then show running-config on the router beside it, and show ip interface brief."; }', 'rung1: function (v) { return "Your laptop\'s TFTP server tab: read " + v.plan.backup.name + ". Then show running-config on the router beside it, and show ip interface brief."; }'),
+ ("SB-J9 sim: the replacement has the old router's keys", 'js/net/business.js', '  sw.unit = 2;\n  Object.assign(x, { boxed: true, sw: sw });', '  Object.assign(x, { boxed: true, sw: sw });'),
+ ("SB-J9 cmd: netsh's set address does nothing", 'js/net/cmd.js', 'const r = sim.apply({ t: "client", dev: id, values: { mode: "static", ip: ip, mask: mask, gw: gw, dns: (f.cfg.dns || []).slice() } });', 'const r = { ok: true };'),
+ ('SB-J9 cmd: a port opened on the console always says down', 'js/net/cmd.js', 'const r = SW.exec(st.S, raw); st.prompt = r.prompt; r.out = linkNews(sim, tgt, r.out);', 'const r = SW.exec(st.S, raw); st.prompt = r.prompt;'),
+ ('SB-J9 page: your laptop has no Network settings tab', 'js/net/pages.js', '["wcmd", "Command Prompt"], ["settings", "Network settings"], ["tftp", "TFTP server"]]', '["wcmd", "Command Prompt"], ["tftp", "TFTP server"]]'),
  ("an access port's missing VLAN never made", "js/net/swcli.js", 'if (!S.sw.vlans[v]) { S.sw.vlans[v] = { name: "VLAN" + String(v).padStart(4, "0") }; out.push("% Access VLAN does not exist. Creating vlan " + v); }', 'if (!S.sw.vlans[v]) { out.push("% Access VLAN does not exist. Creating vlan " + v); }'),
  ("interface range takes no list", "js/net/swcli.js", '.replace(/\\s+/g, " ").split(","), out = [];', '.replace(/\\s+/g, " ").split(/(?!)/), out = [];'),
  ("a cable refused names devices in capitals mid-sentence", "js/net/sim.js", 'const theDev = function (x) { return /^your /i.test(x.label) ? x.label.toLowerCase() : "the " + x.label.replace(', 'const theDev = function (x) { return "the " + x.label; return "the " + x.label.replace('),
@@ -103,7 +116,7 @@ for name, f, a, b in PLANTS:
     shutil.copy(f, BAK)
     open(f, "w").write(src.replace(a, b))
     try:
-        r = subprocess.run(["node", "--test", "tests/business-jobs.test.js", "tests/business-sim.test.js", "tests/business-cli.test.js", "tests/business-cams.test.js", "tests/business-harden.test.js", "tests/business-sb6.test.js", "tests/business-sb7.test.js", "tests/business-sb8.test.js", "tests/business-page.test.js", "tests/office.test.js"], env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=1200)
+        r = subprocess.run(["node", "--test"] + (os.environ["TESTS"].split() if os.environ.get("TESTS") else ["tests/business-jobs.test.js", "tests/business-sim.test.js", "tests/business-cli.test.js", "tests/business-cams.test.js", "tests/business-harden.test.js", "tests/business-sb6.test.js", "tests/business-sb7.test.js", "tests/business-sb8.test.js", "tests/business-sb9.test.js", "tests/business-page.test.js", "tests/office.test.js"]), env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=1200)
         fails = [l.strip() for l in r.stdout.splitlines() if l.startswith("not ok")]
         caught += 1 if r.returncode else 0
         print(("CAUGHT" if r.returncode else "MISSED") + " · " + name + " · " + (", ".join(fails)[:200]), flush=True)

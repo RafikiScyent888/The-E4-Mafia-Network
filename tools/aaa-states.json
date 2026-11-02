@@ -1245,5 +1245,35 @@
   "name": "business: SB-J8 done, the logical diagram with the printer's new address",
   "page": "build.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J8',true,4242); const J=c.T, p=J.v.plan, P=p.vlans.printers, G=p.vlans.guest, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const deny=sol.findIndex(a=>/^35 deny/.test(a.line||'')); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('vLog').click();"
+ },
+ {
+  "name": "business: SB-J9 first check, the work order with the backup and the locked cabinet",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J9',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const at=l=>sol.findIndex(a=>a.line===l); c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J9 your laptop's Network settings, an address set by hand",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J9',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const at=l=>sol.findIndex(a=>a.line===l); sol.slice(0,sol.findIndex(a=>a.t==='client')+1).forEach(a=>c.act(a)); dev('tech'); tab('Network settings');"
+ },
+ {
+  "name": "business: SB-J9 your laptop's TFTP server, the backup read by the router",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J9',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const at=l=>sol.findIndex(a=>a.line===l); sol.slice(0,at('reload')).forEach(a=>c.act(a)); dev('tech'); tab('TFTP server');"
+ },
+ {
+  "name": "business: SB-J9 the router's console after the copy and the reload, asking its password",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J9',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const at=l=>sol.findIndex(a=>a.line===l); sol.slice(0,at('reload')+3).forEach(a=>c.act(a)); dev('tech'); tab('Serial terminal');"
+ },
+ {
+  "name": "business: SB-J9 the backup merged, the ports left shut, Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J9',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const at=l=>sol.findIndex(a=>a.line===l); const cp=at('copy tftp: startup-config'); sol.slice(0,cp).forEach(a=>c.act(a)); ['copy tftp: running-config','10.0.0.2',p.backup.name,''].forEach(l=>c.act({t:'cmd',dev:'tech',line:l,cli:true})); for(let i=0;i<5;i++) c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J9 done, every line met",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J9',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const at=l=>sol.findIndex(a=>a.line===l); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('check').scrollIntoView();"
  }
 ]

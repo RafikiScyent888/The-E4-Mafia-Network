@@ -1174,6 +1174,12 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       if (a.values.mode === "static") for (const k of ["ip", "mask", "gw"]) await p.fill('.pane input[name="' + k + '"]', a.values[k] || "");
       await p.click('.pane .devform button[type="submit"]'); await p.waitForTimeout(60); return;
     }
+    if (a.t === "tftp") { await dev(p, "tech"); await tab(p, "TFTP server"); await p.click('.tftp button:text-is("' + (a.on ? "Start the TFTP server" : "Stop the TFTP server") + '")'); await p.waitForTimeout(40); return; }   /* your laptop's TFTP server (SB-J9) */
+    if (a.t === "client" && a.dev === "tech") {   /* your laptop's Network settings: an address by hand (SB-J9) */
+      await dev(p, "tech"); await tab(p, "Network settings"); await p.check('.pane input[name="mode"][value="' + a.values.mode + '"]');
+      if (a.values.mode === "static") for (const k of ["ip", "mask", "gw"]) await p.fill('.pane input[name="' + k + '"]', a.values[k] || "");
+      await p.click('.pane form:has(input[name="dns1"]) button[type="submit"]'); await p.waitForTimeout(60); return;
+    }
     if (a.t === "pcprinter") { await dev(p, "pc"); await tab(p, "Printers"); await p.fill('.pane input[name="port"]', a.ip); await p.click('.pane form:has(input[name="port"]) button[type="submit"]'); await p.waitForTimeout(60); return; }   /* the reception PC's printer port */
     throw new Error("no page step for " + JSON.stringify(a));
   };
@@ -1582,6 +1588,55 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       check((await p.$eval('.pane input[name="ip"]', (n) => n.value)) === plan.printerIp && (await p.$eval('.pane input[name="gw"]', (n) => n.value)) === P.gw, tag + "the printer's control panel shows its new address and gateway");
       await p.click("#vLog"); await p.waitForTimeout(40);
       check((await p.$eval('#net [data-d="printer"]', (n) => n.textContent)).indexOf(plan.printerIp) >= 0, tag + "the diagram labels the printer with its new address");
+      const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished business's logical diagram: every name and port dot clear" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(40);
+      await dysClear(p, tag + "the finished business");
+      await p.reload(); await p.waitForTimeout(350);
+      check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)), tag + "still done after a reload");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0] + (process.env.STACK ? " " + (String(e.stack).match(/drive\.mjs:\d+/g) || []).join(" ") : "")); }
+    await ctx.close();
+  }
+  /* SB-J9: the router rebuilt from its backup, entirely through the page, as the walk-through does it: the cabinet opened with the
+     manager's key, the router racked and cabled as the backup has it, your laptop carried in, given an address by hand in its
+     Network settings, its TFTP server started; the backup copied into startup and the router reloaded (no to saving), the keys
+     made again, saved; the manager's PC shown the changed key, then told to forget the old one; the cabinet locked again */
+  for (const seed of !process.env.JOB || process.env.JOB === "SB-J9" ? [11, 2025, 777777] : []) {
+    const job = "SB-J9", { p, ctx } = await zpage("build.html", { net: solvedTo(2), build: { current: job, j: { [job]: { seed } }, done: doneTo(2) } });
+    const tag = "business " + job + " " + seed + ": ";
+    try {
+      const plan = await BJ(p, () => window.__e4b.T.sim.net.plan), mgrName = await BJ(p, () => window.__e4b.T.sim.net.client.manager), gw = plan.vlans.staff.gw;
+      check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed, tag + "opens the job on the business asked for");
+      const lim = await p.$eval(".limits", (n) => n.textContent);
+      check([plan.backup.name, mgrName, plan.user, plan.userPw, plan.rtConsole, plan.rtSecret].every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the backup's name, who has the key, the SSH login and the router's records");
+      await checkJob(p);
+      check((await p.$$("#check .rq.bad")).length === 7, tag + "the first check finds the seven lines to do");
+      check(!(await p.$('#devtabs [data-d="rtr"]')) && /Business router/.test(await p.$eval(".tray", (n) => n.textContent)), tag + "the replacement in its box: no device button, in the tray");
+      await place(p, "rtr", "closet"); check(/Not placed/.test(await p.$eval("#bmPmsg", (n) => n.textContent)) && /cabinet/i.test(await p.$eval("#bmPmsg", (n) => n.textContent)), tag + "the cabinet locked: the router can't go in its rack, and the page says why");
+      await dev(p, "tech"); await tab(p, "TFTP server");
+      check(new RegExp(plan.backup.name).test(await p.$eval(".tftp", (n) => n.textContent)) && /Stopped/.test(await p.$eval(".tftp", (n) => n.textContent)), tag + "your laptop's TFTP server: stopped, the backup in its folder");
+      const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
+      const keygen = sol.findIndex((a) => a.t === "cmd" && a.dev === "mgr");
+      for (let k = 0; k < sol.length; k++) {
+        const a = sol[k];
+        if (k === keygen) {   /* before the old key is forgotten: what the manager's PC says, and the fingerprint on the router */
+          await step(p, { t: "cmd", dev: "mgr", line: "ssh " + plan.user + "@" + gw });
+          const warn = (await term(p)).split("ssh " + plan.user + "@" + gw).pop(), fp = (warn.match(/SHA256:\S+/) || [""])[0].replace(/\.$/, "");
+          check(/REMOTE HOST IDENTIFICATION HAS CHANGED/.test(warn) && !!fp, tag + "SSH from the manager's PC: the changed key's warning, with its fingerprint");
+          await step(p, { t: "cmd", dev: "tech", line: "show crypto key mypubkey rsa", cli: true });
+          check((await term(p)).indexOf(fp) >= 0, tag + "the router's own key, read on its console, has the fingerprint the warning gave");
+        }
+        await step(p, a);
+        if (a.t === "cmd" && a.cli && a.line === "" && sol[k - 1] && sol[k - 1].line === plan.backup.name) check(/\[OK - \d+ bytes\]/.test(await term(p)), tag + "the backup came across from your laptop: [OK - n bytes]");
+        if (a.t === "client") { await tab(p, "Network settings"); check(/Saved/.test(await p.$eval(".pane", (n) => n.textContent)) && (await p.$eval('.pane input[name="ip"]', (n) => n.value)) === a.values.ip, tag + "your laptop's address set by hand in its Network settings"); }
+      }
+      await step(p, { t: "cmd", dev: "mgr", line: "ssh " + plan.user + "@" + gw });
+      check(/password/i.test(await p.$eval(".term .prompt", (n) => n.textContent).catch(() => "")) || /password/i.test((await term(p)).split("\n").slice(-2).join(" ")), tag + "after: SSH from the manager's PC asks for the password");
+      await type(p, plan.userPw); await type(p, "exit");
+      const done = await checkJob(p), n = await BJ(p, () => window.__e4b.T.def.reqs.length);
+      check(new RegExp(n + " of " + n + " met").test(done) && /Job .* done/.test(done), tag + "every line met through the page (" + (done.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
+      await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); await p.waitForTimeout(40);
+      check(/it printed/.test(await p.$eval(".pane .res", (n) => n.textContent)), tag + "after: the reception PC prints again");
+      await p.click("#vLog"); await p.waitForTimeout(40);
       const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished business's logical diagram: every name and port dot clear" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
       await p.click("#vPhy"); await p.waitForTimeout(40);
       await dysClear(p, tag + "the finished business");

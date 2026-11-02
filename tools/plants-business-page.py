@@ -44,6 +44,10 @@ PLANTS = [
  ("SB-J9: your laptop's Network settings form saves nothing", 'js/desk/window.js', 'const x = ctx.act({ t: "client", dev: id, values: values });\n    if (x && x.result && x.result.ok) { ctx.flash = "Saved. Windows applied the new IP settings."; rerender(); }', 'const x = { result: { ok: true } };\n    if (x && x.result && x.result.ok) { ctx.flash = "Saved. Windows applied the new IP settings."; rerender(); }', 'SB-J9'),
  ('SB-J9: the TFTP server tab lists no files', 'js/net/pages.js', 'files: s.files.map(function (f) { return { name: f.name, bytes: f.bytes, from: f.from, text: f.text }; }), log: s.log.slice(-8),', 'files: [], log: s.log.slice(-8),', 'SB-J9'),
  ("SB-J9: the limits leave out the backup's name", 'js/build/business.js', '"Your backup of the router is on your laptop\'s TFTP server: " + p.backup.name + ", taken', '"Your backup of the router is on your laptop\'s TFTP server, taken', 'SB-J9'),
+ ("SB-J10: the new room never drawn on the floor plan", 'js/desk/draw.js', '(sim && sim.net.roomNames.dept ? r("dept") + \'<path class="door" d="M900 520h40"/>\' : "");', '"";', 'SB-J10'),
+ ("SB-J10: the department's PCs left off the diagram", 'js/desk/draw.js', '"cinj1", "cam1", "cinj2", "cam2", "dpc1", "dpc2"].filter(', '"cinj1", "cam1", "cinj2", "cam2"].filter(', 'SB-J10'),
+ ("SB-J10: the department's PCs have no device buttons", 'js/build/app.js', '"bpc", "dpc1", "dpc2", "hire",', '"bpc", "hire",', 'SB-J10'),
+ ("SB-J10: the limits give the block's mask away", 'js/build/business.js', 'on the block " + D.net + "/" + D.len + ". Its gateway', 'on the block " + D.net + "/" + D.len + " (mask " + D.mask + "). Its gateway', 'SB-J10'),
 ]
 only = sys.argv[1:]
 caught = 0; run = 0

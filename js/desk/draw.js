@@ -29,7 +29,7 @@ export const ICONS = {
   patchpanel: '<rect x="4" y="22" width="56" height="20" rx="2" class="ib"/><rect x="9" y="26" width="8" height="3" class="is"/><rect x="20" y="26" width="8" height="3" class="is"/><rect x="31" y="26" width="8" height="3" class="is"/><rect x="42" y="26" width="8" height="3" class="is"/><rect x="10" y="32" width="6" height="5" class="ip"/><rect x="21" y="32" width="6" height="5" class="ip"/><rect x="32" y="32" width="6" height="5" class="ip"/><rect x="43" y="32" width="6" height="5" class="ip"/><path d="M13 42v8M35 42v8" class="il"/>',
   jack: '<rect x="20" y="10" width="24" height="44" rx="3" class="ib"/><rect x="26" y="22" width="12" height="10" rx="1" class="ip"/><path d="M29 32v-4M35 32v-4" class="il"/>'
 };
-const ICON_OF = { isp: "cloud", modem: "modem", router: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", tv: "tv", camera: "camera", mesh: "mesh", phone: "phone", guest: "phone", rogue: "router", injector: "injector", injector2: "injector", msw: "mswitch", tech: "laptop", meet: "switch", mpc: "pc", pp: "patchpanel", mjack: "jack", ojack: "jack", mgr: "pc", bsw: "mswitch", hire: "pc", rtr: "brouter", bpc: "pc", ap: "ap", cam1: "dome", cam2: "dome", cinj1: "injector", cinj2: "injector", mphone: "phone" };
+const ICON_OF = { isp: "cloud", modem: "modem", router: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", tv: "tv", camera: "camera", mesh: "mesh", phone: "phone", guest: "phone", rogue: "router", injector: "injector", injector2: "injector", msw: "mswitch", tech: "laptop", meet: "switch", mpc: "pc", pp: "patchpanel", mjack: "jack", ojack: "jack", mgr: "pc", bsw: "mswitch", hire: "pc", rtr: "brouter", bpc: "pc", ap: "ap", cam1: "dome", cam2: "dome", cinj1: "injector", cinj2: "injector", mphone: "phone", dpc1: "pc", dpc2: "pc" };
 function defs(svg, prefix) {
   const d = document.createElementNS(NS, "defs");
   d.innerHTML = Object.keys(ICONS).map(function (k) { return '<symbol id="' + prefix + k + '" viewBox="0 0 64 64">' + ICONS[k] + "</symbol>"; }).join("");
@@ -50,6 +50,7 @@ const CAM_H = 716;   /* the business's diagram's height with the cameras on it *
 function pos(sim, id) {
   const L = Object.assign({}, layOf(sim)[id]);
   if (sim.net.site === "business" && sim.d.cam1 && L.cams) Object.assign(L, L.cams);   /* the cameras' job (SB-J5) draws some devices elsewhere, to give the cameras room */
+  if (sim.net.site === "business" && sim.net.roomNames.dept && L.dept) Object.assign(L, L.dept);   /* and the department's room (SB-J10) moves the back switch along its wall */
   if (office(sim)) { const alt = L.alt && L.alt[sim.net.rooms[id]]; if (alt && alt.x != null) Object.assign(L, { x: alt.x, y: alt.y, lab: alt.lab || L.lab }); return L; }   /* a device carried to another room can sit elsewhere on the diagram too (your laptop at the back office's switch) */
   if (id === "laptop" && sim.net.rooms.laptop === "living") Object.assign(L, { x: 770, y: 150, px: 610, py: 235 });
   if (id === "laptop" && sim.net.rooms.laptop === "kitchen") Object.assign(L, { px: 640, py: 360 });
@@ -116,9 +117,9 @@ export function linksOf(sim) {
 
 export function drawLogical(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "i-");
-  const ids = ["isp", "modem", "router", "rtr", "tv", "switch", "msw", "meet", "bsw", "mpc", "mgr", "tech", "pc", "bpc", "hire", "printer", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "cinj1", "cam1", "cinj2", "cam2"].filter(function (id) { return shown(sim, id) && !sim.d[id].undocumented; });
+  const ids = ["isp", "modem", "router", "rtr", "tv", "switch", "msw", "meet", "bsw", "mpc", "mgr", "tech", "pc", "bpc", "hire", "printer", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "cinj1", "cam1", "cinj2", "cam2", "dpc1", "dpc2"].filter(function (id) { return shown(sim, id) && !sim.d[id].undocumented; });
   /* the business with its cameras (SB-J5) is drawn taller: their injectors and cameras get rows of their own */
-  svg.setAttribute("viewBox", "-6 -26 836 " + (sim.net.site === "business" && sim.d.cam1 ? CAM_H : 546));
+  svg.setAttribute("viewBox", sim.net.site === "business" && (shown(sim, "dpc1") || shown(sim, "dpc2")) ? "-180 -26 1016 " + CAM_H : "-6 -26 836 " + (sim.net.site === "business" && sim.d.cam1 ? CAM_H : 546));   /* the department's PCs (SB-J10), once out of their boxes, get a column of their own left of the back switch */
   const P = {}; ids.forEach(function (id) { P[id] = pos(sim, id); });
   if (P.injector && P.injector2) Object.assign(P.injector2, { x: 520, y: 190 });   /* both injectors out of the van: the second one moves up out of the way */
   const below = function (id) { return !P[id].lab || P[id].lab === "below"; };
@@ -233,10 +234,10 @@ const RUNS = {
 };
 /* the office's and the business's runs and names are in SITES: the provider's line comes in on the closet wall, beside the modem */
 const PLAN_NAME = { ap: "Access point", rtr: "Business router", bpc: "Back PC", hire: "New hire's PC", bsw: "Back office switch", pp: "Patch panel", mgr: "Manager's PC", mjack: "Wall jack", ojack: "Wall jack", msw: "Managed switch", meet: "Back office switch", mpc: "Back office PC", tech: "Your laptop", injector: "PoE injector", injector2: "PoE+ injector", modem: "Modem", router: "Router", tv: "Smart TV", switch: "Switch", pc: "Office PC", printer: "Printer", camera: "Camera", mesh: "Mesh node", laptop: "Laptop", phone: "Phone", guest: "Guest's phone", rogue: "Old router",
-  cinj1: "PoE injector", cam1: "Ceiling camera", cinj2: "PoE injector", cam2: "Back door camera", mphone: "Manager's phone" };
+  cinj1: "PoE injector", cam1: "Ceiling camera", cinj2: "PoE injector", cam2: "Back door camera", mphone: "Manager's phone", dpc1: "Department PC", dpc2: "Department PC" };
 export function drawPlan(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "p-");
-  svg.setAttribute("viewBox", "20 20 970 " + (sim.net.site === "business" && sim.d.cam2 ? 600 : 510));   /* the business with its cameras (SB-J5): a strip outside, under the back door, for the back door camera */
+  svg.setAttribute("viewBox", "20 20 970 " + (sim.net.site === "business" && sim.net.roomNames.dept ? 735 : sim.net.site === "business" && sim.d.cam2 ? 600 : 510));   /* with the department's room (SB-J10) below the back room: taller again */   /* the business with its cameras (SB-J5): a strip outside, under the back door, for the back door camera */
   const build = sim.net.extra.build, off = office(sim);   /* a build house shows upstairs as the back bedroom and the landing; the office is its own plan */
   const site = siteOf(sim);
   let h = off ? site.rooms(sim) : '<rect class="room" x="30" y="30" width="390" height="270"/><rect class="room" x="420" y="30" width="340" height="270"/><rect class="room" x="30" y="300" width="390" height="220"/><rect class="room" x="420" y="300" width="340" height="220"/>' +
@@ -311,11 +312,12 @@ function businessRooms(sim) {
   const B = BUSINESS_ROOM_BOX, r = function (k) { const b = B[k]; return '<rect class="room" x="' + b[0] + '" y="' + b[1] + '" width="' + (b[2] - b[0]) + '" height="' + (b[3] - b[1]) + '"/>'; };
   return r("closet") + r("counter") + r("office") + r("guest") + r("back") + '<rect class="room" x="30" y="370" width="270" height="150"/>' +
     '<path class="door" d="M300 200v40M640 150v40M420 270h50M780 270h40M660 400v40M300 420v40M120 520h60"/><rect class="plate" x="26" y="108" width="14" height="24"/>' +
-    (sim && sim.d.cam2 ? '<path class="door" d="M700 520h40"/>' : "");   /* the back door: the back door camera (SB-J5) is on the wall outside it */
+    (sim && sim.d.cam2 ? '<path class="door" d="M700 520h40"/>' : "") +   /* the back door: the back door camera (SB-J5) is on the wall outside it */
+    (sim && sim.net.roomNames.dept ? r("dept") + '<path class="door" d="M900 520h40"/>' : "");   /* the department's room (SB-J10), through a door in the back room's wall */
 }
 function businessNames(sim) {
   const N = sim.net.roomNames, B = BUSINESS_ROOM_BOX, up = function (k) { return String(N[k] || "").toUpperCase().replace(/&/g, "&amp;").replace(/'/g, "&#39;"); };
-  return ["closet", "counter", "office", "guest", "back"].map(function (k) { return '<text class="rl" x="' + (B[k][0] + 16) + '" y="' + (B[k][1] + 30) + '">' + up(k) + "</text>"; }).join("") + '<text class="rl" x="46" y="400">ENTRANCE</text>' + (sim.d.cam2 ? '<text class="rl" x="450" y="572">OUTSIDE THE BACK DOOR</text>' : "");
+  return ["closet", "counter", "office", "guest", "back"].map(function (k) { return '<text class="rl" x="' + (B[k][0] + 16) + '" y="' + (B[k][1] + 30) + '">' + up(k) + "</text>"; }).join("") + '<text class="rl" x="46" y="400">ENTRANCE</text>' + (sim.d.cam2 ? '<text class="rl" x="450" y="572">OUTSIDE THE BACK DOOR</text>' : "") + (N.dept ? '<text class="rl" x="' + (B.dept[0] + 16) + '" y="' + (B.dept[1] + 30) + '">' + up("dept") + "</text>" : "");
 }
 function officeNames() {
   return '<text class="rl" x="46" y="60">NETWORK CLOSET</text><text class="rl" x="316" y="60">FRONT DESK</text><text class="rl" x="656" y="60">MANAGER\'S OFFICE</text>' +

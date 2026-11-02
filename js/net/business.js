@@ -68,7 +68,7 @@ export const BUSINESS_LAYOUT = {
   ap: { x: 735, y: 440, px: 420, py: 352, room: "guest" },   /* on the plan, its tile's shadow clear of the room's name (AAA saw it under "SHOP FLOOR" on a phone) */
   guest: { x: 580, y: 440, px: 540, py: 430, room: "guest", cams: { x: 735, y: 600 } },   /* clear of the printer's address, with easier reading on too; with the cameras (SB-J5), down under the access point, its place taken by the ceiling camera's injector */
   /* SB-J4's: the back of house's own switch, up at the left where the back PC's run comes in */
-  bsw: { x: 100, y: 215, px: 900, py: 330, room: "back" },
+  bsw: { x: 100, y: 215, px: 900, py: 330, room: "back", dept: { px: 820 } },   /* with the department's room (SB-J10), along the wall to the left, so the department's runs come down clear of the back PC */
   /* SB-J5's, on a taller diagram: the ceiling camera's injector under the closet switch and its camera below, down to the left so
      its line clears the injector's name; the back door camera's injector and camera on a row of their own under the back of house.
      The plan: the injectors beside their switches, the ceiling dome over the waiting area, the wall dome by the back door, the
@@ -79,11 +79,12 @@ export const BUSINESS_LAYOUT = {
   cam2: { x: 110, y: 600, px: 720, py: 562, room: "back" },   /* on the plan, on the wall outside the back door */
   mphone: { px: 720, py: 215, room: "office" },
   /* SB-J10's department: its two PCs in the new room off the back room, on the plan below it (beside the strip outside the back
-     door); on the diagram, a row of their own under the back switch's camera row */
-  dpc1: { x: 330, y: 740, px: 840, py: 600, room: "dept" },
-  dpc2: { x: 520, y: 740, px: 930, py: 600, room: "dept" }
+     door), one above the other so their long names fit; on the diagram, a column of their own left of the back switch (the
+     diagram widens to the left for them), so their lines cross nothing */
+  dpc1: { x: -90, y: 105, px: 845, py: 590, room: "dept" },
+  dpc2: { x: -90, y: 235, px: 845, py: 675, room: "dept" }
 };
-export const BUSINESS_ROOM_BOX = { closet: [30, 30, 300, 370], counter: [300, 30, 640, 270], office: [640, 30, 980, 270], guest: [300, 270, 660, 520], back: [660, 270, 980, 520], dept: [780, 520, 980, 660] };   /* dept: SB-J10's, drawn once it's there */
+export const BUSINESS_ROOM_BOX = { closet: [30, 30, 300, 370], counter: [300, 30, 640, 270], office: [640, 30, 980, 270], guest: [300, 270, 660, 520], back: [660, 270, 980, 520], dept: [780, 520, 980, 740] };   /* dept: SB-J10's, drawn once it's there */
 
 /* the managed switch as the business has it: set up as the small office's was, its records the business's */
 function closetSwitch(r, plan, desc) {
@@ -219,7 +220,7 @@ export function addDepartment(sim) {
   p.mgrIp = S.net.replace(/\.0$/, "." + r.pick([7, 8, 9]));
   D.pcs.forEach(function (label, k) {
     const id = "dpc" + (k + 1);
-    net.devices[id] = { id: id, kind: "pc", label: label, sub: "DHCP", on: true, boxed: true, os: "windows", user: D.user, host: net.client.tag + "-" + p.dept.desc[k],
+    net.devices[id] = { id: id, kind: "pc", label: label, sub: "DHCP", on: true, boxed: true, echo: true, os: "windows", user: D.user, host: net.client.tag + "-" + p.dept.desc[k],   /* echo: their firewalls answer pings (the department's own setting), so who reaches them can be tested */
       ifaces: [{ name: "Ethernet", type: "eth", port: "NIC", mac: mac(r), desc: "Gigabit Network Connection", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] };
     net.rooms[id] = "back"; sim.arp[id] = {};   /* delivered to the back room in their boxes */
   });

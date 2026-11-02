@@ -204,6 +204,10 @@ test("SB-J10: the tempting wrong ways fail their own line, and what they break",
     const early = dropAt(sol, g1, g2, renews[1], renews[2]); const e2 = putAt(early, early.findIndex((a, i) => i > ra && isCmd(a, "end")) + 1, ["configure terminal", "ip dhcp snooping vlan " + D.id, "ip arp inspection vlan " + D.id, "end"]); void tail;
     J = X(e2);
     assert.equal(real(J, "dnet"), "old", "a lease from before snooping"); assert.equal(real(J, "dguard"), "met");
+    /* ARP inspection taken off the staff VLAN on the closet switch (so a PC set by hand would work): the staff no longer guarded */
+    const off = ["ssh " + p.user + "@" + p.swIp, p.userPw, "enable", p.swSecret, "configure terminal", "no ip arp inspection vlan " + S.id, "end", "copy running-config startup-config", "", "exit"];
+    J = X(sol.concat(off.map((l) => ({ t: "cmd", dev: "mgr", line: l }))));
+    assert.equal(real(J, "still"), "guards", "the staff VLAN no longer inspected"); assert.ok(line(J, "still").real.text.includes("closet switch"));
     /* not saved */
     J = X(dropAt(sol, at(sol, "copy running-config startup-config", back)));
     assert.equal(real(J, "bswsaved"), "since"); assert.equal(real(J, "saved"), "met");

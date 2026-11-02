@@ -1645,6 +1645,57 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
     } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0] + (process.env.STACK ? " " + (String(e.stack).match(/drive\.mjs:\d+/g) || []).join(" ") : "")); }
     await ctx.close();
   }
+  /* SB-J10: a new department, end to end, entirely through the page, as the walk-through does it: the PCs placed in the new room
+     and cabled to the back switch; over SSH from the manager's PC, the closet switch and the router (the subinterface, the pool,
+     the manager's reservation, NAT's list, the department's list); your laptop to the back switch's console; then each PC asks
+     again. The records worked out by hand on the limits, the new room on the plan, the reservation in the router's bindings,
+     the manager let in and the rest of the staff kept off, read on the PCs' own prompts */
+  for (const seed of !process.env.JOB || process.env.JOB === "SB-J10" ? [11, 2025, 777777] : []) {
+    const job = "SB-J10", { p, ctx } = await zpage("build.html", { net: solvedTo(2), build: { current: job, j: { [job]: { seed } }, done: doneTo(2) } });
+    const tag = "business " + job + " " + seed + ": ";
+    try {
+      const plan = await BJ(p, () => window.__e4b.T.sim.net.plan), D = plan.vlans.dept, dp = plan.dept, room = await BJ(p, () => window.__e4b.T.sim.net.roomNames.dept);
+      check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed, tag + "opens the job on the business asked for");
+      const lim = await p.$eval(".limits", (n) => n.textContent);
+      check([String(D.id), D.name, D.net + "/" + D.len, dp.acl, plan.mgrIp, dp.desc[0], dp.desc[1], plan.printerIp, plan.swIp, plan.user].every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the department's VLAN, its block in CIDR, its ports, its list, the manager's address and the SSH login");
+      check([D.mask, D.gw, D.wild, D.bcast].every((x) => lim.indexOf(x) < 0), tag + "and not the block's mask, gateway, wildcard or broadcast: those are worked out");
+      await checkJob(p);
+      check((await p.$$("#check .rq.bad")).length === 10, tag + "the first check finds the ten lines to do");
+      check(!(await p.$('#plan [data-d="dpc1"]')) && !(await p.$('#net [data-d="dpc1"]')), tag + "the PCs in their boxes are on neither drawing");
+      check(await p.$$eval("#bmRoom option", (l, r) => l.some((o) => o.value === "dept" && o.textContent.indexOf(r) >= 0), room), tag + "the Place form offers the new room, by its name");
+      check((await p.$eval("#plan", (n) => n.textContent)).indexOf(room.toUpperCase()) >= 0, tag + "the floor plan shows the new room, named");
+      const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
+      for (const a of sol) await step(p, a);
+      await dev(p, "mgr"); await tab(p, "Command Prompt"); const t = await term(p);
+      check(t.indexOf(plan.swHost + "(config-if)#") >= 0 && t.indexOf(plan.rtHost + "(dhcp-config)#") >= 0 && t.indexOf(plan.rtHost + "(config-ext-nacl)#") >= 0 && !/% Invalid|% Incomplete|% Ambiguous|% Bad mask|% This pool|timed out/.test(t), tag + "SSH from the manager's PC to the closet switch and the router: the pools and the list, every line taken");
+      await type(p, "ipconfig"); check(new RegExp("IPv4 Address[ .]*: " + plan.mgrIp.replace(/\./g, "\\.") + "\\b").test((await term(p)).split("ipconfig").pop()), tag + "ipconfig on the manager's PC: its reserved address");
+      for (const l of ["ssh " + plan.user + "@" + plan.vlans.staff.gw, plan.userPw, "enable", plan.rtSecret, "show ip dhcp binding"]) await type(p, l);
+      const bind = (await term(p)).split("show ip dhcp binding").pop();
+      check(new RegExp(plan.mgrIp.replace(/\./g, "\\.") + "\\s+01[0-9a-f]{2}\\.[0-9a-f]{4}\\.[0-9a-f]{4}\\.[0-9a-f]{2}\\s+Infinite\\s+Manual").test(bind), tag + "show ip dhcp binding: the manager's address, by its client ID, Manual");
+      await type(p, "exit");
+      const ip1 = await BJ(p, () => window.__e4b.T.sim.addr("dpc1").ip);
+      await dev(p, "dpc1"); await tab(p, "Command Prompt"); await type(p, "ipconfig");
+      const ic = (await term(p)).split("ipconfig").pop();
+      check(ic.indexOf(ip1) >= 0 && ic.indexOf(D.mask) >= 0 && ic.indexOf(D.gw) >= 0, tag + "ipconfig on the department's first PC: an address in the block, the block's mask and gateway");
+      await type(p, "ping 8.8.8.8"); check(/Reply from 8\.8\.8\.8/.test((await term(p)).split("ping 8.8.8.8").pop()), tag + "the department's PC is online");
+      await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping " + ip1);
+      check(!/Reply from/.test((await term(p)).split("ping " + ip1).pop()), tag + "from the counter PC, the department's PC doesn't answer");
+      await dev(p, "mgr"); await tab(p, "Command Prompt"); await type(p, "ping " + ip1);
+      check(new RegExp("Reply from " + ip1.replace(/\./g, "\\.")).test((await term(p)).split("ping " + ip1).pop()), tag + "from the manager's PC, it does");
+      const done = await checkJob(p), n = await BJ(p, () => window.__e4b.T.def.reqs.length);
+      check(new RegExp(n + " of " + n + " met").test(done) && /Job .* done/.test(done), tag + "every line met through the page (" + (done.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
+      const inRoom = await p.evaluate(() => { const r = [...document.querySelectorAll("#plan rect.room")].map((x) => [+x.getAttribute("x"), +x.getAttribute("y"), +x.getAttribute("width"), +x.getAttribute("height")]).find((b) => b[1] === 520 && b[0] === 780); return ["dpc1", "dpc2"].every((id) => { const g = document.querySelector('#plan [data-d="' + id + '"]'), m = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(g ? g.getAttribute("transform") : ""); return r && m && +m[1] > r[0] && +m[1] < r[0] + r[2] && +m[2] > r[1] && +m[2] < r[1] + r[3]; }); });
+      check(inRoom, tag + "the floor plan draws both PCs inside the new room");
+      await p.click("#vLog"); await p.waitForTimeout(40);
+      check(!!(await p.$('#net [data-d="dpc1"]')) && !!(await p.$('#net [data-d="dpc2"]')), tag + "the diagram draws both of the department's PCs");
+      const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished business's logical diagram: every name and port dot clear" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(40);
+      await dysClear(p, tag + "the finished business");
+      await p.reload(); await p.waitForTimeout(350);
+      check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)), tag + "still done after a reload");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0] + (process.env.STACK ? " " + (String(e.stack).match(/drive\.mjs:\d+/g) || []).join(" ") : "")); }
+    await ctx.close();
+  }
 }
 
 console.log(errs.length ? "PAGE ERRORS\n" + [...new Set(errs)].join("\n") : "no page errors");

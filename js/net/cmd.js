@@ -355,7 +355,7 @@ function attempt(sim, id, ip, rt, i, R, phase) {
   if (rt.local) {
     const who = rt.owner[(i + (hash(ip) % rt.owner.length)) % rt.owner.length];
     const k = sim.d[who].kind;
-    if (who !== id && (k === "pc" || k === "laptop")) return { line: "Request timed out.", got: false, counted: false, who: who };   /* Windows Firewall drops ping by default */
+    if (who !== id && (k === "pc" || k === "laptop") && !sim.d[who].echo) return { line: "Request timed out.", got: false, counted: false, who: who };   /* Windows Firewall drops ping by default (echo: a PC whose firewall is set to answer, SB-J10's department) */
     const hd = sim.hop(who); loss = 1 - (1 - loss) * (1 - hd.loss); base += hd.base;
     sim.arp[id][ip] = sim.macOf(who);
     if (lostAt(i, loss, phase)) return { line: "Request timed out.", got: false, counted: false };
@@ -365,7 +365,7 @@ function attempt(sim, id, ip, rt, i, R, phase) {
   const gw = rt.addr.gw; if (gw) sim.arp[id][gw] = sim.macOf(rt.via);
   if (rt.routed) {   /* through the business router to another of the business's networks: one hop, so the TTL comes back one less */
     const who = rt.owner[0], k = sim.d[who].kind;
-    if (k === "pc" || k === "laptop") return { line: "Request timed out.", got: false, counted: false, who: who };   /* Windows Firewall, as on any network */
+    if ((k === "pc" || k === "laptop") && !sim.d[who].echo) return { line: "Request timed out.", got: false, counted: false, who: who };   /* Windows Firewall, as on any network */
     if (lostAt(i, loss, phase)) return { line: "Request timed out.", got: false, counted: false };
     const t = 1 + base + Math.floor(R() * 3);
     return { line: "Reply from " + ip + ": bytes=32 time" + (t < 1 ? "<1ms" : "=" + t + "ms") + " TTL=" + (sim.ttlOf(who) - 1), got: true, counted: true, t: t, who: who };
@@ -462,7 +462,7 @@ function tracert(sim, id, args) {
   const w = sim.hop(id).base;
   if (rt.local) { lines.push(hopLine(1, w, ip), "", "Trace complete."); facts.ok = true; facts.reached = 1; return { out: lines.join("\n") + "\n", facts: facts }; }
   const hops = (rt.hops || []).slice();
-  if (rt.routed && /^(pc|laptop)$/.test(sim.d[rt.owner[0]].kind)) { hops.pop(); rt = Object.assign({}, rt, { fail: "firewall" }); }   /* a Windows PC at the end: its firewall answers nothing */
+  if (rt.routed && /^(pc|laptop)$/.test(sim.d[rt.owner[0]].kind) && !sim.d[rt.owner[0]].echo) { hops.pop(); rt = Object.assign({}, rt, { fail: "firewall" }); }   /* a Windows PC at the end: its firewall answers nothing */
   if (!hops.length) { for (let k = 0; k < 5; k++) lines.push(lpad(k + 1, 3) + "     *        *        *     Request timed out."); lines.push("^C"); facts.ok = false; return { out: lines.join("\n") + "\n", facts: facts }; }
   lines.push(hopLine(1, w, hops[0]));
   if (rt.fail === "net-unreachable") { lines.push(lpad(2, 3) + "  " + hops[0] + "  reports: Destination net unreachable.", "", "Trace complete."); facts.ok = false; facts.stopAt = hops[0]; return { out: lines.join("\n") + "\n", facts: facts }; }

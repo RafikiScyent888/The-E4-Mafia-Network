@@ -102,6 +102,34 @@ PLANTS = [
  ("SB-J9 cmd: netsh's set address does nothing", 'js/net/cmd.js', 'const r = sim.apply({ t: "client", dev: id, values: { mode: "static", ip: ip, mask: mask, gw: gw, dns: (f.cfg.dns || []).slice() } });', 'const r = { ok: true };'),
  ('SB-J9 cmd: a port opened on the console always says down', 'js/net/cmd.js', 'const r = SW.exec(st.S, raw); st.prompt = r.prompt; r.out = linkNews(sim, tgt, r.out);', 'const r = SW.exec(st.S, raw); st.prompt = r.prompt;'),
  ('SB-J9 page: your laptop has no Network settings tab', 'js/net/pages.js', '["wcmd", "Command Prompt"], ["settings", "Network settings"], ["tftp", "TFTP server"]]', '["wcmd", "Command Prompt"], ["tftp", "TFTP server"]]'),
+ ("SB-J10 rtcli: a reservation given to any client on its network", 'js/net/rtcli.js', 'return q.host && q.clientId === cid && netOf(q.host, mask) === netOf(ip, mask); });', 'return q.host && netOf(q.host, mask) === netOf(ip, mask); });'),
+ ("SB-J10 rtcli: a hardware-address binding matched for a client that sends a client identifier", 'js/net/rtcli.js', 'return q.host && q.clientId === cid && netOf(q.host, mask) === netOf(ip, mask); });', 'return q.host && (q.clientId === cid || q.hw === cid.slice(2)) && netOf(q.host, mask) === netOf(ip, mask); });'),
+ ("SB-J10 rtcli: a host with no mask takes a /24, not its class mask", 'js/net/rtcli.js', 'return a < 128 ? "255.0.0.0" : a < 192 ? "255.255.0.0" : "255.255.255.0"; };', 'return "255.255.255.0"; };'),
+ ("SB-J10 rtcli: a binding wider than its network pool still inherits from it", 'js/net/rtcli.js', 'return x.network && bits(x.mask) <= bits(q.hostMask) && netOf(q.host, x.mask) === x.network; })', 'return x.network && netOf(q.host, x.mask) === x.network; })'),
+ ("SB-J10 rtcli: show ip dhcp binding lists a reservation as Automatic", 'js/net/rtcli.js', '(b.manual ? "Manual" : "Automatic")', '"Automatic"'),
+ ("SB-J10 rtcli: show ip dhcp binding lists the MAC alone, not the client ID", 'js/net/rtcli.js', 'pad(dotHex(clientIdOf(b.mac)), 22)', 'pad(dotHex(clientIdOf(b.mac).slice(2)), 22)'),
+ ("SB-J10 sim: the router's offer ignores reservations", 'js/net/sim.js', 'const M = RT.manualFor(R, RT.clientIdOf(mac), a.ip, a.mask);', 'const M = null;'),
+ ("SB-J10 sim: a department's block can be its VLAN's first", 'js/net/business.js', 'base = size * r.int(1, 256 / size - 1);', 'base = size * r.int(0, 256 / size - 1);'),
+ ("SB-J10 sim: the manager's address outside the kept-back ten", 'js/net/business.js', 'p.mgrIp = S.net.replace(/\\.0$/, "." + r.pick([7, 8, 9]));', 'p.mgrIp = S.net.replace(/\\.0$/, "." + r.pick([57, 58, 59]));'),
+ ("SB-J10 job: a trunk's allowed list replaced, accepted", 'js/build/business.js', 'C("replaced", !!rep,', 'C("replaced", false,'),
+ ("SB-J10 job: the subinterface's habitual /24, accepted", 'js/build/business.js', 'C("wide", set && f.mask === v.plan.vmask,', 'C("wide", false,'),
+ ("SB-J10 job: the gateway at the block's last address, read as merely another address", 'js/build/business.js', 'C("last", set && ip === D.last,', 'C("last", false,'),
+ ("SB-J10 job: a pool that matches no subinterface, accepted", 'js/build/business.js', 'C("nomatch", !!P && !!sa &&', 'C("nomatch", false &&'),
+ ("SB-J10 job: the pool's gateway never checked", 'js/build/business.js', 'C("router", !!P && P.router[0] !== D.gw,', 'C("router", false,'),
+ ("SB-J10 job: NAT's line with the mask for the wildcard, read as missing", 'js/build/business.js', 'C("natmask", !first && !!maskLine,', 'C("natmask", false,'),
+ ("SB-J10 job: the department's list stopping the replies, read as merely offline", 'js/build/business.js', 'C("reply", has && !r.on && !!out &&', 'C("reply", false &&'),
+ ("SB-J10 job: inspection where nothing's snooped, read as an old lease", 'js/build/business.js', 'C("blind", has && !r.on && !!rr && !!rr.dai && !watched,', 'C("blind", false,'),
+ ("SB-J10 job: a hardware-address reservation read as no reservation", 'js/build/business.js', 'C("hw", !stat && !B && !!hw,', 'C("hw", false,'),
+ ("SB-J10 job: a reservation's class mask, accepted", 'js/build/business.js', 'C("mask", !stat && !!B && B.host === want && B.hostMask !== p.vmask,', 'C("mask", false,'),
+ ("SB-J10 job: the manager's PC never renewed, accepted", 'js/build/business.js', 'C("renew", !stat && right && (!has || a.ip !== want),', 'C("renew", false,'),
+ ("SB-J10 job: the staff denied above the manager, read as the list stopping the manager", 'js/build/business.js', 'C("late", late,', 'C("late", false,'),
+ ("SB-J10 job: the list in the wrong direction, read as the list letting staff in", 'js/build/business.js', 'C("dir", !!f && !!f.aclIn && !f.aclOut && (sOpen.length > 0 || gOpen.length > 0),', 'C("dir", false,'),
+ ("SB-J10 job: a list naming the two PCs, not the block, accepted", 'js/build/business.js', 'C("host", !sOpen.length && !gOpen.length && (sEnd.length > 0 || gEnd.length > 0),', 'C("host", false,'),
+ ("SB-J10 job: the staff VLAN's guards taken off, accepted", 'js/build/business.js', 'C("guards", !!g,', 'C("guards", false,'),
+ ("SB-J10 job: the department's ports left parked, read as another VLAN", 'js/build/business.js', 'C("park", sp.mode === "access" && sp.access === P.id,', 'C("park", false,'),
+ ("SB-J10 job: the reservation without the client identifier's 01, in the walk-through", 'js/build/business.js', 'cid = dotHex(clientIdOf(sim.d.mgr.ifaces[0].mac));', 'cid = dotHex(clientIdOf(sim.d.mgr.ifaces[0].mac).slice(2));'),
+ ("SB-J10 job: a hint gives the block's mask", 'js/build/business.js', 'rung1: function () { return "On the router: show ip interface brief, and the subinterface\'s lines in show running-config. Beside them,', 'rung1: function (v) { return dept(v).mask + ". On the router: show ip interface brief, and the subinterface\'s lines in show running-config. Beside them,'),
+ ("SB-J10 job: a hint gives the manager's client ID", 'js/build/business.js', 'rung1: function () { return "On the manager\'s PC: ipconfig /all. On the router: show ip dhcp binding, and the pools in show running-config."; }', 'rung1: function (v, sim) { return "On the manager\'s PC: ipconfig /all (" + dotHex(clientIdOf(sim.d.mgr.ifaces[0].mac)) + "). On the router: show ip dhcp binding, and the pools in show running-config."; }'),
  ("an access port's missing VLAN never made", "js/net/swcli.js", 'if (!S.sw.vlans[v]) { S.sw.vlans[v] = { name: "VLAN" + String(v).padStart(4, "0") }; out.push("% Access VLAN does not exist. Creating vlan " + v); }', 'if (!S.sw.vlans[v]) { out.push("% Access VLAN does not exist. Creating vlan " + v); }'),
  ("interface range takes no list", "js/net/swcli.js", '.replace(/\\s+/g, " ").split(","), out = [];', '.replace(/\\s+/g, " ").split(/(?!)/), out = [];'),
  ("a cable refused names devices in capitals mid-sentence", "js/net/sim.js", 'const theDev = function (x) { return /^your /i.test(x.label) ? x.label.toLowerCase() : "the " + x.label.replace(', 'const theDev = function (x) { return "the " + x.label; return "the " + x.label.replace('),
@@ -116,7 +144,7 @@ for name, f, a, b in PLANTS:
     shutil.copy(f, BAK)
     open(f, "w").write(src.replace(a, b))
     try:
-        r = subprocess.run(["node", "--test"] + (os.environ["TESTS"].split() if os.environ.get("TESTS") else ["tests/business-jobs.test.js", "tests/business-sim.test.js", "tests/business-cli.test.js", "tests/business-cams.test.js", "tests/business-harden.test.js", "tests/business-sb6.test.js", "tests/business-sb7.test.js", "tests/business-sb8.test.js", "tests/business-sb9.test.js", "tests/business-page.test.js", "tests/office.test.js"]), env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=1200)
+        r = subprocess.run(["node", "--test"] + (os.environ["TESTS"].split() if os.environ.get("TESTS") else ["tests/business-jobs.test.js", "tests/business-sim.test.js", "tests/business-cli.test.js", "tests/business-cams.test.js", "tests/business-harden.test.js", "tests/business-sb6.test.js", "tests/business-sb7.test.js", "tests/business-sb8.test.js", "tests/business-sb9.test.js", "tests/business-sb10.test.js", "tests/business-page.test.js", "tests/office.test.js"]), env=dict(os.environ, SEEDS="20"), capture_output=True, text=True, timeout=1200)
         fails = [l.strip() for l in r.stdout.splitlines() if l.startswith("not ok")]
         caught += 1 if r.returncode else 0
         print(("CAUGHT" if r.returncode else "MISSED") + " · " + name + " · " + (", ".join(fails)[:200]), flush=True)

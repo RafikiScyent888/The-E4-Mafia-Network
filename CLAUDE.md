@@ -2527,6 +2527,90 @@ else still works; all three devices saved.
 - **Its subnet: "A block to work out"**: the records give a smaller block in CIDR only (a /27 for up to 30 devices, say),
   as the provider's letter did in SB-J7, so the mask, the gateway and the pool's range are worked out by hand.
 
+**As built (2 November 2026, on `save/level3-stage9`; not live):**
+- **Where it starts:** SB-J9 done, then you come back with your laptop and its cables (SB-J9's first line keeps the laptop on
+  the router's console, so SB-J10's `start` takes its cables away, as a technician arriving for a new job), then
+  `addDepartment` (`js/net/business.js`, a stream of its own): each business's department from `DEPARTMENTS` (the vet's
+  pharmacy, the dental billing office, the bakery's office, the physio billing desk, the bike shop's parts desk, the bookshop's
+  office), its room `dept` off the back room (on the plan below it, `BUSINESS_ROOM_BOX.dept`, a door in the back room's wall;
+  runs: 8 m from the back room), its VLAN from the business's VLAN set (`dept`), a /26, /27 or /28 inside
+  10.<site>.<vlan>.0 that is never the first block, its gateway the first usable address; the two PCs in their boxes in the
+  back room, for the back switch's ports 3 and 4 (parked by SB-J6), their descriptions from their names; the list's name
+  (`<VLAN name>-ACCESS`); the manager's address, `.7`, `.8` or `.9` of the staff network (inside the ten the staff pool
+  keeps back, so nothing else is ever handed it).
+- **The router's reservations (new):** a DHCP pool takes `host A.B.C.D [mask|/len]` (no mask: the address's class mask, as
+  on IOS), `client-identifier H.H.H` and `hardware-address H.H.H`, each with `no`; a pool is a network or a host, never both.
+  `manualFor` (`js/net/rtcli.js`) matches a binding on the client identifier a client sends, 01 (Ethernet) then its MAC
+  (`clientIdOf`): a hardware-address binding is for clients that send none (BOOTP), so it never matches a Windows PC, as on
+  the real thing. What a binding doesn't set comes from the network pool its address falls inside; a binding wider than that
+  pool (the class mask) inherits nothing. `rtOffer` in `js/net/sim.js` gives a bound client its address and nothing else.
+  `show ip dhcp binding` now lists every client by the client ID it sent (`01aa.bbcc.ddee.ff`), a reservation as Infinite,
+  Manual; `show ip dhcp pool` and the running configuration show host pools as IOS does.
+- **Fourteen lines:** the PCs placed and cabled (`dplace`); the VLAN on both switches, named, the trunk carrying it added to,
+  not replaced (`dvlan`); the ports open, access, in the VLAN, out of parking, described (`dport`); port security as the staff
+  PCs' (`dpsec`); the subinterface with the block's first address and mask (`dsub`: the habit's /24, the last address, the
+  network or broadcast address are causes of their own); the department's pool (`dpool`: a whole /24, another block, the
+  habit's .1 as gateway, no DNS, a pool matching no subinterface, an in-list stopping requests, snooping dropping answers);
+  printing and online (`dnet`: a lease from before the pool was put right, no NAT inside, NAT's line missing, with the mask
+  for the wildcard, or covering part of the block, the list's unseen deny stopping replies, inspection where nothing is
+  snooped, a lease from before snooping, the printer's replies stopped); snooping and inspection on the back switch
+  (`dguard`); the manager's reservation (`mgrip`: set by hand and dropped by inspection, no reservation, by hardware address,
+  the MAC without 01, another identifier, another address, the class mask, not renewed, the wrong gateway); only the manager
+  in (`dapart`: judged on every list a packet meets there and back, for file sharing, remote desktop and ping, to the PCs and
+  to either end of the block; no list, a missing list, another name, the list in, the staff denied above the manager, staff
+  or guests let in all or some ways, a list naming the two PCs not the block, the manager not at the address the list names);
+  everything still works, now including snooping and inspection still guarding the staff and guest VLANs (`still`); the
+  three saves. The records give the block in CIDR and never its mask, gateway, wildcard or broadcast.
+- **Other right ways that pass:** the list in on the subinterface judging what the department sends back; guests kept off by
+  a numbered line in their own list; the reservation's mask as a prefix; NAT's line for every 10. network of the site;
+  snooping and inspection on the closet switch too.
+- **The page:** the new room on the plan (taller, `viewBox` to 660) once the records add it; the two PCs on the diagram in a
+  column of their own left of the back switch (the diagram widens to the left, `-176 -26 1012 716`, once either is out of its
+  box), so their lines cross nothing; on the plan, their runs come down either side of the back PC. Both PCs have device
+  buttons, their own windows (Command Prompt, Network settings, Web browser) and the PC's 3D model.
+- **Checks:** `tests/business-sb10.test.js` (as found on 25 businesses with the records checked, the router's bindings, the
+  binding table, 34 tempting wrong ways each failing its own line plus the block's network and broadcast refused as the gateway,
+  five other right ways); the shared tests take SB-J10 in
+  (the ladder, no help naming the department's VLAN, block, list, ports, descriptions or the manager's client ID, its random
+  walk, replay and undo): 16 of 16. `tools/drive.mjs` has an SB-J10 block (three businesses, through the page); nine AAA
+  states; 28 Node plants and 4 page plants written.
+
+**SAVE POINT (2 November 2026, the owner: "create a save point"). Resume SB-J10 here, on `save/level3-stage9`
+(worktree `e4-sb10b`).** SB-J6 is live (`main` at 9d28690, Pages deployed); its go-live notes were merged into stages 6-9.
+Where SB-J10 stands:
+- **Passing:** `tests/business-sb10.test.js` 5 of 5 (after every change below). `tests/business-jobs.test.js` 16 of 16, run
+  before the last round of page changes: run it again.
+- **The first page drive** (`ONLY=business JOB=SB-J10 node tools/drive.mjs`; without `ONLY=business` it drives every level
+  and runs out of time) failed three things, all changed since and **not yet driven again**:
+  - the manager's ping to a department PC: the sim models Windows Firewall (no Windows PC answers a ping, even on its own
+    network), so nothing could show who reaches the department. Its PCs now carry `echo: true` (their firewalls answer
+    pings; `attempt` and `tracert` in `js/net/cmd.js` honour it) and the records say so; the access line's evidence now
+    says what a technician sees (a ping answered, the rest read in the list).
+  - "Dispensing PC" ran off the diagram's left edge: the PCs are now at x -90, the diagram's `viewBox` from -180.
+  - on the plan (easier reading on) the PCs' long names collided: they now stand one above the other at px 845 (py 590 and
+    675) in a taller room (`dept: [780, 520, 980, 740]`, plan `viewBox` height 735), and the back switch moves along its
+    wall to px 820 when the room exists (`BUSINESS_LAYOUT.bsw.dept`, applied in `pos()` in `js/desk/draw.js`), so the
+    department's runs come down clear of the back PC. Look at it again (`node tools/wip/sb10page.mjs <out> 4242`).
+- **Node plants:** 8 run, 8 caught (the six router plants, the offer ignoring reservations, the block's first). The run was
+  stopped on the ninth, which left its defect in `js/net/business.js` (the manager's address drawn from .57-.59): found by
+  checking every plant's anchor and put back. **Run plants in a copy of the checkout, never in place while editing** (the
+  tool restores each file from its own copy, so an edit made meanwhile is lost, and tests run meanwhile see the defect).
+- **Plant anchors to fix before the next plant run** (each must match exactly once): `SB-J6 job: port security without
+  sticky` and `SB-J6 job: restrict` now match twice (SB-J10's port security reuses those lines: lengthen them to SB-J6's own
+  text); `SB-J10 job: the staff denied above the manager` matches twice (SB-J8's `C("late", late,` too: lengthen it);
+  `SB-J6 job: the walk-through never renews the staff PCs` matches nothing (the guest phone's rejoin became Wi-Fi off and on
+  in SB-J6's solve; the same on the live branch) and the page plant `SB-J4: the back switch has no device button` matches
+  nothing (the device order has had "cab" since SB-J6, and now "dpc1", "dpc2").
+- **Still to do:** the drive again; the remaining 20 Node plants (`TESTS="tests/business-sb10.test.js"`, and the two hint
+  plants with `TESTS="tests/business-jobs.test.js"`); the 4 page plants; the nine AAA states (`ONLY=SB-J10 node tools/aaa.mjs
+  tools/aaa-states.json`); the full `npm test`; then the owner's preview.
+- **Previews owed to the owner** before SB-J7, SB-J8, SB-J9 and SB-J10 go live, in that order: screenshots from
+  `node tools/wip/sb78page.mjs <out> 4242` (SB-J7 to SB-J9) and `tools/wip/sb10page.mjs` (SB-J10). Also owed from SB-J7 to
+  SB-J9: SB-J9's 3 page plants, the AAA states of SB-J7 (5), SB-J8 (7) and SB-J9 (6), and SB-J7's 3 page plants.
+- **To raise with the owner:** the instructor PIN is written in this public repo's `CLAUDE.md` (four places) and in
+  `tools/drive.mjs`, and Pages serves both, so a student could read it; it was there before SB-J6. Removing it from the
+  files and choosing a new PIN (the old one stays in the history) is the owner's call.
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

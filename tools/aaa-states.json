@@ -1277,5 +1277,50 @@
   "name": "business: SB-J9 done, every line met",
   "page": "build.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J9',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const at=l=>sol.findIndex(a=>a.line===l); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J10 first check, the work order, the department's records with its block in CIDR",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J10',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const at=l=>sol.findIndex(a=>a.line===l); c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J10 the floor plan with the new room, the PCs still in their boxes",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J10',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const at=l=>sol.findIndex(a=>a.line===l); document.getElementById('vPhy').click();"
+ },
+ {
+  "name": "business: SB-J10 Mason's third rung on the reservation by hardware address",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J10',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const at=l=>sol.findIndex(a=>a.line===l); const k=sol.findIndex(a=>/^client-identifier /.test(a.line||'')); sol.forEach((a,i)=>c.act(i===k?Object.assign({},a,{line:'hardware-address '+a.line.split(' ')[1].replace(/^01/,'').replace(/\\./g,'').match(/.{4}/g).join('.')}):a)); for(let i=0;i<9;i++) c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "business: SB-J10 the manager's Command Prompt, show ip dhcp binding with the Manual reservation",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J10',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const at=l=>sol.findIndex(a=>a.line===l); sol.forEach(a=>c.act(a)); ['ssh '+p.user+'@'+p.vlans.staff.gw,p.userPw,'enable',p.rtSecret,'show ip dhcp binding','show ip dhcp pool MANAGER-PC'].forEach(l=>c.act({t:'cmd',dev:'mgr',line:l})); dev('mgr'); tab('Command Prompt');"
+ },
+ {
+  "name": "business: SB-J10 a department PC's Command Prompt, ipconfig on the block",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J10',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const at=l=>sol.findIndex(a=>a.line===l); sol.forEach(a=>c.act(a)); c.act({t:'cmd',dev:'dpc1',line:'ipconfig /all'}); dev('dpc1'); tab('Command Prompt');"
+ },
+ {
+  "name": "business: SB-J10 a department PC's Network settings",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J10',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const at=l=>sol.findIndex(a=>a.line===l); sol.forEach(a=>c.act(a)); dev('dpc2'); tab('Network settings');"
+ },
+ {
+  "name": "business: SB-J10 done, the logical diagram widened for the department",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J10',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const at=l=>sol.findIndex(a=>a.line===l); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('vLog').click();"
+ },
+ {
+  "name": "business: SB-J10 done, the floor plan with the department's room",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J10',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const at=l=>sol.findIndex(a=>a.line===l); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('vPhy').click();"
+ },
+ {
+  "name": "business: SB-J10 done, every line met",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J10',true,4242); const J=c.T, p=J.v.plan, sol=J.def.solve(J.v,J.sim); const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const dev=d=>document.querySelector('#devtabs [data-d='+d+']').click(); const at=l=>sol.findIndex(a=>a.line===l); sol.forEach(a=>c.act(a)); c.check(); document.getElementById('check').scrollIntoView();"
  }
 ]

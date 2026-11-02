@@ -2431,6 +2431,24 @@ address); router and closet switch saved. Goes live after SB-J7.
   a list renumbering the rest passed, because the test only took lines out after an insert had already fixed every number
   (it now takes one out of a list whose numbers were never fixed).
 
+### Level 3, SB-J9: the router rebuilt from its backup (talked out 2 November 2026, on `save/level3-stage8`)
+
+The Network+ (V9) objectives were read from the owner's doc on 2 November 2026 (the Network+ section unchanged) and shown
+with the lines proposed: Network operations ("Configuration management: production, backup, baseline configurations";
+"Disaster recovery: ... MTTR ... and testing"; "Access and management: ... SSH ... console"), Network security ("device
+hardening ... key management"), Network troubleshooting (the methodology). Lines proposed: the replacement racked in the
+closet cabinet with your laptop on its console; it runs the backup line for line (factory, in startup but never reloaded,
+a part not as the backup has it); SSH from a staff PC works again (keys never travel in a file); everyone back online,
+guests apart, the printers on their VLAN; both cameras from the manager's phone at the fixed address; saved, your laptop
+unplugged, the cabinet locked again with its key away.
+
+**The owner's answers, 2 November 2026:**
+- **The backup: "Current"**: taken right after the printers' VLAN went in; the lesson is the restore itself, and the
+  keys a file never carries.
+- **The failure: "Its power supply"**: the old router died overnight, its lights dark, and it won't power on.
+- **The restore: "Either way passes"**: copied into the running configuration and saved, or copied into startup and
+  reloaded, as on SO-J6; a copy into startup never reloaded is caught.
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

@@ -17,7 +17,7 @@ PLANTS = [
  ("SB-J4: your laptop has no spot of its own in the back room", "js/net/business.js", ', alt: { back: { x: 270, y: 330, lab: "right" } } },', ' },', "SB-J4"),
  ("SB-J4: the back switch goes anywhere", "js/net/sim.js", "const fx = x.fixed || (this.net.fixed || FIXED_ROOM)[x.kind];", "const fx = x.id === \"bsw\" ? null : x.fixed || (this.net.fixed || FIXED_ROOM)[x.kind];", "SB-J4"),
  ("SB-J4: the console cable reaches the next room", "js/net/sim.js", "if (ca && this.net.rooms[a.dev] !== this.net.rooms[b.dev]) return", "if (false) return", "SB-J4"),
- ("SB-J4: the back switch has no device button", "js/build/app.js", '"pp", "msw", "bsw", "pc",', '"pp", "msw", "pc",', "SB-J4"),
+ ("SB-J4: the back switch has no device button", "js/build/app.js", '"pp", "msw", "bsw", "cab",', '"pp", "msw", "cab",', "SB-J4"),
  ("SB-J5: the camera's page saves nothing", "js/desk/window.js", 'const x = ctx.act({ t: "client", dev: P.dev, values: values });', 'const x = { result: { ok: true } };', "SB-J5"),
  ("SB-J5: the phone's Wi-Fi switch does nothing", "js/desk/window.js", 'const r = ctx.act({ t: "radio", dev: id, on: !P.radio.on });', 'const r = { result: { ok: true, on: !P.radio.on } };', "SB-J5"),
  ("SB-J5: the phone's browser never on mobile data", "js/net/pages.js", "if (sim.d[id].cell && !(sim.wifiLink(id) && sim.wifiLink(id).connected)) {", "if (false) {", "SB-J5"),

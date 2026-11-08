@@ -66,7 +66,7 @@ function planSpots(sim, ids) {
   const off = office(sim);
   const box = function (x, y) { return [x - 44, y - 26, x + 44, y + 54]; };
   const clear = function (b) { return taken.every(function (t) { return b[2] < t[0] || b[0] > t[2] || b[3] < t[1] || b[1] > t[3]; }); };
-  const usual = function (id) { const p = pos(sim, id), room = sim.net.rooms[id], alt = LAY[id].alt && LAY[id].alt[room]; if (alt && alt.px != null) return alt; return p.px != null && room !== "upstairs" && (!LAY[id].room || LAY[id].room === room || (id === "laptop" && (room === "living" || room === "kitchen"))) ? p : null; };   /* upstairs is laid out afresh: it's split in two; alt: a device's own spot in another room (one with no spot on the plan is placed there afresh) */
+  const usual = function (id) { const p = pos(sim, id), room = sim.net.rooms[id], a0 = LAY[id].alt && LAY[id].alt[room], alt = a0 && a0.dept && sim.net.roomNames && sim.net.roomNames.dept ? Object.assign({}, a0, a0.dept) : a0; if (alt && alt.px != null) return alt; return p.px != null && room !== "upstairs" && (!LAY[id].room || LAY[id].room === room || (id === "laptop" && (room === "living" || room === "kitchen"))) ? p : null; };   /* upstairs is laid out afresh: it's split in two; alt: a device's own spot in another room (one with no spot on the plan is placed there afresh) */
   for (const id of ids) { const p = usual(id); if (p && clear(box(p.px, p.py))) { out[id] = { px: p.px, py: p.py }; taken.push(box(p.px, p.py)); } }
   for (const id of ids) {
     if (out[id]) continue;
@@ -237,7 +237,7 @@ const PLAN_NAME = { ap: "Access point", rtr: "Business router", bpc: "Back PC", 
   cinj1: "PoE injector", cam1: "Ceiling camera", cinj2: "PoE injector", cam2: "Back door camera", mphone: "Manager's phone", dpc1: "Department PC", dpc2: "Department PC" };
 export function drawPlan(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "p-");
-  svg.setAttribute("viewBox", "20 20 970 " + (sim.net.site === "business" && sim.net.roomNames.dept ? 735 : sim.net.site === "business" && sim.d.cam2 ? 600 : 510));   /* with the department's room (SB-J10) below the back room: taller again */   /* the business with its cameras (SB-J5): a strip outside, under the back door, for the back door camera */
+  svg.setAttribute("viewBox", "20 20 970 " + (sim.net.site === "business" && sim.net.roomNames.dept ? 765 : sim.net.site === "business" && sim.d.cam2 ? 600 : 510));   /* with the department's room (SB-J10) below the back room: taller again */   /* the business with its cameras (SB-J5): a strip outside, under the back door, for the back door camera */
   const build = sim.net.extra.build, off = office(sim);   /* a build house shows upstairs as the back bedroom and the landing; the office is its own plan */
   const site = siteOf(sim);
   let h = off ? site.rooms(sim) : '<rect class="room" x="30" y="30" width="390" height="270"/><rect class="room" x="420" y="30" width="340" height="270"/><rect class="room" x="30" y="300" width="390" height="220"/><rect class="room" x="420" y="300" width="340" height="220"/>' +
@@ -267,7 +267,7 @@ export function drawPlan(svg, sim, o) {
   }
   for (const r of runs) {
     const up = sim.cableUp(r.c); if (!up) anyDown = true;
-    for (const d of r.d) h += '<path class="' + (up ? (r.c.kind === "coax" ? "run-coax" : r.c.kind === "console" ? "run-con" : r.c.kind === "fibre" ? "run-fib" : "run") : "run-bad") + '" d="' + d + '"/>';
+    for (const d of r.d) h += '<path data-ends="' + r.c.a.dev + ' ' + r.c.b.dev + '" class="' + (up ? (r.c.kind === "coax" ? "run-coax" : r.c.kind === "console" ? "run-con" : r.c.kind === "fibre" ? "run-fib" : "run") : "run-bad") + '" d="' + d + '"/>';
   }
   svg.innerHTML += h + names;
   const K = sim.d.cab, inK = K ? K.holds.filter(function (d) { return !!P[d]; }) : [];

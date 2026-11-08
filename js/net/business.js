@@ -58,17 +58,17 @@ export const BUSINESS_LAYOUT = {
   router: { x: 680, y: 80, px: 115, py: 205, room: "closet", lab: "above" },
   rtr: { x: 440, y: 180, px: 245, py: 105, room: "closet", lab: "right" },
   msw: { x: 560, y: 300, px: 245, py: 205, room: "closet" },
-  tech: { x: 240, y: 290, px: 115, py: 295, room: "closet", alt: { back: { x: 270, y: 330, lab: "right" } } },   /* carried to the back room (SB-J4): far enough from the back switch for its console line to carry both names, its own name to its right */
+  tech: { x: 240, y: 290, px: 115, py: 295, room: "closet", alt: { back: { x: 270, y: 330, lab: "right", dept: { px: 925, py: 435 } } } },   /* carried to the back room (SB-J4): far enough from the back switch for its console line to carry both names, its own name to its right */
   pc: { x: 300, y: 440, px: 420, py: 130, room: "counter" },
   mgr: { x: 735, y: 150, px: 820, py: 150, room: "office" },
   printer: { x: 430, y: 440, px: 560, py: 140, room: "counter" },
-  bpc: { x: 110, y: 440, px: 820, py: 400, room: "back", cams: { px: 880, py: 430 } },   /* on the plan with the cameras (SB-J5): to the right, its long name clear of the back door camera's injector */
+  bpc: { x: 110, y: 440, px: 820, py: 400, room: "back", cams: { px: 880, py: 430 }, dept: { px: 895, py: 315 } },   /* on the plan with the cameras (SB-J5): to the right, its long name clear of the back door camera's injector */
   /* SB-J3's: the access point on the waiting area's ceiling, its injector in the closet, the visitor's phone */
   injector: { x: 735, y: 320, px: 245, py: 295, room: "closet", lab: "above" },   /* in line with the manager's PC and the access point, its name clear of the PC's address */
   ap: { x: 735, y: 440, px: 420, py: 352, room: "guest" },   /* on the plan, its tile's shadow clear of the room's name (AAA saw it under "SHOP FLOOR" on a phone) */
   guest: { x: 580, y: 440, px: 540, py: 430, room: "guest", cams: { x: 735, y: 600 } },   /* clear of the printer's address, with easier reading on too; with the cameras (SB-J5), down under the access point, its place taken by the ceiling camera's injector */
   /* SB-J4's: the back of house's own switch, up at the left where the back PC's run comes in */
-  bsw: { x: 100, y: 215, px: 900, py: 330, room: "back", dept: { px: 820 } },   /* with the department's room (SB-J10), along the wall to the left, so the department's runs come down clear of the back PC */
+  bsw: { x: 100, y: 215, px: 900, py: 330, room: "back", dept: { px: 785, py: 360 } },   /* with the department's room (SB-J10), down at the left, so the department's runs come down clear of the back PC (moved up to the right) */
   /* SB-J5's, on a taller diagram: the ceiling camera's injector under the closet switch and its camera below, down to the left so
      its line clears the injector's name; the back door camera's injector and camera on a row of their own under the back of house.
      The plan: the injectors beside their switches, the ceiling dome over the waiting area, the wall dome by the back door, the
@@ -76,15 +76,19 @@ export const BUSINESS_LAYOUT = {
   cinj1: { x: 600, y: 455, px: 115, py: 205, room: "closet" },
   cam1: { x: 490, y: 600, px: 560, py: 330, room: "guest" },
   cinj2: { x: 265, y: 600, px: 720, py: 450, room: "back" },
-  cam2: { x: 110, y: 600, px: 720, py: 562, room: "back" },   /* on the plan, on the wall outside the back door */
+  cam2: { x: 110, y: 600, px: 720, py: 562, room: "back", dept: { px: 710 } },   /* on the plan, on the wall outside the back door */
   mphone: { px: 720, py: 215, room: "office" },
   /* SB-J10's department: its two PCs in the new room off the back room, on the plan below it (beside the strip outside the back
-     door), one above the other so their long names fit; on the diagram, a column of their own left of the back switch (the
-     diagram widens to the left for them), so their lines cross nothing */
-  dpc1: { x: -90, y: 105, px: 845, py: 590, room: "dept" },
-  dpc2: { x: -90, y: 235, px: 845, py: 675, room: "dept" }
+     door), the first up at the right under the door and the second down at the left, so neither one's run passes the other's
+     tile or name; on the diagram, a column of their own left of the back switch (the diagram widens to the left for them), so
+     their lines cross nothing. With the room there, the back switch, the back PC, the back door camera and your laptop (once
+     it's carried to the back room) have spots of their own (`dept`), found by scoring layouts on all six businesses, both
+     fonts, at the start, with the PCs cabled and done: no run under a device it doesn't join, no name on a wall, a tile or
+     another name (8 November 2026) */
+  dpc1: { x: -90, y: 105, px: 910, py: 580, room: "dept" },
+  dpc2: { x: -90, y: 235, px: 860, py: 720, room: "dept" }
 };
-export const BUSINESS_ROOM_BOX = { closet: [30, 30, 300, 370], counter: [300, 30, 640, 270], office: [640, 30, 980, 270], guest: [300, 270, 660, 520], back: [660, 270, 980, 520], dept: [780, 520, 980, 740] };   /* dept: SB-J10's, drawn once it's there */
+export const BUSINESS_ROOM_BOX = { closet: [30, 30, 300, 370], counter: [300, 30, 640, 270], office: [640, 30, 980, 270], guest: [300, 270, 660, 520], back: [660, 270, 980, 520], dept: [800, 520, 980, 770] };   /* dept: SB-J10's, drawn once it's there */
 
 /* the managed switch as the business has it: set up as the small office's was, its records the business's */
 function closetSwitch(r, plan, desc) {

@@ -89,6 +89,37 @@ const dysClear = async (p, what) => {
   await p.click("#dys"); await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(100);
 };
 const T = (p, f) => p.evaluate(f);
+/* the floor plan's runs and walls (8 November 2026, SB-J10): a run reads as joining whatever it passes under, so none may pass
+   under a device it doesn't join (its tile or its name); and no name or tile may sit on a wall. Measured as painted, sampling
+   along each run. Five crossings were live before SB-J10 (three runs behind tiles since SB-J5, two names over a wall) and are
+   waiting for the owner's word: they are listed in OLD_PLAN and skipped, so this check holds SB-J10's own layout to the rule */
+const OLD_PLAN = /^(msw-printer run under pc's tile|msw-bsw run under cam1's tile|cinj1-cam1 run under msw's tile|"Business router" on a wall|"Injector CAM-02" on a wall)$/;
+const planRunsClear = (p) => p.evaluate(() => {
+  const svg = document.getElementById("plan"), box = (el) => el.getBoundingClientRect(), out = [];
+  const devOf = (n) => n.closest(".pdev") && n.closest(".pdev").dataset.d;
+  const TB = [...svg.querySelectorAll(".pdev rect.tile")].map((o) => ({ d: devOf(o), b: box(o) })), NB = [...svg.querySelectorAll("text.ns, text.rl")].map((t) => ({ t, d: devOf(t), b: box(t) }));
+  const walls = []; svg.querySelectorAll("rect.room").forEach((r) => { const b = box(r); walls.push({ v: 1, at: b.left, a: b.top, z: b.bottom }, { v: 1, at: b.right, a: b.top, z: b.bottom }, { v: 0, at: b.top, a: b.left, z: b.right }, { v: 0, at: b.bottom, a: b.left, z: b.right }); });
+  const onWall = (b, m) => walls.some((w) => (w.v ? b.left + m < w.at && b.right - m > w.at && b.top < w.z && b.bottom > w.a : b.top + m < w.at && b.bottom - m > w.at && b.left < w.z && b.right > w.a));
+  NB.forEach(({ t, b }) => { if (onWall(b, 1)) out.push('"' + t.textContent + '" on a wall'); });
+  TB.forEach(({ d, b }) => { if (onWall(b, 2)) out.push(d + "'s tile on a wall"); });
+  const inside = (pt, b) => pt.x > b.left + 1 && pt.x < b.right - 1 && pt.y > b.top + 1 && pt.y < b.bottom - 1;
+  let runs = 0;
+  svg.querySelectorAll("path[data-ends]").forEach((pa) => {
+    runs++; const ends = pa.dataset.ends.split(" "), L = pa.getTotalLength(), M = pa.getScreenCTM(), hit = new Set();
+    for (let s = 0; s <= 80; s++) { const q = pa.getPointAtLength(L * s / 80), pt = new DOMPoint(q.x, q.y).matrixTransform(M);
+      TB.forEach((o) => { if (ends.indexOf(o.d) < 0 && inside(pt, o.b)) hit.add(o.d + "'s tile"); });
+      NB.forEach((o) => { if (o.d && ends.indexOf(o.d) < 0 && inside(pt, o.b)) hit.add('"' + o.t.textContent + '"'); }); }
+    hit.forEach((h) => out.push(ends.join("-") + " run under " + h)); });
+  return { runs: runs, out: out };
+}).then((r) => ({ runs: r.runs, out: r.out.filter((o) => !OLD_PLAN.test(o)) }));
+const planBothFonts = async (p, what) => {
+  for (const dys of [false, true]) {
+    if (dys) { await p.click("#dys"); await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(150); }
+    await p.click("#vLog"); await p.waitForTimeout(40); await p.click("#vPhy"); await p.waitForTimeout(60);
+    const r = await planRunsClear(p); check(r.runs > 0 && !r.out.length, what + "'s floor plan" + (dys ? " with easier reading on" : "") + ": no run under a device it doesn't join, no name or tile on a wall (" + r.runs + " runs)" + (r.out.length ? " (" + r.out.join("; ") + ")" : ""));
+    if (dys) { await p.click("#dys"); await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(100); }
+  }
+};
 
 /* each ticket: what to look at, the fix through the page, the proof, and a tempting wrong fix */
 const PLAN = {
@@ -1664,8 +1695,9 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       check(!(await p.$('#plan [data-d="dpc1"]')) && !(await p.$('#net [data-d="dpc1"]')), tag + "the PCs in their boxes are on neither drawing");
       check(await p.$$eval("#bmRoom option", (l, r) => l.some((o) => o.value === "dept" && o.textContent.indexOf(r) >= 0), room), tag + "the Place form offers the new room, by its name");
       check((await p.$eval("#plan", (n) => n.textContent)).indexOf(room.toUpperCase()) >= 0, tag + "the floor plan shows the new room, named");
+      await planBothFonts(p, tag + "at the start, the business");
       const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
-      for (const a of sol) await step(p, a);
+      for (const [i, a] of sol.entries()) { await step(p, a); if (i === 3) await planBothFonts(p, tag + "with the department's PCs cabled, the business"); }
       await dev(p, "mgr"); await tab(p, "Command Prompt"); const t = await term(p);
       check(t.indexOf(plan.swHost + "(config-if)#") >= 0 && t.indexOf(plan.rtHost + "(dhcp-config)#") >= 0 && t.indexOf(plan.rtHost + "(config-ext-nacl)#") >= 0 && !/% Invalid|% Incomplete|% Ambiguous|% Bad mask|% This pool|timed out/.test(t), tag + "SSH from the manager's PC to the closet switch and the router: the pools and the list, every line taken");
       await type(p, "ipconfig"); check(new RegExp("IPv4 Address[ .]*: " + plan.mgrIp.replace(/\./g, "\\.") + "\\b").test((await term(p)).split("ipconfig").pop()), tag + "ipconfig on the manager's PC: its reserved address");
@@ -1684,13 +1716,14 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       check(new RegExp("Reply from " + ip1.replace(/\./g, "\\.")).test((await term(p)).split("ping " + ip1).pop()), tag + "from the manager's PC, it does");
       const done = await checkJob(p), n = await BJ(p, () => window.__e4b.T.def.reqs.length);
       check(new RegExp(n + " of " + n + " met").test(done) && /Job .* done/.test(done), tag + "every line met through the page (" + (done.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
-      const inRoom = await p.evaluate(() => { const r = [...document.querySelectorAll("#plan rect.room")].map((x) => [+x.getAttribute("x"), +x.getAttribute("y"), +x.getAttribute("width"), +x.getAttribute("height")]).find((b) => b[1] === 520 && b[0] === 780); return ["dpc1", "dpc2"].every((id) => { const g = document.querySelector('#plan [data-d="' + id + '"]'), m = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(g ? g.getAttribute("transform") : ""); return r && m && +m[1] > r[0] && +m[1] < r[0] + r[2] && +m[2] > r[1] && +m[2] < r[1] + r[3]; }); });
+      const inRoom = await p.evaluate(async () => { const R = (await import("./js/net/business.js")).BUSINESS_ROOM_BOX.dept, r = [...document.querySelectorAll("#plan rect.room")].map((x) => [+x.getAttribute("x"), +x.getAttribute("y"), +x.getAttribute("width"), +x.getAttribute("height")]).find((b) => b[0] === R[0] && b[1] === R[1]); return ["dpc1", "dpc2"].every((id) => { const g = document.querySelector('#plan [data-d="' + id + '"]'), m = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(g ? g.getAttribute("transform") : ""); return r && m && +m[1] > r[0] && +m[1] < r[0] + r[2] && +m[2] > r[1] && +m[2] < r[1] + r[3]; }); });
       check(inRoom, tag + "the floor plan draws both PCs inside the new room");
       await p.click("#vLog"); await p.waitForTimeout(40);
       check(!!(await p.$('#net [data-d="dpc1"]')) && !!(await p.$('#net [data-d="dpc2"]')), tag + "the diagram draws both of the department's PCs");
       const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished business's logical diagram: every name and port dot clear" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
       await p.click("#vPhy"); await p.waitForTimeout(40);
       await dysClear(p, tag + "the finished business");
+      await planBothFonts(p, tag + "the finished business");
       await p.reload(); await p.waitForTimeout(350);
       check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)), tag + "still done after a reload");
     } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0] + (process.env.STACK ? " " + (String(e.stack).match(/drive\.mjs:\d+/g) || []).join(" ") : "")); }

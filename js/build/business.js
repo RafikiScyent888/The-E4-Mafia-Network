@@ -172,7 +172,7 @@ const SB1 = {
   }, {
     id: "online", text: "Every PC is online again, names and all, and printing still works",
     causes: onlineCauses,
-    ok: function () { return "The reception, manager's and back-of-house PCs reach the internet by name, and the printer prints."; },
+    ok: function (sim) { return "The " + name(sim, "pc") + ", the manager's PC and the " + name(sim, "bpc") + " reach the internet by name, and the printer prints."; },
     rung1: function () { return "On each PC: ipconfig /all, then ping by name. What does each one use as its DNS server, and where did that come from?"; },
     rung2: function () { return "A PC keeps the lease it was given until it asks again. Anything the old router handed out with it, like the DNS servers, stays until then."; }
   }, L_SAVED_RT],
@@ -1506,7 +1506,7 @@ function prFixedCauses(sim, v) {
     C("mask", fix && f.mask !== v.plan.vmask, "Its subnet mask isn't the printers' network's", "Its mask is the printers' network's.", "The printer's control panel: subnet mask " + f.mask + "."),
     C("gw", fix && f.gw !== P.gw, !f.gw ? "It has no gateway: it answers only its own network, and staff print from other networks" : inNet(f.gw, lan) ? "Its gateway is still the old network's" : "Its gateway isn't the printers' network's", "Its gateway is the printers' gateway.", "The printer's control panel: gateway " + (f.gw || "blank") + ".")];
 }
-/* staff print to it at its new address: the reception PC's printer port, the back's and the manager's PCs reaching it */
+/* staff print to it at its new address: the front PC's printer port (the reception, till or counter PC), the back's and the manager's PCs reaching it */
 function prPrintCauses(sim, v) {
   const want = v.plan.printerIp, at = printerIp(sim) === want, r = sim.route("pc", want), reach = at && printsAt(sim, "pc", want), dai = at && !reach && !!r.dai, port = sim.d.pc.printer.port;
   return [C("moved", !at, "The printer isn't at its new address yet", "The printer has its new address.", "The printer's control panel: " + printerIp(sim) + "."),
@@ -1547,7 +1547,7 @@ const SB8 = {
     addPrinterVlan(sim); sim.cli = {};   /* the records' printers' VLAN, and the printer's address on it */
     return { sim: sim, v: b.v };
   },
-  brief(v, sim) { return { quote: "The card company's follow-up letter asks why our printer is still on the same network as the switches and the wireless access point. Our records have always said printers get a network of their own, so can you move it today? Reception prints all day, and the back prints labels, so it has to keep working.", from: sim.net.client.manager + ", " + sim.net.client.name }; },
+  brief(v, sim) { return { quote: "The card company's follow-up letter asks why our printer is still on the same network as the switches and the wireless access point. Our records have always said printers get a network of their own, so can you move it today? The " + name(sim, "pc") + " prints all day, and the " + name(sim, "bpc") + " prints labels, so it has to keep working.", from: sim.net.client.manager + ", " + sim.net.client.name }; },
   mason: "Moving a device to a network of its own takes three changes that have to agree: its switch port, its gateway on the router, and its own settings. Then everything that pointed at its old address. Last of all, ask who can reach it now that couldn't before.",
   limits: function (v, sim) {
     const p = v.plan, P = prn(v), G = guest(v);
@@ -1585,8 +1585,8 @@ const SB8 = {
   }, {
     id: "pprint", text: "Staff print to the printer at its new address",
     causes: prPrintCauses,
-    ok: function () { return "The reception PC prints to the printer's new address, and the back's and the manager's PCs reach it."; },
-    rung1: function () { return "From each staff PC, ping the printer's new address; on the reception PC, the Printers tab: where it sends its pages. On the closet switch: show ip arp inspection."; },
+    ok: function (sim) { return "The " + name(sim, "pc") + " prints to the printer's new address, and the " + name(sim, "bpc") + " and the manager's PC reach it."; },
+    rung1: function (v, sim) { return "From each staff PC, ping the printer's new address; on the " + name(sim, "pc") + ", the Printers tab: where it sends its pages. On the closet switch: show ip arp inspection."; },
     rung2: function () { return "A PC prints to an address, not to a printer: when the printer's address changes, every PC that names the old one has to be told. ARP inspection checks each device against a lease it saw handed out, and a device with a fixed address never had one."; }
   }, {
     id: "pguest", text: "Guests can't reach the printers",
@@ -1609,7 +1609,7 @@ const SB8 = {
   }],
   solve(v) {
     const p = v.plan, P = prn(v), G = guest(v), w = "0.0.0.255", m = function (l) { return { t: "cmd", dev: "mgr", line: l }; };
-    /* from the manager's PC, over SSH: the closet switch, then the router; then the printer's own panel and the reception PC */
+    /* from the manager's PC, over SSH: the closet switch, then the router; then the printer's own panel and the front PC */
     return [m("ssh " + p.user + "@" + p.swIp), m(p.userPw), m("enable"), m(p.swSecret), m("configure terminal"),
       m("vlan " + P.id), m("name " + P.name), m("exit"), m("interface gi0/3"), m("switchport access vlan " + P.id), m("end"),
       m("copy running-config startup-config"), m(""), m("exit"),
@@ -1624,7 +1624,7 @@ const SB8 = {
     return ["From the manager's PC: ssh " + p.user + "@" + p.swIp + " (the closet switch). vlan " + P.id + ", name " + P.name + "; interface gi0/3: switchport access vlan " + P.id + ". Save.",
       "ssh " + p.user + "@" + staff(v).gw + " (the router). interface " + subName(v, "printers") + ": encapsulation dot1Q " + P.id + ", ip address " + P.gw + " " + p.vmask + ".",
       "ip access-list extended " + p.guestAcl + ": 35 deny ip " + G.net + " 0.0.0.255 " + P.net + " 0.0.0.255 (show access-lists first: it goes in ahead of the line that lets guests out). Save.",
-      "The printer's control panel: fixed, " + p.printerIp + ", " + p.vmask + ", gateway " + P.gw + ". The " + (sim ? name(sim, "pc") : "reception PC") + "'s Printers tab: its port to " + p.printerIp + ". Then a test page."];
+      "The printer's control panel: fixed, " + p.printerIp + ", " + p.vmask + ", gateway " + P.gw + ". The " + name(sim, "pc") + "'s Printers tab: its port to " + p.printerIp + ". Then a test page."];
   },
   summary(v, sim) {
     const p = v.plan, P = prn(v);

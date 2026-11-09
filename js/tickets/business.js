@@ -17,11 +17,11 @@ import { exec } from "../net/cmd.js";
 import * as SW from "../net/swcli.js";
 import { rng, hash, ip2n } from "../net/util.js";
 
-const SB10 = BUSINESS_JOBS.find(function (d) { return d.id === "SB-J10"; });
+const J10 = BUSINESS_JOBS.find(function (d) { return d.id === "SB-J10"; });
 /* the business as SB-J10 left it, on a day like any other: nobody logged in, the TFTP server closed, the moment frozen */
 function settled(seed) {
-  const b = SB10.start(seed), sim = b.sim;
-  for (const a of SB10.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line, a.win); else sim.apply(a); }
+  const b = J10.start(seed), sim = b.sim;
+  for (const a of J10.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line, a.win); else sim.apply(a); }
   freeze(sim);
   return { sim: sim, plan: b.v.plan };
 }
@@ -731,5 +731,109 @@ const SB09 = {
   }
 };
 
-export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07, SB08, SB09];
+/* ---------------------------------------------------------------- SB-10 */
+/* A router subinterface tagged for the wrong VLAN: the printers' subinterface given a tag a digit off (nobody prints, everything
+   else works), the guests' one likewise (visitors join and get no address), or the department's and the guests' typed back in
+   from notes with each other's tags (the department's PCs get guests' addresses and can't print; a visitor's phone gets an
+   address in the department's block). The address on each subinterface is right; the tag decides which VLAN hears it. The
+   staff VLAN is never the one: with its subinterface gone, no PC could reach the router to fix it (its remote lines take only
+   the staff VLAN, and its console is in the locked cabinet). The fix: the tag back, and the address with it (a new tag clears
+   a subinterface's address), saved; whatever lost its network asks again. */
+const subsOf = function (sim, saved) { const R = sim.d.rtr.sw, src = saved ? R.startup && R.startup.subs : R.subs, out = {}; Object.keys(src || {}).forEach(function (n) { const f = src[n]; out[n] = { vlan: f.vlan, native: !!f.native, ip: f.ip, mask: f.mask }; }); return out; };
+const subFor = function (sim, id) { const R = sim.d.rtr.sw; return Object.keys(R.subs).find(function (n) { return R.subs[n].vlan === id; }); };
+const SB10_STORY = {
+  printers: function (v) { return "Nobody can print since this morning: not the " + v.pc + ", not my PC, not the " + v.deptName + ". Everything else works, the internet too, and the printer says Ready. Last night our nephew, who's learning networking, went through the router \"to see how its VLANs are set up\", and retyped a couple of lines to check he understood them."; },
+  guest: function () { return "Customers say the guest Wi-Fi takes the password and then never connects. Our own computers are all fine, and the access point's light is blue. On Sunday a friend of my brother's looked at the router's guest settings, \"just reading them\", he said."; },
+  swap: function (v) { return "The " + v.deptName + "'s two PCs restarted this morning: they get online, but they can't print. Everyone else is fine. Late on Friday the company that set up the " + v.deptName + " wiped part of the router's setup by mistake, the " + v.deptName + "'s and the guest Wi-Fi's, and typed both back in from their notes."; }
+};
+const SB10 = {
+  id: "SB-10", n: "10", level: 3, tier: "harder", title: "One part of the business lost its way through the router", priority: 2, due: "2 h",
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, V = p.vlans, r = rng(hash("SB-10:" + seed)), kind = r.pick(["printers", "guest", "swap"]), before = subsOf(sim);
+    const used = Object.keys(V).map(function (k) { return V[k].id; }).concat([1]);
+    let wrong = null, sub = null, ds = null, gs = null;
+    if (kind === "swap") {
+      ds = subFor(sim, V.dept.id); gs = subFor(sim, V.guest.id); const dm = sim.d.rtr.sw.subs[ds].mask, gm = sim.d.rtr.sw.subs[gs].mask;
+      onRouter(sim, ["configure terminal", "interface " + gs, "no encapsulation dot1Q", "interface " + ds, "encapsulation dot1Q " + V.guest.id, "ip address " + V.dept.gw + " " + dm,
+        "interface " + gs, "encapsulation dot1Q " + V.dept.id, "ip address " + V.guest.gw + " " + gm, "end"].concat(SAVE));
+      ["dpc1", "dpc2"].forEach(function (id) { exec(sim, id, "ipconfig /renew"); });   /* their weekly restart: they asked again */
+    } else {
+      const X = V[kind], id = X.id, cands = [id * 10, Math.floor(id / 10), Number(String(id).split("").reverse().join(""))].filter(function (n) { return n >= 2 && n <= 4094 && n !== id && used.indexOf(n) < 0; });
+      wrong = r.pick(cands); sub = subFor(sim, id);
+      onRouter(sim, ["configure terminal", "interface " + sub, "encapsulation dot1Q " + wrong, "ip address " + X.gw + " " + sim.d.rtr.sw.subs[sub].mask, "end"].concat(SAVE));   /* a new tag clears the address: typed again after it */
+    }
+    if (kind !== "printers") { sim.apply({ t: "radio", dev: "guest", on: false }); sim.apply({ t: "radio", dev: "guest", on: true }); }   /* a visitor's phone joining since */
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, before: before, sub: sub, wrong: wrong, vlan: kind === "swap" ? null : V[kind].id, ds: ds, gs: gs,
+      printer: p.printerIp, pc: name(sim, "pc"), deptName: String(sim.net.roomNames.dept).toLowerCase() } };
+  },
+  brief(v) { return { quote: SB10_STORY[v.kind](v) }; },
+  mason: "When one VLAN can't get past the router and the switches carry it the whole way, follow its frames to the very end of the trunk: where on the router do they land?",
+  affected(v) { return v.kind === "guest" ? "guest" : v.kind === "swap" ? "dpc1" : "pc"; },
+  options(v) {
+    const what = { printers: "printers'", guest: "guests'", swap: v.deptName + "'s" }[v.kind];
+    return [
+      { id: "right", right: true, text: v.kind === "swap" ? "The router's subinterfaces for the " + v.deptName + " and the guests are tagged for each other's VLANs" : "The router's subinterface for the " + what + " VLAN is tagged for the wrong VLAN" },
+      { id: "trunk", text: "The trunk to the router no longer carries the " + what + " VLAN", why: "show interfaces trunk on the closet switch lists it on the router's port, allowed and active." },
+      { id: "deleted", text: "The " + what + " VLAN has been deleted from the switches", why: "show vlan brief lists it, active, and its ports aren't inactive." },
+      { id: "shut", text: "The router's subinterface for the " + what + " VLAN has been shut down", why: "show ip interface brief on the router has every subinterface up and up." },
+      { id: "addr", text: "The router's address on the " + what + " VLAN has been changed", why: "show ip interface brief gives every subinterface the address the records give its network." },
+      v.kind === "printers" ? { id: "printer", text: "The printer's fixed address has been changed", why: "The printer's own panel gives the address the records have for it, and every PC prints to that address." }
+        : v.kind === "guest" ? { id: "pw", text: "The guest Wi-Fi's password has been changed", why: "The phone is let on to the guest network and asks for an address: a wrong password is refused before that, and the phone says so." }
+          : { id: "ap", text: "The access point now puts the guest Wi-Fi on the " + v.deptName + "'s VLAN", why: "The access point's own page tags the guest network with the VLAN the records give the guests." }
+    ];
+  },
+  rung1(v) { return (v.kind === "guest" ? "On the visitor's phone: its Wi-Fi page." : v.kind === "swap" ? "On a " + v.deptName + " PC: ipconfig, and on the visitor's phone its Wi-Fi page: whose networks are those addresses on?" : "On a PC: a ping to the printer.") + " Then on the router, from the manager's PC: show ip interface brief and show running-config, and hold every subinterface up against the records' VLAN plan."; },
+  rung2() { return "A subinterface hears only the frames tagged with the VLAN it's set for. With the wrong tag its address and its pool can be exactly right, and nothing on its own VLAN reaches them; whatever is on the VLAN it's tagged for gets them instead."; },
+  fixHints(v) { return ["Compare the VLAN each of the router's subinterfaces is tagged for with the VLAN the records give its network.", "Tag it for its own VLAN again. The router clears a subinterface's address when its tag changes, so give it back the address the records have" + (v.kind === "swap" ? "; and a tag can't go on one subinterface while the other still has it, so free it first." : "."), "Save it, then have whatever lost its network ask again" + (v.kind === "guest" ? ": the visitor's phone joins again." : v.kind === "swap" ? ": the " + v.deptName + "'s PCs and the visitor's phone each keep what they were given until they ask." : ".")]; },
+  exhibits(sim, v) {
+    const S = subsOf(sim), V = v.plan.vlans;
+    if (Object.keys(v.before).every(function (n) { return S[n] && S[n].vlan === v.before[n].vlan; })) return false;
+    if (v.kind === "printers") return !reachesPrinter(sim, "pc", v.printer) && online(sim, "pc") && online(sim, "mgr");
+    const g = sim.addr("guest");
+    if (v.kind === "guest") return !!g && g.kind === "apipa" && online(sim, "pc");
+    const d = sim.addr("dpc1"); return !!d && d.kind === "dhcp" && inNet(d.ip, V.guest.net, 24) && !reachesPrinter(sim, "dpc1", v.printer) && !!g && g.kind === "dhcp" && inNet(g.ip, V.dept.net, V.dept.len) && online(sim, "mgr");
+  },
+  subsRight(sim, v, saved) { const S = subsOf(sim, saved); return Object.keys(v.before).every(function (n) { const a = S[n], b = v.before[n]; return !!a && a.vlan === b.vlan && a.native === b.native && a.ip === b.ip && a.mask === b.mask; }); },
+  works(sim, v) {
+    const V = v.plan.vlans;
+    if (v.kind === "printers") return ["pc", "mgr", "bpc", "dpc1"].every(function (id) { return reachesPrinter(sim, id, v.printer); });
+    const g = sim.addr("guest"), gOk = !!g && g.kind === "dhcp" && inNet(g.ip, V.guest.net, 24) && online(sim, "guest");
+    if (v.kind === "guest") return gOk;
+    return gOk && ["dpc1", "dpc2"].every(function (id) { const a = sim.addr(id); return !!a && a.kind === "dhcp" && inNet(a.ip, V.dept.net, V.dept.len) && online(sim, id) && reachesPrinter(sim, id, v.printer); });
+  },
+  fixed(sim, v) { return SB10.subsRight(sim, v) && SB10.subsRight(sim, v, true) && SB10.works(sim, v) && online(sim, "pc") && online(sim, "mgr"); },
+  partial(v, sim) {
+    const V = v.plan.vlans;
+    if (SB10.subsRight(sim, v) && !SB10.subsRight(sim, v, true)) return "It works right now, but the router hasn't saved it: the next power cut or reload puts the wrong tag back.";
+    if (v.kind === "swap") {
+      const g = sim.addr("guest"); if (SB10.subsRight(sim, v) && !(g && g.kind === "dhcp" && inNet(g.ip, V.guest.net, 24))) return "The " + v.deptName + " works, but the visitor's phone still has the address it was given from the " + v.deptName + "'s block: it keeps it until it joins again.";
+      if (SB10.subsRight(sim, v) && ["dpc1", "dpc2"].some(function (id) { const a = sim.addr(id); return !(a && a.kind === "dhcp" && inNet(a.ip, V.dept.net, V.dept.len)); })) return "One of the " + v.deptName + "'s PCs still has a guest's address: each keeps what it was given until it asks again.";
+    }
+    return "It works right now, but the router's subinterfaces aren't the way the records have them.";
+  },
+  proves(f, sim, v) {
+    if (v.kind === "guest") return ((f.join || f.radio) && f.dev === "guest" && !!f.internet) || (f.page === "guest-wifi" && !!f.internet);
+    if (v.kind === "swap") return f.cmd === "ping" && (f.dev === "dpc1" || f.dev === "dpc2") && f.replies > 0 && (f.who || []).indexOf("printer") >= 0;
+    return (f.print === "ok" && f.port === v.printer) || (f.cmd === "ping" && f.replies > 0 && (f.who || []).indexOf("printer") >= 0);
+  },
+  proofText: "whatever lost its way reaching through the router: a test page or a ping to the printer, the visitor's phone online, or a department PC reaching the printer",
+  evidence: [
+    { id: "noprint", test: function (f, v) { return v.kind === "printers" && (f.print === "fail" || (f.cmd === "ping" && f.ip === v.printer && !f.replies)); }, text: function (f) { return f.print ? "Test page from the PC: nothing came out" : "Ping to the printer: no reply"; } },
+    { id: "phone", test: function (f, v) { return v.kind === "guest" && (((f.join || f.radio) && f.dev === "guest") || (f.page === "guest-wifi" && f.connected)) && f.apipa; }, text: function () { return "The visitor's phone joins the guest Wi-Fi but gets no address: 169.254, no internet"; } },
+    { id: "guestaddr", test: function (f, v) { return v.kind === "swap" && f.cmd === "ipconfig" && (f.dev === "dpc1" || f.dev === "dpc2") && !!f.ip && inNet(f.ip, v.plan.vlans.guest.net, 24); }, text: function (f, v, sim) { return "ipconfig on the " + name(sim, f.dev) + ": " + f.ip + ", an address on the guests' network, gateway " + f.gw; } },
+    { id: "visitor", test: function (f, v) { const D = v.plan.vlans.dept; return v.kind === "swap" && f.dev === "guest" && (f.join || f.radio || f.page === "guest-wifi") && !!f.ip && inNet(f.ip, D.net, D.len); }, text: function (f, v) { return "The visitor's phone: " + f.ip + ", an address in the " + v.deptName + "'s block"; } },
+    { id: "tag", test: function (f, v) { const o = devOut(f); return f.on === "rtr" && (/Encapsulation 802\.1Q Virtual LAN, Vlan ID/.test(o) || /\n encapsulation dot1Q \d+/.test(o)) && Object.keys(v.before).some(function (n) { const m = o.match(new RegExp("(?:^|\\n)" + n.replace(/[./]/g, "\\$&") + " is [^]*?Vlan ID\\s+(\\d+)|interface " + n.replace(/[./]/g, "\\$&") + "\\n[^!]*? encapsulation dot1Q (\\d+)")); return m && Number(m[1] || m[2]) !== v.before[n].vlan; }); },
+      text: function (f, v) { const o = devOut(f), bad = Object.keys(v.before).map(function (n) { const m = o.match(new RegExp("(?:^|\\n)" + n.replace(/[./]/g, "\\$&") + " is [^]*?Vlan ID\\s+(\\d+)|interface " + n.replace(/[./]/g, "\\$&") + "\\n[^!]*? encapsulation dot1Q (\\d+)")); return m && Number(m[1] || m[2]) !== v.before[n].vlan ? n + " tagged for VLAN " + (m[1] || m[2]) + ", its address " + v.before[n].ip : null; }).filter(Boolean); return "On the router: " + bad.join("; "); } },
+    { id: "trunk", test: function (f, v) { return f.on === "msw" && /Vlans allowed and active in management domain/.test(devOut(f)); }, text: function () { return "show interfaces trunk on the closet switch: the trunk to the router allows and carries every VLAN in the records"; } },
+    { id: "brief", test: function (f) { return f.on === "rtr" && /Interface\s+IP-Address\s+OK\?\s+Method\s+Status\s+Protocol/.test(devOut(f)); }, text: function () { return "show ip interface brief on the router: every subinterface up and up, on the address the records give its network"; } }
+  ],
+  summary(v) {
+    const V = v.plan.vlans, how = v.kind === "swap" ? "The " + v.deptName + "'s and the guests' subinterfaces had been typed back in from notes with each other's VLAN tags, and saved: each kept its own address, NAT and access list, and heard the other VLAN. The " + v.deptName + "'s PCs took guests' addresses, behind the guests' access list, and a visitor's phone took an address in the " + v.deptName + "'s block."
+      : "The " + (v.kind === "guest" ? "guests'" : "printers'") + " subinterface " + v.sub + " had been retyped with VLAN tag " + v.wrong + " instead of " + v.vlan + ", its address typed in again after it, and saved. Its address and " + (v.kind === "guest" ? "pool" : "access list") + " were right; nothing on VLAN " + v.vlan + " could reach them.";
+    return { cause: how + " The switches carried the VLAN all the way to the router; the router just wasn't listening for it there.", fix: (v.kind === "swap" ? "Freed one tag, tagged each subinterface for its own VLAN again (VLANs " + V.dept.id + " and " + V.guest.id + ")" : "Tagged " + v.sub + " for VLAN " + v.vlan + " again") + ", gave back the address" + (v.kind === "swap" ? "es" : "") + " the new tag cleared, saved, and " + (v.kind === "printers" ? "sent a test page." : v.kind === "guest" ? "had the visitor's phone join again." : "had the " + v.deptName + "'s PCs and the visitor's phone ask again.") };
+  }
+};
+
+export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07, SB08, SB09, SB10];
 export const BUSINESS_COMING = [];

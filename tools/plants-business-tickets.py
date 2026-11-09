@@ -51,7 +51,7 @@ NODE = [
  ("the ticket engine drops the closet cabinet", "js/tickets/engine.js", "joinssid: 1, apnet: 1, radio: 1, cabinet: 1 };", "joinssid: 1, apnet: 1, radio: 1 };"),
  ("a wrong option left without its reason", "js/tickets/business.js", 'why: "The manager\'s PC, in the staff VLAN on the same closet switch, prints and gets online. show interfaces trunk lists the staff VLAN on the router\'s port." },', 'why: "" },'),
 ]
-NODE += [('SB-02: the VLAN put back unsaved counts', 'js/tickets/business.js', 'return !!run && !!st && run.name === v.vname && st.name === v.vname', 'return !!run && run.name === v.vname'),
+NODE += [('SB-02: the VLAN put back unsaved counts', 'js/tickets/business.js', 'return !!run && !!st && run.name === v.vname && st.name === v.vname && SB02.kept(sim, v) && SB02.kept(sim, v, true)', 'return !!run && run.name === v.vname && SB02.kept(sim, v)'),   # both saved checks: "every VLAN each switch had, saved" covers the VLAN too
  ('SB-02: another VLAN lost on the way counts', 'js/tickets/business.js', '  kept(sim, v, saved) { return ["msw", "bsw"].every(', '  kept(sim, v, saved) { return true || ["msw", "bsw"].every('),
  ("SB-02: the back PC's ping to itself proves it", 'js/tickets/business.js', 'if (v.kind === "staff") return f.cmd === "ping" && f.dev === "bpc" && f.replies > 0 && (f.who || []).some(function (w) { return w !== "bpc"; });', 'if (v.kind === "staff") return f.cmd === "ping" && f.dev === "bpc" && f.replies > 0;'),
  ('SB-02: the back PC left on 169.254 counts', 'js/tickets/business.js', 'if (v.kind === "staff") { const a = sim.addr("bpc"); return !!a && a.kind === "dhcp" && inNet(a.ip, S.net, 24) && online(sim, "bpc"); }', 'if (v.kind === "staff") return true;'),

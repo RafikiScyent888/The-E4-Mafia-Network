@@ -95,7 +95,7 @@ const WRONG = {
       onSw(T, other, back(T)).concat(again(T)),   /* made on the other switch */
       onSw(T, v.sw, ["interface " + trunk, "switchport trunk allowed vlan add " + v.vlan]).concat(again(T)),   /* the trunk told to carry what the switch no longer has */
       onSw(T, v.sw, back(T).concat(["no vlan " + v.plan.vlans.parking.id])).concat(again(T))   /* back, with another VLAN lost on the way */
-    ];
+    ].concat(v.kind === "printers" ? [] : [onSw(T, v.sw, back(T))]);   /* back and saved, and whatever lost its network never asked again (the printer's address is fixed: nothing to ask) */
   },
   "SB-03": (T) => {
     const v = T.v, L = [again3(T), [{ t: "power", dev: "msw" }].concat(again3(T)),

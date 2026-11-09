@@ -164,6 +164,7 @@ function serial(sim, id, raw) {
   const r = SW.exec(st.S, raw); st.prompt = r.prompt; r.out = linkNews(sim, tgt, r.out);
   const dup = sim.d[tgt].kind === "mswitch" && dupAddr(sim, tgt); if (dup && st.dup !== dup) { st.dup = dup; r.out = r.out.concat([dup]); }   /* once a session, as the console log shows it */
   const sl = sfpLog(sim, tgt), sk = sl.join("|"); if (sl.length && st.sfp !== sk) { st.sfp = sk; r.out = r.out.concat(sl); }
+  const nl = sim.d[tgt].kind === "mswitch" ? nativeLog(sim, tgt) : [], nk = nl.join("|"); if (nl.length && st.nat !== nk) { st.nat = nk; r.out = r.out.concat(nl); }   /* once a session, as the console log shows it */
   return { out: lines(r.out), facts: { cmd: "serial", dev: id, on: tgt, connected: true, mode: st.S.mode, line: raw.trim(), out: r.out.join("\n"), asked: !!r.secret }, secret: !!r.secret, cli: true, keep: r.keep };   /* asked: the switch is asking for a password next */
 }
 function remote(sim, id, raw, k) {
@@ -194,6 +195,20 @@ function dupAddr(sim, sw) {
   const o = sim.owners(a.ip, sim.domain(sim.homeNode(sw))).filter(function (d) { return d !== sw; }); if (!o.length) return null;
   const m = sim.macOf(o[0]).replace(/[^0-9a-f]/gi, "").toLowerCase();
   return "%IP-4-DUPADDR: Duplicate address " + a.ip + " on Vlan1, sourced by " + m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12);
+}
+/* a trunk whose two ends disagree on the native VLAN: the switch hears it from its neighbour (LLDP carries each end's native VLAN)
+   and says so on the console, as the real thing does. Found writing SB-08 (9 November 2026): the clue a student reads first */
+function nativeLog(sim, sw) {
+  const x = sim.d[sw], L = [];
+  for (const c of sim.cablesOf(sw)) {
+    if (c.kind !== "cat6" || !sim.cableUp(c)) continue;
+    const me = c.a.dev === sw ? c.a : c.b, far = c.a.dev === sw ? c.b : c.a, fd = sim.d[far.dev];
+    if (!fd || fd.kind !== "mswitch" || !fd.sw || !/^\d+$/.test(me.port) || !/^\d+$/.test(far.port)) continue;
+    const p = x.sw.ports["GigabitEthernet0/" + me.port], q = fd.sw.ports["GigabitEthernet0/" + far.port];
+    if (!p || !q || p.mode !== "trunk" || q.mode !== "trunk" || p.shutdown || q.shutdown || p.native === q.native) continue;
+    L.push("%LLDP-4-NATIVE_VLAN_MISMATCH: Native VLAN mismatch discovered on GigabitEthernet0/" + me.port + " (" + p.native + "), with " + fd.sw.hostname + " GigabitEthernet0/" + far.port + " (" + q.native + ").");
+  }
+  return L;
 }
 /* a module its slot can't run (a 10 Gb/s SFP+ in a 1 Gb/s SFP slot): the switch says so on the console and err-disables the port */
 function sfpLog(sim, sw) {

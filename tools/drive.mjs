@@ -601,6 +601,26 @@ Object.assign(PLAN, {
       fix: async (p, v) => { await rtConf(p, v, lines(v)); if (v.kind === "guest") await radio(p); },
       proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "guest") { await dev(p, "mgr"); await dev(p, "guest"); await tab(p, "Wi-Fi"); } else { await dev(p, v.dev); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); } }
     };
+  })(),
+  /* SB-08: a native VLAN mismatch on the back trunk; the back switch's console logs it */
+  "SB-08": (() => {
+    const onSw8 = (p, v, sw, lines, save) => sw === "bsw" ? bswConf(p, v, lines, save) : bizConf(p, v, lines, save);
+    const port = (sw) => sw === "msw" ? "interface gi0/23" : "interface gi0/24";
+    const again = async (p, v) => { for (const id of v.devs) { await dev(p, id); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); } };
+    return {
+      look: async (p, v) => {
+        await dev(p, v.devs[0]); await tab(p, "Command Prompt"); await type(p, "ipconfig"); check(/169\.254\./.test(await term(p)), "SB-08 " + v.kind + ": the PC that lost its network is on 169.254");
+        await bswLogin(p, v); check(/%LLDP-4-NATIVE_VLAN_MISMATCH: Native VLAN mismatch discovered on GigabitEthernet0\/24/.test(await term(p)), "SB-08: the back switch's console logs the native VLAN mismatch as it wakes");
+        await type(p, "show interfaces trunk"); check(new RegExp("Gi0/24\\s+on\\s+802\\.1q\\s+trunking\\s+" + (v.end === "bsw" ? v.vlan : v.native)).test(await term(p)), "SB-08: show interfaces trunk on the back switch gives its native VLAN");
+        await type(p, "disable"); await type(p, "exit");
+        await bizLogin(p, v); await type(p, "show interfaces trunk"); check(new RegExp("Gi0/23\\s+on\\s+802\\.1q\\s+trunking\\s+" + (v.end === "msw" ? v.vlan : v.native)).test(await term(p)), "SB-08: and on the closet switch"); await type(p, "exit");
+        const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(["apipa", "log", "trunkb", "trunkc"].every((x) => ev.indexOf(x) >= 0), "SB-08: the notebook has the PC cut off, the mismatch logged, and both ends' natives (" + ev + ")");
+      },
+      wrong: async (p, v) => { await onSw8(p, v, v.far, [port(v.far), "switchport trunk native vlan " + v.vlan]); await again(p, v); },
+      afterWrong: async (p) => { check(/a VLAN in use, untagged/.test(await p.$eval("#board", (n) => n.textContent)), "SB-08: the other end matched to it: Mason says a VLAN in use now crosses untagged"); },
+      fix: async (p, v) => { await onSw8(p, v, v.end, [port(v.end), "switchport trunk native vlan " + v.native]); await again(p, v); },
+      proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.devs[0]); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); }
+    };
   })()
 });
 

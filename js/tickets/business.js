@@ -605,5 +605,71 @@ const SB07 = {
   }
 };
 
-export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07];
+/* ---------------------------------------------------------------- SB-08 */
+/* A native VLAN mismatch on the trunk between the closet switch (gi0/23) and the back switch (gi0/24): one end's native VLAN
+   changed from the records' unused one to a VLAN in use. That end sends that VLAN untagged; the far end puts untagged frames in
+   its own native VLAN, so the VLAN goes dark in the back room: the back switch's end set to the staff VLAN ("so the back PC's
+   network is the main one"), the closet's end set to the staff VLAN, or the closet's end set to the department's. The other
+   VLANs on the trunk, still tagged, carry on. Both switches log the mismatch on their consoles; the back switch's is the one your
+   laptop is on. The fix: the changed end's native VLAN back to the records', saved. Matching the other end to it instead works,
+   and carries a VLAN in use untagged, which the records forbid. */
+const nativeOf = function (sim, id, port, saved) { const sw = sim.d[id].sw, P = saved ? sw.startup && sw.startup.ports && sw.startup.ports[port] : sw.ports[port]; return P ? P.native : null; };
+const SB08_KIND = { "staff-back": { end: "bsw", key: "staff", devs: ["bpc"] }, "staff-closet": { end: "msw", key: "staff", devs: ["bpc"] }, "dept-closet": { end: "msw", key: "dept", devs: ["dpc1", "dpc2"] } };
+const TRUNK = { msw: "GigabitEthernet0/23", bsw: "GigabitEthernet0/24" };
+const SB08_STORY = {
+  "staff-back": function (v) { return "The " + v.names[0] + " has had no network since Tuesday. The " + v.deptName + "'s PCs right beside it are fine. On Tuesday the PC supplier's technician was here and set the back switch up, he said, \"so the back PC's network is the main one on the link\"."; },
+  "staff-closet": function (v) { return "The " + v.names[0] + " lost the network this morning; everything out front and the " + v.deptName + " are fine. Last night our nephew worked on the closet switch's link to the back room, \"making the staff network the default on it\"."; },
+  "dept-closet": function (v) { return "The " + v.deptName + "'s two PCs have no network since yesterday afternoon. Everyone else, the back room's PC included, is fine. Yesterday the company that set up the " + v.deptName + " changed something on the closet switch's link to the back room, \"to make their network the default\"."; }
+};
+const SB08 = {
+  id: "SB-08", n: "08", level: 3, tier: "harder", title: "The back room's link carries everything but one network", priority: 2, due: "2 h",
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-08:" + seed)), kind = r.pick(["staff-back", "staff-closet", "dept-closet"]), K = SB08_KIND[kind], V = p.vlans[K.key];
+    onSwitch(sim, K.end, ["configure terminal", "interface " + TRUNK[K.end].replace("GigabitEthernet", "gi"), "switchport trunk native vlan " + V.id, "end"].concat(SAVE));
+    K.devs.forEach(function (id) { exec(sim, id, "ipconfig /renew"); });
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, end: K.end, far: K.end === "msw" ? "bsw" : "msw", native: p.vlans.native.id, vlan: V.id, devs: K.devs, printer: p.printerIp, names: K.devs.map(function (id) { return name(sim, id); }), deptName: String(sim.net.roomNames.dept).toLowerCase(), endName: name(sim, K.end) } };
+  },
+  brief(v) { return { quote: SB08_STORY[v.kind](v) }; },
+  mason: "A trunk has two ends, and each end has its own idea of what an untagged frame belongs to. Ask both.",
+  affected(v) { return v.devs[0]; },
+  options(v) {
+    const what = v.kind === "dept-closet" ? "the " + v.deptName + "'s" : "the staff";
+    return [
+      { id: "right", right: true, text: "The two ends of the trunk between the switches disagree on the native VLAN" },
+      { id: "allowed", text: "The trunk no longer allows " + what + " VLAN", why: "show interfaces trunk lists it among the VLANs allowed at both ends, and active." },
+      { id: "deleted", text: what.charAt(0).toUpperCase() + what.slice(1) + " VLAN has been deleted from the back switch", why: "show vlan brief on the back switch lists it, active, with its ports." },
+      { id: "dtp", text: "The trunk has stopped trunking and fallen back to an access port", why: "show interfaces trunk shows both ends trunking, mode on, and the other VLANs still cross it tagged." },
+      { id: "port", text: v.kind === "dept-closet" ? "The " + v.deptName + "'s PCs' ports have been moved to another VLAN" : "The " + v.names[0] + "'s port has been moved to another VLAN", why: "show interfaces switchport on the back switch gives each port the VLAN the records have for it." },
+      { id: "pool", text: "The router's pool for " + what + " VLAN has run out", why: "Devices in that VLAN out front renew from the same pool at once" + (v.kind === "dept-closet" ? ": the department's are the only ones, and show ip dhcp pool has addresses free." : ".") }
+    ];
+  },
+  rung1() { return "On the back switch, at your laptop's console: what it logs as the console wakes, and show interfaces trunk. Then the closet switch's show interfaces trunk, from the manager's PC, and hold both ends against the records."; },
+  rung2() { return "On a trunk, every VLAN but one crosses tagged. The native VLAN crosses untagged, and each end puts what arrives untagged into its own native VLAN. If the two ends' natives differ, a VLAN sent untagged from one end lands in another VLAN at the other."; },
+  fixHints() { return ["Both ends of that trunk should have the native VLAN the records give the trunks. Find the end that doesn't.", "Put that end back as the records have it. Matching the other end to it would carry a VLAN in use untagged.", "Save that switch, then have whatever lost its network ask again."]; },
+  exhibits(sim, v) { return nativeOf(sim, v.end, TRUNK[v.end]) === v.vlan && nativeOf(sim, v.far, TRUNK[v.far]) === v.native && v.devs.every(function (id) { return !online(sim, id); }) && online(sim, "pc"); },
+  nativesRight(sim, v, saved) { return nativeOf(sim, "msw", TRUNK.msw, saved) === v.native && nativeOf(sim, "bsw", TRUNK.bsw, saved) === v.native; },
+  fixed(sim, v) { return SB08.nativesRight(sim, v) && SB08.nativesRight(sim, v, true) && v.devs.every(function (id) { return online(sim, id); }) && ["pc", "bpc", "dpc1"].every(function (id) { return online(sim, id); }); },
+  partial(v, sim) {
+    const a = nativeOf(sim, "msw", TRUNK.msw), b = nativeOf(sim, "bsw", TRUNK.bsw);
+    if (a === b && a !== v.native) return "It works, but both ends now carry VLAN " + a + ", a VLAN in use, untagged. The records keep the trunks' native VLAN unused (" + v.native + "), so nothing in use rides a trunk untagged: that's what VLAN hopping feeds on.";
+    if (!SB08.nativesRight(sim, v, true)) return "It works right now, but the switch hasn't saved it: the next power cut or reload puts the mismatch back.";
+    return "It works right now, but the trunk isn't the way the records have it.";
+  },
+  proves(f, sim, v) { return f.cmd === "ping" && v.devs.indexOf(f.dev) >= 0 && f.replies > 0 && (f.internet || (f.who || []).indexOf("printer") >= 0); },
+  proofText: "a PC that lost its network reaching the printer or the internet",
+  evidence: [
+    { id: "apipa", test: function (f, v) { return f.cmd === "ipconfig" && v.devs.indexOf(f.dev) >= 0 && f.apipa; }, text: function (f, v, sim) { return "ipconfig on the " + name(sim, f.dev) + ": " + f.ip + " (169.254: no DHCP server answered)"; } },
+    { id: "log", test: function (f) { return /NATIVE_VLAN_MISMATCH/.test(devOut(f)); }, text: function (f) { const m = devOut(f).match(/Native VLAN mismatch discovered on (\S+) \((\d+)\), with (\S+) (\S+) \((\d+)\)/); return m ? "The console logs a native VLAN mismatch: " + m[1] + " (native " + m[2] + ") against " + m[3] + " " + m[4] + " (native " + m[5] + ")" : "The console logs a native VLAN mismatch"; } },
+    { id: "trunkb", test: function (f) { return f.on === "bsw" && /Native vlan/.test(devOut(f)) && /Gi0\/24\s+on\s+802\.1q\s+trunking\s+\d+/.test(devOut(f)); }, text: function (f) { const m = devOut(f).match(/Gi0\/24\s+on\s+802\.1q\s+trunking\s+(\d+)/); return "show interfaces trunk on the back switch: Gi0/24's native VLAN is " + (m ? m[1] : "?"); } },
+    { id: "trunkc", test: function (f) { return f.on === "msw" && /Native vlan/.test(devOut(f)) && /Gi0\/23\s+on\s+802\.1q\s+trunking\s+\d+/.test(devOut(f)); }, text: function (f) { const m = devOut(f).match(/Gi0\/23\s+on\s+802\.1q\s+trunking\s+(\d+)/); return "show interfaces trunk on the closet switch: Gi0/23's native VLAN is " + (m ? m[1] : "?"); } },
+    { id: "others", test: function (f, v) { const ok = v.kind === "dept-closet" ? /^bpc$/ : /^dpc[12]$/; return f.cmd === "ping" && ok.test(f.dev) && f.replies > 0 && (f.internet || (f.who || []).indexOf("printer") >= 0); }, text: function (f, v, sim) { return "Ping from the " + name(sim, f.dev) + ", on the same back switch over the same trunk: replies"; } }
+  ],
+  summary(v) {
+    const how = { "staff-back": "The back switch's end of the trunk had been given the staff VLAN as its native VLAN, and saved, while the closet's end kept the records' unused one.", "staff-closet": "The closet switch's end of the trunk had been given the staff VLAN as its native VLAN, and saved, while the back switch's end kept the records' unused one.", "dept-closet": "The closet switch's end of the trunk had been given the department's VLAN as its native VLAN, and saved." }[v.kind];
+    return { cause: how + " That end sent the VLAN untagged, and the far end put untagged frames into its own native VLAN, so the VLAN went dark beyond the trunk. Every other VLAN, still tagged, crossed as before. Both switches logged the mismatch.", fix: "Set the " + v.endName + "'s end back to native VLAN " + v.native + ", as the records have the trunks, saved, and had the PCs ask for their addresses again." };
+  }
+};
+
+export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07, SB08];
 export const BUSINESS_COMING = [];

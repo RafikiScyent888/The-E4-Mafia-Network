@@ -37,6 +37,7 @@ _src = open("js/tickets/business.js").read()
 _m = re.search(r"export const BUSINESS_TICKETS = \[([^\]]*)\];", _src)
 _ids = [x.strip() for x in _m.group(1).split(",")]
 PAGE += [(t[:2] + "-" + t[2:] + " left off the desk", "js/tickets/business.js", _m.group(0), "export const BUSINESS_TICKETS = [" + ", ".join(x for x in _ids if x != t) + "];") for t in _ids]
+PAGE += [('the native VLAN mismatch never logged', 'js/net/cmd.js', '    if (!p || !q || p.mode !== "trunk" || q.mode !== "trunk" || p.shutdown || q.shutdown || p.native === q.native) continue;', '    continue;')]
 NODE = [
  ("a fix left unsaved counts as fixed", "js/tickets/business.js", "return port(run) && port(st) && !!a", "return port(run) && !!a"),
  ("every spare port unparked counts as fixed", "js/tickets/business.js", "    return [\"GigabitEthernet0/4\"].concat(", "    return true || [\"GigabitEthernet0/4\"].concat("),
@@ -72,6 +73,9 @@ NODE += [('SB-06: part of the roles put right counts', 'js/tickets/business.js',
 NODE += [('SB-07: a list that permits anything counts', 'js/tickets/business.js', '  listRight(sim, v, saved) { const L = natList(sim, saved).slice().sort().join("|"); return L === v.before.slice().sort().join("|"); },', '  listRight(sim, v, saved) { const L = natList(sim, saved); return L.indexOf("permit any") >= 0 || L.slice().sort().join("|") === v.before.slice().sort().join("|"); },'),
  ('SB-07: the wrong line left in counts', 'js/tickets/business.js', '  listRight(sim, v, saved) { const L = natList(sim, saved).slice().sort().join("|"); return L === v.before.slice().sort().join("|"); },', '  listRight(sim, v, saved) { const L = natList(sim, saved); return v.before.every(function (k) { return L.indexOf(k) >= 0; }); },'),
  ("SB-07: a hint names the list's command", 'js/tickets/business.js', '"Make the list match that network as the records give it, network and wildcard,', '"Use access-list 1 permit to match that network as the records give it, network and wildcard,')]
+NODE += [('SB-08: the other end matched to it counts', 'js/tickets/business.js', '  nativesRight(sim, v, saved) { return nativeOf(sim, "msw", TRUNK.msw, saved) === v.native && nativeOf(sim, "bsw", TRUNK.bsw, saved) === v.native; },', '  nativesRight(sim, v, saved) { return nativeOf(sim, "msw", TRUNK.msw, saved) === nativeOf(sim, "bsw", TRUNK.bsw, saved); },'),
+ ('SB-08: the native put back unsaved counts', 'js/tickets/business.js', '  fixed(sim, v) { return SB08.nativesRight(sim, v) && SB08.nativesRight(sim, v, true) &&', '  fixed(sim, v) { return SB08.nativesRight(sim, v) &&'),
+ ('SB-08: a hint names the native VLAN command', 'js/tickets/business.js', '"Put that end back as the records have it.', '"Put that end\'s switchport trunk native vlan back as the records have it.')]
 AAA = [
  ("the cabinet's label left without its plate on the desk's floor plan", "js/desk/app.js", 'if (phy) plates($("plan"), ".rl, .ns, .cabl", "#f4f6fb");', 'if (phy) plates($("plan"), ".rl, .ns", "#f4f6fb");', "SB-01 the floor plan"),
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "SB-01 the ticket card"),

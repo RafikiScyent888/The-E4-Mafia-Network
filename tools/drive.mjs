@@ -1645,7 +1645,8 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       check(!(await p.$('#devtabs [data-d="rtr"]')) && /Business router/.test(await p.$eval(".tray", (n) => n.textContent)), tag + "the replacement in its box: no device button, in the tray");
       await place(p, "rtr", "closet"); check(/Not placed/.test(await p.$eval("#bmPmsg", (n) => n.textContent)) && /cabinet/i.test(await p.$eval("#bmPmsg", (n) => n.textContent)), tag + "the cabinet locked: the router can't go in its rack, and the page says why");
       await dev(p, "tech"); await tab(p, "TFTP server");
-      check(new RegExp(plan.backup.name).test(await p.$eval(".tftp", (n) => n.textContent)) && /Stopped/.test(await p.$eval(".tftp", (n) => n.textContent)), tag + "your laptop's TFTP server: stopped, the backup in its folder");
+      const files = await p.$eval(".tftp", (n) => { const ul = n.querySelector("ul.tfiles"); return ul ? ul.textContent : ""; });   /* the files received list itself: the backup's name is in the server log too */
+      check(files.indexOf(plan.backup.name) >= 0 && /Stopped/.test(await p.$eval(".tftp", (n) => n.textContent)), tag + "your laptop's TFTP server: stopped, the backup in its list of files received");
       const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
       const keygen = sol.findIndex((a) => a.t === "cmd" && a.dev === "mgr");
       for (let k = 0; k < sol.length; k++) {

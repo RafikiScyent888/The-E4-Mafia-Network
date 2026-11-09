@@ -6,7 +6,7 @@ import subprocess, shutil, sys, os
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))   # this checkout, wherever it is
 PAGE = [
  ("a level 3 ticket opens while its level is locked", "js/desk/app.js", "  if (!isOpen(def.level || 1)) def = HOME_TICKETS[0];", ""),
- ("SB-01 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03];", "export const BUSINESS_TICKETS = [SB02, SB03];"),
+ ("SB-01 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04];", "export const BUSINESS_TICKETS = [SB02, SB03, SB04];"),
  ("the business's records left off the ticket", "js/desk/app.js", '  if (net.site === "business" && T.v.plan) tk.appendChild(records(', '  if (false) tk.appendChild(records('),
  ("the business's ticket card says home network", "js/desk/app.js", '({ office: "office network", business: "business network" }[net.site] || "home network")', '(net.site === "office" ? "office network" : "home network")'),
  ("the business's devices given the office's buttons", "js/desk/app.js", "(biz ? BIZ_DEVICES : DEVICES).forEach", "DEVICES.forEach"),
@@ -20,14 +20,16 @@ PAGE = [
  ("the counter PC's port moved to the wrong port", "js/tickets/business.js", '["configure terminal", "interface gi0/1", "switchport access vlan " + V, "end"];', '["configure terminal", "interface gi0/2", "switchport access vlan " + V, "end"];'),
  ("a switch command over SSH never reaches the notebook", "js/tickets/business.js", 'const devOut = function (f) { return (f.cmd === "serial" || f.cmd === "ssh" || f.cmd === "telnet") && typeof f.out === "string" ? f.out : ""; };', 'const devOut = function (f) { return ""; };'),
 ]
-PAGE += [("SB-02 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03];", "export const BUSINESS_TICKETS = [SB01, SB03];"),
+PAGE += [("SB-02 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04];", "export const BUSINESS_TICKETS = [SB01, SB03, SB04];"),
  ("SB-02: the switch's own name for the VLAN accepted", 'js/tickets/business.js', 'return !!run && !!st && run.name === v.vname && st.name === v.vname && SB02.kept(', 'return !!run && !!st && SB02.kept('),
  ("the visitor's phone without its Wi-Fi switch", 'js/net/pages.js', 'heard: nets, radio: { on: true }, facts:', 'heard: nets, radio: null, facts:'),
  ("the switches' console password left off the card", 'js/tickets/business.js', '["Console passwords", "the router " + p.rtConsole + " · both switches " + p.swConsole],', '["Console passwords", "the router " + p.rtConsole],'),
  ('a ping across the router to a VLAN nothing answers on crashes Step through', 'js/net/cmd.js', '  if (rt.fail === "no-reply" && !rt.local && rt.via && sim.d[rt.via] && !(rt.owner && rt.owner.length)) {', '  if (false) {'),
  ("SB-02's evidence blind to a VLAN missing from show vlan brief", 'js/tickets/business.js', 'f.on === v.sw && /VLAN Name\\s+Status\\s+Ports/.test(o) && !new RegExp("^" + v.vlan + "\\\\s", "m").test(o)', 'f.on === v.sw && /NEVER/.test(o) && !new RegExp("^" + v.vlan + "\\\\s", "m").test(o)')]
-PAGE += [('SB-03 left off the desk', 'js/tickets/business.js', 'export const BUSINESS_TICKETS = [SB01, SB02, SB03];', 'export const BUSINESS_TICKETS = [SB01, SB02];'),
+PAGE += [("SB-03 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04];", "export const BUSINESS_TICKETS = [SB01, SB02, SB04];"),
  ('SB-03: a trunk carrying every VLAN accepted', 'js/tickets/business.js', '  rightList(al, v) { return carriesAll(al, v.lost) && (v.before', '  rightList(al, v) { return carriesAll(al, v.lost) || (v.before')]
+PAGE += [('SB-04 left off the desk', 'js/tickets/business.js', 'export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04];', 'export const BUSINESS_TICKETS = [SB01, SB02, SB03];'),
+ ("SB-04: the router's records left off the card", 'js/tickets/business.js', '    ["The router", p.rtHost + " · by SSH from a staff PC at " + S.gw +', '    ["The router", p.rtHost + " · by SSH from a staff PC" +')]
 NODE = [
  ("a fix left unsaved counts as fixed", "js/tickets/business.js", "return port(run) && port(st) && !!a", "return port(run) && !!a"),
  ("every spare port unparked counts as fixed", "js/tickets/business.js", "    return [\"GigabitEthernet0/4\"].concat(", "    return true || [\"GigabitEthernet0/4\"].concat("),
@@ -49,6 +51,10 @@ NODE += [('SB-02: the VLAN put back unsaved counts', 'js/tickets/business.js', '
 NODE += [("SB-03: the trunk's list put back unsaved counts", 'js/tickets/business.js', '  fixed(sim, v) { return SB03.rightList(allowedOf(sim, "msw", v.port), v) && SB03.rightList(allowedOf(sim, "msw", v.port, true), v) &&', '  fixed(sim, v) { return SB03.rightList(allowedOf(sim, "msw", v.port), v) &&'),
  ('SB-03: the department left off the back trunk counts', 'js/tickets/business.js', '&& online(sim, "bpc") && online(sim, "dpc1"); }\n    if (v.kind === "ap") { const g', '&& online(sim, "bpc"); }\n    if (v.kind === "ap") { const g'),
  ("SB-03: a hint names the trunk's command", 'js/tickets/business.js', '"Add back only what\'s missing, to what that trunk carries now:', '"switchport trunk allowed vlan add what\'s missing, to what that trunk carries now:')]
+NODE += [('SB-04: the pool put right unsaved counts', 'js/tickets/business.js', '  fixed(sim, v) { return SB04.poolsRight(sim, v) && SB04.poolsRight(sim, v, true) &&', '  fixed(sim, v) { return SB04.poolsRight(sim, v) &&'),
+ ('SB-04: the PCs never asking again counts', 'js/tickets/business.js', 'return !!a && a.kind === "dhcp" && a.gw === v.gw && online(sim, id); }) && online(sim, "mgr"); },', 'return true; }) && online(sim, "mgr"); },'),
+ ('SB-04: a gateway typed in on each PC counts', 'js/tickets/business.js', '  fixed(sim, v) { return SB04.poolsRight(sim, v) && SB04.poolsRight(sim, v, true) && v.devs.every(', '  fixed(sim, v) { return v.devs.every('),
+ ("SB-04: a hint names the pool's command", 'js/tickets/business.js', '"Give that pool the gateway the records give the VLAN,', '"Give that pool a default-router of the gateway the records give the VLAN,')]
 AAA = [
  ("the cabinet's label left without its plate on the desk's floor plan", "js/desk/app.js", 'if (phy) plates($("plan"), ".rl, .ns, .cabl", "#f4f6fb");', 'if (phy) plates($("plan"), ".rl, .ns", "#f4f6fb");', "SB-01 the floor plan"),
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "SB-01 the ticket card"),

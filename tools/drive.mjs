@@ -15,7 +15,7 @@ const { JOBS } = await import("../js/build/jobs.js");
 function seedsFor(id) {
   const def = HOME_TICKETS.concat(OFFICE_TICKETS, BUSINESS_TICKETS).find((d) => d.id === id); if (!def) return [11];   /* not built: the loop names it */
   const key = (T) => JSON.stringify([T.v.kind, T.v.end, T.v.kink]), out = [11, 2025, 777777], seen = new Set(out.map((s) => key(EN.open(def, s))));
-  for (let s = 1; s < (def.level === 3 ? 12 : def.level === 2 ? 40 : 400); s++) {   /* an office takes longer to build: every variant shows within the first forty; a business longer still, within twelve */ const k = key(EN.open(def, s)); if (!seen.has(k)) { seen.add(k); out.push(s); } }
+  for (let s = 1; s < (def.level === 3 ? 24 : def.level === 2 ? 40 : 400); s++) {   /* an office takes longer to build: every variant shows within the first forty; a business longer still, within twenty-four (SB-04's guests first come at 12) */ const k = key(EN.open(def, s)); if (!seen.has(k)) { seen.add(k); out.push(s); } }
   return out;
 }
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".jpg": "image/jpeg" };
@@ -514,6 +514,37 @@ Object.assign(PLAN, {
       afterWrong: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind !== "router") check(/has no use for/.test(await p.$eval("#board", (n) => n.textContent)), "SB-03: the trunk opened to every VLAN: Mason says it carries what the far end has no use for"); },
       fix: async (p, v) => { await bizConf(p, v, ["interface " + v.short, "switchport trunk allowed vlan add " + v.lost.join(",")]); await again(p, v); },
       proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "back") { await dev(p, "bpc"); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); } else if (v.kind === "router") { await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); } else await radio(p); }
+    };
+  })(),
+  /* SB-04: a DHCP pool handing out the wrong gateway; the router over SSH from the manager's PC, its logins off the card */
+  "SB-04": (() => {
+    const rtLogin = async (p, v) => {
+      const ssh = await rec(p, "Remote logins (SSH)"), rt = await rec(p, "The router"), sec = await rec(p, "Enable secrets");
+      const m = ssh.match(/^user (\S+) · password (\S+)$/), ip = (rt.match(/at (\d+\.\d+\.\d+\.\d+)/) || [])[1], s1 = (sec.match(/the router (\S+)/) || [])[1];
+      check(!!m && ip === v.plan.vlans.staff.gw && s1 === v.plan.rtSecret, "the business's records give the router's address and its enable secret");
+      await dev(p, "mgr"); await tab(p, "Command Prompt"); for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s1 || "?"]) await type(p, l);
+    };
+    const rtConf = async (p, v, lines, save) => { await rtLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end"], save === false ? [] : ["copy running-config startup-config", ""], ["exit"])) await type(p, l); };
+    const radio = async (p) => { await dev(p, "guest"); await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Turn Wi-Fi off")'); await p.waitForTimeout(40); await p.click('.pane button:text-is("Turn Wi-Fi on")'); await p.waitForTimeout(40); };
+    const again = async (p, v) => { for (const id of v.devs) { if (id === "guest") await radio(p); else { await dev(p, id); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); } } };
+    return {
+      look: async (p, v) => {
+        if (v.kind === "guest") { await dev(p, "guest"); await tab(p, "Wi-Fi"); const w = await p.$eval(".pane", (n) => n.textContent); check(/Connected to/.test(w) && /No internet/.test(w), "SB-04 guest: the visitor's phone is connected, with no internet"); }
+        else {
+          await dev(p, v.devs[0]); await tab(p, "Command Prompt"); await type(p, "ipconfig");
+          check(new RegExp("Default Gateway[ .]*: " + v.wrong.replace(/\./g, "\\.")).test(await term(p)), "SB-04 " + v.kind + ": ipconfig on a PC that restarted gives the wrong gateway, " + v.wrong);
+          await type(p, "ping " + v.gw); check(/Received = [1-4]/.test((await term(p)).split("ping " + v.gw).pop()), "SB-04: the router's own address on its VLAN answers");
+          await type(p, "ping " + v.printer); const pr = (await term(p)).split("ping " + v.printer).pop(); check(!/Reply from [\d.]+: bytes/.test(pr) && /Destination host unreachable|transmit failed/.test(pr), "SB-04: nothing past its own network does (Windows counts its own 'Destination host unreachable' as received)");
+        }
+        await rtLogin(p, v); await type(p, "show running-config");
+        check(new RegExp("ip dhcp pool " + v.pool + "\\n[^!]*default-router " + v.wrong.replace(/\./g, "\\.")).test(await term(p)), "SB-04: show running-config on the router: the " + v.pool + " pool's default router is " + v.wrong);
+        await type(p, "exit");
+        const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(ev.indexOf("pool") >= 0 && ev.indexOf(v.kind === "guest" ? "phone" : "ipc") >= 0, "SB-04: the notebook has what the devices were handed and the pool that handed it (" + ev + ")");
+      },
+      wrong: async (p, v) => { await rtConf(p, v, ["ip dhcp pool " + v.pool, "default-router " + v.gw], false); await again(p, v); },
+      afterWrong: async (p) => { check(/hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SB-04: the pool put right but not saved: Mason says so"); },
+      fix: async (p, v) => { await rtConf(p, v, ["ip dhcp pool " + v.pool, "default-router " + v.gw]); await again(p, v); },
+      proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "guest") { await dev(p, "mgr"); await dev(p, "guest"); await tab(p, "Wi-Fi"); } else { await dev(p, v.devs[0]); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); } }
     };
   })()
 });

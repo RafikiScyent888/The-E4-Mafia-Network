@@ -1004,6 +1004,27 @@
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-03'); const v=c.T.v, P=v.plan; const m=l=>c.act({t:'cmd',dev:'mgr',line:l}); ['ssh '+P.user+'@'+P.swIp,P.userPw,'enable',P.swSecret,'configure terminal','interface '+v.short,'switchport trunk allowed vlan add '+v.lost.join(','),'end','copy running-config startup-config','','exit'].forEach(m); c.guess('right'); c.act({t:'print'}); document.getElementById('board').scrollIntoView();"
  },
  {
+  "name": "business tickets: SB-04 ipconfig on a PC that restarted, the wrong gateway; the router's own address answering",
+  "page": "index.html",
+  "ticket": "SB-04",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-04'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d='+v.devs[0]+']').click(); tab('Command Prompt'); ['ipconfig','ping '+v.gw,'ping '+v.printer].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-04 the router's DHCP pools over SSH",
+  "page": "index.html",
+  "ticket": "SB-04",
+  "seed": 1,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-04'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.vlans.staff.gw,P.userPw,'enable',P.rtSecret,'show running-config'].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-04 the visitor's phone: connected, no internet",
+  "page": "index.html",
+  "ticket": "SB-04",
+  "seed": 12,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-04'); const v=c.T.v, P=v.plan; document.querySelector('#devtabs [data-d=guest]').click(); document.querySelector('.side').scrollIntoView();"
+ },
+ {
   "name": "business tickets: the shelves, the small business's tickets",
   "page": "lab-bench.html",
   "ticket": "SB-01",

@@ -328,5 +328,82 @@ const SB03 = {
 };
 const deptOf = function (v) { return "the " + v.deptName; };
 
-export const BUSINESS_TICKETS = [SB01, SB02, SB03];
+/* ---------------------------------------------------------------- SB-04 */
+/* A DHCP pool on the router handing out the wrong default router: the staff pool given the old flat network's gateway (copied
+   from the LAN pool above it) or the last address of the network; the department's pool given the first address of the whole
+   /24 instead of its own block's; the guests' pool given the network's last address. Devices that asked for an address since
+   take the wrong gateway: they reach their own VLAN (the router's own address on it answers), and nothing past it. Devices
+   that didn't ask again are fine, which is the clue in the brief. The fix: the pool's default router back to the router's own
+   address on that VLAN, saved, and the devices ask again. */
+function onRouter(sim, lines) {
+  const S = SW.session(sim.d.rtr.sw, { via: "console" }); S.mode = "priv"; S.pending = null; S.fresh = false;
+  lines.forEach(function (l) { SW.exec(S, l); });
+}
+const SB04_KIND = { staff: { key: "staff", devs: ["pc", "bpc"] }, dept: { key: "dept", devs: ["dpc1", "dpc2"] }, guest: { key: "guest", devs: ["guest"] } };
+const SB04_STORY = {
+  staff: function (v) { return "Monday morning, the " + v.names[0] + " and the " + v.names[1] + " can't get online or print. Both were off over the weekend. My PC, which I never turn off, is fine. Our nephew was in the router on Saturday, \"tidying the address settings\"."; },
+  dept: function (v) { return "The " + v.deptName + "'s two PCs lost the internet and the printer this morning, after their weekly restart. Everyone else is fine. On Friday the company that set the " + v.deptName + " up logged in to the router to check their work."; },
+  guest: function () { return "Since yesterday, customers say their phones join the guest Wi-Fi and get connected, then say there's no internet. Our own computers are all fine. A friend of my brother's looked at the router's guest settings on Sunday."; }
+};
+const poolOf = function (sim, name, saved) { const r = sim.d.rtr.sw, P = saved ? r.startup && r.startup.pools : r.pools; return P && P[name]; };
+const SB04 = {
+  id: "SB-04", n: "04", level: 3, tier: "common", title: "Devices restarted this morning can't get past their own network", priority: 2, due: "2 h",
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-04:" + seed)), kind = r.pick(["staff", "dept", "guest"]), K = SB04_KIND[kind], V = p.vlans[K.key];
+    const net = V.net.split(".").map(Number), last = net.slice(0, 3).concat([kind === "dept" ? net[3] + (1 << (32 - V.len)) - 2 : 254]).join(".");
+    const wrong = kind === "staff" ? r.pick([p.lanGw, last]) : kind === "dept" ? net.slice(0, 3).concat([1]).join(".") : last;   /* the old LAN's gateway or the network's last address; the /24's first; the last */
+    const pools = {}; Object.keys(sim.d.rtr.sw.pools).forEach(function (n) { const q = sim.d.rtr.sw.pools[n]; if (q.router && q.router.length) pools[n] = q.router.slice(); });   /* a host binding's pool has none of its own */
+    onRouter(sim, ["configure terminal", "ip dhcp pool " + V.name, "default-router " + wrong, "end"].concat(SAVE));
+    K.devs.forEach(function (id) { if (id === "guest") { sim.apply({ t: "radio", dev: "guest", on: false }); sim.apply({ t: "radio", dev: "guest", on: true }); } else exec(sim, id, "ipconfig /renew"); });   /* restarted since: they asked again */
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, pool: V.name, gw: V.gw, net: V.net, len: V.len || 24, wrong: wrong, pools: pools, devs: K.devs, printer: p.printerIp, pc: name(sim, "pc"), names: K.devs.map(function (id) { return name(sim, id); }), deptName: String(sim.net.roomNames.dept).toLowerCase() } };
+  },
+  brief(v) { return { quote: SB04_STORY[v.kind](v) }; },
+  mason: "Two PCs that restarted are broken and one that didn't is fine. What did the restart give them that the other one still has from before?",
+  affected(v) { return v.devs[0]; },
+  options(v) {
+    const what = { staff: "staff", dept: v.deptName + "'s", guest: "guests'" }[v.kind], whose = v.kind === "guest" ? "the visitors' phones" : "the PCs that restarted";
+    return [
+      { id: "right", right: true, text: "The router's " + what + " DHCP pool hands out the wrong default gateway" },
+      { id: "subif", text: "The router's address on the " + what + " VLAN has been changed", why: "show ip interface brief on the router gives that subinterface the address the records have, up and up, and " + whose + " get an answer from it." },
+      { id: "trunk", text: "The trunk no longer carries the " + what + " VLAN", why: cap(whose) + " got their addresses from the router's pool for that VLAN: DHCP crossed the trunk to get them." },
+      { id: "nat", text: "NAT no longer translates the " + what + " VLAN", why: v.kind === "guest" ? "NAT only matters on the way out to the internet: show ip nat translations still lists the guests' addresses going out before yesterday, and the router's NAT lines are as the records have them." : "NAT is only on the way out to the internet; the printer is inside the business and they can't reach it either." },
+      { id: "dns", text: "The pool hands out the wrong DNS servers", why: "Pings by address fail too, not only names: past their own network, nothing answers at all." },
+      { id: "pool", text: "The " + what + " pool has run out of addresses", why: cap(whose) + " have addresses from the pool: a pool run out leaves a device on 169.254." }
+    ];
+  },
+  rung1(v) { return "On " + (v.kind === "guest" ? "the visitor's phone: its Wi-Fi page" : "the " + v.names[0] + ": ipconfig /all") + ", and compare every line with the records' VLAN plan. Then on the router, from the manager's PC: show running-config, its DHCP pools."; },
+  rung2() { return "A device takes everything it's told from DHCP: its address, its mask, its gateway, its DNS. A gateway outside what the router really answers on sends everything bound past the device's own network to nowhere, while its own network still works."; },
+  fixHints(v) { return ["Find what's wrong in what the devices were handed, then find where they were handed it: the router's pool for that VLAN.", "Give that pool the gateway the records give the VLAN, the router's own address on it.", "Save it, then have the devices ask again" + (v.kind === "guest" ? ": the visitor's phone joins again." : ": each keeps what it was given until it asks.")]; },
+  exhibits(sim, v) {
+    const q = poolOf(sim, v.pool); if (!q || !q.router || q.router[0] !== v.wrong) return false;
+    return v.devs.every(function (id) { const a = sim.addr(id); return !!a && a.kind === "dhcp" && a.gw === v.wrong && !online(sim, id); }) && online(sim, "mgr");
+  },
+  poolsRight(sim, v, saved) { return Object.keys(v.pools).every(function (n) { const q = poolOf(sim, n, saved); return !!q && !!q.router && q.router.join(" ") === v.pools[n].join(" "); }); },
+  fixed(sim, v) { return SB04.poolsRight(sim, v) && SB04.poolsRight(sim, v, true) && v.devs.every(function (id) { const a = sim.addr(id); return !!a && a.kind === "dhcp" && a.gw === v.gw && online(sim, id); }) && online(sim, "mgr"); },
+  partial(v, sim) {
+    if (!v.devs.every(function (id) { const a = sim.addr(id); return a && a.gw === v.gw; })) return "It works for some, but " + (v.kind === "guest" ? "the visitor's phone still has" : "a PC that restarted still has") + " the wrong gateway: it keeps what it was handed until it asks again.";
+    if (SB04.poolsRight(sim, v) && !SB04.poolsRight(sim, v, true)) return "It works right now, but the router hasn't saved it: the next power cut or reload hands out the wrong gateway again.";
+    if (v.devs.some(function (id) { const a = sim.addr(id); return a && a.kind !== "dhcp"; })) return "It works, but with a gateway typed in on the device: the pool still hands out the wrong one to everything else that asks.";
+    return "It works right now, but the router's pools aren't the way the records have them.";
+  },
+  proves(f, sim, v) {
+    if (v.kind === "guest") return ((f.join || f.radio) && f.dev === "guest" && !!f.internet) || (f.page === "guest-wifi" && !!f.internet);
+    return f.cmd === "ping" && v.devs.indexOf(f.dev) >= 0 && f.replies > 0 && (f.internet || (f.who || []).indexOf("printer") >= 0);
+  },
+  proofText: "a device that restarted reaching past its own network: a ping to the printer or the internet, or the visitor's phone online",
+  evidence: [
+    { id: "ipc", test: function (f, v) { return f.cmd === "ipconfig" && v.devs.indexOf(f.dev) >= 0 && f.gw === v.wrong; }, text: function (f, v, sim) { return "ipconfig on the " + name(sim, f.dev) + ": default gateway " + f.gw + ", from DHCP; the router's address on its VLAN is " + v.gw; } },
+    { id: "phone", test: function (f, v) { return v.kind === "guest" && f.page === "guest-wifi" && f.connected && !f.internet; }, text: function () { return "The visitor's phone's Wi-Fi page: connected, an address from the guests' pool, no internet"; } },
+    { id: "local", test: function (f, v) { return f.cmd === "ping" && v.devs.indexOf(f.dev) >= 0 && f.ip === v.gw && f.replies > 0; }, text: function (f, v) { return "Ping from a PC that restarted to the router's address on its VLAN, " + v.gw + ": replies"; } },
+    { id: "beyond", test: function (f, v) { return f.cmd === "ping" && v.devs.indexOf(f.dev) >= 0 && f.ip !== v.gw && !f.replies; }, text: function (f) { return "Ping from a PC that restarted to " + f.ip + ": no reply, past its own network"; } },
+    { id: "pool", test: function (f, v) { const o = devOut(f); return f.on === "rtr" && new RegExp("ip dhcp pool " + v.pool + "\\n[^!]*default-router " + v.wrong.replace(/\./g, "\\.")).test(o); }, text: function (f, v) { return "show running-config on the router: ip dhcp pool " + v.pool + ", default-router " + v.wrong; } }
+  ],
+  summary(v) {
+    const how = { staff: v.wrong === v.plan.lanGw ? "The staff pool's default router had been typed as the old flat network's gateway, copied from the LAN pool above it," : "The staff pool's default router had been set to the network's last address, on the guess that a gateway sits at the end,", dept: "The department's pool had been given the first address of the whole /24 as its default router, not its own block's first usable address,", guest: "The guests' pool had been given the network's last address as its default router," }[v.kind];
+    return { cause: how + " and saved. Devices that asked for an address since took that gateway: their own VLAN worked, the router's own address on it answered, and nothing past it did. Devices that hadn't asked again kept the gateway they had.", fix: "Set the " + v.pool + " pool's default router back to " + v.gw + ", the router's own address on that VLAN, saved, and had the devices ask again." };
+  }
+};
+
+export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04];
 export const BUSINESS_COMING = [];

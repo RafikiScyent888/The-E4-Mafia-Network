@@ -91,33 +91,39 @@ const dysClear = async (p, what) => {
 const T = (p, f) => p.evaluate(f);
 /* the floor plan's runs and walls (8 November 2026, SB-J10): a run reads as joining whatever it passes under, so none may pass
    under a device it doesn't join (its tile or its name); and no name or tile may sit on a wall. Measured as painted, sampling
-   along each run; a name is measured with its plate. Seven crossings were live before SB-J10 (three runs behind tiles and the
-   printer's run under the front PC's name, two names over a wall, "Closet switch"'s plate on the closet's wall) and are waiting
-   for the owner's word: they are listed in OLD_PLAN and skipped, so this check holds SB-J10's own layout to the rule */
-const OLD_PLAN = /^(msw-printer run under pc's tile|msw-bsw run under cam1's tile|cinj1-cam1 run under msw's tile|"Business router" on a wall|"Injector CAM-02" on a wall|"Closet switch" on a wall|msw-printer run under "(Reception|Counter|Till) PC")$/;
+   along each run; a name or the cabinet's label is measured with its plate. Since 9 November 2026 (the owner: "Yes, fix all
+   fourteen") nothing is skipped: the problems live before SB-J10 are fixed, and every business work order's plan is held to
+   it (below, "every business work order's floor plan") */
 const planRunsClear = (p) => p.evaluate(() => {
   const svg = document.getElementById("plan"), box = (el) => el.getBoundingClientRect(), out = [];
   const devOf = (n) => n.closest(".pdev") && n.closest(".pdev").dataset.d;
-  const TB = [...svg.querySelectorAll(".pdev rect.tile")].map((o) => ({ d: devOf(o), b: box(o) })), NB = [...svg.querySelectorAll("text.ns, text.rl")].map((t) => { const pl = t.previousElementSibling && t.previousElementSibling.classList.contains("lpbg") ? t.previousElementSibling : t; return { t, d: devOf(t), b: box(pl) }; });   /* a name with its plate (4 units each side, 2 above and below): the plate is what covers a wall */
+  const TB = [...svg.querySelectorAll(".pdev rect.tile")].map((o) => ({ d: devOf(o), b: box(o) })), NB = [...svg.querySelectorAll("text.ns, text.rl, text.cabl")].map((t) => { const pl = t.previousElementSibling && t.previousElementSibling.classList.contains("lpbg") ? t.previousElementSibling : t; return { t, d: devOf(t), b: box(pl) }; });   /* a name with its plate (4 units each side, 2 above and below): the plate is what covers a wall */
   const walls = []; svg.querySelectorAll("rect.room").forEach((r) => { const b = box(r); walls.push({ v: 1, at: b.left, a: b.top, z: b.bottom }, { v: 1, at: b.right, a: b.top, z: b.bottom }, { v: 0, at: b.top, a: b.left, z: b.right }, { v: 0, at: b.bottom, a: b.left, z: b.right }); });
   const onWall = (b, m) => walls.some((w) => (w.v ? b.left + m < w.at && b.right - m > w.at && b.top < w.z && b.bottom > w.a : b.top + m < w.at && b.bottom - m > w.at && b.left < w.z && b.right > w.a));
   NB.forEach(({ t, b }) => { if (onWall(b, 1)) out.push('"' + t.textContent + '" on a wall'); });
   TB.forEach(({ d, b }) => { if (onWall(b, 2)) out.push(d + "'s tile on a wall"); });
   const inside = (pt, b) => pt.x > b.left + 1 && pt.x < b.right - 1 && pt.y > b.top + 1 && pt.y < b.bottom - 1;
   let runs = 0;
+  /* and since 9 November 2026: no run along a wall for more than 80 units away from its ends (it reads as the wall: a crossing at
+     a shallow angle is some way beside one, about 47 units at 10 degrees), and none behind a room's name (its plate hides the run) */
+  const rooms = [...svg.querySelectorAll("text.rl")].map((t) => { const pl = t.previousElementSibling && t.previousElementSibling.classList.contains("lpbg") ? t.previousElementSibling : t; return { t, b: box(pl) }; });
   svg.querySelectorAll("path[data-ends]").forEach((pa) => {
-    runs++; const ends = pa.dataset.ends.split(" "), L = pa.getTotalLength(), M = pa.getScreenCTM(), hit = new Set();
-    for (let s = 0; s <= 80; s++) { const q = pa.getPointAtLength(L * s / 80), pt = new DOMPoint(q.x, q.y).matrixTransform(M);
+    runs++; const ends = pa.dataset.ends.split(" "), L = pa.getTotalLength(), M = pa.getScreenCTM(), k = Math.hypot(M.a, M.b), hit = new Set();
+    let along = 0;
+    for (let s = 0; s <= 80; s++) { const d = L * s / 80, q = pa.getPointAtLength(d), pt = new DOMPoint(q.x, q.y).matrixTransform(M);
       TB.forEach((o) => { if (ends.indexOf(o.d) < 0 && inside(pt, o.b)) hit.add(o.d + "'s tile"); });
-      NB.forEach((o) => { if (o.d && ends.indexOf(o.d) < 0 && inside(pt, o.b)) hit.add('"' + o.t.textContent + '"'); }); }
-    hit.forEach((h) => out.push(ends.join("-") + " run under " + h)); });
+      NB.forEach((o) => { if (o.d && ends.indexOf(o.d) < 0 && inside(pt, o.b)) hit.add('"' + o.t.textContent + '"'); });
+      rooms.forEach((o) => { if (inside(pt, o.b)) hit.add("the room name \"" + o.t.textContent + '"'); });
+      if (d > 30 && d < L - 30 && walls.some((w) => (w.v ? Math.abs(pt.x - w.at) < 4 * k && pt.y > w.a && pt.y < w.z : Math.abs(pt.y - w.at) < 4 * k && pt.x > w.a && pt.x < w.z))) along += L / 80; }
+    hit.forEach((h) => out.push(ends.join("-") + " run under " + h));
+    if (along > 80) out.push(ends.join("-") + " run along a wall for " + Math.round(along) + " units"); });
   return { runs: runs, out: out };
-}).then((r) => ({ runs: r.runs, out: r.out.filter((o) => !OLD_PLAN.test(o)) }));
+});
 const planBothFonts = async (p, what) => {
   for (const dys of [false, true]) {
     if (dys) { await p.click("#dys"); await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(150); }
     await p.click("#vLog"); await p.waitForTimeout(40); await p.click("#vPhy"); await p.waitForTimeout(60);
-    const r = await planRunsClear(p); check(r.runs > 0 && !r.out.length, what + "'s floor plan" + (dys ? " with easier reading on" : "") + ": no run under a device it doesn't join, no name or tile on a wall (" + r.runs + " runs)" + (r.out.length ? " (" + r.out.join("; ") + ")" : ""));
+    const r = await planRunsClear(p); check(r.runs > 0 && !r.out.length, what + "'s floor plan" + (dys ? " with easier reading on" : "") + ": no run under a device it doesn't join or a room's name, or along a wall; no name or tile on a wall (" + r.runs + " runs)" + (r.out.length ? " (" + r.out.join("; ") + ")" : ""));
     if (dys) { await p.click("#dys"); await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(100); }
   }
 };
@@ -1729,6 +1735,23 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       await p.reload(); await p.waitForTimeout(350);
       check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)), tag + "still done after a reload");
     } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0] + (process.env.STACK ? " " + (String(e.stack).match(/drive\.mjs:\d+/g) || []).join(" ") : "")); }
+    await ctx.close();
+  }
+  /* every business work order's floor plan (9 November 2026, the owner: "Yes, fix all fourteen"): at its start and once it's
+     done, on six businesses, in both fonts: no run under a device it doesn't join, no name, label or tile on a wall. Each work
+     order's own drive above checks the plan only where its story needs it; this holds every one of them to the rule */
+  if (!process.env.JOB || process.env.JOB === "plans") {
+    const { p, ctx } = await zpage("build.html", { net: solvedTo(2), build: { j: {}, done: doneTo(2) } });
+    for (const job of LEVELS[2].jobs) for (const seed of [1, 2, 3, 4, 5, 10]) for (const at of ["start", "key", "done"]) {
+      const tag = "business " + job + " " + seed + " " + (at === "key" ? "with the cabinet's key in its lock" : at) + ": ";
+      try {   /* "key": part way, the key just put in the cabinet's lock, its label at its longest ("LOCKED, KEY IN"); only where the work order does that */
+        const here = await p.evaluate(([job, seed, at]) => { const c = window.__e4b; c.openJob(job, true, seed); const J = c.T, sol = J.def.solve(J.v, J.sim), k = sol.findIndex((a) => a.t === "cabinet" && a.values && a.values.key === true);
+          if (at === "key" && k < 0) return false; (at === "done" ? sol : at === "key" ? sol.slice(0, k + 1) : []).forEach((a) => c.act(a)); return true; }, [job, seed, at]);
+        if (!here) continue;
+        if (at === "key") check(/KEY IN/.test(await p.$eval("#plan .cabl", (n) => n.textContent)), tag + "the cabinet's label says the key is in");
+        await planBothFonts(p, tag + "the business");
+      } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+    }
     await ctx.close();
   }
 }

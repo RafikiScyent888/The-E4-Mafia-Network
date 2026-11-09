@@ -249,13 +249,14 @@ export function drawPlan(svg, sim, o) {
   const FIXED_RUNS = off ? site.runs : RUNS, nameOf = function (id) { const x = sim.d[id]; if (x.kind === "injector" && /, CAM-/.test(x.label)) return "Injector " + x.label.replace(/^.*, /, ""); return (off && site.plan[id]) || (sim.net.site === "business" && x.label) || PLAN_NAME[id]; };   /* a camera's injector (SB-J5) by the camera it's labelled for */   /* the business's PCs by their own names (the reception PC, the till) */
   const ids = Object.keys(PLAN_NAME).filter(function (id) { return shown(sim, id); }), P = planSpots(sim, ids);
   let anyDown = false;
-  const runs = [];
+  const runs = [], routed = sim.net.site === "business";
   for (const c of sim.net.cables) {
     if ([c.a, c.b].some(function (e) { return sim.d[e.dev] && sim.d[e.dev].kind === "patchpanel" && !/R$/.test(e.port); })) continue;   /* the patch cords stay inside the rack: the plan shows the runs out to the rooms */
     let paths = FIXED_RUNS[c.id] && !build ? FIXED_RUNS[c.id] : null;
     if (c.id === "c-coax") paths = FIXED_RUNS[c.id];
     if (!paths) {   /* a run the student laid (or any run in build mode): drawn between where its two devices really are, bowed a little so two never sit on one line */
       const A = P[c.a.dev], Bp = P[c.b.dev]; if (!A || !Bp) continue;
+      if (routed) { runs.push({ c: c, A: A, B: Bp, d: null, mid: null }); continue; }   /* the business's runs find their own way, once the devices and their names are drawn (below) */
       const dx = Bp.px - A.px, dy = Bp.py - A.py, L = Math.hypot(dx, dy) || 1, k = 0.12 * L * (runs.length % 2 ? -1 : 1);
       const cx = (A.px + Bp.px) / 2 - dy / L * k, cy = (A.py + Bp.py) / 2 + dx / L * k;
       runs.push({ c: c, d: ["M" + A.px + " " + A.py + " Q " + Math.round(cx) + " " + Math.round(cy) + " " + Bp.px + " " + Bp.py], mid: [(A.px + 2 * cx + Bp.px) / 4, (A.py + 2 * cy + Bp.py) / 4] });
@@ -265,9 +266,11 @@ export function drawPlan(svg, sim, o) {
     const mid = n.length === 8 ? [(n[0] + 3 * n[2] + 3 * n[4] + n[6]) / 8, (n[1] + 3 * n[3] + 3 * n[5] + n[7]) / 8] : n.length >= 4 ? [(n[0] + n[n.length - 2]) / 2, (n[1] + n[n.length - 1]) / 2] : null;
     runs.push({ c: c, d: paths, mid: mid });
   }
+  const runClass = function (r, up) { return up ? (r.c.kind === "coax" ? "run-coax" : r.c.kind === "console" ? "run-con" : r.c.kind === "fibre" ? "run-fib" : "run") : "run-bad"; };
   for (const r of runs) {
     const up = sim.cableUp(r.c); if (!up) anyDown = true;
-    for (const d of r.d) h += '<path data-ends="' + r.c.a.dev + ' ' + r.c.b.dev + '" class="' + (up ? (r.c.kind === "coax" ? "run-coax" : r.c.kind === "console" ? "run-con" : r.c.kind === "fibre" ? "run-fib" : "run") : "run-bad") + '" d="' + d + '"/>';
+    if (!r.d) continue;
+    for (const d of r.d) h += '<path data-ends="' + r.c.a.dev + ' ' + r.c.b.dev + '" class="' + runClass(r, up) + '" d="' + d + '"/>';
   }
   svg.innerHTML += h + names;
   const K = sim.d.cab, inK = K ? K.holds.filter(function (d) { return !!P[d]; }) : [];
@@ -279,6 +282,7 @@ export function drawPlan(svg, sim, o) {
     g.appendChild(mk("rect", { class: "cabframe", x: x0, y: y0, width: x1 - x0, height: y1 - y0, rx: 10 }));
     const t = mk("text", { class: "cabl", x: (x0 + x1) / 2, y: Math.max.apply(null, ys) - 30, "text-anchor": "middle" }); t.textContent = "CABINET: " + st; g.appendChild(t);   /* just above the lowest device's tile, so it sits between them, or over the one it holds (SB-J9's start, the router still boxed: at the frame's middle it fell behind the switch's tile) */
     svg.appendChild(g);
+    try { const b = t.getBBox(), C = BUSINESS_ROOM_BOX.closet, w = b.width + 8; t.setAttribute("x", Math.round(Math.min(Math.max((x0 + x1) / 2, C[0] + 6 + w / 2), C[2] - 6 - w / 2))); } catch (e) {}   /* inside the closet's walls, however long its state ("LOCKED, KEY IN") */
   }
   for (const id of ids) {
     const p = P[id];
@@ -289,6 +293,7 @@ export function drawPlan(svg, sim, o) {
     const t = mk("text", { class: "ns", y: 47, "text-anchor": "middle" }); t.textContent = id === "laptop" && sim.d.laptop.label === "New laptop" ? "New laptop" : nameOf(id); g.appendChild(t);
     svg.appendChild(g);
   }
+  if (routed) routeRuns(svg, runs.filter(function (r) { return !r.d; }).sort(function (p, q) { return Math.hypot(p.B.px - p.A.px, p.B.py - p.A.py) - Math.hypot(q.B.px - q.A.px, q.B.py - q.A.py); }), ids, P, function (r) { return runClass(r, sim.cableUp(r.c)); }, K ? K.holds : []);
   /* a diamond on each run that's down, and the words for it. It starts halfway along the run and slides along it to the first
      spot clear of every name (with its plate), tile and diamond already drawn: halfway, SB-J9's router-to-modem run put it on
      "Business router" and the cabinet's label (AAA 1.08:1). Where halfway is clear, it stays there */
@@ -325,16 +330,91 @@ function officeRooms() {
 /* the small business: the network closet (the provider's line on its wall), the counter or reception, the manager's office,
    the waiting area or café floor, the back (treatment rooms, kitchen, workshop), and the entrance under the closet. Its rooms'
    names are the business's own */
+/* the business's runs (busier than a house's or the office's): each one a curve between its two devices, the least bent of the
+   curves that pass under no other device's tile or name (with its plate and a little room round both), stay on the plan, keep
+   off the rooms' names and the cabinet's label, and don't run alongside a run already drawn (crossing one is fine; running
+   beside it reads as one cable). Where no curve is clear, the one that covers least. The bends tried: each third of the way
+   along, pushed to one side or the other, so a run can swing round a device or thread between two. The shortest runs are laid
+   first, so a short one (a console cable, a run inside one room) goes straight and the long ones find their way round it */
+const BEND = [0, 12, -12, 24, -24, 36, -36, 50, -50, 65, -65, 80, -80, 100, -100, 120, -120, 145, -145, 170, -170];
+const CURVES = (function () {
+  const out = [], w = function (p) { return Math.abs(p[0]) + Math.abs(p[1]) + 0.5 * Math.abs(p[0] - p[1]); };
+  for (const a of BEND) for (const b of BEND) out.push([a, b]);
+  return out.sort(function (p, q) { return w(p) - w(q); });
+})();
+const ROUTES = new Map();
+function routeRuns(svg, todo, ids, P, cls, held) {
+  if (!todo.length) return;
+  const vb = svg.getAttribute("viewBox").split(" ").map(Number), X0 = vb[0] + 4, Y0 = vb[1] + 4, X1 = vb[0] + vb[2] - 4, Y1 = vb[1] + vb[3] - 4;
+  const boxOf = function (n, px, py) {
+    let b; try { b = n.getBBox(); } catch (e) { return null; } if (!b.width) return null;
+    const tf = n.closest("[transform]"), m = tf && /translate\(([-\d.]+) ([-\d.]+)\)/.exec(tf.getAttribute("transform")), dx = m ? +m[1] : 0, dy = m ? +m[2] : 0;
+    return [b.x + dx - px, b.y + dy - py, b.x + dx + b.width + px, b.y + dy + b.height + py];
+  };
+  const R = 5, dev = [], lab = [], cab = [], walls = [];   /* R: the room kept round a tile or a name's plate (4 by 2, as plates() draws it) */
+  for (const id of ids) dev.push([[P[id].px - 24 - R, P[id].py - 24 - R, P[id].px + 24 + R, P[id].py + 24 + R], id]);
+  svg.querySelectorAll(".pdev .ns").forEach(function (t) { const b = boxOf(t, 4 + R, 2 + R); if (b) dev.push([b, t.closest(".pdev").dataset.d]); });
+  svg.querySelectorAll(".rl").forEach(function (t) { const b = boxOf(t, 4, 2); if (b) lab.push(b); });
+  svg.querySelectorAll(".cabl").forEach(function (t) { const b = boxOf(t, 4, 2); if (b) cab.push(b); });   /* the cabinet's label: a run between two things it holds may pass behind it, straight down the cabinet */
+  svg.querySelectorAll("rect.room").forEach(function (q) { const x = +q.getAttribute("x"), y = +q.getAttribute("y"), w = +q.getAttribute("width"), h = +q.getAttribute("height"); walls.push([0, y, x, x + w], [0, y + h, x, x + w], [1, x, y, y + h], [1, x + w, y, y + h]); });
+  const byWall = function (p) { return walls.some(function (w) { return w[0] ? Math.abs(p[0] - w[1]) < 6 && p[1] > w[2] - 2 && p[1] < w[3] + 2 : Math.abs(p[1] - w[1]) < 6 && p[0] > w[2] - 2 && p[0] < w[3] + 2; }); };   /* a run running along a wall reads as the wall */
+  const before = svg.querySelector("text.rl") || svg.querySelector(".pcab, .pdev");
+  const put = function (r, d) { const pe = mk("path", { "data-ends": r.c.a.dev + " " + r.c.b.dev, class: cls(r), d: d }); if (before) svg.insertBefore(pe, before); else svg.appendChild(pe); };
+  /* the same devices, names and runs give the same routes: kept, so the plan redrawn after every action costs nothing more */
+  const R0 = function (v) { return Math.round(v); }, sig = vb.join(" ") + "|" + dev.map(function (o) { return o[1] + ":" + o[0].map(R0).join(","); }).join(";") + "|" + lab.map(function (q) { return q.map(R0).join(","); }).join(";") + "|" + todo.map(function (r) { return [r.c.a.dev, r.c.b.dev, r.A.px, r.A.py, r.B.px, r.B.py].join(","); }).join(";");
+  const kept = ROUTES.get(sig);
+  if (kept) { todo.forEach(function (r, i) { r.d = [kept[i].d]; r.mid = kept[i].mid; put(r, kept[i].d); }); return; }
+  const found = [];
+  const grid = {}, G = 6, key = function (x, y) { return Math.floor(x / G) + "," + Math.floor(y / G); };   /* the runs already drawn, as points in 6-unit cells */
+  const nearDrawn = function (x, y) { const i = Math.floor(x / G), j = Math.floor(y / G); for (let u = -1; u <= 1; u++) for (let v = -1; v <= 1; v++) if (grid[(i + u) + "," + (j + v)]) return true; return false; };
+  const inside = function (p, q) { return p[0] > q[0] && p[0] < q[2] && p[1] > q[1] && p[1] < q[3]; };
+  for (const r of todo) {
+    const a = r.A, b = r.B, ends = [r.c.a.dev, r.c.b.dev], dx = b.px - a.px, dy = b.py - a.py, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L;
+    const n = Math.max(24, Math.ceil(L / 5)), others = dev.filter(function (o) { return ends.indexOf(o[1]) < 0; }).map(function (o) { return o[0]; });
+    const step = L / n, inCab = held.indexOf(ends[0]) >= 0 && held.indexOf(ends[1]) >= 0;
+    const curve = function (k) {
+      const c1 = [a.px + dx / 3 + nx * k[0], a.py + dy / 3 + ny * k[0]], c2 = [a.px + 2 * dx / 3 + nx * k[1], a.py + 2 * dy / 3 + ny * k[1]], pts = [];
+      for (let i = 0; i <= n; i++) { const t = i / n, u = 1 - t; pts.push([u * u * u * a.px + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t * t * t * b.px, u * u * u * a.py + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t * t * t * b.py]); }
+      return { c1: c1, c2: c2, pts: pts };
+    };
+    let best = null, bestCost = Infinity;
+    for (const k of CURVES) {
+      const cv = curve(k);
+      let hit = 0, near = 0, room = 0, word = 0, wall = 0;
+      for (const p of cv.pts) {
+        if (p[0] < X0 || p[0] > X1 || p[1] < Y0 || p[1] > Y1) hit++;
+        else for (const q of others) if (inside(p, q)) { hit++; break; }
+        if (1000 * hit >= bestCost) break;
+        for (const q of lab) if (inside(p, q)) { room++; break; }
+        if (!inCab) for (const q of cab) if (inside(p, q)) { word++; break; }
+        if (Math.hypot(p[0] - a.px, p[1] - a.py) > 30 && Math.hypot(p[0] - b.px, p[1] - b.py) > 30) { if (nearDrawn(p[0], p[1])) near++; if (byWall(p)) wall++; }
+      }
+      const along = wall * step;   /* how far it runs beside a wall: a crossing at a shallow angle is some way, running along one is far */
+      const c = 1000 * hit + 500 * room + 40 * word + 20 * Math.max(0, near - 3) + 3 * Math.max(0, along - 15) + (along > 70 ? 500 * (along - 70) : 0);   /* a device covered, or a room's name hiding the run, is never worth it; nor is running along a wall; beside the cabinet's label, another run or a wall, avoided where a curve can */
+      if (c < bestCost) { best = cv; bestCost = c; }
+      if (c === 0) break;
+    }
+    const f = function (v) { return Math.round(v); };
+    r.d = ["M" + a.px + " " + a.py + " C " + f(best.c1[0]) + " " + f(best.c1[1]) + " " + f(best.c2[0]) + " " + f(best.c2[1]) + " " + b.px + " " + b.py];
+    r.mid = [(a.px + 3 * best.c1[0] + 3 * best.c2[0] + b.px) / 8, (a.py + 3 * best.c1[1] + 3 * best.c2[1] + b.py) / 8];
+    for (const p of best.pts) grid[key(p[0], p[1])] = 1;
+    found.push({ d: r.d[0], mid: r.mid }); put(r, r.d[0]);
+  }
+  if (ROUTES.size > 60) ROUTES.clear();
+  ROUTES.set(sig, found);
+}
 function businessRooms(sim) {
   const B = BUSINESS_ROOM_BOX, r = function (k) { const b = B[k]; return '<rect class="room" x="' + b[0] + '" y="' + b[1] + '" width="' + (b[2] - b[0]) + '" height="' + (b[3] - b[1]) + '"/>'; };
-  return r("closet") + r("counter") + r("office") + r("guest") + r("back") + '<rect class="room" x="30" y="370" width="270" height="150"/>' +
-    '<path class="door" d="M300 200v40M640 150v40M420 270h50M780 270h40M660 400v40M300 420v40M120 520h60"/><rect class="plate" x="26" y="108" width="14" height="24"/>' +
+  const X = B.closet[2];   /* the closet's right wall: the counter and the waiting area start there, and the entrance is as wide */
+  const E = B.closet[3];   /* the closet's floor: the entrance is under it, down to the front wall */
+  return r("closet") + r("counter") + r("office") + r("guest") + r("back") + '<rect class="room" x="30" y="' + E + '" width="' + (X - 30) + '" height="' + (520 - E) + '"/>' +
+    '<path class="door" d="M' + X + ' 200v40M640 150v40M420 270h50M780 270h40M660 400v40M' + X + ' ' + (E + 40) + 'v40M120 520h60"/><rect class="plate" x="26" y="108" width="14" height="24"/>' +
     (sim && sim.d.cam2 ? '<path class="door" d="M700 520h40"/>' : "") +   /* the back door: the back door camera (SB-J5) is on the wall outside it */
     (sim && sim.net.roomNames.dept ? r("dept") + '<path class="door" d="M900 520h40"/>' : "");   /* the department's room (SB-J10), through a door in the back room's wall */
 }
 function businessNames(sim) {
   const N = sim.net.roomNames, B = BUSINESS_ROOM_BOX, up = function (k) { return String(N[k] || "").toUpperCase().replace(/&/g, "&amp;").replace(/'/g, "&#39;"); };
-  return ["closet", "counter", "office", "guest", "back"].map(function (k) { return '<text class="rl" x="' + (B[k][0] + 16) + '" y="' + (B[k][1] + 30) + '">' + up(k) + "</text>"; }).join("") + '<text class="rl" x="46" y="400">ENTRANCE</text>' + (sim.d.cam2 ? '<text class="rl" x="450" y="572">OUTSIDE THE BACK DOOR</text>' : "") + (N.dept ? '<text class="rl" x="' + (B.dept[0] + 16) + '" y="' + (B.dept[1] + 30) + '">' + up("dept") + "</text>" : "");
+  return ["closet", "counter", "office", "guest", "back"].map(function (k) { return '<text class="rl" x="' + (B[k][0] + 16) + '" y="' + (B[k][1] + 30) + '">' + up(k) + "</text>"; }).join("") + '<text class="rl" x="46" y="' + (B.closet[3] + 30) + '">ENTRANCE</text>' + (sim.d.cam2 ? '<text class="rl" x="450" y="572">OUTSIDE THE BACK DOOR</text>' : "") + (N.dept ? '<text class="rl" x="' + (B.dept[0] + 16) + '" y="' + (B.dept[3] - 14) + '">' + up("dept") + "</text>" : "");   /* the department's room's name at its foot: its runs come in at the top */
 }
 function officeNames() {
   return '<text class="rl" x="46" y="60">NETWORK CLOSET</text><text class="rl" x="316" y="60">FRONT DESK</text><text class="rl" x="656" y="60">MANAGER\'S OFFICE</text>' +

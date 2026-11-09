@@ -71,8 +71,9 @@ const SB01_STORY = {
 };
 const SB01 = {
   id: "SB-01", n: "01", level: 3, tier: "common", title: "One staff PC can't print or reach the others", priority: 2, due: "2 h",
+  kinds: ["guest", "parking", "cameras"],   /* its variants, in the order a seed picks them (the tests find a business for each) */
   build(seed) {
-    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-01:" + seed)), kind = r.pick(["guest", "parking", "cameras"]);
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-01:" + seed)), kind = r.pick(SB01.kinds);
     const V = kind === "guest" ? p.vlans.guest.id : kind === "parking" ? p.vlans.parking.id : p.vlans.cameras.id;
     const lines = kind === "parking" ? ["configure terminal", "interface range gi0/1 , gi0/4 , gi0/7 - 22", "switchport access vlan " + V, "end"]   /* the list typed in with port 1 in it */
       : ["configure terminal", "interface gi0/1", "switchport access vlan " + V, "end"];
@@ -158,8 +159,9 @@ const SB02_STORY = {
 const vlansOn = function (sim, id, saved) { const sw = sim.d[id].sw, V = saved ? sw.startup && sw.startup.vlans : sw.vlans; return V || {}; };
 const SB02 = {
   id: "SB-02", n: "02", level: 3, tier: "common", title: "Part of the business went dark after the weekend", priority: 2, due: "2 h",
+  kinds: ["staff", "printers", "guest"],   /* its variants, in the order a seed picks them (the tests find a business for each) */
   build(seed) {
-    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-02:" + seed)), kind = r.pick(["staff", "printers", "guest"]), K = SB02_KIND[kind], V = p.vlans[K.key];
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-02:" + seed)), kind = r.pick(SB02.kinds), K = SB02_KIND[kind], V = p.vlans[K.key];
     const had = { msw: Object.keys(vlansOn(sim, "msw")).map(Number), bsw: Object.keys(vlansOn(sim, "bsw")).map(Number) };   /* every VLAN each switch had: a fix mustn't lose another */
     onSwitch(sim, K.sw, ["configure terminal", "no vlan " + V.id, "end"].concat(SAVE));
     if (kind === "staff") exec(sim, "bpc", "ipconfig /renew");   /* restarted on Monday morning: it asked again */
@@ -256,8 +258,9 @@ const allowedOf = function (sim, id, n, saved) { const sw = sim.d[id].sw, P = sa
 const carriesAll = function (al, ids) { return ids.every(function (x) { return al === "all" || al.indexOf(x) >= 0; }); };
 const SB03 = {
   id: "SB-03", n: "03", level: 3, tier: "common", title: "Some things stopped working, others right next to them didn't", priority: 2, due: "2 h",
+  kinds: ["back", "ap", "router"],   /* its variants, in the order a seed picks them (the tests find a business for each) */
   build(seed) {
-    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-03:" + seed)), kind = r.pick(["back", "ap", "router"]), K = SB03_KIND[kind], V = p.vlans;
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-03:" + seed)), kind = r.pick(SB03.kinds), K = SB03_KIND[kind], V = p.vlans;
     const before = allowedOf(sim, "msw", K.port), lost = K.lost.map(function (k) { return V[k].id; });
     const line = kind === "back" ? "switchport trunk allowed vlan " + V.dept.id : kind === "ap" ? "switchport trunk allowed vlan 1"
       : "switchport trunk allowed vlan " + [1, V.staff.id, V.dept.id, V.guest.id, V.cameras.id].sort(function (a, b) { return a - b; }).join(",");   /* everything in use but the printers' */
@@ -348,8 +351,9 @@ const SB04_STORY = {
 const poolOf = function (sim, name, saved) { const r = sim.d.rtr.sw, P = saved ? r.startup && r.startup.pools : r.pools; return P && P[name]; };
 const SB04 = {
   id: "SB-04", n: "04", level: 3, tier: "common", title: "Devices restarted this morning can't get past their own network", priority: 2, due: "2 h",
+  kinds: ["staff", "dept", "guest"],   /* its variants, in the order a seed picks them (the tests find a business for each) */
   build(seed) {
-    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-04:" + seed)), kind = r.pick(["staff", "dept", "guest"]), K = SB04_KIND[kind], V = p.vlans[K.key];
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-04:" + seed)), kind = r.pick(SB04.kinds), K = SB04_KIND[kind], V = p.vlans[K.key];
     const net = V.net.split(".").map(Number), last = net.slice(0, 3).concat([kind === "dept" ? net[3] + (1 << (32 - V.len)) - 2 : 254]).join(".");
     const wrong = kind === "staff" ? r.pick([p.lanGw, last]) : kind === "dept" ? net.slice(0, 3).concat([1]).join(".") : last;   /* the old LAN's gateway or the network's last address; the /24's first; the last */
     const pools = {}; Object.keys(sim.d.rtr.sw.pools).forEach(function (n) { const q = sim.d.rtr.sw.pools[n]; if (q.router && q.router.length) pools[n] = q.router.slice(); });   /* a host binding's pool has none of its own */
@@ -420,8 +424,9 @@ const routesOf = function (sim, saved) { const r = sim.d.rtr.sw, R = saved ? r.s
 const defaults = function (sim, saved) { return routesOf(sim, saved).filter(function (x) { return x.net === "0.0.0.0" && x.mask === "0.0.0.0"; }); };
 const SB05 = {
   id: "SB-05", n: "05", level: 3, tier: "common", title: "Nothing gets out to the internet; everything inside still works", priority: 1, due: "1 h",
+  kinds: ["slip", "inside", "removed"],   /* its variants, in the order a seed picks them (the tests find a business for each) */
   build(seed) {
-    const B = settled(seed), sim = B.sim, p = B.plan, F = p.fixed, r = rng(hash("SB-05:" + seed)), kind = r.pick(["slip", "inside", "removed"]);
+    const B = settled(seed), sim = B.sim, p = B.plan, F = p.fixed, r = rng(hash("SB-05:" + seed)), kind = r.pick(SB05.kinds);
     const host = function (ip) { return +ip.split(".")[3]; }, pre = F.ip.split(".").slice(0, 3).join("."), first = host(F.net) + 1, last = host(F.bcast) - 1;
     const near = [first, first + 1, last - 1, last].filter(function (h) { return h !== host(F.gw) && h !== host(F.ip) && h >= first && h <= last; });   /* another usable address on the block: a digit misheard */
     const wrong = kind === "slip" ? pre + "." + (near[0] || first) : kind === "inside" ? p.lanGw.replace(/\.\d+$/, ".254") : null;
@@ -484,8 +489,9 @@ const SB06_STORY = {
 };
 const SB06 = {
   id: "SB-06", n: "06", level: 3, tier: "common", title: "The internet is down, but the router itself can still reach it", priority: 1, due: "1 h",
+  kinds: ["swapped", "wan", "sub"],   /* its variants, in the order a seed picks them (the tests find a business for each) */
   build(seed) {
-    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-06:" + seed)), kind = r.pick(["swapped", "wan", "sub"]);
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-06:" + seed)), kind = r.pick(SB06.kinds);
     const roles = natRoles(sim), ins = Object.keys(roles).filter(function (n) { return roles[n] === "inside"; }), sid = "GigabitEthernet0/1." + p.vlans.staff.id;
     const lines = kind === "swapped" ? ["interface GigabitEthernet0/0", "ip nat inside"].concat.apply(["interface GigabitEthernet0/0", "ip nat inside"], ins.map(function (n) { return ["interface " + n, "ip nat outside"]; }))
       : kind === "wan" ? ["interface GigabitEthernet0/0", "ip nat inside"] : ["interface " + sid, "ip nat outside"];
@@ -549,8 +555,9 @@ const SB07_STORY = {
 };
 const SB07 = {
   id: "SB-07", n: "07", level: 3, tier: "common", title: "One group of devices can't reach the internet; the others can", priority: 2, due: "2 h",
+  kinds: ["dept", "guest", "staff"],   /* its variants, in the order a seed picks them (the tests find a business for each) */
   build(seed) {
-    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-07:" + seed)), kind = r.pick(["dept", "guest", "staff"]), V = p.vlans[SB07_KIND[kind].key];
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-07:" + seed)), kind = r.pick(SB07.kinds), V = p.vlans[SB07_KIND[kind].key];
     const lines = sim.d.rtr.sw.acls["1"].lines.map(function (e) { return { ip: e.src.ip, wild: e.src.wild }; }), before = natList(sim);
     const wild = V.len ? ["0.0.0.127", "0.0.0.63", "0.0.0.31", "0.0.0.15", "0.0.0.7"][V.len - 25] : "0.0.0.255";
     const typo = function (net) { const o = net.split("."); o[2] = o[2].length > 1 ? o[2].slice(0, -1) : o[2] + o[2]; return o.join("."); };   /* a digit dropped: 20 becomes 2 */
@@ -623,8 +630,9 @@ const SB08_STORY = {
 };
 const SB08 = {
   id: "SB-08", n: "08", level: 3, tier: "harder", title: "The back room's link carries everything but one network", priority: 2, due: "2 h",
+  kinds: ["staff-back", "staff-closet", "dept-closet"],   /* its variants, in the order a seed picks them (the tests find a business for each) */
   build(seed) {
-    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-08:" + seed)), kind = r.pick(["staff-back", "staff-closet", "dept-closet"]), K = SB08_KIND[kind], V = p.vlans[K.key];
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-08:" + seed)), kind = r.pick(SB08.kinds), K = SB08_KIND[kind], V = p.vlans[K.key];
     onSwitch(sim, K.end, ["configure terminal", "interface " + TRUNK[K.end].replace("GigabitEthernet", "gi"), "switchport trunk native vlan " + V.id, "end"].concat(SAVE));
     K.devs.forEach(function (id) { exec(sim, id, "ipconfig /renew"); });
     freeze(sim);
@@ -685,8 +693,9 @@ const SB09_STORY = {
 };
 const SB09 = {
   id: "SB-09", n: "09", level: 3, tier: "harder", title: "Everything in the back room is off the network at once", priority: 1, due: "1 h",
+  kinds: ["auto-auto", "access-closet", "access-back"],   /* its variants, in the order a seed picks them (the tests find a business for each) */
   build(seed) {
-    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-09:" + seed)), kind = r.pick(["auto-auto", "access-closet", "access-back"]);
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-09:" + seed)), kind = r.pick(SB09.kinds);
     if (kind !== "access-back") onSwitch(sim, "msw", ["configure terminal", "interface gi0/23", kind === "auto-auto" ? "switchport mode dynamic auto" : "switchport mode access", "end"].concat(SAVE));
     if (kind !== "access-closet") onSwitch(sim, "bsw", ["configure terminal", "interface gi0/24", kind === "auto-auto" ? "switchport mode dynamic auto" : "switchport mode access", "end"].concat(SAVE));
     ["bpc", "dpc1", "dpc2"].forEach(function (id) { exec(sim, id, "ipconfig /renew"); });
@@ -748,8 +757,9 @@ const SB10_STORY = {
 };
 const SB10 = {
   id: "SB-10", n: "10", level: 3, tier: "harder", title: "One part of the business lost its way through the router", priority: 2, due: "2 h",
+  kinds: ["printers", "guest", "swap"],   /* its variants, in the order a seed picks them (the tests find a business for each) */
   build(seed) {
-    const B = settled(seed), sim = B.sim, p = B.plan, V = p.vlans, r = rng(hash("SB-10:" + seed)), kind = r.pick(["printers", "guest", "swap"]), before = subsOf(sim);
+    const B = settled(seed), sim = B.sim, p = B.plan, V = p.vlans, r = rng(hash("SB-10:" + seed)), kind = r.pick(SB10.kinds), before = subsOf(sim);
     const used = Object.keys(V).map(function (k) { return V[k].id; }).concat([1]);
     let wrong = null, sub = null, ds = null, gs = null;
     if (kind === "swap") {

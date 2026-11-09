@@ -14,6 +14,12 @@ import * as E from "../js/tickets/engine.js";
 import { exec } from "../js/net/cmd.js";
 
 const N = Number(process.env.SEEDS || 30);
+/* every variant on every run: the seeds, plus a business for each variant they miss (a ticket picks its variant first, from the seed
+   alone, so it's found without building anything). Without it, SEEDS=6 left a variant of SB-03, SB-06, SB-09 and SB-10 untried */
+import { rng, hash } from "../js/net/util.js";
+const seedsOf = (def, n) => { const base = seeds.slice(0, n || seeds.length); if (!def.kinds) return base; const kind = (s) => rng(hash(def.id + ":" + s)).pick(def.kinds), have = new Set(base.map(kind)), extra = [];
+  for (let s = 1; have.size < def.kinds.length && s < 2000; s++) if (!have.has(kind(s))) { have.add(kind(s)); extra.push(s); }
+  return base.concat(extra); };
 const inNet = (ip, net, len) => { const n = (x) => x.split(".").reduce((a, b) => a * 256 + +b, 0), m = 2 ** 32 - 2 ** (32 - (len || 24)); return Math.floor(n(ip) / 2 ** (32 - (len || 24))) === Math.floor(n(net) / 2 ** (32 - (len || 24))); };
 const seeds = Array.from({ length: N }, (_, i) => 5000 + i * 7919);
 const pc = (line) => ({ t: "cmd", dev: "pc", line }), mgr = (line) => ({ t: "cmd", dev: "mgr", line });
@@ -317,11 +323,11 @@ const SYMPTOM = {
 for (const def of BUSINESS_TICKETS) {
   test(def.id + ": the fault shows on every generated business, in the commands themselves", () => {
     let reseeded = 0;
-    for (const s of seeds) { const T = E.open(def, s); if (T.seed !== s) reseeded++; assert.ok(def.exhibits(T.sim, T.v)); assert.equal(T.fixed, false); SYMPTOM[def.id](T); }
+    for (const s of seedsOf(def)) { const T = E.open(def, s); if (T.seed !== s) reseeded++; assert.ok(def.exhibits(T.sim, T.v)); assert.equal(T.fixed, false); SYMPTOM[def.id](T); }
     assert.equal(reseeded, 0, "every seed should show its fault without moving on");
   });
   test(def.id + ": six options, one right, five near misses each with its reason", () => {
-    for (const s of seeds.slice(0, 12)) {
+    for (const s of seedsOf(def, 12)) {
       const T = E.open(def, s);
       assert.equal(T.opts.length, 6); assert.equal(T.opts.filter((o) => o.right).length, 1);
       for (const o of T.opts) { assert.ok(o.text && o.text.length > 10); if (!o.right) assert.ok(o.why && o.why.length > 20, o.id); }
@@ -329,7 +335,7 @@ for (const def of BUSINESS_TICKETS) {
     }
   });
   test(def.id + ": the real fix fixes it and is proven; the tempting wrong fixes don't; unsaved works but isn't the fix", () => {
-    for (const s of seeds) {
+    for (const s of seedsOf(def)) {
       for (const wrong of WRONG[def.id](E.open(def, s))) {
         const T = E.open(def, s); for (const a of wrong) E.act(T, a);
         assert.equal(T.fixed, false, def.id + " seed " + s + " wrong fix " + JSON.stringify(wrong.map((a) => a.line || a.t)) + " should not fix");
@@ -347,7 +353,7 @@ for (const def of BUSINESS_TICKETS) {
     }
   });
   test(def.id + ": a proof run before the fix does not count, the internet proves nothing, and nor does a ping to itself", () => {
-    for (const s of seeds.slice(0, 6)) {
+    for (const s of seedsOf(def, 6)) {
       const T = E.open(def, s); for (const a of PROOF[def.id](T)) E.act(T, a); assert.equal(T.proven, false);
       E.act(T, pc("ping 8.8.8.8")); E.act(T, { t: "print" });
       assert.equal(T.proven, false); assert.equal(T.partial, null, "a guest reaching the internet isn't the fix half done");
@@ -370,7 +376,7 @@ for (const def of BUSINESS_TICKETS) {
     for (let k = 0; k < 3; k++) { E.resetBoard(T); const w = E.live(T).find((o) => !o.right).id; assert.equal(E.guess(T, w).rung, 3); assert.equal(E.live(T).length, 2); }
   });
   test(def.id + ": a saved ticket replays exactly, the SSH session and the business's own pages included", () => {
-    for (const s of seeds.slice(0, 8)) {
+    for (const s of seedsOf(def, 8)) {
       const T = E.open(def, s);
       for (const a of ssh(T).concat([mgr("show interfaces status"), mgr("exit"), pc("ipconfig /all"), pc("ping -n 3 " + T.v.printer), { t: "print" },
         { t: "radio", dev: "guest", on: false }, { t: "radio", dev: "mphone", on: true }, { t: "joinssid", dev: "mphone", ssid: T.v.plan.guestSsid, pass: T.v.plan.guestPw }, { t: "cabinet", values: { key: true } }])) E.act(T, a);
@@ -383,7 +389,7 @@ for (const def of BUSINESS_TICKETS) {
     }
   });
   test(def.id + ": the brief and every hint never name the right answer, a password, a VLAN number or the fix's command", () => {
-    for (const s of seeds.slice(0, 12)) {
+    for (const s of seedsOf(def, 12)) {
       const T = E.open(def, s), right = T.opts.find((o) => o.right).text.toLowerCase(), p = T.v.plan;
       const texts = [def.rung1(T.v, T.sim), def.rung2(T.v, T.sim), ...def.fixHints(T.v, T.sim), def.brief(T.v, T.sim).quote, def.mason].map((x) => x.toLowerCase());
       for (const x of texts) {

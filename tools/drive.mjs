@@ -426,7 +426,7 @@ const bizLogin = async (p, v) => {
   const m = ssh.match(/^user (\S+) · password (\S+)$/), ip = (sw.match(/at (\d+\.\d+\.\d+\.\d+)/) || [])[1], s2 = (sec.match(/both switches (\S+)/) || [])[1];
   check(!!m && m[1] === v.plan.user && m[2] === v.plan.userPw && ip === v.plan.swIp && s2 === v.plan.swSecret, "the business's records on the ticket give the SSH login, the closet switch's address and its enable secret");
   await dev(p, "mgr"); await tab(p, "Command Prompt");
-  for (const l of ["ssh " + (m ? m[1] : "?") + "@" + ip, m ? m[2] : "?", "enable", s2]) await type(p, l);
+  for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);   /* records missing from the card: a named failure above, then on with what's typed */
 };
 const bizConf = async (p, v, lines, save) => { await bizLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end"], save === false ? [] : ["copy running-config startup-config", ""], ["exit"])) await type(p, l); };
 Object.assign(PLAN, {

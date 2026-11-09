@@ -549,7 +549,11 @@ Object.assign(PLAN, {
       },
       wrong: async (p, v) => { await rtConf(p, v, ["ip dhcp pool " + v.pool, "default-router " + v.gw], false); await again(p, v); },
       afterWrong: async (p) => { check(/hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SB-04: the pool put right but not saved: Mason says so"); },
-      fix: async (p, v) => { await rtConf(p, v, ["ip dhcp pool " + v.pool, "default-router " + v.gw]); await again(p, v); },
+      fix: async (p, v) => {   /* the VLAN's gateway read off the card's VLAN plan, as a student would */
+        const rows = await p.$$eval("#officeRecs dt", (l) => l.map((x) => [x.textContent, x.nextElementSibling.textContent])), std = ["Staff VLAN", "Guests' VLAN", "Cameras' VLAN", "Printers' VLAN", "Native VLAN", "Parking VLAN", "VLAN 1"];
+        const r = v.kind === "staff" ? rows.find((x) => x[0] === "Staff VLAN") : v.kind === "guest" ? rows.find((x) => x[0] === "Guests' VLAN") : rows.find((x) => / VLAN$/.test(x[0]) && std.indexOf(x[0]) < 0);
+        const gw = r ? r[1].split("gateway ").pop() : null; check(gw === v.gw, "SB-04 " + v.kind + ": the card's VLAN plan gives the VLAN's gateway (" + gw + ")");
+        await rtConf(p, v, ["ip dhcp pool " + v.pool, "default-router " + gw]); await again(p, v); },
       proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "guest") { await dev(p, "mgr"); await dev(p, "guest"); await tab(p, "Wi-Fi"); } else { await dev(p, v.devs[0]); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); } }
     };
   })(),
@@ -603,7 +607,10 @@ Object.assign(PLAN, {
       },
       wrong: async (p, v) => { await rtConf(p, v, lines(v), false); if (v.kind === "guest") await radio(p); },
       afterWrong: async (p) => { check(/hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SB-07: the list put right but not saved: Mason says so"); },
-      fix: async (p, v) => { await rtConf(p, v, lines(v)); if (v.kind === "guest") await radio(p); },
+      fix: async (p, v) => {   /* every network the list should name is on the card's VLAN plan, as a student would read it */
+        const card = (await p.$$eval("#officeRecs dd", (l) => l.map((x) => x.textContent))).join("\n"), nets = v.before.filter((k) => /^permit /.test(k)).map((k) => k.split(" ")[1]);
+        check(nets.every((n) => card.indexOf(" · " + n + "/") >= 0 || card.indexOf(n + "/24") >= 0), "SB-07 " + v.kind + ": the card gives every network the list names (" + nets + ")");
+        await rtConf(p, v, lines(v)); if (v.kind === "guest") await radio(p); },
       proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "guest") { await dev(p, "mgr"); await dev(p, "guest"); await tab(p, "Wi-Fi"); } else { await dev(p, v.dev); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); } }
     };
   })(),
@@ -623,7 +630,8 @@ Object.assign(PLAN, {
       },
       wrong: async (p, v) => { await onSw8(p, v, v.far, [port(v.far), "switchport trunk native vlan " + v.vlan]); await again(p, v); },
       afterWrong: async (p) => { check(/a VLAN in use, untagged/.test(await p.$eval("#board", (n) => n.textContent)), "SB-08: the other end matched to it: Mason says a VLAN in use now crosses untagged"); },
-      fix: async (p, v) => { await onSw8(p, v, v.end, [port(v.end), "switchport trunk native vlan " + v.native]); await again(p, v); },
+      fix: async (p, v) => { const nat = Number((await rec(p, "Native VLAN")).split(" · ")[0]); check(nat === v.native, "SB-08: the card gives the native VLAN (" + nat + ")");   /* read off the card, as a student would */
+        await onSw8(p, v, v.end, [port(v.end), "switchport trunk native vlan " + nat]); await again(p, v); },
       proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.devs[0]); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); }
     };
   })(),

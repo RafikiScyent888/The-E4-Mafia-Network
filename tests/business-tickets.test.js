@@ -39,7 +39,7 @@ const WRONG = {
     return [
       [pc("ipconfig /renew")], [{ t: "power", dev: "pc" }], [{ t: "power", dev: "msw" }, pc("ipconfig /renew")],
       [{ t: "client", dev: "pc", values: { mode: "static", ip: S.gw.replace(/\.1$/, ".99"), mask: "255.255.255.0", gw: S.gw, dns: p.dns } }],   /* a staff address typed in on a port still in another VLAN */
-      conf(T, ["interface range gi0/1 - 22", "switchport access vlan " + S.id]).concat(SAVE, [pc("ipconfig /renew")]),   /* the PC back, every spare unparked with it */
+      conf(T, ["interface range gi0/1 , gi0/4 , gi0/7 - 22", "switchport access vlan " + S.id]).concat(SAVE, [pc("ipconfig /renew")]),   /* the checklist's range typed again with the staff VLAN: the PC back, every spare unparked with it (still shut) */
       conf(T, ["interface gi0/1", "switchport access vlan " + other.id]).concat(SAVE, [pc("ipconfig /renew")]),   /* the wrong VLAN again */
       conf(T, ["interface gi0/1", "shutdown", "no shutdown"]).concat(SAVE, [pc("ipconfig /renew")])
     ];

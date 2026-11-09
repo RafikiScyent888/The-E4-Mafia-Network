@@ -1702,10 +1702,11 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
       check((await p.$$("#check .rq.bad")).length === 10, tag + "the first check finds the ten lines to do");
       check(!(await p.$('#plan [data-d="dpc1"]')) && !(await p.$('#net [data-d="dpc1"]')), tag + "the PCs in their boxes are on neither drawing");
       check(await p.$$eval("#bmRoom option", (l, r) => l.some((o) => o.value === "dept" && o.textContent.indexOf(r) >= 0), room), tag + "the Place form offers the new room, by its name");
+      check(await p.$$eval("#bmDev option", (l) => ["dpc1", "dpc2"].every((id) => l.some((o) => o.value === id))), tag + "the Place form offers both of the department's PCs");
       check((await p.$eval("#plan", (n) => n.textContent)).indexOf(room.toUpperCase()) >= 0, tag + "the floor plan shows the new room, named");
       await planBothFonts(p, tag + "at the start, the business");
       const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
-      for (const [i, a] of sol.entries()) { await step(p, a); if (i === 3) await planBothFonts(p, tag + "with the department's PCs cabled, the business"); }
+      for (const [i, a] of sol.entries()) { await step(p, a); if (i === 3) { check(!!(await p.$('#devtabs [data-d="dpc1"]')) && !!(await p.$('#devtabs [data-d="dpc2"]')), tag + "out of their boxes, both of the department's PCs have device buttons"); await planBothFonts(p, tag + "with the department's PCs cabled, the business"); } }
       await dev(p, "mgr"); await tab(p, "Command Prompt"); const t = await term(p);
       check(t.indexOf(plan.swHost + "(config-if)#") >= 0 && t.indexOf(plan.rtHost + "(dhcp-config)#") >= 0 && t.indexOf(plan.rtHost + "(config-ext-nacl)#") >= 0 && !/% Invalid|% Incomplete|% Ambiguous|% Bad mask|% This pool|timed out/.test(t), tag + "SSH from the manager's PC to the closet switch and the router: the pools and the list, every line taken");
       await type(p, "ipconfig"); check(new RegExp("IPv4 Address[ .]*: " + plan.mgrIp.replace(/\./g, "\\.") + "\\b").test((await term(p)).split("ipconfig").pop()), tag + "ipconfig on the manager's PC: its reserved address");

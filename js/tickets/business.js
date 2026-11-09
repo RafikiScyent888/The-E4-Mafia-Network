@@ -534,5 +534,76 @@ const SB06 = {
   }
 };
 
-export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06];
+/* ---------------------------------------------------------------- SB-07 */
+/* A VLAN left out of NAT: the router's NAT list (access list 1, the networks to translate) rebuilt from an older copy of the
+   records, without the department's block; the guests' line "tightened" to the network's own address alone (wildcard 0.0.0.0);
+   or the staff line retyped with a digit dropped. That VLAN's devices get addresses and work inside, and never reach the
+   internet; the other VLANs are fine. The fix: the list matching every network it did, and nothing it didn't, saved. */
+const aclKey = function (e) { return e.action + " " + (e.src ? e.src.ip + " " + e.src.wild : "any"); };
+const natList = function (sim, saved) { const r = sim.d.rtr.sw, A = saved ? r.startup && r.startup.acls : r.acls, L = A && A["1"]; return L ? L.lines.filter(function (e) { return !e.remark; }).map(aclKey) : []; };
+const SB07_KIND = { dept: { key: "dept", dev: "dpc1" }, guest: { key: "guest", dev: "guest" }, staff: { key: "staff", dev: "pc" } };
+const SB07_STORY = {
+  dept: function (v) { return "The " + v.deptName + "'s PCs can't get on the internet since Monday, though they print and the manager reaches them. Everyone else is online. Over the weekend our nephew put the router's settings back in order from the notes in our records folder."; },
+  guest: function () { return "Customers say the guest Wi-Fi connects but nothing loads. Our own PCs are all fine. On Saturday I tightened the guests' settings on the router from the card processor's checklist."; },
+  staff: function (v) { return "The " + v.pc + ", my PC and the " + v.backPc + " can't get on the internet since Friday; they print and see each other fine. The guests and the " + v.deptName + " are online. On Friday the router's NAT list was retyped after a mistake, from the records."; }
+};
+const SB07 = {
+  id: "SB-07", n: "07", level: 3, tier: "common", title: "One group of devices can't reach the internet; the others can", priority: 2, due: "2 h",
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-07:" + seed)), kind = r.pick(["dept", "guest", "staff"]), V = p.vlans[SB07_KIND[kind].key];
+    const lines = sim.d.rtr.sw.acls["1"].lines.map(function (e) { return { ip: e.src.ip, wild: e.src.wild }; }), before = natList(sim);
+    const wild = V.len ? ["0.0.0.127", "0.0.0.63", "0.0.0.31", "0.0.0.15", "0.0.0.7"][V.len - 25] : "0.0.0.255";
+    const typo = function (net) { const o = net.split("."); o[2] = o[2].length > 1 ? o[2].slice(0, -1) : o[2] + o[2]; return o.join("."); };   /* a digit dropped: 20 becomes 2 */
+    const now = lines.filter(function (e) { return e.ip !== V.net; }).concat(kind === "dept" ? [] : [{ ip: kind === "guest" ? V.net : typo(V.net), wild: kind === "guest" ? "0.0.0.0" : wild }]);
+    onRouter(sim, ["configure terminal", "no access-list 1"].concat(now.map(function (e) { return "access-list 1 permit " + e.ip + " " + e.wild; }), ["end"], SAVE));
+    if (kind === "guest") { sim.apply({ t: "radio", dev: "guest", on: false }); sim.apply({ t: "radio", dev: "guest", on: true }); }
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, net: V.net, wild: wild, before: before, dev: SB07_KIND[kind].dev, printer: p.printerIp, pc: name(sim, "pc"), backPc: name(sim, "bpc"), deptName: String(sim.net.roomNames.dept).toLowerCase() } };
+  },
+  brief(v) { return { quote: SB07_STORY[v.kind](v) }; },
+  mason: "The same router, the same way out, and one group can't use it. What does the router decide about each group's traffic on the way out?",
+  affected(v) { return v.dev; },
+  options(v) {
+    const what = { dept: v.deptName + "'s", guest: "guests'", staff: "staff" }[v.kind];
+    return [
+      { id: "right", right: true, text: "NAT's access list no longer matches the " + what + " network, so that VLAN's traffic is never translated" },
+      { id: "role", text: "The " + what + " subinterface is marked as NAT's outside", why: "show running-config marks that subinterface ip nat inside, as the business's other subinterfaces are." },
+      { id: "route", text: "The router's default route is wrong", why: "The other VLANs reach the internet through the same router and the same default route." },
+      { id: "gw", text: "The " + what + " pool hands out the wrong default gateway", why: (v.kind === "guest" ? "The visitor's phone" : "Their PCs") + " reach the printer through the router, so the gateway they were given works." },
+      { id: "acl", text: "An access list on the " + what + " subinterface drops traffic for the internet", why: "show access-lists counts no new denies for that VLAN, and the printer is reached through the same subinterface." },
+      { id: "dns", text: "The " + what + " devices can't look names up", why: "Pings by address fail too: 8.8.8.8 gets no reply from that VLAN, and gets one from the others." }
+    ];
+  },
+  rung1() { return "From a device that can't get out and one that can, ping the internet. Then on the router, from the manager's PC: show access-lists, the list NAT uses, and hold each line up against the records' VLAN plan."; },
+  rung2() { return "NAT translates only what its access list permits. A network the list doesn't match leaves untranslated with its private address, which the provider won't route, so nothing comes back. A wildcard says which bits must match: 0 bits match, 1 bits don't care."; },
+  fixHints(v) { return ["Find the line in the list NAT uses that should match that VLAN's network, or find that there isn't one.", "Make the list match that network as the records give it, network and wildcard, and take out a line that matches nothing of the business's.", "Save it, then test from a device in that VLAN" + (v.kind === "guest" ? ": the visitor's phone joins again." : ".")]; },
+  exhibits(sim, v) { const ok = function (id) { return id === "guest" ? online(sim, "guest") : online(sim, id); }; return natList(sim).join("|") !== v.before.join("|") && !ok(v.dev) && ["pc", "dpc1", "guest"].filter(function (id) { return id !== v.dev; }).every(ok) && (v.kind === "guest" || reachesPrinter(sim, v.dev, v.printer)); },
+  listRight(sim, v, saved) { const L = natList(sim, saved).slice().sort().join("|"); return L === v.before.slice().sort().join("|"); },
+  fixed(sim, v) { return SB07.listRight(sim, v) && SB07.listRight(sim, v, true) && ["pc", "mgr", "dpc1", "guest"].every(function (id) { return online(sim, id); }); },
+  partial(v, sim) {
+    const L = natList(sim);
+    if (v.before.every(function (k) { return L.indexOf(k) >= 0; }) && L.length > v.before.length) return "It works, but the list still has a line that matches nothing of the business's. The records have it matching each network once; the next technician will wonder what it's for.";
+    if (!SB07.listRight(sim, v, true)) return "It works right now, but the router hasn't saved it: the next power cut or reload leaves that VLAN out again.";
+    return "It works right now, but NAT's list isn't the way the records have it.";
+  },
+  proves(f, sim, v) {
+    if (v.kind === "guest") return ((f.join || f.radio) && f.dev === "guest" && !!f.internet) || (f.page === "guest-wifi" && !!f.internet);
+    const who = v.kind === "dept" ? /^dpc[12]$/ : /^(pc|mgr|bpc)$/;
+    return who.test(f.dev) && ((f.cmd === "ping" && !!f.internet && f.replies > 0) || (f.cmd === "tracert" && f.ok === true && !/^(10|127)\.|^192\.168\./.test(String(f.target))));
+  },
+  proofText: "a device in the VLAN that couldn't get out reaching the internet",
+  evidence: [
+    { id: "noweb", test: function (f, v) { const who = v.kind === "dept" ? /^dpc[12]$/ : /^(pc|mgr|bpc)$/; return v.kind !== "guest" && f.cmd === "ping" && who.test(f.dev) && f.ip && !/^10\.|^192\.168\./.test(f.ip) && !f.replies; }, text: function (f) { return "Ping from a PC in that VLAN to " + f.ip + ", on the internet: no reply"; } },
+    { id: "phone", test: function (f, v) { return v.kind === "guest" && f.page === "guest-wifi" && f.connected && !f.internet; }, text: function () { return "The visitor's phone: connected, an address from the guests' pool, no internet"; } },
+    { id: "others", test: function (f, v) { const who = v.kind === "dept" ? /^(pc|mgr|bpc)$/ : /^dpc[12]$/; return f.cmd === "ping" && who.test(f.dev) && !!f.internet && f.replies > 0; }, text: function () { return "Ping from a PC in another VLAN to the internet: replies"; } },
+    { id: "inside", test: function (f, v) { return v.kind !== "guest" && f.cmd === "ping" && (f.who || []).indexOf("printer") >= 0 && f.replies > 0 && f.dev === v.dev; }, text: function () { return "Ping from a PC in that VLAN to the printer, through the router: replies"; } },
+    { id: "list", test: function (f) { return f.on === "rtr" && /Standard IP access list 1\n/.test(devOut(f)); }, text: function (f) { const b = devOut(f).split("Standard IP access list 1\n")[1].split(/\n(?=\S)/)[0].split("\n").map(function (l) { return l.trim().replace(/^\d+\s+/, ""); }).filter(Boolean); return "show access-lists on the router: list 1, the one NAT uses: " + b.join("; "); } }
+  ],
+  summary(v) {
+    const how = { dept: "NAT's list had been rebuilt from an older copy of the records, from before the department, without its block, and saved.", guest: "The guests' line in NAT's list had been tightened to the network's own address alone (wildcard 0.0.0.0, one address), and saved: no guest's address matched it.", staff: "The staff line in NAT's list had been retyped with a digit dropped, matching a network the business doesn't have, and saved." }[v.kind];
+    return { cause: how + " That VLAN's traffic left untranslated, with private addresses the provider won't route, and nothing came back. Inside, everything still worked.", fix: "Made access list 1 match " + v.net + " " + v.wild + " as the records give it" + (v.kind === "dept" ? "" : ", took the wrong line out") + ", saved, and tested from a device in that VLAN." };
+  }
+};
+
+export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07];
 export const BUSINESS_COMING = [];

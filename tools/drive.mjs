@@ -581,7 +581,27 @@ Object.assign(PLAN, {
     afterWrong: async (p) => { check(/hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SB-06: the roles put right but not saved: Mason says so"); },
     fix: async (p, v) => { await rtConf(p, v, Object.keys(v.roles).flatMap((n) => ["interface " + n, "ip nat " + v.roles[n]])); },
     proof: async (p) => { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); }
-  }
+  },
+  /* SB-07: a VLAN left out of NAT's list */
+  "SB-07": (() => {
+    const radio = async (p) => { await dev(p, "guest"); await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Turn Wi-Fi off")'); await p.waitForTimeout(40); await p.click('.pane button:text-is("Turn Wi-Fi on")'); await p.waitForTimeout(40); };
+    const lines = (v) => ["no access-list 1"].concat(v.before.map((k) => "access-list 1 " + k));
+    return {
+      look: async (p, v) => {
+        if (v.kind === "guest") { await dev(p, "guest"); await tab(p, "Wi-Fi"); const w = await p.$eval(".pane", (n) => n.textContent); check(/Connected to/.test(w) && /No internet/.test(w), "SB-07 guest: the visitor is connected, with no internet"); }
+        else { await dev(p, v.dev); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); check(!/Reply from 8\.8\.8\.8: bytes/.test((await term(p)).split("ping 8.8.8.8").pop()), "SB-07 " + v.kind + ": that VLAN's PC gets nothing from the internet"); }
+        await dev(p, v.kind === "dept" ? "pc" : "dpc1"); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); check(/Reply from 8\.8\.8\.8: bytes/.test((await term(p)).split("ping 8.8.8.8").pop()), "SB-07: another VLAN's PC gets out");
+        await rtLogin(p, v); await type(p, "show access-lists"); const L = ((await term(p)).split("Standard IP access list 1\n").pop() || "").split(/\n(?=\S)/)[0];
+        check(L.indexOf(" " + v.net + " " + v.wild) < 0, "SB-07: show access-lists: list 1 has no line for " + v.net + " " + v.wild);
+        await type(p, "exit");
+        const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(ev.indexOf("list") >= 0 && ev.indexOf("others") >= 0 && ev.indexOf(v.kind === "guest" ? "phone" : "noweb") >= 0, "SB-07: the notebook has the VLAN cut off, another getting out, and NAT's list (" + ev + ")");
+      },
+      wrong: async (p, v) => { await rtConf(p, v, lines(v), false); if (v.kind === "guest") await radio(p); },
+      afterWrong: async (p) => { check(/hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SB-07: the list put right but not saved: Mason says so"); },
+      fix: async (p, v) => { await rtConf(p, v, lines(v)); if (v.kind === "guest") await radio(p); },
+      proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "guest") { await dev(p, "mgr"); await dev(p, "guest"); await tab(p, "Wi-Fi"); } else { await dev(p, v.dev); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); } }
+    };
+  })()
 });
 
 for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY || k === process.env.ONLY || (process.env.ONLY === "tickets-office" && /^SO-/.test(k)) || (process.env.ONLY === "tickets-business" && /^SB-/.test(k)))) for (const seed of seedsFor(id)) {

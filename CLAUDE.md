@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (9 November 2026): Level 3 (the small business) goes live stage by stage: stage 1 (the business, its router and switch on the page, work orders SB-J1 and SB-J2), stage 2 (SB-J3, guest Wi-Fi on a ceiling access point: the access point's page through a business PC's web browser, the visitor's phone, the ring in 3D), stage 3 (SB-J4, the back of house on its own switch over a trunk with its allowed list and native VLAN), stage 4 (SB-J5, two dome cameras on PoE injectors on a VLAN of their own, each one's fixed address set on its own page, port forwards tested from the manager's phone on mobile data) stage 5 (SB-J6, hardening after a card-payment check: SSH only, no readable passwords, guarded ports, DHCP snooping and ARP inspection, the closet cabinet locked, live 2 November 2026) stage 6 (SB-J7, the provider's fixed address: the block in CIDR only, the mask worked out by hand, the default route added by hand, the cameras opened at the new address from the manager's phone, live 8 November 2026) stage 7 (SB-J8, the printers' VLAN: the printer moved onto a network of its own, its fixed address on its panel, every PC's printer port changed, the guests' list given a line in the right place, live 9 November 2026), stage 8 (SB-J9, the router rebuilt from its backup: a replacement router racked, its backup copied in over TFTP from your laptop, keys made again, live 9 November 2026) and stage 9 (SB-J10, a new department end to end: a room of its own, its VLAN, its block in CIDR worked out by hand, its pool, a reservation for the manager's PC, an access list letting only the manager in, going live 9 November 2026 once its last contrast parts pass) are live; the level opens once the small office is finished, with `planned: 25` until all its work orders and tickets exist. See "Level 3, the small business" below.**
+**Status (9 November 2026): Level 3 (the small business) goes live stage by stage: stage 1 (the business, its router and switch on the page, work orders SB-J1 and SB-J2), stage 2 (SB-J3, guest Wi-Fi on a ceiling access point: the access point's page through a business PC's web browser, the visitor's phone, the ring in 3D), stage 3 (SB-J4, the back of house on its own switch over a trunk with its allowed list and native VLAN), stage 4 (SB-J5, two dome cameras on PoE injectors on a VLAN of their own, each one's fixed address set on its own page, port forwards tested from the manager's phone on mobile data) stage 5 (SB-J6, hardening after a card-payment check: SSH only, no readable passwords, guarded ports, DHCP snooping and ARP inspection, the closet cabinet locked, live 2 November 2026) stage 6 (SB-J7, the provider's fixed address: the block in CIDR only, the mask worked out by hand, the default route added by hand, the cameras opened at the new address from the manager's phone, live 8 November 2026) stage 7 (SB-J8, the printers' VLAN: the printer moved onto a network of its own, its fixed address on its panel, every PC's printer port changed, the guests' list given a line in the right place, live 9 November 2026), stage 8 (SB-J9, the router rebuilt from its backup: a replacement router racked, its backup copied in over TFTP from your laptop, keys made again, live 9 November 2026) and stage 9 (SB-J10, a new department end to end: a room of its own, its VLAN, its block in CIDR worked out by hand, its pool, a reservation for the manager's PC, an access list letting only the manager in, going live 9 November 2026 with the business floor plan fixed: every run routed round the devices, a bigger closet, nothing on a wall, once the full checks pass on the two together) are live; the level opens once the small office is finished, with `planned: 25` until all its work orders and tickets exist. See "Level 3, the small business" below.**
 **After E4 (the owner, 28 October 2026): proof of hands-on skill built into the labs** (technician's reports, resume lines, level certificates with a verify page on the hub, an Add to LinkedIn button, interview cards; two tiers, "Completed" and "Instructor verified"). The plan and its open questions are in the owner's doc "Hands-on proof from the labs: plan" (https://claude.ai/artifact/SpwGhuG7e4gNufyTvhJhRk). The owner: finish E4 first, build this after, and have everything finished and updated before presenting it to anyone.
 **Status (19 October 2026): Level 2 (the small office) is complete and live: the level lock, work orders SO-J1 to SO-J10, tickets SO-01 to SO-15 with the office's records on each, the managed switch, the closet rack and patch panel, SFP modules and fibre, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05", "Level 2, tickets SO-06, SO-07 and SO-09", "Level 2, ticket SO-08", "Level 2, ticket SO-10", "Level 2: the office's records on office tickets; tickets SO-11 to SO-15" and "Level 2: work orders SO-J6 to SO-J10, the small office complete" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
@@ -2634,15 +2634,69 @@ else still works; all three devices saved.
   the reservation trap with Mason's third rung, both drawings in both fonts, the floor plan before and after.
 
 **Going live (the owner, 9 November 2026: "Go ahead with SB-J10 when checks pass and dont get stuck this time").**
-- **Totals before going live**, run on a snapshot of this branch with SB-J9's plan fix merged in: `npm test` 381 of 381;
+- **On its own branch** (a snapshot of `save/level3-stage9` with SB-J9's plan fix merged in): `npm test` 381 of 381;
   `node tools/drive.mjs` in full 4,170 checks (SB-J10's own block 92 with the two new checks); `node tools/models.mjs` 202 of
-  202; AAA on painted pixels in four parts, parts 1 and 2 passing (122 states, 321,232 text runs), parts 3 and 4 running;
-  page plants 5 of 5 caught.
-- **Asked of the owner and answered the same day:** fix the floor plan's older problems ("Yes, fix all fourteen"). Built on
-  `save/level3-plan-fix`, to go live after SB-J10 with a preview first.
+  202; page plants 5 of 5 caught; AAA on painted pixels, 242 of the 243 states passing. **The one that failed:** "SB-J10 a
+  department PC's Command Prompt" (the bike shop, business 4242), where the back switch's run to the parts PC, bowed as every
+  run then was, touched the end of the department room's name "PARTS DESK" (6.04:1). Putting the name at the room's foot on
+  the old drawing moved the problem (the second PC's run then passed under "Pharmacy PC"); the floor plan fix below routes
+  every run off the rooms' names and has the name at the room's foot already.
+- **So SB-J10 goes live together with the floor plan fix** ("Yes, fix all fourteen", the same day; its before/after preview:
+  https://claude.ai/artifact/WsTvgRyN2iKxUVu9VonJsf), from `save/level3-plan-fix` with `save/level3-stage9` merged in, after
+  the whole set of checks passed on that: see "Level 3: the business floor plan fixed" below.
 - **Still to raise with the owner:** the instructor PIN is written in this public repo's `CLAUDE.md` and in `tools/drive.mjs`,
   and Pages serves both, so a student could read it; it was there before SB-J6. Removing it from the files and choosing a new
   PIN (the old one stays in the history) is the owner's call.
+
+### Level 3: the business floor plan fixed (going live 9 November 2026, with SB-J10)
+
+The owner, 9 November 2026: **"Yes, fix all fourteen"**: the fourteen kinds of problem a scan of every business work order
+found on the floor plan (six businesses, the start and the finish of SB-J1 to SB-J10, both fonts): runs under a device they
+don't join (its tile or its name), names on walls, "Closet switch" on "Provider's router", the cabinet's label on a wall or
+on the closet switch's tile. 1,476 counts in all; the cabinet's label on the switch's tile went live fixed with SB-J9, which
+left 13 kinds and 1,464 counts on the plan as SB-J10 went live. After the fix: none, counted the same way.
+- **Each business run finds its own way** (`routeRuns` in `js/desk/draw.js`, the business only; the house and the office are
+  unchanged). Before, every laid run was a fixed bow between its two devices. Now the devices and their names are drawn first,
+  then each run takes the least bent of 441 cubic curves (`CURVES`: the run pushed aside a third and two thirds of the way
+  along, by up to 170 units either way) that passes under no other device's tile or name (with 5 units round each and the
+  plate), stays on the plan, keeps off the rooms' names, doesn't run along a wall (crossing one at a shallow angle is some
+  way beside it; beyond 70 units counts as along it), keeps off the cabinet's label unless it joins two things the cabinet
+  holds, and doesn't run beside a run already laid. The shortest runs are laid first, so a console cable or a run inside one
+  room goes straight and the long ones find their way round it. The routes found for a layout are kept (`ROUTES`), so the
+  plan redrawn after every action costs about 4 ms; working them out the first time, about 60 ms. A down run's diamond sits
+  halfway along its route.
+- **A bigger network closet:** `BUSINESS_ROOM_BOX.closet` `[30, 30, 360, 420]` (it was `[30, 30, 300, 370]`), the counter and
+  the waiting area starting at 360, the entrance under the closet down to the front wall (`businessRooms` and `businessNames`
+  follow the closet's box: the entrance, its door into the waiting area and its name). The closet's two columns at 115 and
+  280, its rows at 105, 225 and 345: "Business router", "Closet switch" and the cabinet's label clear of its walls in either
+  font, and room for a run from the left column to pass between the right column's devices (at rows 100 apart there were
+  about 10 units, and the ceiling camera's run had to run along the waiting area's wall to get out).
+- **The cabinet's label is kept inside the closet** whatever its state says ("LOCKED, KEY IN" is the longest).
+- **The back room from SB-J4 on is laid out as SB-J10 first had it:** the back switch low on the left (785, 360), under the
+  room's name so the trunk comes in below it; the back PC up on the right (895, 315); your laptop, carried there, low on the
+  right (925, 435). Placed afresh, the laptop took the trunk's only way in. Nothing moves when the department's room appears.
+- **Small moves:** the back door camera's injector to (740, 455), off the back room's wall and clear of the back PC's name;
+  the access point to (450, 400), opening the way into the waiting area under its name; the reception PC to (430, 130), clear
+  of the closet's new wall; the department's second PC to (880, 680); the department's room's name at its foot, since its runs
+  come in at the top of a room too narrow to keep them off a name there.
+- **The drive** (`tools/drive.mjs`): `OLD_PLAN` is gone, nothing is skipped. `planRunsClear` now also fails a run under a
+  room's name, a run along a wall for more than 80 units away from its ends, and the cabinet's label on a wall. A new section,
+  "every business work order's floor plan" (`JOB=plans`), checks every business work order at its start, with the cabinet's
+  key in its lock (where the work order puts it in) and at its finish, on six businesses (seeds 1, 2, 3, 4, 5, 10: one of
+  each), in both fonts: 263 checks.
+- **Plants** (each in a throwaway copy, through `JOB=plans`): 9 written. Caught: the runs bowed as before (252 checks fail), the closet at its old size (252), the
+  cabinet's label not kept inside the closet (12, with the key in its lock), the back door camera's injector back on the wall
+  (144), the room round names and tiles taken away (252), a room's name hiding a run costing nothing (252), running along a
+  wall costing nothing (158), the department's room's name back at its head (12); and the plan as it was before the fix (252).
+  Missed: your laptop placed afresh in the back room. With the back switch and the back PC where they now are, it lands at
+  (890, 418), clear, beside its own spot (925, 435), so nothing fails; its own spot is kept so it always sits where SB-J10 has
+  it, whatever the search finds first. `tools/wip/planall.mjs` on the final code: 0 problems of any kind (1,464 before).
+- **Totals before going live:** running on a snapshot of this branch at 25a4beb (SB-J10 merged in): every test, the full
+  page drive, the 3D models, the 243 contrast states, SB-J10's page plants.
+- `tools/wip/` (not part of the site): `planall.mjs` (scores the plan as built, or candidate layouts through a `__layTry`
+  hook added to `pos()` in a scratch copy, on every business work order, start and finish, both fonts, counting every kind of
+  problem; a candidate that names no closet width keeps the closet as built), `planshot.mjs` (the plan screenshotted at chosen
+  points, for previews).
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

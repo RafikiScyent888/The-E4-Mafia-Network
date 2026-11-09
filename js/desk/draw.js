@@ -277,7 +277,7 @@ export function drawPlan(svg, sim, o) {
     const g = mk("g", { class: "pcab" + (o.open === "cab" ? " open" : ""), tabindex: "0", role: "button", "aria-label": "Open the closet cabinet in the terminal. Its door: " + st.toLowerCase() + "." });
     g.dataset.d = "cab";
     g.appendChild(mk("rect", { class: "cabframe", x: x0, y: y0, width: x1 - x0, height: y1 - y0, rx: 10 }));
-    const t = mk("text", { class: "cabl", x: (x0 + x1) / 2, y: (y0 + y1) / 2 + 20, "text-anchor": "middle" }); t.textContent = "CABINET: " + st; g.appendChild(t);
+    const t = mk("text", { class: "cabl", x: (x0 + x1) / 2, y: Math.max.apply(null, ys) - 30, "text-anchor": "middle" }); t.textContent = "CABINET: " + st; g.appendChild(t);   /* just above the lowest device's tile, so it sits between them, or over the one it holds (SB-J9's start, the router still boxed: at the frame's middle it fell behind the switch's tile) */
     svg.appendChild(g);
   }
   for (const id of ids) {
@@ -289,10 +289,27 @@ export function drawPlan(svg, sim, o) {
     const t = mk("text", { class: "ns", y: 47, "text-anchor": "middle" }); t.textContent = id === "laptop" && sim.d.laptop.label === "New laptop" ? "New laptop" : nameOf(id); g.appendChild(t);
     svg.appendChild(g);
   }
-  /* a diamond on each run that's down, and the words for it */
+  /* a diamond on each run that's down, and the words for it. It starts halfway along the run and slides along it to the first
+     spot clear of every name (with its plate), tile and diamond already drawn: halfway, SB-J9's router-to-modem run put it on
+     "Business router" and the cabinet's label (AAA 1.08:1). Where halfway is clear, it stays there */
+  const words = [], tiles = [];   /* what a diamond may not cover: words first (a diamond on a name or the cabinet's label makes it unreadable), then tiles */
+  svg.querySelectorAll(".ns, .rl, .cabl").forEach(function (n) { let b; try { b = n.getBBox(); } catch (e) { return; } if (!b.width) return; const tf = n.closest("[transform]"), m = tf && /translate\(([-\d.]+) ([-\d.]+)\)/.exec(tf.getAttribute("transform")), dx = m ? +m[1] : 0, dy = m ? +m[2] : 0; words.push([b.x + dx - 4, b.y + dy - 2, b.x + dx + b.width + 4, b.y + dy + b.height + 2]); });
+  for (const id of ids) tiles.push([P[id].px - 24, P[id].py - 24, P[id].px + 24, P[id].py + 24]);
+  const clearOf = function (x, y, list) { const q = [x - 12.5, y - 12.5, x + 12.5, y + 12.5]; return list.every(function (b) { return q[2] < b[0] || q[0] > b[2] || q[3] < b[1] || q[1] > b[3]; }); };   /* the diamond turned 45 degrees reaches 11.3 from its middle, and its ring a little more */
   for (const r of runs) {
     if (sim.cableUp(r.c) || !r.mid) continue;
-    const x = r.mid[0], y = r.mid[1];
+    let x = r.mid[0], y = r.mid[1];
+    const all = words.concat(tiles);
+    if (!clearOf(x, y, all)) {   /* along the run: first a spot clear of everything; on a run that is covered end to end (SB-J9's router to its switch, under the router's name and the cabinet's label), a spot clear of the words, on a tile's edge */
+      const tp = mk("path", { d: r.d[r.d.length - 1], fill: "none" }); svg.appendChild(tp);
+      try { const L = tp.getTotalLength(), at = []; for (let k = 1; k <= 18; k++) at.push(0.5 + k * 0.025, 0.5 - k * 0.025);
+        const pt = function (s) { return tp.getPointAtLength(L * s); };
+        let q = at.map(pt).find(function (v) { return clearOf(v.x, v.y, all); });
+        if (!q && !clearOf(x, y, words)) q = at.map(pt).find(function (v) { return clearOf(v.x, v.y, words); });
+        if (q) { x = q.x; y = q.y; } } catch (e) {}
+      tp.remove();
+    }
+    words.push([x - 12.5, y - 12.5, x + 12.5, y + 12.5]);
     svg.appendChild(mk("rect", { x: x - 8, y: y - 8, width: 16, height: 16, transform: "rotate(45 " + x + " " + y + ")", class: "pd-down" }));
   }
   if (anyDown) { const t = mk("text", { class: "ns", x: 46, y: 505 }); t.textContent = "red dashed run: no link"; svg.appendChild(t); }   /* on the garage floor (the office's entrance): nothing else is there */

@@ -57,7 +57,7 @@ export function businessRecords(v, sim) {
     ["Console passwords", "the router " + p.rtConsole + " · both switches " + p.swConsole],
     ["Remote logins (SSH)", "user " + p.user + " · password " + p.userPw],
     ["The printer", p.printerIp + ", on the printers' VLAN"]
-  ].concat(plan);
+  ].concat(p.fixed ? [["The provider", "fixed address " + p.fixed.ip + "/" + p.fixed.len + " on the router's provider port · their gateway " + p.fixed.gw + " · their DNS servers " + p.dns.join(" and ")]] : [], plan);
 }
 
 /* ---------------------------------------------------------------- SB-01 */
@@ -405,5 +405,70 @@ const SB04 = {
   }
 };
 
-export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04];
+/* ---------------------------------------------------------------- SB-05 */
+/* The router's default route wrong: its next hop a digit off on the provider's block (typed in from an engineer on the phone),
+   pointed inside at the old network's last address (a nephew's idea of "the way out"), or taken out altogether by someone who
+   didn't recognise the line. Everything inside works, VLAN to VLAN, the printer too; nothing gets out, and the cameras can't
+   be seen from outside. The fix: the one default route, to the provider's gateway from the records (SB-J7's letter), saved,
+   and the wrong one gone. */
+const SB05_STORY = {
+  slip: function () { return "Nothing gets on the internet since lunchtime: not the PCs, not the card machine, and I can't see the cameras from my phone. The printer and our shared files work fine. This morning the provider's engineer talked me through \"refreshing\" something in the router over the phone, reading me the numbers to type."; },
+  inside: function () { return "Since Saturday nothing here gets on the internet, and the camera app can't reach the cameras. Printing and moving files between the PCs work. Our nephew was in the router on Saturday: he said the way out should point at our own network, so he \"corrected\" it."; },
+  removed: function () { return "No internet anywhere since Monday morning, for us or the guests, and the cameras are unreachable from my phone. Everything inside works. On Sunday I went through the router's settings with the card processor's checklist and took out a line I didn't recognise."; }
+};
+const routesOf = function (sim, saved) { const r = sim.d.rtr.sw, R = saved ? r.startup && r.startup.routes : r.routes; return R || []; };
+const defaults = function (sim, saved) { return routesOf(sim, saved).filter(function (x) { return x.net === "0.0.0.0" && x.mask === "0.0.0.0"; }); };
+const SB05 = {
+  id: "SB-05", n: "05", level: 3, tier: "common", title: "Nothing gets out to the internet; everything inside still works", priority: 1, due: "1 h",
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, F = p.fixed, r = rng(hash("SB-05:" + seed)), kind = r.pick(["slip", "inside", "removed"]);
+    const host = function (ip) { return +ip.split(".")[3]; }, pre = F.ip.split(".").slice(0, 3).join("."), first = host(F.net) + 1, last = host(F.bcast) - 1;
+    const near = [first, first + 1, last - 1, last].filter(function (h) { return h !== host(F.gw) && h !== host(F.ip) && h >= first && h <= last; });   /* another usable address on the block: a digit misheard */
+    const wrong = kind === "slip" ? pre + "." + (near[0] || first) : kind === "inside" ? p.lanGw.replace(/\.\d+$/, ".254") : null;
+    onRouter(sim, ["configure terminal", "no ip route 0.0.0.0 0.0.0.0 " + F.gw].concat(wrong ? ["ip route 0.0.0.0 0.0.0.0 " + wrong] : [], ["end"], SAVE));
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, gw: F.gw, wrong: wrong, printer: p.printerIp, pc: name(sim, "pc") } };
+  },
+  brief(v) { return { quote: SB05_STORY[v.kind](v) }; },
+  mason: "Inside works and outside doesn't: follow a packet bound for the internet, hop by hop, and see where it stops.",
+  affected: "pc",
+  options(v) {
+    return [
+      { id: "right", right: true, text: v.kind === "removed" ? "The router has no default route: nothing tells it where to send traffic for the internet" : "The router's default route points at the wrong next hop" },
+      { id: "nat", text: "NAT has stopped translating the business's addresses", why: "show ip nat translations is empty because nothing leaves: tracert stops at the router, and show ip route says where the router sends internet traffic. NAT's lines are as the records have them." },
+      { id: "wan", text: "The router's provider port has lost its fixed address", why: "show ip interface brief gives GigabitEthernet0/0 the fixed address from the provider's letter, up and up." },
+      { id: "isp", text: "The provider's line is down", why: "The router's provider port is up, and the router reaches the provider's gateway from the records: ping it from the router and it answers." },
+      { id: "dns", text: "The business's DNS servers are unreachable, so names don't look up", why: "Pings by address fail too: tracert to 8.8.8.8 stops at the router, names or no names." },
+      { id: "acl", text: "An access list on the router is dropping traffic bound for the internet", why: "show access-lists counts no new matches on any deny line, and the same lists let the VLANs reach each other and the printer through the router." }
+    ];
+  },
+  rung1() { return "On the PC: tracert to an internet address, and see where it stops. Then on the router, from the manager's PC: show ip route, and hold the gateway of last resort up against the provider's letter in the records."; },
+  rung2() { return "A router sends a packet by the most specific route that matches. Inside networks are directly connected; everything else needs a default route, and a default route works only through a next hop that's really there, on a network the router is on."; },
+  fixHints(v) { return ["The records hold the provider's letter: the gateway the business's way out goes through.", v.kind === "removed" ? "The router needs its one way out back, to that gateway." : "The router's way out needs to go to that gateway, and the wrong one taken away, not left beside it.", "Save it, then test it from a PC: the internet, and the cameras from outside."]; },
+  exhibits(sim, v) { const D = defaults(sim); return (v.wrong ? D.length === 1 && D[0].nh === v.wrong : D.length === 0) && !online(sim, "pc") && reachesPrinter(sim, "pc", v.printer); },
+  rightRoutes(sim, v, saved) { const D = defaults(sim, saved); return D.length === 1 && D[0].nh === v.gw; },
+  fixed(sim, v) { return SB05.rightRoutes(sim, v) && SB05.rightRoutes(sim, v, true) && online(sim, "pc") && online(sim, "mgr") && reachesPrinter(sim, "pc", v.printer); },
+  partial(v, sim) {
+    const D = defaults(sim);
+    if (D.length > 1) return "It works, but the wrong default route is still there beside the right one: the router may send some of the internet's traffic to nowhere, and the next technician won't know which is meant.";
+    if (D.length === 1 && D[0].nh !== v.gw) return "It works right now, but not through the provider's gateway in the records.";
+    if (!SB05.rightRoutes(sim, v, true)) return "It works right now, but the router hasn't saved it: the next power cut or reload loses the way out again.";
+    return "It works right now, but the router's routes aren't the way the records have them.";
+  },
+  proves(f) { return /^(pc|mgr|bpc)$/.test(f.dev) && ((f.cmd === "ping" && !!f.internet && f.replies > 0) || (f.cmd === "tracert" && f.ok === true && !/^(10|127)\.|^192\.168\./.test(String(f.target)))); },
+  proofText: "a ping or a tracert from a staff PC reaching the internet",
+  evidence: [
+    { id: "noweb", test: function (f) { return f.cmd === "ping" && /^(pc|mgr|bpc)$/.test(f.dev) && f.ip && !/^10\.|^192\.168\./.test(f.ip) && !f.replies; }, text: function (f) { return "Ping from a staff PC to " + f.ip + ", on the internet: no reply"; } },
+    { id: "inside", test: function (f, v) { return f.cmd === "ping" && /^(pc|mgr|bpc)$/.test(f.dev) && (f.ip === v.printer || (f.who || []).indexOf("printer") >= 0) && f.replies > 0; }, text: function () { return "Ping from a staff PC to the printer, on another VLAN through the router: replies"; } },
+    { id: "tracert", test: function (f) { return f.cmd === "tracert" && /^(pc|mgr|bpc)$/.test(f.dev) && f.ok === false && !f.usage && !/^(10|127)\.|^192\.168\./.test(String(f.target)); }, text: function (f) { return "tracert from a staff PC to the internet: it stops after the router"; } },
+    { id: "route", test: function (f) { return f.on === "rtr" && /Gateway of last resort is/.test(devOut(f)); }, text: function (f) { const m = devOut(f).match(/Gateway of last resort is ([^\n]+)/); return "show ip route on the router: Gateway of last resort is " + (m ? m[1] : "?"); } },
+    { id: "run", test: function (f) { const o = devOut(f); return f.on === "rtr" && /Current configuration/.test(o) && /ip nat inside source list/.test(o); }, text: function (f) { const m = devOut(f).match(/ip route 0\.0\.0\.0 0\.0\.0\.0 (\S+)/); return "show running-config on the router: " + (m ? "ip route 0.0.0.0 0.0.0.0 " + m[1] : "no default route in it"); } }
+  ],
+  summary(v) {
+    const how = { slip: "The router's default route had been typed with another address on the provider's block as its next hop (" + v.wrong + "), misheard over the phone, and saved. The router sent the internet's traffic to an address nobody answers at.", inside: "The router's default route had been pointed inside, at " + v.wrong + " on the old network, and saved: traffic for the internet was sent back into the business.", removed: "The router's default route had been taken out and saved: with no gateway of last resort, the router answered every packet for the internet with Destination net unreachable." }[v.kind];
+    return { cause: how + " Everything inside still worked, because the router is directly connected to every VLAN.", fix: (v.wrong ? "Took the wrong default route out and added the one from the provider's letter, " : "Added the default route from the provider's letter, ") + "ip route 0.0.0.0 0.0.0.0 " + v.gw + ", saved, and tested from a PC." };
+  }
+};
+
+export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05];
 export const BUSINESS_COMING = [];

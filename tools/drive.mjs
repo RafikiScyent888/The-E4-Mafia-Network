@@ -428,6 +428,14 @@ const bizLogin = async (p, v) => {
   await dev(p, "mgr"); await tab(p, "Command Prompt");
   for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);   /* records missing from the card: a named failure above, then on with what's typed */
 };
+/* the router over SSH from the manager's PC, its logins off the card */
+const rtLogin = async (p, v) => {
+  const ssh = await rec(p, "Remote logins (SSH)"), rt = await rec(p, "The router"), sec = await rec(p, "Enable secrets");
+  const m = ssh.match(/^user (\S+) · password (\S+)$/), ip = (rt.match(/at (\d+\.\d+\.\d+\.\d+)/) || [])[1], s1 = (sec.match(/the router (\S+)/) || [])[1];
+  check(!!m && ip === v.plan.vlans.staff.gw && s1 === v.plan.rtSecret, "the business's records give the router's address and its enable secret");
+  await dev(p, "mgr"); await tab(p, "Command Prompt"); for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s1 || "?"]) await type(p, l);
+};
+const rtConf = async (p, v, lines, save) => { await rtLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end"], save === false ? [] : ["copy running-config startup-config", ""], ["exit"])) await type(p, l); };
 /* the back switch at your laptop's console: its passwords off the card too */
 const bswLogin = async (p, v) => {
   const con = ((await rec(p, "Console passwords")).match(/both switches (\S+)/) || [])[1], sec = ((await rec(p, "Enable secrets")).match(/both switches (\S+)/) || [])[1];
@@ -518,13 +526,6 @@ Object.assign(PLAN, {
   })(),
   /* SB-04: a DHCP pool handing out the wrong gateway; the router over SSH from the manager's PC, its logins off the card */
   "SB-04": (() => {
-    const rtLogin = async (p, v) => {
-      const ssh = await rec(p, "Remote logins (SSH)"), rt = await rec(p, "The router"), sec = await rec(p, "Enable secrets");
-      const m = ssh.match(/^user (\S+) · password (\S+)$/), ip = (rt.match(/at (\d+\.\d+\.\d+\.\d+)/) || [])[1], s1 = (sec.match(/the router (\S+)/) || [])[1];
-      check(!!m && ip === v.plan.vlans.staff.gw && s1 === v.plan.rtSecret, "the business's records give the router's address and its enable secret");
-      await dev(p, "mgr"); await tab(p, "Command Prompt"); for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s1 || "?"]) await type(p, l);
-    };
-    const rtConf = async (p, v, lines, save) => { await rtLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end"], save === false ? [] : ["copy running-config startup-config", ""], ["exit"])) await type(p, l); };
     const radio = async (p) => { await dev(p, "guest"); await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Turn Wi-Fi off")'); await p.waitForTimeout(40); await p.click('.pane button:text-is("Turn Wi-Fi on")'); await p.waitForTimeout(40); };
     const again = async (p, v) => { for (const id of v.devs) { if (id === "guest") await radio(p); else { await dev(p, id); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); } } };
     return {
@@ -546,7 +547,24 @@ Object.assign(PLAN, {
       fix: async (p, v) => { await rtConf(p, v, ["ip dhcp pool " + v.pool, "default-router " + v.gw]); await again(p, v); },
       proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "guest") { await dev(p, "mgr"); await dev(p, "guest"); await tab(p, "Wi-Fi"); } else { await dev(p, v.devs[0]); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); } }
     };
-  })()
+  })(),
+  /* SB-05: the router's default route wrong; the provider's gateway off the card */
+  "SB-05": {
+    look: async (p, v) => {
+      await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); check(!/Reply from 8\.8\.8\.8: bytes/.test((await term(p)).split("ping 8.8.8.8").pop()), "SB-05: the PC gets nothing from the internet");
+      await type(p, "ping " + v.printer); check(/Reply from [\d.]+: bytes/.test((await term(p)).split("ping " + v.printer).pop()), "SB-05: the PC reaches the printer across the router");
+      await type(p, "tracert 8.8.8.8"); check(new RegExp("1\\s+.*" + v.plan.vlans.staff.gw.replace(/\./g, "\\.")).test((await term(p)).split("tracert 8.8.8.8").pop()), "SB-05: tracert gets as far as the router");
+      const prov = await rec(p, "The provider"), gw = (prov.match(/their gateway (\S+)/) || [])[1]; check(gw === v.gw, "SB-05: the records give the provider's gateway (" + prov + ")");
+      await rtLogin(p, v); await type(p, "show ip route"); check(v.wrong ? new RegExp("Gateway of last resort is " + v.wrong.replace(/\./g, "\\.")).test(await term(p)) : /Gateway of last resort is not set/.test(await term(p)), "SB-05 " + v.kind + ": show ip route on the router");
+      await type(p, "ping " + gw); check(/Success rate is 100 percent/.test((await term(p)).split("ping " + gw).pop()), "SB-05: the router reaches the provider's gateway on its own network");
+      await type(p, "exit");
+      const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(["noweb", "inside", "tracert", "route"].every((x) => ev.indexOf(x) >= 0), "SB-05: the notebook has the internet dead, the inside fine, tracert stopping, the router's routes (" + ev + ")");
+    },
+    wrong: async (p, v) => { await rtConf(p, v, (v.wrong ? ["no ip route 0.0.0.0 0.0.0.0 " + v.wrong] : []).concat(["ip route 0.0.0.0 0.0.0.0 " + v.gw]), false); },
+    afterWrong: async (p) => { check(/hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SB-05: the route put right but not saved: Mason says so"); },
+    fix: async (p, v) => { await rtConf(p, v, (v.wrong ? ["no ip route 0.0.0.0 0.0.0.0 " + v.wrong] : []).concat(["ip route 0.0.0.0 0.0.0.0 " + v.gw])); },
+    proof: async (p) => { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "tracert 8.8.8.8"); }
+  }
 });
 
 for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY || k === process.env.ONLY || (process.env.ONLY === "tickets-office" && /^SO-/.test(k)) || (process.env.ONLY === "tickets-business" && /^SB-/.test(k)))) for (const seed of seedsFor(id)) {

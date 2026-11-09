@@ -40,19 +40,22 @@ const FIX = {
   "SB-01": (T) => conf(T, ["interface gi0/1", "switchport access vlan " + staff(T).id]).concat(SAVE, [pc("ipconfig /renew")]),
   "SB-02": (T) => onSw(T, T.v.sw, back(T)).concat(again(T)),
   "SB-03": (T) => trunk3(T, "switchport trunk allowed vlan add " + T.v.lost.join(",")).concat(again3(T)),
-  "SB-04": (T) => onRt(T, ["ip dhcp pool " + T.v.pool, "default-router " + T.v.gw]).concat(again4(T))
+  "SB-04": (T) => onRt(T, ["ip dhcp pool " + T.v.pool, "default-router " + T.v.gw]).concat(again4(T)),
+  "SB-05": (T) => onRt(T, (T.v.wrong ? ["no ip route 0.0.0.0 0.0.0.0 " + T.v.wrong] : []).concat(["ip route 0.0.0.0 0.0.0.0 " + T.v.gw]))
 };
 const PROOF = {
   "SB-01": (T) => [pc("ping " + T.v.printer)],
   "SB-02": (T) => T.v.kind === "staff" ? [{ t: "cmd", dev: "bpc", line: "ping " + T.v.printer }] : T.v.kind === "printers" ? [{ t: "print" }] : [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }],   /* connected already, the phone's page offers no Join: Wi-Fi off and on */
   "SB-03": (T) => T.v.kind === "back" ? [{ t: "cmd", dev: "bpc", line: "ping " + T.v.printer }] : T.v.kind === "router" ? [{ t: "print" }] : [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }],
-  "SB-04": (T) => T.v.kind === "guest" ? [{ t: "view", dev: "guest", key: "wifi" }] : [{ t: "cmd", dev: T.v.devs[0], line: "ping " + T.v.printer }]
+  "SB-04": (T) => T.v.kind === "guest" ? [{ t: "view", dev: "guest", key: "wifi" }] : [{ t: "cmd", dev: T.v.devs[0], line: "ping " + T.v.printer }],
+  "SB-05": () => [pc("tracert 8.8.8.8"), pc("ping 8.8.8.8")]
 };
 const UNSAVED = {
   "SB-01": (T) => conf(T, ["interface gi0/1", "switchport access vlan " + staff(T).id]).concat([pc("ipconfig /renew")]),
   "SB-02": (T) => onSw(T, T.v.sw, back(T), false).concat(again(T)),
   "SB-03": (T) => trunk3(T, "switchport trunk allowed vlan add " + T.v.lost.join(","), false).concat(again3(T)),
-  "SB-04": (T) => onRt(T, ["ip dhcp pool " + T.v.pool, "default-router " + T.v.gw], false).concat(again4(T))
+  "SB-04": (T) => onRt(T, ["ip dhcp pool " + T.v.pool, "default-router " + T.v.gw], false).concat(again4(T)),
+  "SB-05": (T) => onRt(T, (T.v.wrong ? ["no ip route 0.0.0.0 0.0.0.0 " + T.v.wrong] : []).concat(["ip route 0.0.0.0 0.0.0.0 " + T.v.gw]), false)
 };
 /* tempting fixes that treat a symptom, or the wrong part: none may fix it */
 const WRONG = {
@@ -92,6 +95,14 @@ const WRONG = {
       onRt(T, ["interface GigabitEthernet0/1." + (v.kind === "staff" ? v.plan.vlans.staff.id : v.kind === "dept" ? v.plan.vlans.dept.id : v.plan.vlans.guest.id), "ip address " + v.wrong + " " + (v.len === 24 ? "255.255.255.0" : ["255.255.255.128", "255.255.255.192", "255.255.255.224", "255.255.255.240"][v.len - 25])]).concat(again4(T))];   /* the router moved to the wrong gateway's address */
     if (d0 !== "guest") L.push([{ t: "client", dev: d0, values: { mode: "static", ip: T.sim.addr(d0).ip, mask: T.sim.addr(d0).mask, gw: v.gw, dns: v.plan.dns } }].concat(v.devs.slice(1).map((id) => ({ t: "client", dev: id, values: { mode: "static", ip: T.sim.addr(id).ip, mask: T.sim.addr(id).mask, gw: v.gw, dns: v.plan.dns } }))));   /* the gateway typed in on each PC */
     return L;
+  },
+  "SB-05": (T) => {
+    const v = T.v, F = v.plan.fixed, L = [[{ t: "power", dev: "rtr" }, pc("ping 8.8.8.8")],
+      onRt(T, ["interface GigabitEthernet0/0", "shutdown", "no shutdown"]),   /* the provider's port bounced */
+      onRt(T, ["ip route 0.0.0.0 0.0.0.0 " + (v.wrong || F.gw.replace(/\d+$/, (x) => String(+x === +F.ip.split(".")[3] - 1 ? +x - 1 : +F.ip.split(".")[3])))]),   /* another wrong next hop added */
+      onRt(T, ["ip route 0.0.0.0 0.0.0.0 GigabitEthernet0/1"])];   /* out the inside port */
+    if (v.wrong) L.push(onRt(T, ["ip route 0.0.0.0 0.0.0.0 " + v.gw]));   /* the right one added beside the wrong one */
+    return L;
   }
 };
 const SYMPTOM = {
@@ -107,6 +118,16 @@ const SYMPTOM = {
     assert.match(o, new RegExp("interface GigabitEthernet0/1\\n description \\S+\\n switchport access vlan " + v.vlan + "\\n switchport mode access\\n"));
     assert.match(o, new RegExp("^Gi0/2\\s+MANAGER-PC\\s+connected\\s+" + staff(T).id + "\\s", "m"), "the manager's PC is still in the staff VLAN");
     assert.ok(E.act(T, mgr("exit")) && E.act(T, mgr("ping " + v.printer)).facts.replies > 0, "the manager's PC still prints");
+  },
+  "SB-05": (T) => {
+    const v = T.v, p = v.plan;
+    assert.equal(E.act(T, pc("ping 8.8.8.8")).facts.replies, 0, "nothing gets out");
+    assert.ok(E.act(T, pc("ping " + v.printer)).facts.replies > 0, "inside works, across the router");
+    const tr = E.act(T, pc("tracert 8.8.8.8")); assert.match(tr.out, new RegExp("1\\s+.*" + p.vlans.staff.gw.replace(/\./g, "\\.")), "the first hop is the router");
+    assert.match(tr.out, v.wrong ? /Request timed out/ : /Destination net unreachable/);
+    const o = out(T, [mgr("ssh " + p.user + "@" + p.vlans.staff.gw), mgr(p.userPw), mgr("enable"), mgr(p.rtSecret), mgr("show ip route"), mgr("ping " + p.fixed.gw)]);
+    assert.match(o, v.wrong ? new RegExp("Gateway of last resort is " + v.wrong.replace(/\./g, "\\.")) : /Gateway of last resort is not set/);
+    assert.match(o, /!!!!!|Success rate is [1-9]/, "the router reaches the provider's gateway");
   },
   "SB-04": (T) => {
     const v = T.v, p = v.plan;
@@ -234,7 +255,7 @@ for (const def of BUSINESS_TICKETS) {
         assert.ok(x.indexOf(right) < 0, x);
         for (const bad of [p.rtSecret, p.rtConsole, p.swSecret, p.swConsole, p.userPw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, def.id + " names a password: " + x);
         for (const n of Object.values(p.vlans).map((V) => String(V.id))) assert.ok(!new RegExp("\\b" + n + "\\b").test(x), def.id + " names VLAN " + n + ": " + x);
-        for (const cmd of ["switchport access", "switchport mode", "switchport trunk", "allowed vlan", "default-router", "ip dhcp pool", "copy running-config", "write memory", "interface gi", "ipconfig /renew"]) assert.ok(x.indexOf(cmd) < 0, def.id + " names the fix's command: " + x);
+        for (const cmd of ["switchport access", "switchport mode", "switchport trunk", "allowed vlan", "default-router", "ip dhcp pool", "ip route 0", "copy running-config", "write memory", "interface gi", "ipconfig /renew"]) assert.ok(x.indexOf(cmd) < 0, def.id + " names the fix's command: " + x);
       }
     }
   });

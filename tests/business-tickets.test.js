@@ -170,10 +170,12 @@ const WRONG = {
       L.push(onRt(T, ["interface " + v.sub, "encapsulation dot1Q " + v.vlan]).concat(again10(T)));   /* the tag back, and its address gone with the old one */
       L.push(onSw(T, "msw", ["interface gi0/24", "switchport trunk allowed vlan add " + v.wrong]).concat(again10(T)));   /* the trunk told to carry the tag the router has */
       L.push(onRt(T, ["interface " + v.sub, "shutdown", "no shutdown"]).concat(again10(T)));   /* the subinterface bounced */
+      L.push(onRt(T, ["interface " + v.sub, "encapsulation dot1Q " + v.vlan, "ip address " + v.before[v.sub].ip + " 255.255.255.128"]).concat(again10(T)));   /* the address back on the wrong mask: it works, and isn't the records' */
     } else {
       const B = v.before;
       L.push(onRt(T, ["interface " + v.gs, "no encapsulation dot1Q", "interface " + v.ds, "encapsulation dot1Q " + V.dept.id, "ip address " + B[v.ds].ip + " " + B[v.ds].mask]).concat(again10(T)));   /* the department's put right, the guests' left with no tag */
       L.push(onRt(T, subs10(T)));   /* both right, and nothing asked again: the department's PCs keep guests' addresses, the phone the department's */
+      L.push(onRt(T, subs10(T)).concat([{ t: "cmd", dev: "dpc1", line: "ipconfig /renew" }, { t: "cmd", dev: "dpc2", line: "ipconfig /renew" }]));   /* the department asked again, the visitor's phone didn't */
       L.push(onRt(T, ["interface " + v.ds, "encapsulation dot1Q " + V.dept.id]).concat(again10(T)));   /* refused: the guests' subinterface still has that tag */
     }
     return L;

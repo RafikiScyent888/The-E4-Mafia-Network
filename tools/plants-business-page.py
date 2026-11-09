@@ -14,7 +14,7 @@ PLANTS = [
  ("the ring's words never say broadcasting", "js/net/physical.js", ': ["on", "blue", "on, blue: on the network, broadcasting " + n', ': ["on", "blue", "blinking blue: on the network, but broadcasting nothing " + n'),
  ("SB-J4: port names and dots allowed on other cables' lines", "js/desk/draw.js", "&& !onDot(q) && !onDots(q[0], q[1], l.up) && (!strict || (!dotOnLine(q[0], q[1]) && !onLine({ x: b.x + 1, y: b.y + 1, width: b.width - 2, height: b.height - 2 }))); };", "&& !onDot(q); };", "SB-J4"),
  ("SB-J4: every port dot drawn twice, one on the other", "js/desk/draw.js", 'if (l.up) gp.appendChild(mk("circle", { cx: px, cy: py, r: 6, class: "pd pd-up", "data-cable": l.cable || "" }));', 'if (l.up) { gp.appendChild(mk("circle", { cx: px, cy: py, r: 6, class: "pd pd-up", "data-cable": l.cable || "" })); gp.appendChild(mk("circle", { cx: px + 5, cy: py, r: 6, class: "pd pd-up", "data-cable": l.cable || "" })); }', "SB-J4"),
- ("SB-J4: your laptop has no spot of its own in the back room", "js/net/business.js", ', alt: { back: { x: 270, y: 330, lab: "right" } } },', ' },', "SB-J4"),
+ ("SB-J4: your laptop has no spot of its own in the back room", "js/net/business.js", ', alt: { back: { x: 270, y: 330, lab: "right", dept: { px: 925, py: 435 } } } },', ' },', "SB-J4"),
  ("SB-J4: the back switch goes anywhere", "js/net/sim.js", "const fx = x.fixed || (this.net.fixed || FIXED_ROOM)[x.kind];", "const fx = x.id === \"bsw\" ? null : x.fixed || (this.net.fixed || FIXED_ROOM)[x.kind];", "SB-J4"),
  ("SB-J4: the console cable reaches the next room", "js/net/sim.js", "if (ca && this.net.rooms[a.dev] !== this.net.rooms[b.dev]) return", "if (false) return", "SB-J4"),
  ("SB-J4: the back switch has no device button", "js/build/app.js", '"pp", "msw", "bsw", "cab",', '"pp", "msw", "cab",', "SB-J4"),
@@ -48,6 +48,7 @@ PLANTS = [
  ("SB-J10: the department's PCs left off the diagram", 'js/desk/draw.js', '"cinj1", "cam1", "cinj2", "cam2", "dpc1", "dpc2"].filter(', '"cinj1", "cam1", "cinj2", "cam2"].filter(', 'SB-J10'),
  ("SB-J10: the department's PCs have no device buttons", 'js/build/app.js', '"bpc", "dpc1", "dpc2", "hire",', '"bpc", "hire",', 'SB-J10'),
  ("SB-J10: the limits give the block's mask away", 'js/build/business.js', 'on the block " + D.net + "/" + D.len + ". Its gateway', 'on the block " + D.net + "/" + D.len + " (mask " + D.mask + "). Its gateway', 'SB-J10'),
+ ("SB-J10: the department's first PC straight above the second again", 'js/net/business.js', 'dpc1: { x: -90, y: 105, px: 910, py: 580, room: "dept" },', 'dpc1: { x: -90, y: 105, px: 860, py: 610, room: "dept" },', 'SB-J10'),
 ]
 only = sys.argv[1:]
 caught = 0; run = 0

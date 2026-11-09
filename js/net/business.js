@@ -76,17 +76,17 @@ export const BUSINESS_LAYOUT = {
   cinj1: { x: 600, y: 455, px: 115, py: 205, room: "closet" },
   cam1: { x: 490, y: 600, px: 560, py: 330, room: "guest" },
   cinj2: { x: 265, y: 600, px: 720, py: 450, room: "back" },
-  cam2: { x: 110, y: 600, px: 720, py: 562, room: "back", dept: { px: 710 } },   /* on the plan, on the wall outside the back door */
+  cam2: { x: 110, y: 600, px: 720, py: 562, room: "back" },   /* on the plan, on the wall outside the back door */
   mphone: { px: 720, py: 215, room: "office" },
   /* SB-J10's department: its two PCs in the new room off the back room, on the plan below it (beside the strip outside the back
-     door), the first up at the right under the door and the second down at the left, so neither one's run passes the other's
-     tile or name; on the diagram, a column of their own left of the back switch (the diagram widens to the left for them), so
-     their lines cross nothing. With the room there, the back switch, the back PC, the back door camera and your laptop (once
-     it's carried to the back room) have spots of their own (`dept`), found by scoring layouts on all six businesses, both
-     fonts, at the start, with the PCs cabled and done: no run under a device it doesn't join, no name on a wall, a tile or
-     another name (8 November 2026) */
+     door), the first up at the right under the door and the second lower and to the left, so neither one's run passes the
+     other's tile or name; on the diagram, a column of their own left of the back switch (the diagram widens to the left for
+     them), so their lines cross nothing. With the room there, the back switch, the back PC and your laptop (once it's carried
+     to the back room) have spots of their own (`dept`), found by scoring layouts on all six businesses, both fonts, at the
+     start, with the PCs cabled and done: no run under a device it doesn't join, no name (with its plate) on a wall, a tile or
+     another name (8 November 2026). The room's left wall stands clear of the back door camera's name */
   dpc1: { x: -90, y: 105, px: 910, py: 580, room: "dept" },
-  dpc2: { x: -90, y: 235, px: 860, py: 720, room: "dept" }
+  dpc2: { x: -90, y: 235, px: 880, py: 700, room: "dept" }
 };
 export const BUSINESS_ROOM_BOX = { closet: [30, 30, 300, 370], counter: [300, 30, 640, 270], office: [640, 30, 980, 270], guest: [300, 270, 660, 520], back: [660, 270, 980, 520], dept: [800, 520, 980, 770] };   /* dept: SB-J10's, drawn once it's there */
 

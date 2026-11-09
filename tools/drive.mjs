@@ -91,13 +91,14 @@ const dysClear = async (p, what) => {
 const T = (p, f) => p.evaluate(f);
 /* the floor plan's runs and walls (8 November 2026, SB-J10): a run reads as joining whatever it passes under, so none may pass
    under a device it doesn't join (its tile or its name); and no name or tile may sit on a wall. Measured as painted, sampling
-   along each run. Five crossings were live before SB-J10 (three runs behind tiles since SB-J5, two names over a wall) and are
-   waiting for the owner's word: they are listed in OLD_PLAN and skipped, so this check holds SB-J10's own layout to the rule */
-const OLD_PLAN = /^(msw-printer run under pc's tile|msw-bsw run under cam1's tile|cinj1-cam1 run under msw's tile|"Business router" on a wall|"Injector CAM-02" on a wall)$/;
+   along each run; a name is measured with its plate. Seven crossings were live before SB-J10 (three runs behind tiles and the
+   printer's run under the front PC's name, two names over a wall, "Closet switch"'s plate on the closet's wall) and are waiting
+   for the owner's word: they are listed in OLD_PLAN and skipped, so this check holds SB-J10's own layout to the rule */
+const OLD_PLAN = /^(msw-printer run under pc's tile|msw-bsw run under cam1's tile|cinj1-cam1 run under msw's tile|"Business router" on a wall|"Injector CAM-02" on a wall|"Closet switch" on a wall|msw-printer run under "(Reception|Counter|Till) PC")$/;
 const planRunsClear = (p) => p.evaluate(() => {
   const svg = document.getElementById("plan"), box = (el) => el.getBoundingClientRect(), out = [];
   const devOf = (n) => n.closest(".pdev") && n.closest(".pdev").dataset.d;
-  const TB = [...svg.querySelectorAll(".pdev rect.tile")].map((o) => ({ d: devOf(o), b: box(o) })), NB = [...svg.querySelectorAll("text.ns, text.rl")].map((t) => ({ t, d: devOf(t), b: box(t) }));
+  const TB = [...svg.querySelectorAll(".pdev rect.tile")].map((o) => ({ d: devOf(o), b: box(o) })), NB = [...svg.querySelectorAll("text.ns, text.rl")].map((t) => { const pl = t.previousElementSibling && t.previousElementSibling.classList.contains("lpbg") ? t.previousElementSibling : t; return { t, d: devOf(t), b: box(pl) }; });   /* a name with its plate (4 units each side, 2 above and below): the plate is what covers a wall */
   const walls = []; svg.querySelectorAll("rect.room").forEach((r) => { const b = box(r); walls.push({ v: 1, at: b.left, a: b.top, z: b.bottom }, { v: 1, at: b.right, a: b.top, z: b.bottom }, { v: 0, at: b.top, a: b.left, z: b.right }, { v: 0, at: b.bottom, a: b.left, z: b.right }); });
   const onWall = (b, m) => walls.some((w) => (w.v ? b.left + m < w.at && b.right - m > w.at && b.top < w.z && b.bottom > w.a : b.top + m < w.at && b.bottom - m > w.at && b.left < w.z && b.right > w.a));
   NB.forEach(({ t, b }) => { if (onWall(b, 1)) out.push('"' + t.textContent + '" on a wall'); });

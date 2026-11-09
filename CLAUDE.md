@@ -2771,7 +2771,14 @@ checks. Objectives read 9 November 2026 (Network+ V9 unchanged).
     on the small office; the queue, card, title, records, device buttons, shelves and map. 159 checks; a business ticket must open on the business asked for (a fault that didn't show would move it to the next business, and every variant could quietly become one: a plant did exactly that and passed until this check).
   - AAA: 7 states (the card and its records, SSH from the manager's PC, the board at rung 3, solved, the floor plan, the
     shelves, the map), all passing; the floor plan's state failed first ("CABINET: LOCKED" 1.00:1, above) and passes since. `tools/aaa.mjs` now exits 1 when anything fails (it always exited 0, its verdict only in its last line).
-  - `python3 tools/plants-business-tickets.py` (in a throwaway copy): RESULTS_PLANTS
+  - `python3 tools/plants-business-tickets.py` (in a throwaway copy): 27 plants (14 page, 11 Node, 2 contrast), all caught. The
+    first run caught 23; each of the 4 it missed showed a gap, closed and run again:
+    - SB-01's fault planted on the wrong port: every ticket quietly fell back to the one variant still showing a fault (a ticket
+      moves to the next business when its fault doesn't show). Now the drive's "opens on the business asked for" check.
+    - every spare port unparked accepted: the test's wrong fix also moved the printer's port, so it failed for that and the
+      spare-port check was never reached. The wrong fix now touches the spares alone.
+    - the cabinet's label without its plate, the records' passwords faint: both states failed, but `tools/aaa.mjs` always
+      exited 0 and the plant script read the exit code. The tool now exits 1 on a failure, and the script reads the verdict.
   - **Totals before going live** (on a snapshot of this branch, 78413a3's code): `npm test` 391 of 391; `node tools/drive.mjs` in full 4,597 checks; AAA on every Ticket Desk state (the desk's floor plan changed for every site), 95 states and 190,709 text runs, and the 10 scrolled states (2,687 runs), all passing. Build mode's states weren't run again: nothing it draws changed.
 - `tools/wip/` (not part of the site): `sbt.mjs` (the business as SB-J10 leaves it, with commands typed and faults planted),
   `sb01.mjs` (SB-01 end to end in Node), `sbtpage.mjs` (a business ticket on the desk: its card, buttons and screenshots).

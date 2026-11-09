@@ -15,7 +15,6 @@ import { BUSINESS_JOBS } from "../build/business.js";
 import { online } from "../build/jobs.js";
 import { exec } from "../net/cmd.js";
 import * as SW from "../net/swcli.js";
-import * as RT from "../net/rtcli.js";
 import { rng, hash, ip2n } from "../net/util.js";
 
 const J10 = BUSINESS_JOBS.find(function (d) { return d.id === "SB-J10"; });
@@ -872,7 +871,8 @@ const SB11 = {
       onRouter(sim, ["configure terminal", "ip dhcp pool " + V.guest.name, "lease infinite", "end"].concat(SAVE));
       const x = sim.d.rtr, q = rng(hash("SB-11 market:" + seed));
       x.leases = x.leases.filter(function (l) { return l.pool !== V.guest.name; });   /* last week's leases, today's visitor's among them, ran out before the market */
-      RT.poolAddrs(R, V.guest.name).forEach(function (ip) { const m = "02-" + [0, 1, 2, 3, 4].map(function () { return q.int(0, 255).toString(16).padStart(2, "0"); }).join("-"); x.leases.push({ mac: m, ip: ip, pool: V.guest.name, name: "Phone", host: "PHONE-" + m.slice(-5).replace("-", "").toUpperCase(), manual: false, expires: "Infinite" }); });   /* Saturday's phones, long gone */
+      const lo = function (x) { return ip2n(x); }, free = []; for (let h = 1; h < 255; h++) { const ip = pre(V.guest.net) + h; if (ip !== V.guest.gw && !R.excluded.some(function (e) { return lo(ip) >= lo(e[0]) && lo(ip) <= lo(e[1]); })) free.push(ip); }   /* what the pool can lend: its /24 less the router's own address and what's kept back */
+      free.forEach(function (ip) { const m = "02-" + [0, 1, 2, 3, 4].map(function () { return q.int(0, 255).toString(16).padStart(2, "0"); }).join("-"); x.leases.push({ mac: m, ip: ip, pool: V.guest.name, name: "Phone", host: "PHONE-" + m.slice(-5).replace("-", "").toUpperCase(), manual: false, expires: "Infinite" }); });   /* Saturday's phones, long gone */
       sim.apply({ t: "radio", dev: "guest", on: false }); sim.apply({ t: "radio", dev: "guest", on: true });   /* and asks again today */
     } else if (kind === "staff") {
       line = pre(V.staff.net) + "11 " + pre(V.staff.net) + "253";

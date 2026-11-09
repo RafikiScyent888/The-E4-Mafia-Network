@@ -15,7 +15,7 @@ import { page, physical } from "../net/pages.js";
 import { rng, hash } from "../net/util.js";
 import { checkSheet, sheetRows } from "../net/ipam.js";
 
-const STATE_CHANGING = { cmd: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1, router: 1, client: 1, rogue: 1, print: 1, speed: 1, outside: 1, rejoin: 1, pcprinter: 1, forget: 1, join: 1, injector: 1, tftp: 1, crossover: 1, ipam: 1, tone: 1, repatch: 1, cablemap: 1, sfp: 1, polarity: 1 };   /* print, speed and outside change nothing, but they draw on the same counter as ping, so replay needs them */
+const STATE_CHANGING = { cmd: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1, router: 1, client: 1, rogue: 1, print: 1, speed: 1, outside: 1, rejoin: 1, pcprinter: 1, forget: 1, join: 1, injector: 1, tftp: 1, crossover: 1, ipam: 1, tone: 1, repatch: 1, cablemap: 1, sfp: 1, polarity: 1, joinssid: 1, apnet: 1, radio: 1, cabinet: 1 };   /* print, speed and outside change nothing, but they draw on the same counter as ping, so replay needs them; the last four are the business's pages (its access point, the phones' Wi-Fi, the closet cabinet) */
 const PHYSICAL = { look: 1, test: 1, reseat: 1, unplug: 1, replace: 1, crossover: 1, tighten: 1, power: 1, tone: 1, probe: 1, repatch: 1, polarity: 1 };
 
 /* open a ticket on a seed; if a generated network ever failed to show its fault, move to the next seed */
@@ -74,6 +74,8 @@ function apply(T, a, replay) {
   if (a.t === "injector") { const r = T.sim.apply(a); return { result: r, facts: { injector: true, power: r.power, std: r.std, camera: T.sim.on("camera") } }; }
   if (a.t === "forget") { const r = T.sim.apply(a); return { result: r, facts: { forgot: a.dev } }; }
   if (a.t === "join") { const r = T.sim.apply(a), ad = T.sim.addr(a.dev), l = T.sim.wifiLink(a.dev); return { result: r, facts: { join: r.result, dev: a.dev, ap: l && l.connected ? l.ap.id : null, ip: ad && ad.ip, internet: !!(ad && T.sim.route(a.dev, "203.0.113.80").internet) } }; }
+  if (a.t === "joinssid") { const r = T.sim.apply(a), ad = T.sim.addr(a.dev), l = T.sim.wifiLink(a.dev); return { result: r, facts: { join: r.result, dev: a.dev, ap: l && l.connected ? l.ap.id : null, ip: ad && ad.ip, apipa: !!(ad && ad.kind === "apipa"), internet: !!(ad && T.sim.route(a.dev, "203.0.113.80").internet) } }; }
+  if (a.t === "apnet" || a.t === "radio" || a.t === "cabinet") { const r = T.sim.apply(a); return { result: r, facts: { [a.t]: true, dev: a.dev, ok: !!(r && r.ok !== false) } }; }   /* the business's own pages: an access point's networks, a phone's Wi-Fi radio, the closet cabinet */
   if (a.t === "rejoin") { const r = T.sim.apply(a); const ad = T.sim.addr(a.dev); return { result: r, facts: { rejoin: r.result, dev: a.dev, ip: ad && ad.ip, apipa: !!(ad && ad.kind === "apipa"), internet: !!(ad && T.sim.route(a.dev, "203.0.113.80").internet) } }; }
   return null;
 }

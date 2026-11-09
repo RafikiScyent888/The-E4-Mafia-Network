@@ -4,6 +4,7 @@
    ticket opened on one view is the same ticket on the others. */
 import { HOME_TICKETS, HOME_COMING } from "../tickets/home.js";
 import { OFFICE_TICKETS, OFFICE_COMING } from "../tickets/office.js";
+import { BUSINESS_TICKETS, BUSINESS_COMING, businessRecords } from "../tickets/business.js";
 import { LEVELS, isOpen } from "./levels.js";
 import * as E from "../tickets/engine.js";
 import { HELP } from "../net/cmd.js";
@@ -18,11 +19,13 @@ import { cableMap } from "./cablemapui.js";
 
 const PAGE = document.body.dataset.page;
 const S = load();
-const DEFS = {}; HOME_TICKETS.concat(OFFICE_TICKETS).forEach(function (d) { DEFS[d.id] = d; });
+const DEFS = {}; HOME_TICKETS.concat(OFFICE_TICKETS, BUSINESS_TICKETS).forEach(function (d) { DEFS[d.id] = d; });
 const item = function (d) { return { id: d.id, n: d.n, tier: d.tier, title: d.title, level: d.level || 1, built: true }; };
 const LIST = HOME_TICKETS.map(item).concat(HOME_COMING.map(function (c) { return Object.assign({ built: false, level: 1 }, c); }),
-  OFFICE_TICKETS.map(item), OFFICE_COMING.map(function (c) { return Object.assign({ built: false }, c); }));   /* every level's tickets; the queue shows the chosen level's */
+  OFFICE_TICKETS.map(item), OFFICE_COMING.map(function (c) { return Object.assign({ built: false }, c); }),
+  BUSINESS_TICKETS.map(item), BUSINESS_COMING.map(function (c) { return Object.assign({ built: false }, c); }));   /* every level's tickets; the queue shows the chosen level's */
 const DEVICES = ["pc", "switch", "msw", "pp", "mgr", "mjack", "ojack", "meet", "bsw", "mpc", "router", "modem", "printer", "tech", "injector", "camera", "tv", "mesh", "laptop", "phone", "guest"];   /* an undocumented box gets no button: find it on the floor plan */
+const BIZ_DEVICES = ["pc", "mgr", "bpc", "dpc1", "dpc2", "printer", "msw", "bsw", "rtr", "modem", "cab", "ap", "injector", "cinj1", "cam1", "cinj2", "cam2", "guest", "mphone", "tech"];   /* the business's, in the order the work orders brought them */
 const $ = function (id) { return document.getElementById(id); };
 let replateMap = null;
 
@@ -82,9 +85,9 @@ function renderLeft() {
 }
 function renderTitle() {
   const d = ctx.T.def, net = ctx.T.sim.net, lt = $("labtitle");
-  const surname = net.client.name.replace(/^(Mrs?|Ms)\. /, ""), L = LEVELS[(d.level || 1) - 1], office = net.site === "office";
+  const surname = net.client.name.replace(/^(Mrs?|Ms)\. /, ""), L = LEVELS[(d.level || 1) - 1], office = net.site === "office", biz = net.site === "business";
   const t = { desk: ["Ticket " + d.id + " · " + d.title, "Queue: Tier " + L.n + " · " + L.name + " · Rafiki's IT Services"], bench: ["Lab " + d.id + " · " + d.title, "Shelf: Network troubleshooting · Level: " + L.name],
-    map: [(office ? net.client.name : surname + " home") + " · ticket " + d.id + " · " + d.title, office ? "Site: Small office, " + net.client.street + " · Level 2: Small office" : "Site: Client homes, Maple Street · Level 1: Home"] }[PAGE];
+    map: [(office || biz ? net.client.name : surname + " home") + " · ticket " + d.id + " · " + d.title, biz ? "Site: Small business, " + net.client.street + " · Level 3: Small business" : office ? "Site: Small office, " + net.client.street + " · Level 2: Small office" : "Site: Client homes, Maple Street · Level 1: Home"] }[PAGE];
   lt.textContent = t[0]; lt.appendChild(el("small", null, t[1]));
   document.title = d.id + " · " + { desk: "Ticket Desk", bench: "Lab Bench", map: "Service Map" }[PAGE] + " · The E4 Mafia Network";
 }
@@ -93,18 +96,23 @@ function renderTicketCard() {
   tk.innerHTML = "";
   tk.appendChild(el("h3", { tabindex: "-1", id: "tkh" }, d.id + " · " + d.title));
   tk.appendChild(el("div", { class: "meta" }, el("b", null, "Priority " + d.priority), el("br"), "Due in " + d.due));
-  tk.appendChild(el("p", { class: "from" }, net.client.name + " · " + net.client.street + " · " + (net.site === "office" ? "office network" : "home network")));
+  tk.appendChild(el("p", { class: "from" }, net.client.name + " · " + net.client.street + " · " + ({ office: "office network", business: "business network" }[net.site] || "home network")));
   tk.appendChild(el("p", { class: "q" }, "“" + b.quote + "”"));
   tk.appendChild(el("p", { class: "mason2" }, el("b", null, "Mason: "), d.mason));
   if (net.site === "office" && T.v.plan) tk.appendChild(officeRecords(d, T));
+  if (net.site === "business" && T.v.plan) tk.appendChild(records("The business's records", (d.records && d.records(T.v, T.sim)) || businessRecords(T.v, T.sim)));
 }
 /* the office's records, as the client keeps them: what a technician is given to log in to its switch. A ticket can
    change a line where its story says the records changed (SO-03's new address; SO-09's address from the IPAM sheet) */
 function officeRecords(d, T) {
   const p = T.v.plan, rows = (d.records && d.records(T.v, T.sim)) || [["The switch", p.hostname + " · management address " + p.ip + ", mask " + p.mask + " · gateway " + p.gw], ["Console password", p.console], ["Enable secret", p.secret], ["Remote logins (SSH)", "user " + p.user + " · password " + p.userPw]];
+  return records("The office's records", rows);
+}
+/* a site's records on the ticket card, row by row; the business's (js/tickets/business.js) add its router, its two switches and its VLANs */
+function records(title, rows) {
   const dl = el("dl", { class: "recs" });
   rows.forEach(function (r) { dl.appendChild(el("dt", null, r[0])); dl.appendChild(el("dd", { "data-rec": r[0] }, r[1])); });
-  return el("div", { class: "office-recs", id: "officeRecs" }, el("h4", null, "The office's records"), dl);
+  return el("div", { class: "office-recs", id: "officeRecs" }, el("h4", null, title), dl);
 }
 /* a ticket that needs the office's records shows them under the ticket: the IPAM sheet (SO-09), the cable map (SO-08).
    Checking the sheet is evidence like any other; saving either changes the records, and is replayed like the rest.
@@ -155,7 +163,8 @@ function renderNotebook() {
 }
 function renderDevtabs() {
   const dt = $("devtabs"); dt.innerHTML = "";
-  DEVICES.forEach(function (id) { const d = ctx.T.sim.d[id]; if (!d) return; dt.appendChild(el("button", { type: "button", "data-d": id, "aria-pressed": String(id === ctx.open), onclick: function () { openDevice(id); } }, d.label)); });
+  const biz = ctx.T.sim.net.site === "business";
+  (biz ? BIZ_DEVICES : DEVICES).forEach(function (id) { const d = ctx.T.sim.d[id]; if (!d || (biz && d.boxed)) return; dt.appendChild(el("button", { type: "button", "data-d": id, "aria-pressed": String(id === ctx.open), onclick: function () { openDevice(id); } }, d.label)); });
   $("termtitle").textContent = "Terminal · " + ctx.T.sim.d[ctx.open].label;
 }
 function renderWin() { renderWindow($("win"), ctx); }
@@ -173,13 +182,13 @@ function openDevice(id) {
 function setView(phy) {
   $("net").toggleAttribute("hidden", phy); $("plan").toggleAttribute("hidden", !phy);   /* SVG elements have no .hidden property: set the attribute */
   $("vLog").setAttribute("aria-pressed", String(!phy)); $("vPhy").setAttribute("aria-pressed", String(phy));
-  if (!phy && ctx.T) renderDiagram();   /* drawn while hidden, nothing could be measured: drawn again now it's shown */
-  if (phy) plates($("plan"), ".rl, .ns", "#f4f6fb");
+  if (ctx.T) renderDiagram();   /* drawn while hidden, nothing could be measured: drawn again now it's shown (the business's floor plan routes its runs round what it measures) */
+  if (phy) plates($("plan"), ".rl, .ns, .cabl", "#f4f6fb");
 }
 function setTime(step) { $("steps").toggleAttribute("hidden", !step); $("tLive").setAttribute("aria-pressed", String(!step)); $("tStep").setAttribute("aria-pressed", String(step)); }
 function replateAll() {
   if (!ctx.T) return;
-  plates($("net"), ".nl, .ns, .pl"); if (!$("plan").hasAttribute("hidden")) plates($("plan"), ".rl, .ns", "#f4f6fb");
+  plates($("net"), ".nl, .ns, .pl"); if (!$("plan").hasAttribute("hidden")) plates($("plan"), ".rl, .ns, .cabl", "#f4f6fb");
   if (replateMap) replateMap();
 }
 function chromeH() { document.documentElement.style.setProperty("--chromeH", document.querySelector(".chrome").offsetHeight + "px"); }

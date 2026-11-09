@@ -76,6 +76,8 @@ export function renderShelves(host, ctx) {
       ctx.list.filter(function (t) { return t.level === 1 && t.tier === "more"; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
       ol.appendChild(el("li", { class: "tier" }, "Small office" + (isOpen(2) ? "" : " · locked until the home level is finished")));
       if (isOpen(2)) ctx.list.filter(function (t) { return t.level === 2; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
+      ol.appendChild(el("li", { class: "tier" }, "Small business" + (isOpen(3) ? "" : " · locked until the small office is finished")));
+      if (isOpen(3)) ctx.list.filter(function (t) { return t.level === 3; }).forEach(function (t) { ol.appendChild(el("li", null, ticketButton(ctx, t))); });
       ol.appendChild(el("li", { class: "tier" }, "From the Network-Sims"));
       ["Network Troubleshooting", "Routing Table Troubleshooting", "STP Troubleshooting", "Switch CLI Output Analysis"].forEach(function (n) { ol.appendChild(el("li", null, el("button", { type: "button", "aria-disabled": "true" }, el("span", { class: "num" }, "·"), el("span", { class: "what" }, n), el("span", { class: "st" }, "Network-Sims · at a later level")))); });
     } else {
@@ -134,9 +136,9 @@ export function renderMap(host, ctx) {
   dl.appendChild(el("dt", null, "Teaches")); const ul = el("ul"); s.obj.forEach(function (o) { ul.appendChild(el("li", null, o)); }); dl.appendChild(el("dd", null, ul));
   dl.appendChild(el("dt", null, "Connects to")); dl.appendChild(el("dd", null, s.links));
   card.appendChild(dl);
-  if (s.open || (s.id === "dental" && isOpen(2))) {
-    const lv = s.open ? 1 : 2;
-    card.appendChild(el("p", { class: "lvl", style: "margin-top:10px" }, lv === 1 ? "Tickets at the client homes" : "Tickets at the small office"));
+  if (s.open || (s.id === "dental" && isOpen(2)) || (s.id === "bakery" && isOpen(3))) {
+    const lv = s.open ? 1 : s.id === "dental" ? 2 : 3;
+    card.appendChild(el("p", { class: "lvl", style: "margin-top:10px" }, ["Tickets at the client homes", "Tickets at the small office", "Tickets at the small business"][lv - 1]));
     const tl = el("ul", { class: "tickets" });
     ctx.list.filter(function (t) { return t.level === lv; }).forEach(function (t) { tl.appendChild(el("li", null, ticketButton(ctx, t))); });
     card.appendChild(tl);

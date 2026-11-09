@@ -920,6 +920,55 @@
   "after": "[...document.querySelectorAll('.m3d-bar button')].find(b=>b.textContent==='Fibre slots').click()"
  },
  {
+  "name": "business tickets: SB-01 the ticket card with the business's records, ipconfig /all on the PC",
+  "page": "index.html",
+  "ticket": "SB-01",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-01'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=pc]').click(); tab('Command Prompt'); k('ipconfig /all'); document.getElementById('tk').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-01 SSH from the manager's PC: show interfaces status, the port's switchport",
+  "page": "index.html",
+  "ticket": "SB-01",
+  "seed": 2,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-01'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.swIp,P.userPw,'enable',P.swSecret,'show interfaces gi0/1 switchport','show vlan brief'].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-01 the board, Mason's third rung, the notebook",
+  "page": "index.html",
+  "ticket": "SB-01",
+  "seed": 2025,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-01'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=pc]').click(); tab('Command Prompt'); ['ipconfig','ping '+v.printer].forEach(k); const w=c.T.opts.filter(o=>!o.right).map(o=>o.id); w.slice(0,4).forEach(x=>c.guess(x)); c.resetBoard(); c.guess(w[4]); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-01 solved, the summary and what proved it",
+  "page": "index.html",
+  "ticket": "SB-01",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-01'); const v=c.T.v, P=v.plan; const m=l=>c.act({t:'cmd',dev:'mgr',line:l}); ['ssh '+P.user+'@'+P.swIp,P.userPw,'enable',P.swSecret,'configure terminal','interface gi0/1','switchport access vlan '+P.vlans.staff.id,'end','copy running-config startup-config','','exit'].forEach(m); c.act({t:'cmd',dev:'pc',line:'ipconfig /renew'}); c.guess('right'); c.act({t:'cmd',dev:'pc',line:'ping '+v.printer}); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-01 the floor plan, your laptop on the back switch",
+  "page": "index.html",
+  "ticket": "SB-01",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-01'); const v=c.T.v, P=v.plan; document.getElementById('vPhy').click(); document.getElementById('plan').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: the shelves, the small business's tickets",
+  "page": "lab-bench.html",
+  "ticket": "SB-01",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-01'); document.querySelectorAll('#left details').forEach(d=>d.open=true); [...document.querySelectorAll('#left li.tier')].find(l=>/Small business/.test(l.textContent)).scrollIntoView();"
+ },
+ {
+  "name": "business tickets: the map, the small business's card and its tickets",
+  "page": "service-map.html",
+  "ticket": "SB-01",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-01'); document.querySelector('[data-site=bakery]').dispatchEvent(new MouseEvent('click',{bubbles:true})); document.getElementById('card').scrollIntoView();"
+ },
+ {
   "name": "business: SB-J1 first check, the work order, the limits and the box",
   "page": "build.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J1',true,4242); c.check(); document.getElementById('bm').scrollIntoView();"

@@ -8,13 +8,14 @@
    Optional plant: node tools/drive.mjs "<js run in the page after load>" */
 import http from "node:http"; import fs from "node:fs"; import path from "node:path"; import url from "node:url";
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "..");
-const { HOME_TICKETS } = await import("../js/tickets/home.js"); const { OFFICE_TICKETS } = await import("../js/tickets/office.js"); const EN = await import("../js/tickets/engine.js");
+const { HOME_TICKETS } = await import("../js/tickets/home.js"); const { OFFICE_TICKETS } = await import("../js/tickets/office.js"); const { BUSINESS_TICKETS } = await import("../js/tickets/business.js"); const EN = await import("../js/tickets/engine.js");
+const { OFFICE_JOBS } = await import("../js/build/office.js");
 const { JOBS } = await import("../js/build/jobs.js");
 /* three houses each, plus more until every variant of the fault (which end, which kind) has been driven through the page */
 function seedsFor(id) {
-  const def = HOME_TICKETS.concat(OFFICE_TICKETS).find((d) => d.id === id); if (!def) return [11];   /* not built: the loop names it */
+  const def = HOME_TICKETS.concat(OFFICE_TICKETS, BUSINESS_TICKETS).find((d) => d.id === id); if (!def) return [11];   /* not built: the loop names it */
   const key = (T) => JSON.stringify([T.v.kind, T.v.end, T.v.kink]), out = [11, 2025, 777777], seen = new Set(out.map((s) => key(EN.open(def, s))));
-  for (let s = 1; s < (def.level === 2 ? 40 : 400); s++) {   /* an office takes longer to build: every variant shows within the first forty */ const k = key(EN.open(def, s)); if (!seen.has(k)) { seen.add(k); out.push(s); } }
+  for (let s = 1; s < (def.level === 3 ? 12 : def.level === 2 ? 40 : 400); s++) {   /* an office takes longer to build: every variant shows within the first forty; a business longer still, within twelve */ const k = key(EN.open(def, s)); if (!seen.has(k)) { seen.add(k); out.push(s); } }
   return out;
 }
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".jpg": "image/jpeg" };
@@ -28,8 +29,10 @@ const check = (ok, what) => { steps++; if (!ok) bad.push(what); };
 
 async function page(ticket, seed, file) {
   const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
-  /* a small-office ticket opens for a student who has finished Home: every home ticket solved, every home work order done */
-  const homeT = /^SO-/.test(ticket) ? HOME_TICKETS.map((d) => d.id) : [], homeJ = /^SO-/.test(ticket) ? JOBS.filter((d) => !d.free).map((d) => d.id) : [];
+  /* a small-office ticket opens for a student who has finished Home: every home ticket solved, every home work order done; a
+     small-business ticket for one who has finished the small office too */
+  const lvl = /^SB-/.test(ticket) ? 3 : /^SO-/.test(ticket) ? 2 : 1;
+  const homeT = lvl > 1 ? HOME_TICKETS.concat(lvl > 2 ? OFFICE_TICKETS : []).map((d) => d.id) : [], homeJ = lvl > 1 ? JOBS.filter((d) => !d.free).concat(lvl > 2 ? OFFICE_JOBS : []).map((d) => d.id) : [];
   await ctx.addInitScript(([t, s, hT, hJ]) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify({ current: t, t: { [t]: { seed: s } }, solved: Object.fromEntries(hT.map((id) => [id, 1])) })); if (hJ.length) localStorage.setItem("e4-build-v1", JSON.stringify({ j: {}, done: Object.fromEntries(hJ.map((id) => [id, 1])) })); sessionStorage.setItem("seeded", "1"); } }, [ticket, seed, homeT, homeJ]);
   const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push(ticket + ": " + e.message));
   await p.goto(base + (file || "index.html")); await p.waitForTimeout(350);
@@ -416,11 +419,50 @@ Object.assign(PLAN, {
   }
 });
 
-for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY || k === process.env.ONLY || (process.env.ONLY === "tickets-office" && /^SO-/.test(k)))) for (const seed of seedsFor(id)) {
-  if (!HOME_TICKETS.concat(OFFICE_TICKETS).some((d) => d.id === id)) { check(false, id + ": isn't among the built tickets"); continue; }
+/* the small business's tickets: SSH from a staff PC to the closet switch and the router, the back switch at your laptop's console.
+   The logins come off the page, from the business's records on the ticket card */
+const bizLogin = async (p, v) => {
+  const ssh = await rec(p, "Remote logins (SSH)"), sw = await rec(p, "The closet switch"), sec = await rec(p, "Enable secrets");
+  const m = ssh.match(/^user (\S+) · password (\S+)$/), ip = (sw.match(/at (\d+\.\d+\.\d+\.\d+)/) || [])[1], s2 = (sec.match(/both switches (\S+)/) || [])[1];
+  check(!!m && m[1] === v.plan.user && m[2] === v.plan.userPw && ip === v.plan.swIp && s2 === v.plan.swSecret, "the business's records on the ticket give the SSH login, the closet switch's address and its enable secret");
+  await dev(p, "mgr"); await tab(p, "Command Prompt");
+  for (const l of ["ssh " + (m ? m[1] : "?") + "@" + ip, m ? m[2] : "?", "enable", s2]) await type(p, l);
+};
+const bizConf = async (p, v, lines, save) => { await bizLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end"], save === false ? [] : ["copy running-config startup-config", ""], ["exit"])) await type(p, l); };
+Object.assign(PLAN, {
+  "SB-01": {
+    look: async (p, v) => {
+      /* the business as the work orders left it, drawn as they draw it: your laptop in the back room on the back switch's console, every name clear, every run routed, in both fonts */
+      const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "SB-01's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(60);
+      const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "SB-01's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+      const BK = (await import("../js/net/business.js")).BUSINESS_ROOM_BOX.back;
+      const lap = await p.$eval('#plan [data-d="tech"] rect.tile', (r) => { const b = r.getBBox(), m = r.getCTM(), s = r.ownerSVGElement.getCTM(); const x = b.x + b.width / 2, y = b.y + b.height / 2; const q = s.inverse().multiply(m); return [q.a * x + q.c * y + q.e, q.b * x + q.d * y + q.f]; }).catch(() => [0, 0]);
+      check(lap[0] > BK[0] && lap[0] < BK[2] && lap[1] > BK[1] && lap[1] < BK[3], "SB-01's floor plan: your laptop is drawn in the back room, where it is (" + lap.map(Math.round) + ")");
+      await planBothFonts(p, "SB-01"); await dysClear(p, "SB-01"); await p.click("#vLog"); await p.waitForTimeout(40);
+      await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ipconfig /all");
+      const ipc = await term(p), staffNet = v.plan.vlans.staff.net.replace(/0$/, "");
+      check(/DHCP Enabled[ .]*: Yes/.test(ipc) && ipc.indexOf("Address. . . . . . . . . . . : " + staffNet) < 0 && (v.kind === "guest" ? ipc.indexOf(v.plan.vlans.guest.net.replace(/0$/, "")) >= 0 : /169\.254\./.test(ipc)), "SB-01 " + v.kind + ": ipconfig /all on the PC: DHCP, and not a staff address");
+      await type(p, "ping " + v.printer); check(/Packets: Sent = 4, Received = 0|Destination host unreachable|Request timed out/.test(await term(p)) && !/Reply from [\d.]+: bytes/.test((await term(p)).split("ping " + v.printer).pop()), "SB-01: the PC gets no reply from the printer");
+      await bizLogin(p, v);
+      await type(p, "show interfaces status"); check(new RegExp("^Gi0/1\\s+\\S+\\s+connected\\s+" + v.vlan + "\\s", "m").test(await term(p)), "SB-01: show interfaces status over SSH: Gi0/1 connected in VLAN " + v.vlan);
+      await type(p, "show interfaces gi0/1 switchport"); check(new RegExp("Access Mode VLAN: " + v.vlan + " ").test(await term(p)), "SB-01: show interfaces gi0/1 switchport names the VLAN it's in");
+      await type(p, "show vlan brief"); await type(p, "exit");
+      check(/Connection to \S+ closed|C:\\Users\\[^>]+>\s*$/.test(await term(p)), "SB-01: exit leaves the switch, back at the manager's PC's prompt");
+      const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(["ipc", "dhcpyes", "noprint", "status", "swport", "vlans"].every((x) => ev.indexOf(x) >= 0), "SB-01: the notebook has the PC's address, DHCP, no printer, the port's VLAN three ways (" + ev + ")");
+    },
+    wrong: async (p, v) => { await bizConf(p, v, ["interface gi0/1", "switchport access vlan " + v.plan.vlans.staff.id], false); await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); },
+    afterWrong: async (p) => { check(/hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SB-01: fixed but not saved: Mason says it isn't saved"); },
+    fix: async (p, v) => { await bizConf(p, v, ["interface gi0/1", "switchport access vlan " + v.plan.vlans.staff.id]); await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); },
+    proof: async (p) => { const ip = await rec(p, "The printer"); await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping " + ip.split(",")[0]); }
+  }
+});
+
+for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY || k === process.env.ONLY || (process.env.ONLY === "tickets-office" && /^SO-/.test(k)) || (process.env.ONLY === "tickets-business" && /^SB-/.test(k)))) for (const seed of seedsFor(id)) {
+  if (!HOME_TICKETS.concat(OFFICE_TICKETS, BUSINESS_TICKETS).some((d) => d.id === id)) { check(false, id + ": isn't among the built tickets"); continue; }
   let { p, ctx } = await page(id, seed);
   try {   /* a ticket that stops part way (a button missing, a click that times out) is a named failure, and the next ticket still runs */
-  const v = await T(p, () => window.__e4.T.v), gw = await T(p, () => window.__e4.T.sim.d.router.lan.ip);
+  const v = await T(p, () => window.__e4.T.v), gw = await T(p, () => { const r = window.__e4.T.sim.d.router; return r ? r.lan.ip : null; });   /* the business has no home or office router: its gateways are in its records */
   check(await T(p, () => window.__e4.T.def.exhibits(window.__e4.T.sim, window.__e4.T.v)), id + " " + seed + ": fault present at load");
   await plan.look(p, v);
   const ev0 = await p.$$eval("#notebook li", (l) => l.length); check(ev0 >= 1, id + " " + seed + ": the notebook recorded evidence (" + ev0 + ")");
@@ -483,6 +525,44 @@ if (!process.env.ONLY || process.env.ONLY === "tickets-office") {
     check(q.join(",") === "SO-01:on,SO-02:on,SO-03:on,SO-04:on,SO-05:on,SO-06:on,SO-07:on,SO-08:on,SO-09:on,SO-10:on,SO-11:on,SO-12:on,SO-13:on,SO-14:on,SO-15:on", "office tickets: the level 2 queue lists SO-01 to SO-15 (" + q.join(",") + ")");
     check(/office network/.test(await p.$eval("#tk .from", (n) => n.textContent)) && /Tier 2 · Small office/.test(await p.$eval("#labtitle", (n) => n.textContent)), "office tickets: the card says office network, the title Tier 2 · Small office");
     check(!!(await p.$('#devtabs [data-d="msw"]')) && !!(await p.$('#devtabs [data-d="tech"]')), "office tickets: the managed switch and your laptop have device buttons");
+    await ctx.close();
+  }
+}
+
+/* the small business's tickets on the desk: locked until the small office is finished (a business ticket left as current opens
+   HOME-01 instead), listed for one who has; the card, the title, the records, the device buttons, the shelves and the map */
+if (!process.env.ONLY || process.env.ONLY === "tickets-business") {
+  {
+    const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
+    const homeOnly = Object.fromEntries(HOME_TICKETS.map((d) => [d.id, 1])), homeJobs = Object.fromEntries(JOBS.filter((d) => !d.free).map((d) => [d.id, 1]));
+    await ctx.addInitScript(([so, dn]) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify({ current: "SB-01", t: { "SB-01": { seed: 11 } }, solved: so })); localStorage.setItem("e4-build-v1", JSON.stringify({ j: {}, done: dn })); sessionStorage.setItem("seeded", "1"); } }, [homeOnly, homeJobs]);
+    const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push("business tickets locked: " + e.message)); await p.goto(base + "index.html"); await p.waitForTimeout(350);
+    if (plant) await p.evaluate(plant);
+    check((await T(p, () => window.__e4.T.def.id)) === "HOME-01", "business tickets: a student still on the small office, SB-01 left as current, lands on HOME-01 (the level is locked)");
+    await p.click('#left [data-level="3"]'); await p.waitForTimeout(60);
+    check(!!(await p.$("#lockpanel")) && (await p.$$('#queue [data-t^="SB-"]')).length === 0, "business tickets: for that student the small business's queue is the lock panel, no tickets");
+    await ctx.close();
+  }
+  {
+    const { p, ctx } = await page("SB-01", 2025);
+    try {
+      const q = await p.$$eval('#queue [data-t^="SB-"]', (l) => l.map((b) => b.dataset.t + ":" + (b.getAttribute("aria-disabled") === "true" ? "off" : "on")));
+      check(q.join(",") === BUSINESS_TICKETS.map((d) => d.id + ":on").join(","), "business tickets: the level 3 queue lists the business tickets built (" + q.join(",") + ")");
+      check(/^Tier 3 · Small business · tickets/.test(await p.$eval("#queue li.tier", (n) => n.textContent)) && /More tickets on the way/.test(await p.$eval("#queue", (n) => n.textContent)), "business tickets: the queue's heading says Tier 3 · Small business, and more tickets are on the way");
+      check(/business network/.test(await p.$eval("#tk .from", (n) => n.textContent)) && /Tier 3 · Small business/.test(await p.$eval("#labtitle", (n) => n.textContent)), "business tickets: the card says business network, the title Tier 3 · Small business");
+      check(/^The business's records$/.test(await p.$eval("#officeRecs h4", (n) => n.textContent).catch(() => "")), "business tickets: the card carries the business's records");
+      const devs = await p.$$eval("#devtabs button", (l) => l.map((b) => b.dataset.d));
+      check(["pc", "mgr", "msw", "bsw", "rtr", "tech", "printer", "ap"].every((d) => devs.indexOf(d) >= 0) && devs.indexOf("router") < 0 && devs.indexOf("hire") < 0, "business tickets: the business's devices have buttons, its own and no others (" + devs.join(" ") + ")");
+      const nT = BUSINESS_TICKETS.length, L3 = await p.$eval('#left [data-level="3"]', (n) => n.textContent);
+      check(L3 === "Level 3 · Small business0 of " + nT + " ticket" + (nT === 1 ? "" : "s") + ", 0 of 10 work orders done · more tickets on the way", "business tickets: Level 3 counts its tickets (one ticket, or tickets) and work orders (" + L3 + ")");
+      await p.goto(base + "lab-bench.html"); await p.waitForTimeout(350);
+      const shelf = await p.$eval("#left", (n) => n.textContent);
+      check(/Small business(?! · locked)/.test(shelf) && !!(await p.$('#left [data-t="SB-01"]')), "business tickets: the troubleshooting shelf lists SB-01 under Small business");
+      await p.goto(base + "service-map.html"); await p.waitForTimeout(350);
+      await p.click('[data-site="bakery"]'); await p.waitForTimeout(60);
+      check(/Tickets at the small business/.test(await p.$eval("#card", (n) => n.textContent)) && !!(await p.$('#card [data-t="SB-01"]')), "business tickets: the map's small business site lists its tickets");
+      check(/Site: Small business, /.test(await p.$eval("#labtitle", (n) => n.textContent)), "business tickets: the map's title names the small business's site");
+    } catch (e) { check(false, "business tickets: stopped: " + String(e.message).split("\n")[0]); }
     await ctx.close();
   }
 }
@@ -1145,7 +1225,7 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
     await p.goto(base + "index.html"); await p.waitForTimeout(350);
     const L2 = await p.$eval('#left [data-level="2"]', (n) => n.textContent), L3 = await p.$eval('#left [data-level="3"]', (n) => n.textContent);
     check(/Finished: 15 of 15 tickets, 10 of 10 work orders/.test(L2), tag + "Level 2 says finished, 15 of 15 tickets and 10 of 10 work orders (" + L2 + ")");
-    check(/^Level 3 · Small business0 of \d+ work orders done · more work orders and its tickets on the way$/.test(L3) && !(await p.$eval('#left [data-level="3"]', (n) => n.parentNode.classList.contains("locked"))), tag + "Level 3 is open, counts its work orders, and says more is on the way (" + L3 + ")");
+    check(L3 === "Level 3 · Small business0 of " + BUSINESS_TICKETS.length + " ticket" + (BUSINESS_TICKETS.length === 1 ? "" : "s") + ", 0 of 10 work orders done · more tickets on the way" && !(await p.$eval('#left [data-level="3"]', (n) => n.parentNode.classList.contains("locked"))), tag + "Level 3 is open, counts its work orders, and says more is on the way (" + L3 + ")");
     await p.click('#left [data-level="2"]'); await p.waitForTimeout(60);
     check(!/on the way|built later/i.test(await p.$eval("#queue", (n) => n.textContent)), tag + "the desk's queue for the small office says nothing more is coming");
   } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }

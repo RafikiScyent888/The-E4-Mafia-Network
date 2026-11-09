@@ -62,7 +62,7 @@ function pos(sim, id) {
 const ROOM_BOX = { office: [30, 30, 420, 300], living: [420, 30, 760, 300], garage: [30, 300, 420, 520], kitchen: [420, 300, 760, 520], upstairs: [790, 30, 980, 200], landing: [790, 200, 980, 330], porch: [764, 340, 990, 490] };
 function planSpots(sim, ids) {
   const out = {}, taken = [], LAY = layOf(sim), BOX = office(sim) ? siteOf(sim).box : ROOM_BOX;
-  if (!sim.net.extra.build) { for (const id of ids) { const p = pos(sim, id); out[id] = { px: p.px, py: p.py }; } return out; }   /* the tickets' houses are drawn exactly as laid out */
+  if (!sim.net.extra.build && sim.net.site !== "business") { for (const id of ids) { const p = pos(sim, id); out[id] = { px: p.px, py: p.py }; } return out; }   /* the tickets' houses and offices are drawn exactly as laid out; a business ticket starts from the work orders done, each device where they put it, so it's drawn as they draw it (your laptop in the back room, on the back switch's console) */
   const off = office(sim);
   const box = function (x, y) { return [x - 44, y - 26, x + 44, y + 54]; };
   const clear = function (b) { return taken.every(function (t) { return b[2] < t[0] || b[0] > t[2] || b[3] < t[1] || b[1] > t[3]; }); };

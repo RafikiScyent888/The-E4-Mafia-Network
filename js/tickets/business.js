@@ -46,9 +46,9 @@ const reachesPrinter = function (sim, id, ip) { const r = sim.route(id, ip); ret
 export function businessRecords(v, sim) {
   const p = v.plan, V = p.vlans, S = V.staff, mgr = sim.net.client.manager, back = String(sim.net.roomNames.back).toLowerCase();
   /* the VLAN plan, a row each, so it reads down the card rather than across it */
-  const vl = function (k, label) { const x = V[k]; return x ? [label, x.id + " · " + x.net + "/" + (x.len || 24) + " · gateway " + x.gw] : null; };
+  const vl = function (k, label) { const x = V[k]; return x ? [label, x.id + " · named " + x.name + " · " + x.net + "/" + (x.len || 24) + " · gateway " + x.gw] : null; };   /* its name too: a VLAN made again goes by the records' name */
   const plan = [vl("staff", "Staff VLAN"), vl("guest", "Guests' VLAN"), vl("cameras", "Cameras' VLAN"), vl("printers", "Printers' VLAN"), V.dept ? vl("dept", cap(V.dept.name.toLowerCase()) + " VLAN") : null,
-    ["Native VLAN", V.native.id + " · unused, on the trunks only"], ["Parking VLAN", V.parking.id + " · the spare ports, shut"], ["VLAN 1", "the gear's own addresses · " + p.lan + "/24"]].filter(Boolean);
+    ["Native VLAN", V.native.id + " · named " + V.native.name + " · unused, on the trunks only"], ["Parking VLAN", V.parking.id + " · named " + V.parking.name + " · the spare ports, shut"], ["VLAN 1", "the gear's own addresses · " + p.lan + "/24"]].filter(Boolean);
   return [
     ["The router", p.rtHost + " · by SSH from a staff PC at " + S.gw + " · its console is in the closet cabinet, locked; the key is with " + mgr],
     ["The closet switch", p.swHost + " · by SSH from a staff PC at " + p.swIp + " · its console is in the cabinet too"],

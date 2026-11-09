@@ -496,7 +496,8 @@ Object.assign(PLAN, {
       afterWrong: async (p) => { check(/the switch's own name for it/.test(await p.$eval("#board", (n) => n.textContent)), "SB-02: the VLAN back with the switch's own name: Mason says the records name it otherwise"); },
       fix: async (p, v) => { const vl = await p.$$eval("#officeRecs dt", (l) => l.map((x) => x.textContent + "=" + x.nextElementSibling.textContent)), row = vl.find((x) => / VLAN=/.test(x) && x.split("=")[1].split(" · ")[0] === String(v.vlan));
         check(!!row, "SB-02: the records' VLAN plan has VLAN " + v.vlan + " (" + row + ")");
-        await onSw(p, v, ["vlan " + v.vlan, "name " + v.vname]); await again(p, v); },
+        const nm = row && (row.split(" · ")[1] || "").replace(/^named /, ""); check(nm === v.vname, "SB-02: the records name the VLAN as it was (" + nm + ")");   /* typed from the card, as a student would */
+        await onSw(p, v, ["vlan " + v.vlan, "name " + nm]); await again(p, v); },
       proof: async (p, gw) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "staff") { await dev(p, "bpc"); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); } else if (v.kind === "printers") { await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); } else await radio(p); }
     };
   })(),

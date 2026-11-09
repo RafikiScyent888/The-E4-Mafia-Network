@@ -355,6 +355,7 @@ test("the business's records on the card carry every login, the switches' and ro
   const T = E.open(BUSINESS_TICKETS[0], seeds[0]), p = T.v.plan, rows = businessRecords(T.v, T.sim), all = rows.map((r) => r[0] + ": " + r[1]).join("\n");
   for (const x of [p.rtHost, p.swHost, p.bswHost, p.rtSecret, p.rtConsole, p.swSecret, p.swConsole, p.user, p.userPw, p.swIp, p.vlans.staff.gw, p.printerIp]) assert.ok(all.indexOf(x) >= 0, "the records give " + x);
   for (const k of ["staff", "guest", "cameras", "printers", "dept", "native", "parking"]) assert.ok(rows.some((r) => / VLAN$/.test(r[0]) && new RegExp("^" + p.vlans[k].id + " · ").test(r[1])), "the VLAN plan gives " + k);
+  for (const k of ["staff", "guest", "cameras", "printers", "dept", "native", "parking"]) assert.ok(rows.some((r) => / VLAN$/.test(r[0]) && r[1].indexOf(p.vlans[k].id + " · named " + p.vlans[k].name + " · ") === 0), "the VLAN plan names " + k + "'s VLAN as the switches name it (" + p.vlans[k].name + ")");   /* a VLAN made again goes by the records' name (SB-02) */
   for (const k of ["staff", "guest", "cameras", "printers", "dept"]) assert.ok(rows.some((r) => r[1].indexOf(p.vlans[k].net + "/") >= 0 && r[1].indexOf("gateway " + p.vlans[k].gw) >= 0), "and " + k + "'s block and gateway");
   /* the records are what a student logs in with: SSH to the closet switch and to the router from the manager's PC, the back switch at your laptop's console */
   assert.match(out(T, ssh(T).concat([mgr("show running-config")])), new RegExp("hostname " + p.swHost));

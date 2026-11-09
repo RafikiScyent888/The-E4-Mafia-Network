@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (9 November 2026): Level 3 (the small business) goes live stage by stage: stage 1 (the business, its router and switch on the page, work orders SB-J1 and SB-J2), stage 2 (SB-J3, guest Wi-Fi on a ceiling access point: the access point's page through a business PC's web browser, the visitor's phone, the ring in 3D), stage 3 (SB-J4, the back of house on its own switch over a trunk with its allowed list and native VLAN), stage 4 (SB-J5, two dome cameras on PoE injectors on a VLAN of their own, each one's fixed address set on its own page, port forwards tested from the manager's phone on mobile data) stage 5 (SB-J6, hardening after a card-payment check: SSH only, no readable passwords, guarded ports, DHCP snooping and ARP inspection, the closet cabinet locked, live 2 November 2026) stage 6 (SB-J7, the provider's fixed address: the block in CIDR only, the mask worked out by hand, the default route added by hand, the cameras opened at the new address from the manager's phone, live 8 November 2026) and stage 7 (SB-J8, the printers' VLAN: the printer moved onto a network of its own, its fixed address on its panel, every PC's printer port changed, the guests' list given a line in the right place, live 9 November 2026) are live; the level opens once the small office is finished, with `planned: 25` until all its work orders and tickets exist. See "Level 3, the small business" below.**
+**Status (9 November 2026): Level 3 (the small business) goes live stage by stage: stage 1 (the business, its router and switch on the page, work orders SB-J1 and SB-J2), stage 2 (SB-J3, guest Wi-Fi on a ceiling access point: the access point's page through a business PC's web browser, the visitor's phone, the ring in 3D), stage 3 (SB-J4, the back of house on its own switch over a trunk with its allowed list and native VLAN), stage 4 (SB-J5, two dome cameras on PoE injectors on a VLAN of their own, each one's fixed address set on its own page, port forwards tested from the manager's phone on mobile data) stage 5 (SB-J6, hardening after a card-payment check: SSH only, no readable passwords, guarded ports, DHCP snooping and ARP inspection, the closet cabinet locked, live 2 November 2026) stage 6 (SB-J7, the provider's fixed address: the block in CIDR only, the mask worked out by hand, the default route added by hand, the cameras opened at the new address from the manager's phone, live 8 November 2026) stage 7 (SB-J8, the printers' VLAN: the printer moved onto a network of its own, its fixed address on its panel, every PC's printer port changed, the guests' list given a line in the right place, live 9 November 2026) and stage 8 (SB-J9, the router rebuilt from its backup: a replacement router racked, its backup copied in over TFTP from your laptop, keys made again, live 9 November 2026) are live; the level opens once the small office is finished, with `planned: 25` until all its work orders and tickets exist. See "Level 3, the small business" below.**
 **After E4 (the owner, 28 October 2026): proof of hands-on skill built into the labs** (technician's reports, resume lines, level certificates with a verify page on the hub, an Add to LinkedIn button, interview cards; two tiers, "Completed" and "Instructor verified"). The plan and its open questions are in the owner's doc "Hands-on proof from the labs: plan" (https://claude.ai/artifact/SpwGhuG7e4gNufyTvhJhRk). The owner: finish E4 first, build this after, and have everything finished and updated before presenting it to anyone.
 **Status (19 October 2026): Level 2 (the small office) is complete and live: the level lock, work orders SO-J1 to SO-J10, tickets SO-01 to SO-15 with the office's records on each, the managed switch, the closet rack and patch panel, SFP modules and fibre, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05", "Level 2, tickets SO-06, SO-07 and SO-09", "Level 2, ticket SO-08", "Level 2, ticket SO-10", "Level 2: the office's records on office tickets; tickets SO-11 to SO-15" and "Level 2: work orders SO-J6 to SO-J10, the small office complete" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
@@ -2463,7 +2463,7 @@ address); router and closet switch saved. Goes live after SB-J7.
   checks; `node tools/models.mjs` 202 of 202; AAA on painted pixels, all 228 states and 573,198 text runs passing (in four
   parts); its 5 page plants and 16 Node plants caught when it was built.
 
-### Level 3, SB-J9: the router rebuilt from its backup (talked out 2 November 2026, on `save/level3-stage8`)
+### Level 3, stage 8: SB-J9, the router rebuilt from its backup (talked out 2 November 2026, live 9 November 2026)
 
 The Network+ (V9) objectives were read from the owner's doc on 2 November 2026 (the Network+ section unchanged) and shown
 with the lines proposed: Network operations ("Configuration management: production, backup, baseline configurations";
@@ -2522,6 +2522,24 @@ unplugged, the cabinet locked again with its key away.
   - A first plant (the replacement given the old router's keys by taking away its unit number) was missed: the replacement
     has a hardware address of its own and the key is made from it too, so the plant never planted what it named. It now
     makes the replacement a copy of the old router (its hardware address, no unit of its own), and is caught.
+
+**Going live (the owner, 8 November 2026: "Go ahead with SB-J9"; 9 November: "Go ahead with SB-J9 when checks pass").**
+Found and fixed on the way:
+- **A page plant missed:** "the TFTP server tab lists no files" passed the drive, which looked for the backup's name
+  anywhere in the tab, and the server log names it too. The drive now reads the files-received list (`ul.tfiles`); the
+  plant fails that check, and SB-J9's drive passes it (62 checks).
+- **SB-J9's contrast states, measured for the first time**, failed two:
+  - at SB-J9's start the old router is gone, the cabinet's frame holds only the closet switch, and its label, at the
+    frame's middle, fell behind the switch's tile (6.25:1). The label now sits just above the lowest device's tile.
+  - part way, the router-to-switch run is down and its diamond, halfway, sat on "Business router" and the cabinet's label
+    (1.08:1). A down-run diamond (`js/desk/draw.js`) now starts halfway and slides along its run to the first spot clear
+    of every name, label, tile and diamond; on a run covered end to end it takes a spot clear of the words, on a tile's
+    edge. Where halfway is clear it stays, so no other plan changes. Both states fail on the old code and pass now.
+- **The first full drive** stopped once, "SB-J4 2025: page.click: Timeout 5000ms exceeded", at a load average of 11 on 4
+  cores; SB-J4's drive alone then passed 80 of 80. After the plan fix the whole drive was run again: 4,089 checks, clean.
+- **Totals before going live**, run on a snapshot of this branch after the plan fix: `npm test` 376 of 376; `node
+  tools/drive.mjs` in full 4,089 checks; `node tools/models.mjs` 202 of 202; AAA on painted pixels, all 234 states and
+  595,244 text runs passing (in four parts); page plants 3 of 3 caught.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

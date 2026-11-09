@@ -491,6 +491,30 @@ Object.assign(PLAN, {
         await onSw(p, v, ["vlan " + v.vlan, "name " + v.vname]); await again(p, v); },
       proof: async (p, gw) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "staff") { await dev(p, "bpc"); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); } else if (v.kind === "printers") { await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); } else await radio(p); }
     };
+  })(),
+  /* SB-03: a VLAN left off a trunk on the closet switch */
+  "SB-03": (() => {
+    const radio = async (p) => { await dev(p, "guest"); await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Turn Wi-Fi off")'); await p.waitForTimeout(40); await p.click('.pane button:text-is("Turn Wi-Fi on")'); await p.waitForTimeout(40); };
+    const again = async (p, v) => { if (v.kind === "back") { await dev(p, "bpc"); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); } if (v.kind === "ap") await radio(p); };
+    const row = (t, v) => ((t.split("Vlans allowed on trunk").pop().split("\n").find((l) => l.startsWith(v.short.replace("gi", "Gi") + " ")) || "").trim().split(/\s+/)[1] || "");
+    return {
+      look: async (p, v) => {
+        if (v.kind === "back") {
+          await dev(p, "bpc"); await tab(p, "Command Prompt"); await type(p, "ipconfig"); check(/169\.254\./.test(await term(p)), "SB-03 back: the back PC is on 169.254");
+          await dev(p, "dpc1"); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); check(/Received = [1-4]/.test((await term(p)).split("ping " + v.printer).pop()), "SB-03 back: the department's PC, on the same back switch, still prints across the router");
+        } else if (v.kind === "router") { await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); await p.waitForTimeout(40); }
+        else { await radio(p); check(/it gave itself this: no address came/.test(await p.$eval(".pane", (n) => n.textContent)), "SB-03 ap: the visitor's phone joins and gets 169.254"); }
+        await bizLogin(p, v); await type(p, "show interfaces trunk"); const al = row(await term(p), v);
+        check(al && v.lost.every((id) => !al.split(",").some((x) => { const [a, b] = x.split("-").map(Number); return id >= a && id <= (b || a); })), "SB-03 " + v.kind + ": show interfaces trunk: " + v.short + " allows " + al + ", not VLAN " + v.lost.join(" or "));
+        await type(p, "show vlan brief"); const vb = (await term(p)).split("show vlan brief").pop(); check(v.lost.every((id) => new RegExp("^" + id + "\\s+\\S+\\s+active", "m").test(vb)), "SB-03: show vlan brief: the VLANs are all still on the closet switch");
+        await type(p, "exit");
+        const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(ev.indexOf("trunk") >= 0 && ev.indexOf("vlans") >= 0, "SB-03: the notebook has the trunk's list and the VLANs still there (" + ev + ")");
+      },
+      wrong: async (p, v) => { if (v.kind === "router") await bizConf(p, v, v.lost.map((id) => "vlan " + id)); else { await bizConf(p, v, ["interface " + v.short, "switchport trunk allowed vlan all"]); await again(p, v); } },
+      afterWrong: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind !== "router") check(/has no use for/.test(await p.$eval("#board", (n) => n.textContent)), "SB-03: the trunk opened to every VLAN: Mason says it carries what the far end has no use for"); },
+      fix: async (p, v) => { await bizConf(p, v, ["interface " + v.short, "switchport trunk allowed vlan add " + v.lost.join(",")]); await again(p, v); },
+      proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "back") { await dev(p, "bpc"); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); } else if (v.kind === "router") { await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); } else await radio(p); }
+    };
   })()
 });
 

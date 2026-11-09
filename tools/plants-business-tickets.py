@@ -6,7 +6,7 @@ import subprocess, shutil, sys, os
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))   # this checkout, wherever it is
 PAGE = [
  ("a level 3 ticket opens while its level is locked", "js/desk/app.js", "  if (!isOpen(def.level || 1)) def = HOME_TICKETS[0];", ""),
- ("SB-01 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02];", "export const BUSINESS_TICKETS = [SB02];"),
+ ("SB-01 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03];", "export const BUSINESS_TICKETS = [SB02, SB03];"),
  ("the business's records left off the ticket", "js/desk/app.js", '  if (net.site === "business" && T.v.plan) tk.appendChild(records(', '  if (false) tk.appendChild(records('),
  ("the business's ticket card says home network", "js/desk/app.js", '({ office: "office network", business: "business network" }[net.site] || "home network")', '(net.site === "office" ? "office network" : "home network")'),
  ("the business's devices given the office's buttons", "js/desk/app.js", "(biz ? BIZ_DEVICES : DEVICES).forEach", "DEVICES.forEach"),
@@ -20,12 +20,14 @@ PAGE = [
  ("the counter PC's port moved to the wrong port", "js/tickets/business.js", '["configure terminal", "interface gi0/1", "switchport access vlan " + V, "end"];', '["configure terminal", "interface gi0/2", "switchport access vlan " + V, "end"];'),
  ("a switch command over SSH never reaches the notebook", "js/tickets/business.js", 'const devOut = function (f) { return (f.cmd === "serial" || f.cmd === "ssh" || f.cmd === "telnet") && typeof f.out === "string" ? f.out : ""; };', 'const devOut = function (f) { return ""; };'),
 ]
-PAGE += [('SB-02 left off the desk', 'js/tickets/business.js', 'export const BUSINESS_TICKETS = [SB01, SB02];', 'export const BUSINESS_TICKETS = [SB01];'),
+PAGE += [("SB-02 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03];", "export const BUSINESS_TICKETS = [SB01, SB03];"),
  ("SB-02: the switch's own name for the VLAN accepted", 'js/tickets/business.js', 'return !!run && !!st && run.name === v.vname && st.name === v.vname && SB02.kept(', 'return !!run && !!st && SB02.kept('),
  ("the visitor's phone without its Wi-Fi switch", 'js/net/pages.js', 'heard: nets, radio: { on: true }, facts:', 'heard: nets, radio: null, facts:'),
  ("the switches' console password left off the card", 'js/tickets/business.js', '["Console passwords", "the router " + p.rtConsole + " · both switches " + p.swConsole],', '["Console passwords", "the router " + p.rtConsole],'),
  ('a ping across the router to a VLAN nothing answers on crashes Step through', 'js/net/cmd.js', '  if (rt.fail === "no-reply" && !rt.local && rt.via && sim.d[rt.via] && !(rt.owner && rt.owner.length)) {', '  if (false) {'),
  ("SB-02's evidence blind to a VLAN missing from show vlan brief", 'js/tickets/business.js', 'f.on === v.sw && /VLAN Name\\s+Status\\s+Ports/.test(o) && !new RegExp("^" + v.vlan + "\\\\s", "m").test(o)', 'f.on === v.sw && /NEVER/.test(o) && !new RegExp("^" + v.vlan + "\\\\s", "m").test(o)')]
+PAGE += [('SB-03 left off the desk', 'js/tickets/business.js', 'export const BUSINESS_TICKETS = [SB01, SB02, SB03];', 'export const BUSINESS_TICKETS = [SB01, SB02];'),
+ ('SB-03: a trunk carrying every VLAN accepted', 'js/tickets/business.js', '  rightList(al, v) { return carriesAll(al, v.lost) && (v.before', '  rightList(al, v) { return carriesAll(al, v.lost) || (v.before')]
 NODE = [
  ("a fix left unsaved counts as fixed", "js/tickets/business.js", "return port(run) && port(st) && !!a", "return port(run) && !!a"),
  ("every spare port unparked counts as fixed", "js/tickets/business.js", "    return [\"GigabitEthernet0/4\"].concat(", "    return true || [\"GigabitEthernet0/4\"].concat("),
@@ -41,9 +43,12 @@ NODE = [
 ]
 NODE += [('SB-02: the VLAN put back unsaved counts', 'js/tickets/business.js', 'return !!run && !!st && run.name === v.vname && st.name === v.vname', 'return !!run && run.name === v.vname'),
  ('SB-02: another VLAN lost on the way counts', 'js/tickets/business.js', '  kept(sim, v, saved) { return ["msw", "bsw"].every(', '  kept(sim, v, saved) { return true || ["msw", "bsw"].every('),
- ("SB-02: the back PC's ping to itself proves it", 'js/tickets/business.js', 'f.dev === "bpc" && f.replies > 0 && (f.who || []).some(function (w) { return w !== "bpc"; });', 'f.dev === "bpc" && f.replies > 0;'),
+ ("SB-02: the back PC's ping to itself proves it", 'js/tickets/business.js', 'if (v.kind === "staff") return f.cmd === "ping" && f.dev === "bpc" && f.replies > 0 && (f.who || []).some(function (w) { return w !== "bpc"; });', 'if (v.kind === "staff") return f.cmd === "ping" && f.dev === "bpc" && f.replies > 0;'),
  ('SB-02: the back PC left on 169.254 counts', 'js/tickets/business.js', 'if (v.kind === "staff") { const a = sim.addr("bpc"); return !!a && a.kind === "dhcp" && inNet(a.ip, S.net, 24) && online(sim, "bpc"); }', 'if (v.kind === "staff") return true;'),
  ('SB-02: a hint names the VLAN', 'js/tickets/business.js', '"Put back what\'s missing on that switch, named as the records name it.', '"Put back VLAN " + v.vlan + " on that switch, named as the records name it.')]
+NODE += [("SB-03: the trunk's list put back unsaved counts", 'js/tickets/business.js', '  fixed(sim, v) { return SB03.rightList(allowedOf(sim, "msw", v.port), v) && SB03.rightList(allowedOf(sim, "msw", v.port, true), v) &&', '  fixed(sim, v) { return SB03.rightList(allowedOf(sim, "msw", v.port), v) &&'),
+ ('SB-03: the department left off the back trunk counts', 'js/tickets/business.js', '&& online(sim, "bpc") && online(sim, "dpc1"); }\n    if (v.kind === "ap") { const g', '&& online(sim, "bpc"); }\n    if (v.kind === "ap") { const g'),
+ ("SB-03: a hint names the trunk's command", 'js/tickets/business.js', '"Add back only what\'s missing, to what that trunk carries now:', '"switchport trunk allowed vlan add what\'s missing, to what that trunk carries now:')]
 AAA = [
  ("the cabinet's label left without its plate on the desk's floor plan", "js/desk/app.js", 'if (phy) plates($("plan"), ".rl, .ns, .cabl", "#f4f6fb");', 'if (phy) plates($("plan"), ".rl, .ns", "#f4f6fb");', "SB-01 the floor plan"),
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "SB-01 the ticket card"),
@@ -62,6 +67,7 @@ def run(kind, name, f, a, b, extra=None):
         elif kind == "node": r = subprocess.run(["node", "--test", "tests/business-tickets.test.js"], env=dict(os.environ, SEEDS="6"), capture_output=True, text=True, timeout=2400)
         else: r = subprocess.run(["node", "tools/aaa.mjs", "tools/aaa-states.json"], env=dict(os.environ, ONLY=extra), capture_output=True, text=True, timeout=2400)
         out = r.stdout.strip().splitlines()
+        if kind == "aaa": r.returncode = 1 if any(l.startswith("FAIL overall") for l in out) else 0   # the contrast tool's verdict is its last line, not its exit code
         fails = [l for l in out if l.startswith(("SB-", "business tickets", "not ok", "FAIL ", "levels"))] or [l for l in out if "stopped" in l or "rror" in l]
         print(("CAUGHT" if r.returncode else "MISSED") + " · " + kind + " · " + name + " · " + str(len(fails)) + " failing" + ("" if not fails else ": " + fails[0][:170]), flush=True)
         if not r.returncode: bad = 1

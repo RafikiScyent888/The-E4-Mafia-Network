@@ -234,5 +234,99 @@ const SB02 = {
   }
 };
 
-export const BUSINESS_TICKETS = [SB01, SB02];
+/* ---------------------------------------------------------------- SB-03 */
+/* A VLAN left off a trunk on the closet switch: the back room's trunk told to carry only the department's VLAN by someone who
+   meant to add it (`allowed vlan` without `add` replaces the list: the back PC and the back door camera go dark, the department
+   beside them doesn't); the access point's trunk tidied down to VLAN 1 (visitors join and get no address); or the router's
+   trunk given a list of its own from a hardening checklist with the printers' VLAN left out (nobody prints). Every VLAN is
+   still on both switches: it's the trunk that won't carry it. The fix: the VLAN added back on that trunk, saved, carrying what
+   it did and no more (`allowed vlan all` on the back's or the access point's trunk works, and carries VLANs the far end has no
+   use for). */
+const SB03_KIND = {
+  back: { port: "GigabitEthernet0/23", short: "gi0/23", far: "bsw", lost: ["staff", "cameras"], dev: "bpc" },
+  ap: { port: "GigabitEthernet0/5", short: "gi0/5", far: "ap", lost: ["guest"], dev: "guest" },
+  router: { port: "GigabitEthernet0/24", short: "gi0/24", far: "rtr", lost: ["printers"], dev: "pc" }
+};
+const SB03_STORY = {
+  back: function (v) { return "Since Thursday the " + v.devName + " has had no network, and the camera app says the back door camera is offline. The " + v.deptName + "'s PCs, in the room right next to them, are fine. On Wednesday the company that set up the " + v.deptName + " came back to check their work on the switches."; },
+  ap: function () { return "Customers say the guest Wi-Fi takes the password and then never connects. Our own PCs are all fine, and the access point's light is blue. On Saturday I tidied the closet switch from the card processor's checklist, the part about ports carrying only what they need."; },
+  router: function (v) { return "Nobody can print since Monday: not the " + v.pc + ", not my PC, not the " + v.deptName + ". Everything else works, internet and all. Over the weekend our nephew went through a hardening checklist on the closet switch for us."; }
+};
+const allowedOf = function (sim, id, n, saved) { const sw = sim.d[id].sw, P = saved ? sw.startup && sw.startup.ports && sw.startup.ports[n] : sw.ports[n]; return !P ? [] : P.allowed === "all" ? "all" : P.allowed.slice(); };
+const carriesAll = function (al, ids) { return ids.every(function (x) { return al === "all" || al.indexOf(x) >= 0; }); };
+const SB03 = {
+  id: "SB-03", n: "03", level: 3, tier: "common", title: "Some things stopped working, others right next to them didn't", priority: 2, due: "2 h",
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-03:" + seed)), kind = r.pick(["back", "ap", "router"]), K = SB03_KIND[kind], V = p.vlans;
+    const before = allowedOf(sim, "msw", K.port), lost = K.lost.map(function (k) { return V[k].id; });
+    const line = kind === "back" ? "switchport trunk allowed vlan " + V.dept.id : kind === "ap" ? "switchport trunk allowed vlan 1"
+      : "switchport trunk allowed vlan " + [1, V.staff.id, V.dept.id, V.guest.id, V.cameras.id].sort(function (a, b) { return a - b; }).join(",");   /* everything in use but the printers' */
+    onSwitch(sim, "msw", ["configure terminal", "interface " + K.short, line, "end"].concat(SAVE));
+    if (kind === "back") exec(sim, "bpc", "ipconfig /renew");
+    if (kind === "ap") { sim.apply({ t: "radio", dev: "guest", on: false }); sim.apply({ t: "radio", dev: "guest", on: true }); }
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, port: K.port, short: K.short, before: before, lost: lost, line: line, printer: p.printerIp, pc: name(sim, "pc"), devName: name(sim, K.dev === "guest" ? "guest" : K.dev), deptName: String(sim.net.roomNames.dept).toLowerCase(), farName: name(sim, K.far), cam: kind === "back" ? p.vlans.cameras.net.replace(/0$/, String(p.cams[1].host)) : null } };
+  },
+  brief(v) { return { quote: SB03_STORY[v.kind](v) }; },
+  mason: "When some things on a path still work and others don't, find what the ones that stopped have in common, and where their path and the working ones' part.",
+  affected(v) { return v.kind === "back" ? "bpc" : v.kind === "ap" ? "guest" : "pc"; },
+  options(v) {
+    const far = v.farName, which = { back: "the VLANs the " + v.devName + " and the back door camera use", ap: "the guests' VLAN", router: "the printers' VLAN" }[v.kind];
+    return [
+      { id: "right", right: true, text: "The closet switch's trunk to the " + far + " no longer carries " + which },
+      { id: "deleted", text: v.kind === "back" ? "The staff and cameras' VLANs have been deleted from the closet switch" : "The " + (v.kind === "ap" ? "guests'" : "printers'") + " VLAN has been deleted from the closet switch", why: "show vlan brief on the closet switch still lists it, active." + (v.kind === "back" ? " The counter PC and the shop's camera, on the same switch, are still in theirs." : "") },
+      { id: "native", text: "The two ends of the trunk to the " + far + " disagree on the native VLAN", why: v.kind === "back" ? "show interfaces trunk gives the same native VLAN at both ends, and neither switch logs a native VLAN mismatch." : "A native mismatch leaks the untagged VLAN; it doesn't stop a tagged one. show interfaces trunk shows the port trunking, with the native VLAN the records give it." },
+      { id: "dtp", text: "The trunk to the " + far + " has stopped trunking", why: "show interfaces trunk lists the port as trunking, mode on, and the " + (v.kind === "back" ? deptOf(v) + "'s PCs" : v.kind === "ap" ? "access point's own address" : "staff VLAN") + " still crosses it." },
+      { id: "port", text: v.kind === "back" ? "The " + v.devName + "'s port on the back switch has been moved to another VLAN" : v.kind === "ap" ? "The access point's guest network has been moved to another VLAN tag" : "The printer's switch port has been moved to another VLAN", why: v.kind === "ap" ? "The access point's own page tags the guest network with the VLAN the records give it." : "show interfaces switchport gives the port the VLAN the records have for it, and not inactive." },
+      v.kind === "back" ? { id: "bsw", text: "The back switch has failed", why: "The " + v.deptName + "'s PCs are on the back switch too, and they're online through it, over the same trunk." }
+        : v.kind === "ap" ? { id: "pw", text: "The guest Wi-Fi's password has been changed", why: "The phone is let on to the guest network and asks for an address: a wrong password is refused before that, and the phone says so." }
+          : { id: "addr", text: "The printer's fixed address has been changed", why: "The printer's own panel gives the address the records have for it, and every PC prints to that address." }
+    ];
+  },
+  rung1() { return "On the closet switch, from the manager's PC: show interfaces trunk. Read each trunk's VLANs allowed, then the VLANs allowed and active, and hold them up against the records' VLAN plan and show vlan brief."; },
+  rung2() { return "A trunk carries only the VLANs on its allowed list. The command that sets the list replaces it, unless it's told to add to it or take from it, so one line typed for one VLAN can take every other VLAN off the trunk."; },
+  fixHints(v) { return ["show interfaces trunk on the closet switch says what each trunk carries. Compare the one on the path that stopped with what the records say goes over it.", "Add back only what's missing, to what that trunk carries now: the VLANs that still work over it stay.", "Save it, then have whatever lost its network ask again" + (v.kind === "ap" ? ": the visitor's phone joins again." : v.kind === "back" ? ": the PC keeps its 169.254 address until it asks." : ".")]; },
+  exhibits(sim, v) {
+    const al = allowedOf(sim, "msw", v.port); if (carriesAll(al, v.lost)) return false;
+    if (v.kind === "back") { const a = sim.addr("bpc"); return !!a && a.kind === "apipa" && online(sim, "dpc1") && online(sim, "pc"); }
+    if (v.kind === "ap") { const g = sim.addr("guest"); return !!g && g.kind === "apipa" && online(sim, "pc"); }
+    return !reachesPrinter(sim, "pc", v.printer) && online(sim, "pc") && online(sim, "mgr");
+  },
+  /* the trunk carries what it lost again, and no VLAN it didn't carry before (the router's trunk carried them all) */
+  rightList(al, v) { return carriesAll(al, v.lost) && (v.before === "all" || (al !== "all" && al.every(function (x) { return v.before.indexOf(x) >= 0; }))) && (v.before === "all" ? carriesAll(al, [v.plan.vlans.staff.id, v.plan.vlans.dept.id, v.plan.vlans.guest.id, v.plan.vlans.cameras.id, v.plan.vlans.printers.id]) : carriesAll(al, v.before)); },
+  works(sim, v) {
+    if (v.kind === "back") { const a = sim.addr("bpc"), S = v.plan.vlans.staff; return !!a && a.kind === "dhcp" && inNet(a.ip, S.net, 24) && online(sim, "bpc") && online(sim, "dpc1"); }
+    if (v.kind === "ap") { const g = sim.addr("guest"); return !!g && g.kind === "dhcp" && inNet(g.ip, v.plan.vlans.guest.net, 24) && online(sim, "guest"); }
+    return ["pc", "mgr", "bpc"].every(function (id) { return reachesPrinter(sim, id, v.printer); });
+  },
+  fixed(sim, v) { return SB03.rightList(allowedOf(sim, "msw", v.port), v) && SB03.rightList(allowedOf(sim, "msw", v.port, true), v) && SB03.works(sim, v) && online(sim, "pc") && online(sim, "mgr"); },
+  partial(v, sim) {
+    const al = allowedOf(sim, "msw", v.port), st = allowedOf(sim, "msw", v.port, true);
+    if (!SB03.rightList(al, v) && carriesAll(al, v.lost)) return "It works, but the trunk now carries VLANs the " + v.farName + " has no use for" + (al === "all" ? " (every VLAN, the guests' included)" : "") + ". The records have it carrying only what's on the far side.";
+    if (!SB03.rightList(st, v)) return "It works right now, but the switch hasn't saved it: the next power cut or reload takes the VLAN off the trunk again.";
+    return "It works right now, but not everything is back the way the records have it.";
+  },
+  proves(f, sim, v) {
+    if (v.kind === "back") return f.cmd === "ping" && f.dev === "bpc" && f.replies > 0 && (f.who || []).some(function (w) { return w !== "bpc"; });
+    if (v.kind === "router") return (f.print === "ok" && f.port === v.printer) || (f.cmd === "ping" && f.replies > 0 && (f.who || []).indexOf("printer") >= 0);
+    return ((f.join || f.radio) && f.dev === "guest" && !!f.internet) || (f.page === "guest-wifi" && !!f.internet);
+  },
+  proofText: "the device that lost its network reaching past itself: a ping from the back PC, the visitor's phone online, or a test page or a ping to the printer",
+  evidence: [
+    { id: "apipa", test: function (f, v) { return v.kind === "back" && f.cmd === "ipconfig" && f.dev === "bpc" && f.apipa; }, text: function (f, v) { return "ipconfig on the " + v.devName + ": " + f.ip + " (169.254: no DHCP server answered)"; } },
+    { id: "dept", test: function (f, v) { return v.kind === "back" && f.cmd === "ping" && (f.dev === "dpc1" || f.dev === "dpc2") && f.replies > 0; }, text: function (f, v) { return "Ping from a " + v.deptName + " PC, on the same back switch: replies"; } },
+    { id: "phone", test: function (f, v) { return v.kind === "ap" && (((f.join || f.radio) && f.dev === "guest") || (f.page === "guest-wifi" && f.connected)) && f.apipa; }, text: function () { return "The visitor's phone joins the guest Wi-Fi but gets no address: 169.254, no internet"; } },
+    { id: "noprint", test: function (f, v) { return v.kind === "router" && (f.print === "fail" || (f.cmd === "ping" && f.ip === v.printer && !f.replies)); }, text: function (f) { return f.print ? "Test page from the PC: nothing came out" : "Ping to the printer: no reply"; } },
+    { id: "trunk", test: function (f, v) { const o = devOut(f); return f.on === "msw" && new RegExp("Vlans allowed on trunk[^]*\\n" + v.short.replace("gi", "Gi") + "\\s+\\S").test(o); }, text: function (f, v) { const m = devOut(f).match(new RegExp("Vlans allowed on trunk\\n(?:\\S+\\s+\\S+\\n)*?" + v.short.replace("gi", "Gi") + "\\s+(\\S+)")); return "show interfaces trunk on the closet switch: " + v.short.replace("gi", "Gi") + ", the trunk to the " + v.farName + ", allows " + (m ? m[1] : "fewer VLANs") + " only"; } },
+    { id: "vlans", test: function (f, v) { const o = devOut(f); return f.on === "msw" && /VLAN Name\s+Status\s+Ports/.test(o) && v.lost.every(function (id) { return new RegExp("^" + id + "\\s+\\S+\\s+active", "m").test(o); }); }, text: function (f, v) { return "show vlan brief on the closet switch: VLAN " + v.lost.join(" and ") + " still there, active"; } },
+    { id: "run", test: function (f, v) { const o = devOut(f); return f.on === "msw" && /Current configuration/.test(o) && o.indexOf("interface " + v.port + "\n") >= 0 && /switchport trunk allowed vlan/.test(o.split("interface " + v.port + "\n")[1].split("!")[0]); }, text: function (f, v) { const blk = devOut(f).split("interface " + v.port + "\n")[1].split("!")[0], m = blk.match(/switchport trunk allowed vlan (\S+)/); return "show running-config on the closet switch: interface " + v.port + ", switchport trunk allowed vlan " + (m ? m[1] : "?"); } }
+  ],
+  summary(v) {
+    const who = { back: "The company that set up the department had typed its VLAN onto the closet switch's trunk to the back switch without add: `" + v.line + "` replaced the trunk's list, so it carried the department's VLAN alone, and saved it. The staff and cameras' VLANs stopped at the closet switch.", ap: "The access point's trunk had been tidied down to VLAN 1 and saved, so the guests' VLAN no longer crossed it: the guest Wi-Fi still took visitors' passwords, and their requests for an address went nowhere.", router: "The router's trunk had been given a list of its own from a hardening checklist, with the printers' VLAN left out, and saved: the printer could no longer be reached through the router from any other VLAN." }[v.kind];
+    return { cause: who + " Every VLAN was still on both switches: the trunk just wouldn't carry it.", fix: "Added " + (v.lost.length > 1 ? "VLANs " + v.lost.join(" and ") : "VLAN " + v.lost[0]) + " back to the trunk on " + v.port + " with add, keeping what it already carried, saved, and " + (v.kind === "back" ? "had the back PC ask for its address again" : v.kind === "ap" ? "had the visitor's phone join again" : "sent a test page") + "." };
+  }
+};
+const deptOf = function (v) { return "the " + v.deptName; };
+
+export const BUSINESS_TICKETS = [SB01, SB02, SB03];
 export const BUSINESS_COMING = [];

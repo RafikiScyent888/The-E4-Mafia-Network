@@ -63,3 +63,4 @@ for (const st of states) {
 console.log(errs.length ? 'PAGE ERRORS\n' + [...new Set(errs)].join('\n') : 'no page errors');
 console.log(allBad.length ? 'FAIL overall' : `PASS overall: ${total} text runs across ${states.length} states, AAA on painted pixels (desk + phone, easier reading on/off, hover)`);
 await B.close(); await NOGL.close(); srv.close();
+process.exitCode = allBad.length ? 1 : 0;   /* the verdict in the exit code too, for whatever runs it */

@@ -29,18 +29,24 @@ const onSw = (T, sw, lines, save) => { const p = T.v.plan; const L = ["configure
 /* SB-02: whoever lost the network asks again, and proves it */
 const again = (T) => T.v.kind === "staff" ? [{ t: "cmd", dev: "bpc", line: "ipconfig /renew" }] : T.v.kind === "guest" ? [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }] : [];
 const back = (T) => ["vlan " + T.v.vlan, "name " + T.v.vname];
+/* SB-03: whoever lost the network asks again; the trunk's line typed on its port */
+const again3 = (T) => T.v.kind === "back" ? [{ t: "cmd", dev: "bpc", line: "ipconfig /renew" }] : T.v.kind === "ap" ? [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }] : [];
+const trunk3 = (T, line, save) => onSw(T, "msw", ["interface " + T.v.short, line], save);
 
 const FIX = {
   "SB-01": (T) => conf(T, ["interface gi0/1", "switchport access vlan " + staff(T).id]).concat(SAVE, [pc("ipconfig /renew")]),
-  "SB-02": (T) => onSw(T, T.v.sw, back(T)).concat(again(T))
+  "SB-02": (T) => onSw(T, T.v.sw, back(T)).concat(again(T)),
+  "SB-03": (T) => trunk3(T, "switchport trunk allowed vlan add " + T.v.lost.join(",")).concat(again3(T))
 };
 const PROOF = {
   "SB-01": (T) => [pc("ping " + T.v.printer)],
-  "SB-02": (T) => T.v.kind === "staff" ? [{ t: "cmd", dev: "bpc", line: "ping " + T.v.printer }] : T.v.kind === "printers" ? [{ t: "print" }] : [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }]   /* connected already, the phone's page offers no Join: Wi-Fi off and on */
+  "SB-02": (T) => T.v.kind === "staff" ? [{ t: "cmd", dev: "bpc", line: "ping " + T.v.printer }] : T.v.kind === "printers" ? [{ t: "print" }] : [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }],   /* connected already, the phone's page offers no Join: Wi-Fi off and on */
+  "SB-03": (T) => T.v.kind === "back" ? [{ t: "cmd", dev: "bpc", line: "ping " + T.v.printer }] : T.v.kind === "router" ? [{ t: "print" }] : [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }]
 };
 const UNSAVED = {
   "SB-01": (T) => conf(T, ["interface gi0/1", "switchport access vlan " + staff(T).id]).concat([pc("ipconfig /renew")]),
-  "SB-02": (T) => onSw(T, T.v.sw, back(T), false).concat(again(T))
+  "SB-02": (T) => onSw(T, T.v.sw, back(T), false).concat(again(T)),
+  "SB-03": (T) => trunk3(T, "switchport trunk allowed vlan add " + T.v.lost.join(","), false).concat(again3(T))
 };
 /* tempting fixes that treat a symptom, or the wrong part: none may fix it */
 const WRONG = {
@@ -63,6 +69,15 @@ const WRONG = {
       onSw(T, v.sw, ["interface " + trunk, "switchport trunk allowed vlan add " + v.vlan]).concat(again(T)),   /* the trunk told to carry what the switch no longer has */
       onSw(T, v.sw, back(T).concat(["no vlan " + v.plan.vlans.parking.id])).concat(again(T))   /* back, with another VLAN lost on the way */
     ];
+  },
+  "SB-03": (T) => {
+    const v = T.v, L = [again3(T), [{ t: "power", dev: "msw" }].concat(again3(T)),
+      trunk3(T, "switchport trunk allowed vlan " + v.lost.join(",")).concat(again3(T)),   /* the same mistake again: the list replaced with what was lost */
+      onSw(T, "msw", v.lost.map((id) => "vlan " + id)).concat(again3(T)),   /* SB-02's fix: the VLANs are there already */
+      trunk3(T, "switchport trunk native vlan 1").concat(again3(T))];
+    if (v.kind !== "router") L.push(trunk3(T, "switchport trunk allowed vlan all").concat(again3(T)));   /* works, and carries VLANs the far end has no use for */
+    if (v.kind === "back") L.push(onSw(T, "bsw", ["interface gi0/24", "switchport trunk allowed vlan add " + v.lost.join(",")]).concat(again3(T)));   /* the far end, which carries them already */
+    return L;
   }
 };
 const SYMPTOM = {
@@ -78,6 +93,23 @@ const SYMPTOM = {
     assert.match(o, new RegExp("interface GigabitEthernet0/1\\n description \\S+\\n switchport access vlan " + v.vlan + "\\n switchport mode access\\n"));
     assert.match(o, new RegExp("^Gi0/2\\s+MANAGER-PC\\s+connected\\s+" + staff(T).id + "\\s", "m"), "the manager's PC is still in the staff VLAN");
     assert.ok(E.act(T, mgr("exit")) && E.act(T, mgr("ping " + v.printer)).facts.replies > 0, "the manager's PC still prints");
+  },
+  "SB-03": (T) => {
+    const v = T.v, p = v.plan, o = out(T, ssh(T).concat(["show interfaces trunk", "show vlan brief"].map(mgr)));
+    for (const id of v.lost) assert.match(o, new RegExp("^" + id + "\\s+\\S+\\s+active", "m"), "VLAN " + id + " is still on the closet switch");
+    const row = (o.split("Vlans allowed on trunk\n")[1] || "").split("\n").find((l) => l.startsWith(v.short.replace("gi", "Gi") + " ")) || "";
+    for (const id of v.lost) assert.ok(!row.split(/\s+/)[1].split(",").some((x) => { const [a, b] = x.split("-").map(Number); return id >= a && id <= (b || a); }), "the trunk no longer allows " + id + " (" + row + ")");
+    E.act(T, mgr("exit"));
+    if (v.kind === "back") {
+      assert.match(E.act(T, { t: "cmd", dev: "bpc", line: "ipconfig" }).out, /Autoconfiguration IPv4 Address[ .]*: 169\.254\./);
+      assert.ok(E.act(T, { t: "cmd", dev: "dpc1", line: "ping " + v.printer }).facts.replies > 0, "the department, on the same back switch, still works");
+    } else if (v.kind === "router") {
+      assert.equal(E.act(T, { t: "print" }).facts.print, "fail"); assert.equal(E.act(T, mgr("ping " + v.printer)).facts.replies, 0, "nobody reaches the printer");
+      assert.ok(E.act(T, pc("ping 8.8.8.8")).facts.replies > 0, "everything else works, the internet too");
+    } else {
+      E.act(T, { t: "radio", dev: "guest", on: false }); assert.ok(E.act(T, { t: "radio", dev: "guest", on: true }).facts.apipa, "the visitor joins and gets 169.254");
+      assert.ok(T.sim.addr("pc").kind === "dhcp" && T.sim.addr("mgr").kind === "dhcp", "the staff are fine");
+    }
   },
   "SB-02": (T) => {
     const v = T.v, p = v.plan;
@@ -176,7 +208,7 @@ for (const def of BUSINESS_TICKETS) {
         assert.ok(x.indexOf(right) < 0, x);
         for (const bad of [p.rtSecret, p.rtConsole, p.swSecret, p.swConsole, p.userPw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, def.id + " names a password: " + x);
         for (const n of Object.values(p.vlans).map((V) => String(V.id))) assert.ok(!new RegExp("\\b" + n + "\\b").test(x), def.id + " names VLAN " + n + ": " + x);
-        for (const cmd of ["switchport access", "switchport mode", "copy running-config", "write memory", "interface gi", "ipconfig /renew"]) assert.ok(x.indexOf(cmd) < 0, def.id + " names the fix's command: " + x);
+        for (const cmd of ["switchport access", "switchport mode", "switchport trunk", "allowed vlan", "copy running-config", "write memory", "interface gi", "ipconfig /renew"]) assert.ok(x.indexOf(cmd) < 0, def.id + " names the fix's command: " + x);
       }
     }
   });

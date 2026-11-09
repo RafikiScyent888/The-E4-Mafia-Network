@@ -15,6 +15,7 @@ import { BUSINESS_JOBS } from "../build/business.js";
 import { online } from "../build/jobs.js";
 import { exec } from "../net/cmd.js";
 import * as SW from "../net/swcli.js";
+import * as RT from "../net/rtcli.js";
 import { rng, hash, ip2n } from "../net/util.js";
 
 const J10 = BUSINESS_JOBS.find(function (d) { return d.id === "SB-J10"; });
@@ -845,5 +846,104 @@ const SB10 = {
   }
 };
 
-export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07, SB08, SB09, SB10];
+/* ---------------------------------------------------------------- SB-11 */
+/* A DHCP pool on the router with nothing left to lend: the guests' pool set to lend for ever ("so customers never have to join
+   again") the week before a busy market Saturday, every address since lent to a phone that's long gone; the staff pool given an
+   exclusion that keeps back all but one of its addresses (".11 to .253", "for the tablets we'll set by hand"); the department's
+   pool given one that keeps back all but its last (the department's company, keeping addresses for label printers it means to
+   add). Whatever asks after that gets 169.254, while everything that already had an address carries on. (Built before the
+   printer's address handed out: it needs nothing new in the business, so it's the smaller of the two.) The fix: what keeps the
+   addresses from the pool undone, as the router had it, saved; the guests' pool lending for a day again and its leases let go;
+   whatever had no address asks again. */
+const exclOf = function (sim, saved) { const R = sim.d.rtr.sw, X = saved ? R.startup && R.startup.excluded : R.excluded; return (X || []).map(function (x) { return x[0] + "-" + x[1]; }).sort(); };
+const SB11_STORY = {
+  guest: function () { return "Since Saturday's market day, customers say the guest Wi-Fi takes the password and then never connects. Our own computers are fine. The week before, I set the guest Wi-Fi so customers \"never have to join again\": a setting on the router a friend showed me."; },
+  staff: function (v) { return "The " + v.bpcName + " came back from the weekend with no network: the " + v.pc + " was fine after its restart, and so is my PC. On Friday our nephew kept some addresses back on the router \"for the tablets we'll set up by hand\"."; },
+  dept: function (v) { return "Only one of the " + v.deptName + "'s two PCs works after this morning's restart: the " + v.d2 + " has no network. On Friday the company that set up the " + v.deptName + " kept some addresses back for the label printers and scanners they're adding next month."; }
+};
+const SB11 = {
+  id: "SB-11", n: "11", level: 3, tier: "harder", title: "New devices get no address; everything already on carries on", priority: 2, due: "2 h",
+  kinds: ["guest", "staff", "dept"],   /* its variants, in the order a seed picks them (the tests find a business for each) */
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, V = p.vlans, r = rng(hash("SB-11:" + seed)), kind = r.pick(SB11.kinds), R = sim.d.rtr.sw, before = exclOf(sim);
+    const pre = function (net) { return net.split(".").slice(0, 3).join(".") + "."; }, host = function (ip) { return +ip.split(".")[3]; };
+    let line = null;
+    if (kind === "guest") {
+      onRouter(sim, ["configure terminal", "ip dhcp pool " + V.guest.name, "lease infinite", "end"].concat(SAVE));
+      const x = sim.d.rtr, q = rng(hash("SB-11 market:" + seed));
+      x.leases = x.leases.filter(function (l) { return l.pool !== V.guest.name; });   /* last week's leases, today's visitor's among them, ran out before the market */
+      RT.poolAddrs(R, V.guest.name).forEach(function (ip) { const m = "02-" + [0, 1, 2, 3, 4].map(function () { return q.int(0, 255).toString(16).padStart(2, "0"); }).join("-"); x.leases.push({ mac: m, ip: ip, pool: V.guest.name, name: "Phone", host: "PHONE-" + m.slice(-5).replace("-", "").toUpperCase(), manual: false, expires: "Infinite" }); });   /* Saturday's phones, long gone */
+      sim.apply({ t: "radio", dev: "guest", on: false }); sim.apply({ t: "radio", dev: "guest", on: true });   /* and asks again today */
+    } else if (kind === "staff") {
+      line = pre(V.staff.net) + "11 " + pre(V.staff.net) + "253";
+      onRouter(sim, ["configure terminal", "ip dhcp excluded-address " + line, "end"].concat(SAVE));
+      ["pc", "bpc"].forEach(function (id) { exec(sim, id, "ipconfig /renew"); });   /* both restarted: the counter's PC asked first and took the one left */
+    } else {
+      const D = V.dept; line = D.first + " " + pre(D.net) + (host(D.last) - 1);
+      onRouter(sim, ["configure terminal", "ip dhcp excluded-address " + line, "end"].concat(SAVE));
+      ["dpc1", "dpc2"].forEach(function (id) { exec(sim, id, "ipconfig /renew"); });
+    }
+    freeze(sim);
+    const devs = { guest: ["guest"], staff: ["bpc"], dept: ["dpc2"] }[kind];
+    return { sim: sim, v: { kind: kind, plan: p, before: before, line: line, pool: V[kind].name, devs: devs, printer: p.printerIp, pc: name(sim, "pc"), bpcName: name(sim, "bpc"), d2: kind === "dept" ? name(sim, "dpc2") : null, deptName: String(sim.net.roomNames.dept).toLowerCase() } };
+  },
+  brief(v) { return { quote: SB11_STORY[v.kind](v) }; },
+  mason: "Everything that had an address still works, and whatever asked since gets nothing. What does the one that hands them out have left to give?",
+  affected(v) { return v.devs[0]; },
+  options(v) {
+    const what = { guest: "guests'", staff: "staff", dept: v.deptName + "'s" }[v.kind];
+    return [
+      { id: "right", right: true, text: "The router's " + what + " DHCP pool has no addresses left to hand out" },
+      { id: "trunk", text: "The trunk no longer carries the " + what + " VLAN", why: v.kind === "guest" ? "show ip dhcp binding lists phones the guests' pool lent across that same trunk." : "The " + (v.kind === "staff" ? v.pc : name0(v)) + ", in the same VLAN, renewed this morning across the same trunk and got an address." },
+      { id: "shut", text: "The router's subinterface for the " + what + " VLAN has been shut down", why: "show ip interface brief on the router has it up and up, and the devices that already had addresses still get through it." },
+      { id: "gw", text: "The " + what + " pool hands out the wrong default gateway", why: "The device has no address at all, 169.254, not an address with a wrong gateway." },
+      { id: "snoop", text: "DHCP snooping on the switch is dropping the router's replies", why: "The switch's port to the router is trusted, and show ip dhcp snooping counts no drops; other devices on the same switch get their replies." },
+      v.kind === "guest" ? { id: "pw", text: "The guest Wi-Fi's password has been changed", why: "The phone is let on to the guest network and asks for an address: a wrong password is refused before that, and the phone says so." }
+        : { id: "port", text: "The " + name1(v) + "'s switch port has been moved to another VLAN", why: "show interfaces switchport gives the port the VLAN the records have for it." }
+    ];
+  },
+  rung1(v) { return (v.kind === "guest" ? "On the visitor's phone: its Wi-Fi page." : "On the " + name1(v) + ": ipconfig.") + " Then on the router, from the manager's PC: show ip dhcp pool and show ip dhcp binding, and then show running-config: how many addresses does that pool have, and where have they gone?"; },
+  rung2() { return "A pool can lend only the addresses that are neither kept back nor lent already. Lent for ever, or kept back by an exclusion, an address is as gone from the pool as if a device were standing on it."; },
+  fixHints(v) { return [v.kind === "guest" ? "Count what that pool has lent, and for how long it lends." : "Count what that pool keeps back, line by line, against what the router kept back before.", v.kind === "guest" ? "Make what it lends come back in time, as every other pool's does, then let go of what it has lent out now." : "Take away only the line that keeps back what the router never did; what was kept back before stays.", "Save it, then have whatever had no address ask again" + (v.kind === "guest" ? ": the visitor's phone joins again." : ": it keeps 169.254 until it asks.")]; },
+  exhibits(sim, v) {
+    const a = sim.addr(v.devs[0]); if (!a || a.kind !== "apipa") return false;
+    if (v.kind === "guest") return (sim.d.rtr.sw.pools[v.pool].lease === "infinite") && online(sim, "pc");
+    if (v.kind === "staff") return online(sim, "pc") && online(sim, "mgr");
+    return online(sim, "dpc1") && online(sim, "pc");
+  },
+  leaseOk(sim, v, saved) { const R = sim.d.rtr.sw, P = saved ? R.startup && R.startup.pools && R.startup.pools[v.pool] : R.pools[v.pool]; return !!P && P.lease !== "infinite"; },
+  exclRight(sim, v, saved) { return exclOf(sim, saved).join("|") === v.before.join("|"); },
+  works(sim, v) {
+    const V = v.plan.vlans, a = sim.addr(v.devs[0]), net = v.kind === "dept" ? V.dept : V[v.kind];
+    return !!a && a.kind === "dhcp" && inNet(a.ip, net.net, net.len || 24) && online(sim, v.devs[0]);
+  },
+  fixed(sim, v) { return SB11.exclRight(sim, v) && SB11.exclRight(sim, v, true) && (v.kind !== "guest" || (SB11.leaseOk(sim, v) && SB11.leaseOk(sim, v, true))) && SB11.works(sim, v) && online(sim, "pc") && online(sim, "mgr"); },
+  partial(v, sim) {
+    if (v.kind === "guest" && !SB11.leaseOk(sim, v)) return "It works today, but the guests' pool still lends its addresses for ever: the next busy day fills it again.";
+    if (!SB11.exclRight(sim, v)) return "It works, but what the pool keeps back isn't what the router kept back before: an address kept back for something set by hand can now be lent to anything that asks.";
+    if (!SB11.exclRight(sim, v, true) || (v.kind === "guest" && !SB11.leaseOk(sim, v, true))) return "It works right now, but the router hasn't saved it: the next power cut or reload puts the fault back.";
+    return "It works right now, but the router's pools aren't the way it had them.";
+  },
+  proves(f, sim, v) {
+    if (v.kind === "guest") return ((f.join || f.radio) && f.dev === "guest" && !!f.internet) || (f.page === "guest-wifi" && !!f.internet);
+    return f.cmd === "ping" && f.dev === v.devs[0] && f.replies > 0 && (f.internet || (f.who || []).indexOf("printer") >= 0);
+  },
+  proofText: "whatever had no address reaching past itself: the visitor's phone online, or the PC that had none reaching the printer or the internet",
+  evidence: [
+    { id: "apipa", test: function (f, v) { return v.kind !== "guest" && f.cmd === "ipconfig" && f.dev === v.devs[0] && f.apipa; }, text: function (f, v, sim) { return "ipconfig on the " + name(sim, f.dev) + ": " + f.ip + " (169.254: no address came)"; } },
+    { id: "phone", test: function (f, v) { return v.kind === "guest" && (((f.join || f.radio) && f.dev === "guest") || (f.page === "guest-wifi" && f.connected)) && f.apipa; }, text: function () { return "The visitor's phone joins the guest Wi-Fi but gets no address: 169.254, no internet"; } },
+    { id: "others", test: function (f, v) { return v.kind !== "guest" && f.cmd === "ping" && f.dev !== v.devs[0] && f.dev === (v.kind === "staff" ? "pc" : "dpc1") && f.replies > 0; }, text: function (f, v, sim) { return "Ping from the " + name(sim, f.dev) + ", in the same VLAN: replies (it got an address this morning)"; } },
+    { id: "pool", test: function (f, v) { return f.on === "rtr" && new RegExp("Pool " + v.pool + " :[^]*?Leased addresses\\s+:").test(devOut(f)); }, text: function (f, v) { const o = devOut(f).split("Pool " + v.pool + " :")[1] || "", t = (o.match(/Total addresses\s+: (\d+)/) || [])[1], l = (o.match(/Leased addresses\s+: (\d+)/) || [])[1], x = (o.match(/Excluded addresses\s+: (\d+)/) || [])[1]; return "show ip dhcp pool on the router: " + v.pool + ", " + t + " addresses, " + l + " leased, " + x + " excluded"; } },
+    { id: "binding", test: function (f, v) { return v.kind === "guest" && f.on === "rtr" && /Bindings from all pools/.test(devOut(f)) && /Infinite\s+Automatic/.test(devOut(f)); }, text: function (f) { return "show ip dhcp binding on the router: " + (devOut(f).match(/Infinite\s+Automatic/g) || []).length + " addresses lent with no expiry"; } },
+    { id: "run", test: function (f, v) { const o = devOut(f); return f.on === "rtr" && /Current configuration/.test(o) && (v.kind === "guest" ? new RegExp("ip dhcp pool " + v.pool + "\\n[^!]*lease infinite").test(o) : o.indexOf("ip dhcp excluded-address " + v.line) >= 0); }, text: function (f, v) { return "show running-config on the router: " + (v.kind === "guest" ? "ip dhcp pool " + v.pool + ", lease infinite" : "ip dhcp excluded-address " + v.line); } }
+  ],
+  summary(v) {
+    const how = { guest: "The guests' pool had been set to lend for ever, and saved. On market day every one of its addresses was lent to a phone that left that afternoon, and none came back.", staff: "An exclusion keeping back " + v.line.replace(" ", " to ") + " had been added to the staff pool and saved, leaving it one address: the " + v.pc + " asked first and took it.", dept: "An exclusion keeping back " + v.line.replace(" ", " to ") + " had been added to the " + v.deptName + "'s pool and saved, leaving it one address: the first PC to restart took it." }[v.kind];
+    return { cause: how + " Everything that already had an address carried on; whatever asked after got nothing and gave itself 169.254.", fix: (v.kind === "guest" ? "Set the guests' pool to lend for a day again, let go of the lent addresses, saved, and had the visitor's phone join again." : "Took out the exclusion that wasn't the router's, ip dhcp excluded-address " + v.line + ", leaving the ones it had, saved, and had the PC ask again.") };
+  }
+};
+const name0 = function (v) { return v.kind === "dept" ? "first " + v.deptName + " PC" : v.pc; };
+const name1 = function (v) { return v.kind === "dept" ? v.d2 : v.bpcName; };
+
+export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07, SB08, SB09, SB10, SB11];
 export const BUSINESS_COMING = [];

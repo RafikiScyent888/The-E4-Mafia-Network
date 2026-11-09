@@ -46,7 +46,8 @@ wr("js/tickets/business.js", s)
 # the drive's plans
 d = rd("tools/drive.mjs")
 for k in range(N + 1, len(ids) + 1):
-    a = d.index('  "SB-%02d": ' % k)
+    a = d.find('  "SB-%02d": ' % k)
+    if a < 0: continue   # a ticket still being written may have no drive plan yet
     nxt = d.find('  "SB-%02d": ' % (k + 1), a)
     b = nxt if nxt >= 0 else d.index("\n});\n", a) + 1
     d = d[:a] + d[b:]

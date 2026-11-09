@@ -671,5 +671,65 @@ const SB08 = {
   }
 };
 
-export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07, SB08];
+/* ---------------------------------------------------------------- SB-09 */
+/* The trunk between the closet switch and the back switch never forms: both ends put back to negotiate (dynamic auto, "the
+   factory setting", and two ends that only answer never trunk), the closet's end made an access port (a desk's settings pasted
+   onto the wrong port), or the back switch's end made one. Everything on the back switch goes dark at once, every VLAN: the back
+   PC, the department's two PCs, the back door camera. The fix: both ends set to trunk, as the records have them, saved. An end
+   left negotiating (dynamic desirable) makes the trunk form, and isn't the records' way. */
+const modeOf = function (sim, id, port, saved) { const sw = sim.d[id].sw, P = saved ? sw.startup && sw.startup.ports && sw.startup.ports[port] : sw.ports[port]; return P ? P.mode : null; };
+const SB09_STORY = {
+  "auto-auto": function (v) { return "Nothing in the " + v.back + " or the " + v.deptName + " has had a network since Saturday: the PCs, and the back door camera too. Out front everything works. On Saturday our nephew put \"the link between the two switches back to its factory setting\" at both ends, because he'd read it fixes slow links."; },
+  "access-closet": function (v) { return "Since this morning everything past the " + v.back + " door is off the network: the " + v.backPc + ", the " + v.deptName + "'s PCs and the back door camera. Last night someone set up a port on the closet switch for a new desk, copying the settings from the " + v.pc + "'s port."; },
+  "access-back": function (v) { return "The " + v.backPc + ", the " + v.deptName + "'s PCs and the back door camera all went off the network yesterday afternoon. The PCs out front are fine. Yesterday the PC supplier's technician was at the back switch with his laptop, setting up \"the PC ports\"."; }
+};
+const SB09 = {
+  id: "SB-09", n: "09", level: 3, tier: "harder", title: "Everything in the back room is off the network at once", priority: 1, due: "1 h",
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-09:" + seed)), kind = r.pick(["auto-auto", "access-closet", "access-back"]);
+    if (kind !== "access-back") onSwitch(sim, "msw", ["configure terminal", "interface gi0/23", kind === "auto-auto" ? "switchport mode dynamic auto" : "switchport mode access", "end"].concat(SAVE));
+    if (kind !== "access-closet") onSwitch(sim, "bsw", ["configure terminal", "interface gi0/24", kind === "auto-auto" ? "switchport mode dynamic auto" : "switchport mode access", "end"].concat(SAVE));
+    ["bpc", "dpc1", "dpc2"].forEach(function (id) { exec(sim, id, "ipconfig /renew"); });
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, printer: p.printerIp, pc: name(sim, "pc"), backPc: name(sim, "bpc"), back: String(sim.net.roomNames.back).toLowerCase(), deptName: String(sim.net.roomNames.dept).toLowerCase() } };
+  },
+  brief(v) { return { quote: SB09_STORY[v.kind](v) }; },
+  mason: "Everything behind one switch stopped together. Before you look at any one device, look at the one link they all share, from both ends.",
+  affected: "bpc",
+  options(v) {
+    return [
+      { id: "right", right: true, text: "The link between the closet switch and the back switch is no longer a trunk" },
+      { id: "bsw", text: "The back switch has failed", why: "It answers at its console, its port lights are on, and show interfaces status lists its PCs' ports connected." },
+      { id: "cable", text: "The cable between the two switches is faulty", why: "show interfaces status gives both ends connected, 1000 Mb/s, full duplex, with no errors counted." },
+      { id: "allowed", text: "The trunk's allowed list no longer carries the back room's VLANs", why: "The allowed list in the running configuration is as the records have it, and it's every VLAN that's gone, not one." },
+      { id: "deleted", text: "The back room's VLANs have been deleted from the back switch", why: "show vlan brief on the back switch lists every one of them, active, with their ports." },
+      { id: "native", text: "The two ends of the link disagree on the native VLAN", why: "A native mismatch darkens one VLAN and logs itself on the console. Here every VLAN is gone, and the native VLANs in the configuration match." }
+    ];
+  },
+  rung1() { return "On both switches: show interfaces trunk, and show interfaces switchport on the link's port at each end: its administrative mode and its operational mode. The closet switch from the manager's PC; the back switch at your laptop's console."; },
+  rung2() { return "A link carries many VLANs only while it's a trunk. Each end's mode decides it: set to trunk, it trunks; set to access, it never does; left to negotiate, it trunks only if the far end asks, and two ends that only answer (dynamic auto) never ask."; },
+  fixHints() { return ["Read each end's administrative and operational modes: which end isn't set the way the records have the trunk?", "Set every end that isn't, at both switches if need be, to be a trunk outright, not left to negotiate. Its allowed list and native VLAN are still in its configuration.", "Save each switch you changed, then have the PCs in the back room ask again."]; },
+  exhibits(sim, v) { return !(modeOf(sim, "msw", "GigabitEthernet0/23") === "trunk" && modeOf(sim, "bsw", "GigabitEthernet0/24") === "trunk") && ["bpc", "dpc1"].every(function (id) { return !online(sim, id); }) && online(sim, "pc"); },
+  modesRight(sim, saved) { return modeOf(sim, "msw", "GigabitEthernet0/23", saved) === "trunk" && modeOf(sim, "bsw", "GigabitEthernet0/24", saved) === "trunk"; },
+  fixed(sim, v) { return SB09.modesRight(sim) && SB09.modesRight(sim, true) && ["bpc", "dpc1", "dpc2", "pc"].every(function (id) { return online(sim, id); }); },
+  partial(v, sim) {
+    if (!SB09.modesRight(sim)) return "It works, but an end of the link is still negotiating: the records set both ends to trunk outright. A port left to negotiate can be talked into trunking by whatever is plugged into it.";
+    if (!SB09.modesRight(sim, true)) return "It works right now, but a switch hasn't saved it: the next power cut or reload takes the trunk down again.";
+    return "It works right now, but the link isn't the way the records have it.";
+  },
+  proves(f) { return f.cmd === "ping" && /^(bpc|dpc1|dpc2)$/.test(f.dev) && f.replies > 0 && (f.internet || (f.who || []).indexOf("printer") >= 0); },
+  proofText: "a PC in the back room reaching the printer or the internet",
+  evidence: [
+    { id: "apipa", test: function (f) { return f.cmd === "ipconfig" && /^(bpc|dpc1|dpc2)$/.test(f.dev) && f.apipa; }, text: function (f, v, sim) { return "ipconfig on the " + name(sim, f.dev) + ": " + f.ip + " (169.254: no DHCP server answered)"; } },
+    { id: "trunk", test: function (f) { return (f.on === "msw" || f.on === "bsw") && /Native vlan/.test(devOut(f)) && !new RegExp(f.on === "msw" ? "Gi0/23\\s" : "Gi0/24\\s").test(devOut(f).split("Vlans allowed on trunk")[0]); }, text: function (f, v, sim) { return "show interfaces trunk on the " + name(sim, f.on) + ": " + (f.on === "msw" ? "Gi0/23" : "Gi0/24") + ", the link to the other switch, isn't trunking"; } },
+    { id: "mode", test: function (f) { return (f.on === "msw" || f.on === "bsw") && /Administrative Mode: .*\nOperational Mode: static access/.test(devOut(f)) && new RegExp("^Name: " + (f.on === "msw" ? "Gi0/23" : "Gi0/24") + "$", "m").test(devOut(f)); }, text: function (f, v, sim) { const m = devOut(f).match(/Administrative Mode: (.*)\nOperational Mode: (.*)/); return "show interfaces switchport on the " + name(sim, f.on) + "'s end of the link: administrative mode " + (m ? m[1] : "?") + ", operational mode " + (m ? m[2] : "?"); } },
+    { id: "status", test: function (f) { return (f.on === "msw" || f.on === "bsw") && new RegExp("^" + (f.on === "msw" ? "Gi0/23" : "Gi0/24") + "\\s+\\S+\\s+connected\\s+\\d+\\s", "m").test(devOut(f)); }, text: function (f, v, sim) { const m = devOut(f).match(new RegExp("^" + (f.on === "msw" ? "Gi0/23" : "Gi0/24") + "\\s+\\S+\\s+connected\\s+(\\d+)\\s", "m")); return "show interfaces status on the " + name(sim, f.on) + ": the link's port is connected, in VLAN " + (m ? m[1] : "?") + ", not trunk"; } }
+  ],
+  summary(v) {
+    const how = { "auto-auto": "Both ends of the link had been put back to dynamic auto and saved. An end on dynamic auto trunks only when the far end asks, and neither asked, so the link came up as an access port in VLAN 1.", "access-closet": "The closet switch's end of the link had been made an access port, from a desk's settings, and saved.", "access-back": "The back switch's end of the link had been made an access port and saved." }[v.kind];
+    return { cause: how + " With no trunk, none of the back room's VLANs crossed it: everything on the back switch lost the network together.", fix: "Set " + (v.kind === "auto-auto" ? "both ends" : v.kind === "access-closet" ? "the closet switch's end" : "the back switch's end") + " to switchport mode trunk, as the records have them, saved, and had the back room's PCs ask for their addresses again." };
+  }
+};
+
+export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07, SB08, SB09];
 export const BUSINESS_COMING = [];

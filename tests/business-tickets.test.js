@@ -37,6 +37,9 @@ const onRt = (T, lines, save) => { const p = T.v.plan; return [mgr("ssh " + p.us
 /* SB-08: the trunk's port on whichever switch, and the PCs that lost their network asking again */
 const port8 = (sw) => sw === "msw" ? "interface gi0/23" : "interface gi0/24";
 const again8 = (T) => T.v.devs.map((id) => ({ t: "cmd", dev: id, line: "ipconfig /renew" }));
+/* SB-09: the ends that were changed, and the back room asking again */
+const ends9 = (T) => T.v.kind === "auto-auto" ? ["msw", "bsw"] : T.v.kind === "access-closet" ? ["msw"] : ["bsw"];
+const again9 = () => ["bpc", "dpc1", "dpc2"].map((id) => ({ t: "cmd", dev: id, line: "ipconfig /renew" }));
 const again4 = (T) => T.v.devs.flatMap((id) => id === "guest" ? [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }] : [{ t: "cmd", dev: id, line: "ipconfig /renew" }]);
 
 const FIX = {
@@ -47,7 +50,8 @@ const FIX = {
   "SB-05": (T) => onRt(T, (T.v.wrong ? ["no ip route 0.0.0.0 0.0.0.0 " + T.v.wrong] : []).concat(["ip route 0.0.0.0 0.0.0.0 " + T.v.gw])),
   "SB-06": (T) => onRt(T, Object.keys(T.v.roles).flatMap((n) => ["interface " + n, "ip nat " + T.v.roles[n]])),
   "SB-07": (T) => onRt(T, ["no access-list 1"].concat(T.v.before.map((k) => "access-list 1 " + k))).concat(T.v.kind === "guest" ? [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }] : []),
-  "SB-08": (T) => onSw(T, T.v.end, [port8(T.v.end), "switchport trunk native vlan " + T.v.native]).concat(again8(T))
+  "SB-08": (T) => onSw(T, T.v.end, [port8(T.v.end), "switchport trunk native vlan " + T.v.native]).concat(again8(T)),
+  "SB-09": (T) => ends9(T).flatMap((sw) => onSw(T, sw, [port8(sw), "switchport mode trunk"])).concat(again9())
 };
 const PROOF = {
   "SB-01": (T) => [pc("ping " + T.v.printer)],
@@ -57,7 +61,8 @@ const PROOF = {
   "SB-05": () => [pc("tracert 8.8.8.8"), pc("ping 8.8.8.8")],
   "SB-06": () => [pc("ping 8.8.8.8")],
   "SB-07": (T) => T.v.kind === "guest" ? [{ t: "view", dev: "guest", key: "wifi" }] : [{ t: "cmd", dev: T.v.dev, line: "ping 8.8.8.8" }],
-  "SB-08": (T) => [{ t: "cmd", dev: T.v.devs[0], line: "ping " + T.v.printer }]
+  "SB-08": (T) => [{ t: "cmd", dev: T.v.devs[0], line: "ping " + T.v.printer }],
+  "SB-09": (T) => [{ t: "cmd", dev: "bpc", line: "ping " + T.v.printer }]
 };
 const UNSAVED = {
   "SB-01": (T) => conf(T, ["interface gi0/1", "switchport access vlan " + staff(T).id]).concat([pc("ipconfig /renew")]),
@@ -67,7 +72,8 @@ const UNSAVED = {
   "SB-05": (T) => onRt(T, (T.v.wrong ? ["no ip route 0.0.0.0 0.0.0.0 " + T.v.wrong] : []).concat(["ip route 0.0.0.0 0.0.0.0 " + T.v.gw]), false),
   "SB-06": (T) => onRt(T, Object.keys(T.v.roles).flatMap((n) => ["interface " + n, "ip nat " + T.v.roles[n]]), false),
   "SB-07": (T) => onRt(T, ["no access-list 1"].concat(T.v.before.map((k) => "access-list 1 " + k)), false).concat(T.v.kind === "guest" ? [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }] : []),
-  "SB-08": (T) => onSw(T, T.v.end, [port8(T.v.end), "switchport trunk native vlan " + T.v.native], false).concat(again8(T))
+  "SB-08": (T) => onSw(T, T.v.end, [port8(T.v.end), "switchport trunk native vlan " + T.v.native], false).concat(again8(T)),
+  "SB-09": (T) => ends9(T).flatMap((sw) => onSw(T, sw, [port8(sw), "switchport mode trunk"], false)).concat(again9())
 };
 /* tempting fixes that treat a symptom, or the wrong part: none may fix it */
 const WRONG = {
@@ -139,6 +145,14 @@ const WRONG = {
       onSw(T, v.end, [port8(v.end), "switchport trunk native vlan 1"]).concat(again8(T)),   /* back to the default, not the records' */
       onSw(T, v.end, [port8(v.end), "switchport trunk allowed vlan add " + v.vlan]).concat(again8(T)),   /* the allowed list, which was never the trouble */
       onSw(T, v.end, [port8(v.end), "shutdown", "no shutdown"]).concat(again8(T))];
+  },
+  "SB-09": (T) => {
+    const e = ends9(T);
+    return [again9(), [{ t: "power", dev: "bsw" }].concat(again9()),
+      e.flatMap((sw) => onSw(T, sw, [port8(sw), "switchport mode dynamic desirable"])).concat(again9()),   /* left negotiating: it trunks, and isn't the records' way */
+      onSw(T, e[0] === "msw" ? "bsw" : "msw", [port8(e[0] === "msw" ? "bsw" : "msw"), "switchport mode trunk"]).concat(again9()),   /* the end that was right already */
+      e.flatMap((sw) => onSw(T, sw, [port8(sw), "switchport trunk allowed vlan all"])).concat(again9()),   /* the allowed list, on a port that isn't a trunk */
+      e.flatMap((sw) => onSw(T, sw, [port8(sw), "shutdown", "no shutdown"])).concat(again9())];
   }
 };
 const SYMPTOM = {
@@ -154,6 +168,16 @@ const SYMPTOM = {
     assert.match(o, new RegExp("interface GigabitEthernet0/1\\n description \\S+\\n switchport access vlan " + v.vlan + "\\n switchport mode access\\n"));
     assert.match(o, new RegExp("^Gi0/2\\s+MANAGER-PC\\s+connected\\s+" + staff(T).id + "\\s", "m"), "the manager's PC is still in the staff VLAN");
     assert.ok(E.act(T, mgr("exit")) && E.act(T, mgr("ping " + v.printer)).facts.replies > 0, "the manager's PC still prints");
+  },
+  "SB-09": (T) => {
+    const v = T.v, p = v.plan;
+    for (const id of ["bpc", "dpc1"]) assert.match(E.act(T, { t: "cmd", dev: id, line: "ipconfig" }).out, /Autoconfiguration IPv4 Address[ .]*: 169\.254\./);
+    const b = out(T, ["", p.swConsole, "enable", p.swSecret, "show interfaces gi0/24 switchport", "show interfaces status", "disable", "exit"].map(tech));
+    const c = out(T, ssh(T).concat([mgr("show interfaces gi0/23 switchport"), mgr("exit")]));
+    assert.match(b + c, /Operational Mode: static access/, "an end of the link runs as an access port");
+    assert.match(b, /Administrative Mode: (static access|dynamic auto|trunk)/); assert.match(c, /Administrative Mode: (static access|dynamic auto|trunk)/);
+    assert.match(b, /^Gi0\/1\s+\S+\s+connected/m, "the back switch's own ports are up");
+    assert.ok(E.act(T, pc("ping " + v.printer)).facts.replies > 0, "out front works");
   },
   "SB-08": (T) => {
     const v = T.v, p = v.plan;

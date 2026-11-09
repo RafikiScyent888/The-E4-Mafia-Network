@@ -621,6 +621,26 @@ Object.assign(PLAN, {
       fix: async (p, v) => { await onSw8(p, v, v.end, [port(v.end), "switchport trunk native vlan " + v.native]); await again(p, v); },
       proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.devs[0]); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); }
     };
+  })(),
+  /* SB-09: the trunk between the switches never forms */
+  "SB-09": (() => {
+    const ends = (v) => v.kind === "auto-auto" ? ["msw", "bsw"] : v.kind === "access-closet" ? ["msw"] : ["bsw"];
+    const port = (sw) => sw === "msw" ? "interface gi0/23" : "interface gi0/24";
+    const set = async (p, v, mode, save) => { for (const sw of ends(v)) { if (sw === "bsw") await bswConf(p, v, [port(sw), "switchport mode " + mode], save); else await bizConf(p, v, [port(sw), "switchport mode " + mode], save); } };
+    const again = async (p) => { for (const id of ["bpc", "dpc1", "dpc2"]) { await dev(p, id); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); } };
+    return {
+      look: async (p, v) => {
+        await dev(p, "bpc"); await tab(p, "Command Prompt"); await type(p, "ipconfig"); check(/169\.254\./.test(await term(p)), "SB-09: the back PC is on 169.254");
+        await bswLogin(p, v); await type(p, "show interfaces gi0/24 switchport"); const b = (await term(p)).split("show interfaces gi0/24 switchport").pop(); await type(p, "disable"); await type(p, "exit");
+        await bizLogin(p, v); await type(p, "show interfaces gi0/23 switchport"); const c = (await term(p)).split("show interfaces gi0/23 switchport").pop(); await type(p, "exit");
+        check(/Operational Mode: static access/.test(b + c) && (v.kind !== "auto-auto" || /Administrative Mode: dynamic auto/.test(b)), "SB-09 " + v.kind + ": show interfaces switchport at the two ends: an end runs as an access port");
+        const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(ev.indexOf("apipa") >= 0 && ev.indexOf("mode") >= 0, "SB-09: the notebook has the back PC cut off and an end's modes (" + ev + ")");
+      },
+      wrong: async (p, v) => { await set(p, v, "dynamic desirable"); await again(p); },
+      afterWrong: async (p) => { check(/still negotiating/.test(await p.$eval("#board", (n) => n.textContent)), "SB-09: an end left negotiating: Mason says the records set both ends to trunk outright"); },
+      fix: async (p, v) => { await set(p, v, "trunk"); await again(p); },
+      proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, "bpc"); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); }
+    };
   })()
 });
 

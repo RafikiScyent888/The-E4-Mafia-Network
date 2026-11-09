@@ -2696,9 +2696,10 @@ left 13 kinds and 1,464 counts on the plan as SB-J10 went live. After the fix: n
   on a snapshot of this branch (25a4beb, SB-J10 merged in). Passed before the push: the drive's every-plan check (263 checks);
   `tools/wip/planall.mjs`, 0 problems of any kind; the plants above, 8 of 9 caught; the contrast state that failed on SB-J10's
   own branch, passing on the combined code (3,448 text runs); and SB-J10 on its own branch: `npm test` 381 of 381, the full
-  drive 4,170 checks, the 3D models 202 of 202, its page plants 5 of 5. Still running at the push, on the combined code:
-  every test, the full page drive, the 3D models, the 243 contrast states and SB-J10's page plants (their results are
-  recorded below when they finish).
+  drive 4,170 checks, the 3D models 202 of 202, its page plants 5 of 5. Still running at the push, on the combined code,
+  and all passing since: `npm test` 381 of 381; the full page drive 4,434 checks; the 3D models 202 of 202; SB-J10's page
+  plants 5 of 5; and all 243 contrast states on painted pixels (in four parts of about 61; a worker restart stopped parts 3
+  and 4 part way, and their remaining states were run on their own).
 - `tools/wip/` (not part of the site): `planall.mjs` (scores the plan as built, or candidate layouts through a `__layTry`
   hook added to `pos()` in a scratch copy, on every business work order, start and finish, both fonts, counting every kind of
   problem; a candidate that names no closet width keeps the closet as built), `planshot.mjs` (the plan screenshotted at chosen

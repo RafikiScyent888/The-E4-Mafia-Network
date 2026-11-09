@@ -521,7 +521,11 @@ Object.assign(PLAN, {
       },
       wrong: async (p, v) => { if (v.kind === "router") await bizConf(p, v, v.lost.map((id) => "vlan " + id)); else { await bizConf(p, v, ["interface " + v.short, "switchport trunk allowed vlan all"]); await again(p, v); } },
       afterWrong: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind !== "router") check(/has no use for/.test(await p.$eval("#board", (n) => n.textContent)), "SB-03: the trunk opened to every VLAN: Mason says it carries what the far end has no use for"); },
-      fix: async (p, v) => { await bizConf(p, v, ["interface " + v.short, "switchport trunk allowed vlan add " + v.lost.join(",")]); await again(p, v); },
+      fix: async (p, v) => {   /* the VLANs of what stopped, read off the card's VLAN plan, as a student would */
+        const rows = await p.$$eval("#officeRecs dt", (l) => l.map((x) => [x.textContent, x.nextElementSibling.textContent])), want = { back: ["Staff VLAN", "Cameras' VLAN"], ap: ["Guests' VLAN"], router: ["Printers' VLAN"] }[v.kind];
+        const ids = want.map((w) => { const r = rows.find((x) => x[0] === w); return r ? Number(r[1].split(" · ")[0]) : null; });
+        check(ids.join(",") === v.lost.join(","), "SB-03 " + v.kind + ": the card's VLAN plan gives the VLANs that stopped (" + ids + ")");
+        await bizConf(p, v, ["interface " + v.short, "switchport trunk allowed vlan add " + ids.join(",")]); await again(p, v); },
       proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "back") { await dev(p, "bpc"); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); } else if (v.kind === "router") { await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); } else await radio(p); }
     };
   })(),

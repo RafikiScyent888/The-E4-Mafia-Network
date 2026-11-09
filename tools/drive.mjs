@@ -428,6 +428,13 @@ const bizLogin = async (p, v) => {
   await dev(p, "mgr"); await tab(p, "Command Prompt");
   for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);   /* records missing from the card: a named failure above, then on with what's typed */
 };
+/* the back switch at your laptop's console: its passwords off the card too */
+const bswLogin = async (p, v) => {
+  const con = ((await rec(p, "Console passwords")).match(/both switches (\S+)/) || [])[1], sec = ((await rec(p, "Enable secrets")).match(/both switches (\S+)/) || [])[1];
+  check(con === v.plan.swConsole && sec === v.plan.swSecret, "the business's records on the ticket give the switches' console password and enable secret");
+  await dev(p, "tech"); await tab(p, "Serial terminal"); for (const l of ["", con || "?", "enable", sec || "?"]) await type(p, l);
+};
+const bswConf = async (p, v, lines, save) => { await bswLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end"], save === false ? [] : ["copy running-config startup-config", ""], ["disable", "exit"])) await type(p, l); };
 const bizConf = async (p, v, lines, save) => { await bizLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end"], save === false ? [] : ["copy running-config startup-config", ""], ["exit"])) await type(p, l); };
 Object.assign(PLAN, {
   "SB-01": {
@@ -455,7 +462,36 @@ Object.assign(PLAN, {
     afterWrong: async (p) => { check(/hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SB-01: fixed but not saved: Mason says it isn't saved"); },
     fix: async (p, v) => { await bizConf(p, v, ["interface gi0/1", "switchport access vlan " + v.plan.vlans.staff.id]); await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); },
     proof: async (p) => { const ip = await rec(p, "The printer"); await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping " + ip.split(",")[0]); }
-  }
+  },
+  /* SB-02: a VLAN taken out of a switch; each variant through its own device and switch */
+  "SB-02": (() => {
+    const onSw = (p, v, lines, save) => v.sw === "bsw" ? bswConf(p, v, lines, save) : bizConf(p, v, lines, save);
+    const radio = async (p) => { await dev(p, "guest"); await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Turn Wi-Fi off")'); await p.waitForTimeout(40); await p.click('.pane button:text-is("Turn Wi-Fi on")'); await p.waitForTimeout(40); };
+    const again = async (p, v) => { if (v.kind === "staff") { await dev(p, "bpc"); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); } if (v.kind === "guest") await radio(p); };
+    return {
+      look: async (p, v) => {
+        const staff = v.kind === "staff";
+        if (staff) { await dev(p, "bpc"); await tab(p, "Command Prompt"); await type(p, "ipconfig"); check(/169\.254\./.test(await term(p)), "SB-02 staff: the back PC is on 169.254"); }
+        else if (v.kind === "printers") { await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); await p.waitForTimeout(40); check(/didn't print|nothing came out|couldn't|not/i.test(await p.$eval(".pane", (n) => n.textContent)), "SB-02 printers: the test page doesn't print");
+          await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); check(/Received = 0/.test((await term(p)).split("ping " + v.printer).pop()), "SB-02 printers: no reply from the printer");
+          await p.click("#tStep"); await p.waitForTimeout(60); check(/Nothing on that network answers/.test(await p.$eval("#steps", (n) => n.textContent)), "SB-02 printers: Step through shows the router's ARP for the printer going unanswered"); await p.click("#tLive"); }
+        else { await radio(p); const w = await p.$eval(".pane", (n) => n.textContent); check(/169\.254\.[\d.]+ \(it gave itself this: no address came\)/.test(w) && /No internet/.test(w), "SB-02 guest: the visitor's phone joins and gets 169.254, no internet"); }
+        if (v.sw === "bsw") await bswLogin(p, v); else await bizLogin(p, v);
+        await type(p, "show vlan brief"); const vb = (await term(p)).split("show vlan brief").pop();
+        check(/VLAN Name\s+Status\s+Ports/.test(vb) && !new RegExp("^" + v.vlan + "\\s", "m").test(vb), "SB-02 " + v.kind + ": show vlan brief on the " + v.sw + " has no VLAN " + v.vlan);
+        await type(p, "show interfaces trunk"); check(/Vlans allowed and active in management domain/.test(await term(p)), "SB-02: show interfaces trunk");
+        if (v.kind !== "guest") { await type(p, "show interfaces " + (staff ? "gi0/1" : "gi0/3") + " switchport"); check(new RegExp("Access Mode VLAN: " + v.vlan + " \\(Inactive\\)").test(await term(p)), "SB-02: the port's VLAN is Inactive"); }
+        await type(p, staff ? "disable" : "exit"); if (staff) await type(p, "exit");
+        const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(ev.indexOf("vlans") >= 0 && ev.indexOf("trunk") >= 0 && ev.indexOf(staff ? "apipa" : v.kind === "guest" ? "phone" : "noprint") >= 0, "SB-02: the notebook has the symptom, the missing VLAN and the trunk (" + ev + ")");
+      },
+      wrong: async (p, v) => { await onSw(p, v, ["vlan " + v.vlan]); await again(p, v); },
+      afterWrong: async (p) => { check(/the switch's own name for it/.test(await p.$eval("#board", (n) => n.textContent)), "SB-02: the VLAN back with the switch's own name: Mason says the records name it otherwise"); },
+      fix: async (p, v) => { const vl = await p.$$eval("#officeRecs dt", (l) => l.map((x) => x.textContent + "=" + x.nextElementSibling.textContent)), row = vl.find((x) => / VLAN=/.test(x) && x.split("=")[1].split(" · ")[0] === String(v.vlan));
+        check(!!row, "SB-02: the records' VLAN plan has VLAN " + v.vlan + " (" + row + ")");
+        await onSw(p, v, ["vlan " + v.vlan, "name " + v.vname]); await again(p, v); },
+      proof: async (p, gw) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "staff") { await dev(p, "bpc"); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); } else if (v.kind === "printers") { await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); } else await radio(p); }
+    };
+  })()
 });
 
 for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY || k === process.env.ONLY || (process.env.ONLY === "tickets-office" && /^SO-/.test(k)) || (process.env.ONLY === "tickets-business" && /^SB-/.test(k)))) for (const seed of seedsFor(id)) {
@@ -464,6 +500,8 @@ for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY 
   try {   /* a ticket that stops part way (a button missing, a click that times out) is a named failure, and the next ticket still runs */
   const v = await T(p, () => window.__e4.T.v), gw = await T(p, () => { const r = window.__e4.T.sim.d.router; return r ? r.lan.ip : null; });   /* the business has no home or office router: its gateways are in its records */
   check(await T(p, () => window.__e4.T.def.exhibits(window.__e4.T.sim, window.__e4.T.v)), id + " " + seed + ": fault present at load");
+  if (/^SB-/.test(id)) check((await T(p, () => window.__e4.T.seed)) === seed, id + " " + seed + ": opens on the business asked for, its fault showing there without moving on to another (" + v.kind + ")");   /* a fault that didn't show would be moved to the next business, and every variant could quietly become one */
+  if (/^SB-/.test(id)) check((await T(p, () => window.__e4.T.seed)) === seed, id + " " + seed + ": opens on the business asked for, its fault showing there without moving on to another (" + v.kind + ")");   /* a fault that didn't show would be moved to the next business, and every variant could quietly become one */
   await plan.look(p, v);
   const ev0 = await p.$$eval("#notebook li", (l) => l.length); check(ev0 >= 1, id + " " + seed + ": the notebook recorded evidence (" + ev0 + ")");
   /* the board: rungs as the rule says */

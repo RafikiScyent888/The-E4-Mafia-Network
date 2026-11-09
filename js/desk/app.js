@@ -70,7 +70,7 @@ function openTicket(id, fresh, seed) {
   let T = null;
   if (!fresh && S.t[def.id]) { try { T = E.restore(def, S.t[def.id]); } catch (e) { T = null; } }
   if (!T) T = E.open(def, seed == null ? newSeed() : seed);
-  ctx.T = T; ctx.open = def.affected; ctx.tab = null; ctx.sheetChecked = false; ctx.level = def.level || 1; ctx.fixHint = T.fixHint ? def.fixHints(T.v, T.sim)[Math.min(T.fixHint, 3) - 1] : null;
+  ctx.T = T; ctx.open = typeof def.affected === "function" ? def.affected(T.v) : def.affected; ctx.tab = null; ctx.sheetChecked = false; ctx.level = def.level || 1; ctx.fixHint = T.fixHint ? def.fixHints(T.v, T.sim)[Math.min(T.fixHint, 3) - 1] : null;
   forgetTerminals(); persist(); renderAll();
 }
 

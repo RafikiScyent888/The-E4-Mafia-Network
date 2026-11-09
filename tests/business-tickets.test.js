@@ -22,15 +22,25 @@ const ssh = (T) => { const p = T.v.plan; return [mgr("ssh " + p.user + "@" + p.s
 const conf = (T, lines) => ssh(T).concat([mgr("configure terminal")], lines.map(mgr), [mgr("end")]);
 const SAVE = [mgr("copy running-config startup-config"), mgr("")];
 const staff = (T) => T.v.plan.vlans.staff;
+/* a switch's configuration, as a student reaches it: the closet switch over SSH from the manager's PC, the back switch at your laptop's console */
+const tech = (line) => ({ t: "cmd", dev: "tech", line, cli: true });
+const onSw = (T, sw, lines, save) => { const p = T.v.plan; const L = ["configure terminal"].concat(lines, ["end"], save === false ? [] : ["copy running-config startup-config", ""]);
+  return sw === "bsw" ? ["", p.swConsole, "enable", p.swSecret].concat(L, ["disable", "exit"]).map(tech) : ssh(T).concat(L.map(mgr), [mgr("exit")]); };
+/* SB-02: whoever lost the network asks again, and proves it */
+const again = (T) => T.v.kind === "staff" ? [{ t: "cmd", dev: "bpc", line: "ipconfig /renew" }] : T.v.kind === "guest" ? [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }] : [];
+const back = (T) => ["vlan " + T.v.vlan, "name " + T.v.vname];
 
 const FIX = {
-  "SB-01": (T) => conf(T, ["interface gi0/1", "switchport access vlan " + staff(T).id]).concat(SAVE, [pc("ipconfig /renew")])
+  "SB-01": (T) => conf(T, ["interface gi0/1", "switchport access vlan " + staff(T).id]).concat(SAVE, [pc("ipconfig /renew")]),
+  "SB-02": (T) => onSw(T, T.v.sw, back(T)).concat(again(T))
 };
 const PROOF = {
-  "SB-01": (T) => [pc("ping " + T.v.printer)]
+  "SB-01": (T) => [pc("ping " + T.v.printer)],
+  "SB-02": (T) => T.v.kind === "staff" ? [{ t: "cmd", dev: "bpc", line: "ping " + T.v.printer }] : T.v.kind === "printers" ? [{ t: "print" }] : [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }]   /* connected already, the phone's page offers no Join: Wi-Fi off and on */
 };
 const UNSAVED = {
-  "SB-01": (T) => conf(T, ["interface gi0/1", "switchport access vlan " + staff(T).id]).concat([pc("ipconfig /renew")])
+  "SB-01": (T) => conf(T, ["interface gi0/1", "switchport access vlan " + staff(T).id]).concat([pc("ipconfig /renew")]),
+  "SB-02": (T) => onSw(T, T.v.sw, back(T), false).concat(again(T))
 };
 /* tempting fixes that treat a symptom, or the wrong part: none may fix it */
 const WRONG = {
@@ -39,9 +49,19 @@ const WRONG = {
     return [
       [pc("ipconfig /renew")], [{ t: "power", dev: "pc" }], [{ t: "power", dev: "msw" }, pc("ipconfig /renew")],
       [{ t: "client", dev: "pc", values: { mode: "static", ip: S.gw.replace(/\.1$/, ".99"), mask: "255.255.255.0", gw: S.gw, dns: p.dns } }],   /* a staff address typed in on a port still in another VLAN */
-      conf(T, ["interface range gi0/1 - 22", "switchport access vlan " + S.id]).concat(SAVE, [pc("ipconfig /renew")]),   /* the PC back, every spare unparked with it */
+      conf(T, ["interface range gi0/1 , gi0/4 , gi0/7 - 22", "switchport access vlan " + S.id]).concat(SAVE, [pc("ipconfig /renew")]),   /* the checklist's range typed again with the staff VLAN: the PC back, every spare unparked with it (still shut) */
       conf(T, ["interface gi0/1", "switchport access vlan " + other.id]).concat(SAVE, [pc("ipconfig /renew")]),   /* the wrong VLAN again */
       conf(T, ["interface gi0/1", "shutdown", "no shutdown"]).concat(SAVE, [pc("ipconfig /renew")])
+    ];
+  },
+  "SB-02": (T) => {
+    const v = T.v, other = v.sw === "msw" ? "bsw" : "msw", port = { staff: "gi0/1", printers: "gi0/3", guest: "gi0/5" }[v.kind], trunk = v.kind === "guest" ? "gi0/5" : "gi0/24";
+    return [
+      again(T), [{ t: "power", dev: v.sw }].concat(again(T)),
+      onSw(T, v.sw, v.kind === "guest" ? ["vlan " + v.vlan] : ["interface " + port, "switchport access vlan " + v.vlan]).concat(again(T)),   /* back with the switch's own name for it */
+      onSw(T, other, back(T)).concat(again(T)),   /* made on the other switch */
+      onSw(T, v.sw, ["interface " + trunk, "switchport trunk allowed vlan add " + v.vlan]).concat(again(T)),   /* the trunk told to carry what the switch no longer has */
+      onSw(T, v.sw, back(T).concat(["no vlan " + v.plan.vlans.parking.id])).concat(again(T))   /* back, with another VLAN lost on the way */
     ];
   }
 };
@@ -58,6 +78,25 @@ const SYMPTOM = {
     assert.match(o, new RegExp("interface GigabitEthernet0/1\\n description \\S+\\n switchport access vlan " + v.vlan + "\\n switchport mode access\\n"));
     assert.match(o, new RegExp("^Gi0/2\\s+MANAGER-PC\\s+connected\\s+" + staff(T).id + "\\s", "m"), "the manager's PC is still in the staff VLAN");
     assert.ok(E.act(T, mgr("exit")) && E.act(T, mgr("ping " + v.printer)).facts.replies > 0, "the manager's PC still prints");
+  },
+  "SB-02": (T) => {
+    const v = T.v, p = v.plan;
+    const o = v.sw === "bsw" ? out(T, ["", p.swConsole, "enable", p.swSecret, "show vlan brief", "show interfaces gi0/1 switchport", "show interfaces status", "show interfaces trunk"].map(tech))
+      : out(T, ssh(T).concat(["show vlan brief", "show interfaces gi0/3 switchport", "show interfaces status", "show interfaces trunk"].map(mgr)));
+    assert.doesNotMatch(o, new RegExp("^" + v.vlan + "\\s+\\S+\\s+active", "m"), "show vlan brief has no VLAN " + v.vlan);
+    const allowed = (o.split("Vlans allowed on trunk\n")[1] || "").split("\n\n")[0].split("\n").map((l) => l.trim().split(/\s+/)[1] || "");
+    assert.ok(allowed.some((list) => list.split(",").some((x) => { const [a, b] = x.split("-").map(Number); return v.vlan >= a && v.vlan <= (b || a); })), "a trunk still allows it (" + allowed.join(" | ") + ")");
+    if (v.kind === "staff") {
+      assert.match(o, new RegExp("Access Mode VLAN: " + v.vlan + " \\(Inactive\\)")); assert.match(o, /^Gi0\/1\s+\S+\s+connected\s+unassigned/m);
+      assert.match(E.act(T, { t: "cmd", dev: "bpc", line: "ipconfig" }).out, /Autoconfiguration IPv4 Address[ .]*: 169\.254\./);
+      assert.ok(T.sim.addr("dpc1").kind === "dhcp" && E.act(T, pc("ping " + v.printer)).facts.replies > 0, "the department and the front still work");
+    } else if (v.kind === "printers") {
+      assert.match(o, new RegExp("Access Mode VLAN: " + v.vlan + " \\(Inactive\\)")); assert.match(o, /^Gi0\/3\s+PRINTER\s+connected\s+unassigned/m);
+      assert.equal(E.act(T, { t: "print" }).facts.print, "fail"); E.act(T, mgr("exit")); assert.equal(E.act(T, mgr("ping " + v.printer)).facts.replies, 0, "nobody reaches the printer");
+    } else {
+      assert.ok(E.act(T, { t: "joinssid", dev: "guest", ssid: p.guestSsid, pass: p.guestPw }).facts.apipa, "the visitor joins and gets 169.254");
+      assert.ok(T.sim.addr("pc").kind === "dhcp" && T.sim.addr("mgr").kind === "dhcp", "the staff are fine");
+    }
   }
 };
 
@@ -101,6 +140,7 @@ for (const def of BUSINESS_TICKETS) {
       E.guess(T, "right"); for (const a of FIX[def.id](T)) E.act(T, a); assert.equal(T.fixed, true);
       const byFix = T.proven;
       E.act(T, pc("ping 127.0.0.1")); E.act(T, pc("ping -n 6 " + T.sim.addr("pc").ip));
+      E.act(T, { t: "cmd", dev: "bpc", line: "ping 127.0.0.1" }); E.act(T, { t: "cmd", dev: "bpc", line: "ping " + T.sim.addr("bpc").ip });
       assert.equal(T.proven, byFix, "pinging itself proves nothing");
       for (const a of PROOF[def.id](T)) E.act(T, a); assert.equal(T.proven, true);
     }

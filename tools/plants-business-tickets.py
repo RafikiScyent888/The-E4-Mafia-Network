@@ -31,13 +31,13 @@ PAGE += [
  ("SB-04: the router's records left off the card", 'js/tickets/business.js', '    ["The router", p.rtHost + " · by SSH from a staff PC at " + S.gw +', '    ["The router", p.rtHost + " · by SSH from a staff PC" +')]
 PAGE += [
  ("SB-05: the provider's letter left off the card", 'js/tickets/business.js', '].concat(p.fixed ? [["The provider", "fixed address "', '].concat(false ? [["The provider", "fixed address "'),
- ("the provider's gateway never answers a ping", 'js/net/sim.js', '      if (!this.wanHopOk(w, rt) && dst !== w.gw) return { fail: "no-reply", src: src,', '      if (!this.wanHopOk(w, rt)) return { fail: "no-reply", src: src,')]
+ ("SB-05: the provider's gateway never answers a ping", 'js/net/sim.js', '      if (!this.wanHopOk(w, rt) && dst !== w.gw) return { fail: "no-reply", src: src,', '      if (!this.wanHopOk(w, rt)) return { fail: "no-reply", src: src,')]
 # each built ticket left off the desk, from the ticket list as it stands (so a new ticket needs nothing here)
 _src = open("js/tickets/business.js").read()
 _m = re.search(r"export const BUSINESS_TICKETS = \[([^\]]*)\];", _src)
 _ids = [x.strip() for x in _m.group(1).split(",")]
 PAGE += [(t[:2] + "-" + t[2:] + " left off the desk", "js/tickets/business.js", _m.group(0), "export const BUSINESS_TICKETS = [" + ", ".join(x for x in _ids if x != t) + "];") for t in _ids]
-PAGE += [('the native VLAN mismatch never logged', 'js/net/cmd.js', '    if (!p || !q || p.mode !== "trunk" || q.mode !== "trunk" || p.shutdown || q.shutdown || p.native === q.native) continue;', '    continue;')]
+PAGE += [('SB-08: the native VLAN mismatch never logged', 'js/net/cmd.js', '    if (!p || !q || p.mode !== "trunk" || q.mode !== "trunk" || p.shutdown || q.shutdown || p.native === q.native) continue;', '    continue;')]
 NODE = [
  ("a fix left unsaved counts as fixed", "js/tickets/business.js", "return port(run) && port(st) && !!a", "return port(run) && !!a"),
  ("every spare port unparked counts as fixed", "js/tickets/business.js", "    return [\"GigabitEthernet0/4\"].concat(", "    return true || [\"GigabitEthernet0/4\"].concat("),
@@ -83,6 +83,11 @@ AAA = [
  ("the cabinet's label left without its plate on the desk's floor plan", "js/desk/app.js", 'if (phy) plates($("plan"), ".rl, .ns, .cabl", "#f4f6fb");', 'if (phy) plates($("plan"), ".rl, .ns", "#f4f6fb");', "SB-01 the floor plan"),
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "SB-01 the ticket card"),
 ]
+# a plant for a ticket that isn't on the desk yet is skipped, and said so: Level 3's tickets go live one at a time, each from a
+# tree staged with the tickets after it cut out, and this file stays whole (a plant names its ticket: "SB-05: ...")
+_skip = lambda p: bool(re.match(r"SB-\d\d:", p[0])) and p[0][:5].replace("-", "") not in _ids
+for _l in (PAGE, NODE, AAA):
+    for _p in [x for x in _l if _skip(x)]: print("SKIP  · " + _p[0] + " (not on the desk yet)"); _l.remove(_p)
 only = sys.argv[1:]
 bad = 0
 def run(kind, name, f, a, b, extra=None):

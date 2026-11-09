@@ -2704,6 +2704,78 @@ left 13 kinds and 1,464 counts on the plan as SB-J10 went live. After the fix: n
   problem; a candidate that names no closet width keeps the closet as built), `planshot.mjs` (the plan screenshotted at chosen
   points, for previews).
 
+### Level 3: the business Ticket Desk and SB-01, the wrong VLAN on a port (built 9 November 2026, on `save/level3-sb01`)
+
+The owner, 9 November 2026: **"Yes to all five, keep going"**, to the plan for the business's tickets: (1) each starts from
+the business as SB-J10 leaves it, nobody logged in, the fault typed in and saved by whoever caused it; (2) the business's
+records on every ticket card; (3) "Tier 3 · Small business" on the queue, the shelves and the map, locked until the small
+office is finished, the level still being built until all 15 exist; (4) smallest first: wrong VLAN on a port, deleted VLAN,
+VLAN off the trunk, the pool's wrong gateway, the wrong default route, NAT inside and outside swapped, a VLAN left out of NAT,
+native mismatch, a trunk that never forms, the wrong tag on a subinterface, the printer's address handed out, a pool run out,
+an access list that blocks everything, one applied the wrong way, VLAN hopping; (5) live one at a time, each after its own
+checks. Objectives read 9 November 2026 (Network+ V9 unchanged).
+- **`js/tickets/business.js`.** `settled(seed)`: SB-J10 started and solved, then frozen as a ticket keeps its moment (no
+  logins, the TFTP server closed, `extra.build` off). `onSwitch(sim, id, lines)` types the fault at a switch, privileged.
+  `businessRecords(v, sim)` is the card's records: the router (SSH from a staff PC at the staff gateway; its console in the
+  locked cabinet, the key with the manager), the closet switch (SSH at its address), the back switch (at its console, your
+  laptop on its console cable in the back room, where SB-J10 leaves it), the enable secrets, the console passwords, the SSH
+  login, the printer, and the VLAN plan a row each (staff, guests, cameras, printers, the department, native, parking,
+  VLAN 1). A ticket can replace them with `records(v, sim)`. `BUSINESS_TICKETS`, `BUSINESS_COMING`.
+- **SB-01, "One staff PC can't print or reach the others".** The counter PC's port (gi0/1 on the closet switch) put in
+  another VLAN and saved, three ways, each with its own story in the brief:
+  - **guest:** the card-machine company setting up their terminal on the guests' network. The PC gets a guest's address:
+    online, but kept off the printer and the staff, as every guest is.
+  - **parking:** the manager working through the card processor's checklist, typing the spare ports in from the list with
+    port 1 among them (`interface range gi0/1 , gi0/4 , gi0/7 - 22`). 169.254, nothing works.
+  - **cameras:** the camera company in the closet. 169.254 (the cameras' list stops anything else asking for an address).
+  - The board: the right answer and five near misses (a fixed address on the wrong network, the staff pool run out, the trunk
+    no longer carrying staff, port security, and the guests' list blocking it or a faulty cable), each with the evidence that
+    rules it out. Evidence: ipconfig and ipconfig /all on the PC, no reply from the printer, the internet answering (guest),
+    `show interfaces status`, `show interfaces gi0/1 switchport`, `show vlan brief`, `show running-config`, the router's
+    `show ip dhcp binding` (guest).
+  - **Fixed** when the port is an access port in the staff VLAN, running and saved, the PC on a staff address from DHCP,
+    online and reaching the printer, the manager's PC still online, and every spare port still parked and shut. Unsaved,
+    spares unparked, or not the records' way: Mason says which. **Proof:** a ping from the PC to the printer that gets
+    replies, or a test page; the internet proves nothing (a guest reaches it before the fix).
+  - Hints never name a VLAN number, a password, the port or the fix's commands.
+- **The desk** (`js/desk/app.js`, `left.js`, `levels.js`, `levelsui.js`): Level 3's `tickets` are `BUSINESS_TICKETS`, its
+  `coming` "more tickets on the way" (every work order is built); "0 of 1 ticket" in the singular; the queue's tier "Tier 3 ·
+  Small business · tickets"; the shelves' Small business group (locked until the small office is finished); the map's small
+  business site lists its tickets; the title and the card say small business and business network; the business's own
+  device buttons (`BIZ_DEVICES`; a device still in its box has none). The lock panel and build mode's done box say what the
+  level has coming (`L.coming`).
+- **The ticket engine** takes the business pages' actions: `joinssid`, `apnet`, `radio`, `cabinet` (replayed with the rest).
+- **Found and fixed on the way:**
+  - The desk's floor plan was drawn while hidden behind the logical diagram, where nothing can be measured, and never drawn
+    again once shown: the business's runs were routed round nothing (the drive's run check: five runs under names on SB-01).
+    `setView` now draws both drawings again whichever is shown, as build mode does.
+  - A ticket's plan was drawn from the layout's fixed spots, so your laptop, on the back switch's console in the back room,
+    was drawn in the closet with its console cable across the plan. A business ticket now places each device where the work
+    orders put it, as build mode draws it (`planSpots`).
+  - The desk plated the floor plan's names without the cabinet's label: "CABINET: LOCKED" at 1.00:1 (AAA). It now plates
+    `.cabl` as build mode does.
+  - **Step through crashed** on a ping across the business router to a network nothing answers on (found writing SB-02: the
+    printers' VLAN taken out of the closet switch). `route()` gives `no-reply` with no device for it, and the trace read the
+    device's name off it. It now steps to the router's unanswered ARP (`trace` in `js/net/cmd.js`); a test in
+    `tests/business-sim.test.js` fails without the fix. Could have been met in live build mode (SB-J8, the printers' VLAN not
+    yet on the trunk). Switch and router output also say which device printed it now (`facts.on`).
+- **Checks:**
+  - `tests/business-tickets.test.js` (30 businesses; a business takes half a second to build): the fault in the commands
+    themselves, the board, the real fix and proof, seven tempting wrong fixes (a renew, restarts, a staff address typed in,
+    every spare unparked with it, another wrong VLAN, the port bounced), unsaved, proof before the fix and the internet
+    proving nothing, the ladder, exact replay (an SSH session, the visitor's Wi-Fi off, the manager's phone joining the guests'
+    network, the cabinet's key), no hint naming a VLAN, a password or a command, and the records carrying every login, each
+    one tried (SSH to the switch and the router, your laptop's console on the back switch).
+  - `ONLY=tickets-business node tools/drive.mjs`: SB-01 on four businesses (every variant), every step through the page, the
+    logins read off the card; both drawings in both fonts, your laptop drawn in the back room; the lock for a student still
+    on the small office; the queue, card, title, records, device buttons, shelves and map. RESULTS_DRIVE
+  - AAA: 7 states (the card and its records, SSH from the manager's PC, the board at rung 3, solved, the floor plan, the
+    shelves, the map). RESULTS_AAA
+  - `python3 tools/plants-business-tickets.py` (in a throwaway copy): RESULTS_PLANTS
+  - **Totals before going live:** RESULTS_TOTALS
+- `tools/wip/` (not part of the site): `sbt.mjs` (the business as SB-J10 leaves it, with commands typed and faults planted),
+  `sb01.mjs` (SB-01 end to end in Node), `sbtpage.mjs` (a business ticket on the desk: its card, buttons and screenshots).
+
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,
 other right ways passing, each tempting wrong way failing its line for

@@ -464,6 +464,7 @@ for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY 
   try {   /* a ticket that stops part way (a button missing, a click that times out) is a named failure, and the next ticket still runs */
   const v = await T(p, () => window.__e4.T.v), gw = await T(p, () => { const r = window.__e4.T.sim.d.router; return r ? r.lan.ip : null; });   /* the business has no home or office router: its gateways are in its records */
   check(await T(p, () => window.__e4.T.def.exhibits(window.__e4.T.sim, window.__e4.T.v)), id + " " + seed + ": fault present at load");
+  if (/^SB-/.test(id)) check((await T(p, () => window.__e4.T.seed)) === seed, id + " " + seed + ": opens on the business asked for, its fault showing there without moving on to another (" + v.kind + ")");   /* a fault that didn't show would be moved to the next business, and every variant could quietly become one */
   await plan.look(p, v);
   const ev0 = await p.$$eval("#notebook li", (l) => l.length); check(ev0 >= 1, id + " " + seed + ": the notebook recorded evidence (" + ev0 + ")");
   /* the board: rungs as the rule says */

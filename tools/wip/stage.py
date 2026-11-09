@@ -30,7 +30,7 @@ if N < len(ids):
     a = s.index("/* " + "-" * 64 + " SB-%02d */" % (N + 1))
     b = s.index("export const BUSINESS_TICKETS")
     cut = s[a:b]
-    s = s[:a] + s[b:]
+    s = s[:a] + s[b:].replace(m.group(0), "export const BUSINESS_TICKETS = [" + ", ".join(keep) + "];")
     # nothing kept may use a name the cut sections define
     names = set(re.findall(r"^(?:const|function) (\w+)", cut, re.M))
     used = [n for n in names if re.search(r"\b" + n + r"\b", s)]

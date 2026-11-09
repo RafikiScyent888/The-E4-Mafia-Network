@@ -564,6 +564,23 @@ Object.assign(PLAN, {
     afterWrong: async (p) => { check(/hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SB-05: the route put right but not saved: Mason says so"); },
     fix: async (p, v) => { await rtConf(p, v, (v.wrong ? ["no ip route 0.0.0.0 0.0.0.0 " + v.wrong] : []).concat(["ip route 0.0.0.0 0.0.0.0 " + v.gw])); },
     proof: async (p) => { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "tracert 8.8.8.8"); }
+  },
+  /* SB-06: NAT's inside and outside the wrong way round */
+  "SB-06": {
+    look: async (p, v) => {
+      await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); check(!/Reply from 8\.8\.8\.8: bytes/.test((await term(p)).split("ping 8.8.8.8").pop()), "SB-06: the PC gets nothing from the internet");
+      await dev(p, "dpc1"); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); check(/Reply from 8\.8\.8\.8: bytes/.test((await term(p)).split("ping 8.8.8.8").pop()) === (v.kind === "sub"), "SB-06 " + v.kind + ": the department gets out only when only the staff VLAN is wrong");
+      await rtLogin(p, v); await type(p, "ping 8.8.8.8"); check(/Success rate is 100 percent/.test((await term(p)).split("ping 8.8.8.8").pop()), "SB-06: the router itself reaches the internet");
+      await type(p, "show ip nat translations"); await type(p, "show running-config");
+      const run = await term(p), blk = (n) => ((run.split("interface " + n + "\n").pop() || "").split("!")[0]);
+      check(/ip nat (inside|outside)/.test(blk("GigabitEthernet0/0")), "SB-06: show running-config shows the provider port's NAT role");
+      await type(p, "exit");
+      const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(["noweb", "rtrok", "xlate", "run"].every((x) => ev.indexOf(x) >= 0), "SB-06: the notebook has the PC cut off, the router getting out, the translations and the interfaces' roles (" + ev + ")");
+    },
+    wrong: async (p, v) => { await rtConf(p, v, Object.keys(v.roles).flatMap((n) => ["interface " + n, "ip nat " + v.roles[n]]), false); },
+    afterWrong: async (p) => { check(/hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SB-06: the roles put right but not saved: Mason says so"); },
+    fix: async (p, v) => { await rtConf(p, v, Object.keys(v.roles).flatMap((n) => ["interface " + n, "ip nat " + v.roles[n]])); },
+    proof: async (p) => { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); }
   }
 });
 

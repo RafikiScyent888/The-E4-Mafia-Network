@@ -6,7 +6,7 @@ import subprocess, shutil, sys, os
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))   # this checkout, wherever it is
 PAGE = [
  ("a level 3 ticket opens while its level is locked", "js/desk/app.js", "  if (!isOpen(def.level || 1)) def = HOME_TICKETS[0];", ""),
- ("SB-01 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05];", "export const BUSINESS_TICKETS = [SB02, SB03, SB04, SB05];"),
+ ("SB-01 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06];", "export const BUSINESS_TICKETS = [SB02, SB03, SB04, SB05, SB06];"),
  ("the business's records left off the ticket", "js/desk/app.js", '  if (net.site === "business" && T.v.plan) tk.appendChild(records(', '  if (false) tk.appendChild(records('),
  ("the business's ticket card says home network", "js/desk/app.js", '({ office: "office network", business: "business network" }[net.site] || "home network")', '(net.site === "office" ? "office network" : "home network")'),
  ("the business's devices given the office's buttons", "js/desk/app.js", "(biz ? BIZ_DEVICES : DEVICES).forEach", "DEVICES.forEach"),
@@ -20,19 +20,20 @@ PAGE = [
  ("the counter PC's port moved to the wrong port", "js/tickets/business.js", '["configure terminal", "interface gi0/1", "switchport access vlan " + V, "end"];', '["configure terminal", "interface gi0/2", "switchport access vlan " + V, "end"];'),
  ("a switch command over SSH never reaches the notebook", "js/tickets/business.js", 'const devOut = function (f) { return (f.cmd === "serial" || f.cmd === "ssh" || f.cmd === "telnet") && typeof f.out === "string" ? f.out : ""; };', 'const devOut = function (f) { return ""; };'),
 ]
-PAGE += [("SB-02 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05];", "export const BUSINESS_TICKETS = [SB01, SB03, SB04, SB05];"),
+PAGE += [("SB-02 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06];", "export const BUSINESS_TICKETS = [SB01, SB03, SB04, SB05, SB06];"),
  ("SB-02: the switch's own name for the VLAN accepted", 'js/tickets/business.js', 'return !!run && !!st && run.name === v.vname && st.name === v.vname && SB02.kept(', 'return !!run && !!st && SB02.kept('),
  ("the visitor's phone without its Wi-Fi switch", 'js/net/pages.js', 'heard: nets, radio: { on: true }, facts:', 'heard: nets, radio: null, facts:'),
  ("the switches' console password left off the card", 'js/tickets/business.js', '["Console passwords", "the router " + p.rtConsole + " · both switches " + p.swConsole],', '["Console passwords", "the router " + p.rtConsole],'),
  ('a ping across the router to a VLAN nothing answers on crashes Step through', 'js/net/cmd.js', '  if (rt.fail === "no-reply" && !rt.local && rt.via && sim.d[rt.via] && !(rt.owner && rt.owner.length)) {', '  if (false) {'),
  ("SB-02's evidence blind to a VLAN missing from show vlan brief", 'js/tickets/business.js', 'f.on === v.sw && /VLAN Name\\s+Status\\s+Ports/.test(o) && !new RegExp("^" + v.vlan + "\\\\s", "m").test(o)', 'f.on === v.sw && /NEVER/.test(o) && !new RegExp("^" + v.vlan + "\\\\s", "m").test(o)')]
-PAGE += [("SB-03 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05];", "export const BUSINESS_TICKETS = [SB01, SB02, SB04, SB05];"),
+PAGE += [("SB-03 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06];", "export const BUSINESS_TICKETS = [SB01, SB02, SB04, SB05, SB06];"),
  ('SB-03: a trunk carrying every VLAN accepted', 'js/tickets/business.js', '  rightList(al, v) { return carriesAll(al, v.lost) && (v.before', '  rightList(al, v) { return carriesAll(al, v.lost) || (v.before')]
-PAGE += [("SB-04 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05];", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB05];"),
+PAGE += [("SB-04 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06];", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB05, SB06];"),
  ("SB-04: the router's records left off the card", 'js/tickets/business.js', '    ["The router", p.rtHost + " · by SSH from a staff PC at " + S.gw +', '    ["The router", p.rtHost + " · by SSH from a staff PC" +')]
-PAGE += [('SB-05 left off the desk', 'js/tickets/business.js', 'export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05];', 'export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04];'),
+PAGE += [("SB-05 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06];", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB06];"),
  ("SB-05: the provider's letter left off the card", 'js/tickets/business.js', '].concat(p.fixed ? [["The provider", "fixed address "', '].concat(false ? [["The provider", "fixed address "'),
  ("the provider's gateway never answers a ping", 'js/net/sim.js', '      if (!this.wanHopOk(w, rt) && dst !== w.gw) return { fail: "no-reply", src: src,', '      if (!this.wanHopOk(w, rt)) return { fail: "no-reply", src: src,')]
+PAGE += [('SB-06 left off the desk', 'js/tickets/business.js', 'export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06];', 'export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05];')]
 NODE = [
  ("a fix left unsaved counts as fixed", "js/tickets/business.js", "return port(run) && port(st) && !!a", "return port(run) && !!a"),
  ("every spare port unparked counts as fixed", "js/tickets/business.js", "    return [\"GigabitEthernet0/4\"].concat(", "    return true || [\"GigabitEthernet0/4\"].concat("),
@@ -62,6 +63,9 @@ NODE += [('SB-05: the right route beside the wrong one counts', 'js/tickets/busi
  ('SB-05: the route put right unsaved counts', 'js/tickets/business.js', '  fixed(sim, v) { return SB05.rightRoutes(sim, v) && SB05.rightRoutes(sim, v, true) &&', '  fixed(sim, v) { return SB05.rightRoutes(sim, v) &&'),
  ('SB-05: a tracert to the router itself proves it', 'js/tickets/business.js', '(f.cmd === "tracert" && f.ok === true && !/^(10|127)\\.|^192\\.168\\./.test(String(f.target))))', '(f.cmd === "tracert" && f.ok === true))'),
  ('SB-05: a hint names the route', 'js/tickets/business.js', '"The records hold the provider\'s letter: the gateway the business\'s way out goes through."', '"The records hold the provider\'s letter: ip route 0.0.0.0 0.0.0.0 to the gateway the business\'s way out goes through."')]
+NODE += [('SB-06: part of the roles put right counts', 'js/tickets/business.js', 'return Object.keys(v.roles).every(function (n) { return R[n] === v.roles[n]; }) && Object.keys(R).every(function (n) { return v.roles[n] === R[n]; }); },', 'return R["GigabitEthernet0/0"] === "outside"; },'),
+ ('SB-06: the roles put right unsaved count', 'js/tickets/business.js', '  fixed(sim, v) { return SB06.rolesRight(sim, v) && SB06.rolesRight(sim, v, true) &&', '  fixed(sim, v) { return SB06.rolesRight(sim, v) &&'),
+ ('SB-06: a hint names the NAT commands', 'js/tickets/business.js', '"Mark each interface for the side it\'s really on:', '"Mark each interface ip nat inside or ip nat outside for the side it\'s really on:')]
 AAA = [
  ("the cabinet's label left without its plate on the desk's floor plan", "js/desk/app.js", 'if (phy) plates($("plan"), ".rl, .ns, .cabl", "#f4f6fb");', 'if (phy) plates($("plan"), ".rl, .ns", "#f4f6fb");', "SB-01 the floor plan"),
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "SB-01 the ticket card"),

@@ -470,5 +470,69 @@ const SB05 = {
   }
 };
 
-export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05];
+/* ---------------------------------------------------------------- SB-06 */
+/* NAT's inside and outside the wrong way round on the router's interfaces: swapped everywhere (from a forum post that called the
+   provider's side "inside, where the internet comes in"), the provider port marked inside as well (the line copied onto it), or
+   the staff VLAN's subinterface marked outside (the wrong line copied when it was edited). Nothing that needs translating gets
+   out: the whole business, or only the staff, while everything inside still works and the router itself still reaches the
+   internet (its own traffic needs no translating). The fix: every interface's role back as the records have it, saved. */
+const natRoles = function (sim, saved) { const R = sim.d.rtr.sw, src = saved ? R.startup : R, out = {}; if (!src) return out; ["ifs", "subs"].forEach(function (k) { Object.keys(src[k] || {}).forEach(function (n) { if (src[k][n] && src[k][n].nat) out[n] = src[k][n].nat; }); }); return out; };
+const SB06_STORY = {
+  swapped: function () { return "No internet for anyone since Saturday: not us, not the guests, and the cameras can't be seen from my phone. Printing and everything inside works. My brother-in-law read on a forum that our router had NAT \"the wrong way round\" and fixed it for us on Saturday."; },
+  wan: function (v) { return "Nothing here gets on the internet since this morning, staff or guests, and the camera app can't connect. Everything inside works. Last night the company that set up the " + v.deptName + " came back to change something on the router."; },
+  sub: function (v) { return "The " + v.pc + " and my PC can't get on the internet since Friday, but they print fine. The " + v.deptName + "'s PCs and the guest Wi-Fi are online as normal. On Friday our nephew edited the router to rename something for the staff network."; }
+};
+const SB06 = {
+  id: "SB-06", n: "06", level: 3, tier: "common", title: "The internet is down, but the router itself can still reach it", priority: 1, due: "1 h",
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-06:" + seed)), kind = r.pick(["swapped", "wan", "sub"]);
+    const roles = natRoles(sim), ins = Object.keys(roles).filter(function (n) { return roles[n] === "inside"; }), sid = "GigabitEthernet0/1." + p.vlans.staff.id;
+    const lines = kind === "swapped" ? ["interface GigabitEthernet0/0", "ip nat inside"].concat.apply(["interface GigabitEthernet0/0", "ip nat inside"], ins.map(function (n) { return ["interface " + n, "ip nat outside"]; }))
+      : kind === "wan" ? ["interface GigabitEthernet0/0", "ip nat inside"] : ["interface " + sid, "ip nat outside"];
+    onRouter(sim, ["configure terminal"].concat(lines, ["end"], SAVE));
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, roles: roles, sub: sid, printer: p.printerIp, pc: name(sim, "pc"), deptName: String(sim.net.roomNames.dept).toLowerCase() } };
+  },
+  brief(v) { return { quote: SB06_STORY[v.kind](v) }; },
+  mason: "The router reaches the internet and the PCs don't. What does the router do to their traffic on the way out that it doesn't need to do to its own?",
+  affected: "pc",
+  options(v) {
+    const sub = v.kind === "sub";
+    return [
+      { id: "right", right: true, text: sub ? "The staff VLAN's subinterface is marked as NAT's outside, so staff traffic is never translated" : v.kind === "wan" ? "The router's provider port is marked as NAT's inside, so nothing is translated on its way out" : "NAT's inside and outside are set the wrong way round on the router's interfaces" },
+      { id: "route", text: "The router's default route is wrong", why: "show ip route has the gateway of last resort through the provider's gateway from the records, and the router itself reaches the internet: ping 8.8.8.8 from the router answers." },
+      { id: "list", text: sub ? "NAT's access list no longer matches the staff network" : "NAT's access list no longer matches the business's networks", why: "show access-lists gives the NAT list a line for every inside network, as the records have it. The list says what to translate; it's never asked." },
+      { id: "isp", text: "The provider's line is down", why: "The router reaches the internet itself, and the provider's gateway answers it." },
+      { id: "dns", text: "DNS has stopped answering, so names don't look up", why: "Pings by address fail too: 8.8.8.8 gets no reply from a PC, while the router reaches it." },
+      { id: "acl", text: sub ? "An access list on the staff subinterface is dropping traffic for the internet" : "An access list on the provider port is dropping traffic for the internet", why: "show ip interface on that interface has no access list applied" + (sub ? "" : " inbound or outbound beyond the records'") + ", and show access-lists counts no new denies." }
+    ];
+  },
+  rung1() { return "From a PC: ping an internet address. Then on the router, from the manager's PC: ping the same address, show ip nat translations, and show running-config, each interface's lines."; },
+  rung2() { return "Translation happens only on the way from an interface marked inside to one marked outside. The router's own traffic leaves from its public address and needs none, so it gets out whatever the markings say."; },
+  fixHints(v) { return ["Compare each of the router's interfaces with what NAT needs: which side faces the business, which faces the provider.", v.kind === "sub" ? "Mark the interface that's on the wrong side the way the others on its side are marked." : "Mark each interface for the side it's really on: the business's interfaces one way, the provider's port the other.", "Save it, then test from a PC: the internet, and the cameras from outside."]; },
+  exhibits(sim, v) { const R = natRoles(sim); return JSON.stringify(R) !== JSON.stringify(v.roles) && !online(sim, "pc") && reachesPrinter(sim, "pc", v.printer) && !!sim.route("rtr", "8.8.8.8").internet; },
+  rolesRight(sim, v, saved) { const R = natRoles(sim, saved); return Object.keys(v.roles).every(function (n) { return R[n] === v.roles[n]; }) && Object.keys(R).every(function (n) { return v.roles[n] === R[n]; }); },
+  fixed(sim, v) { return SB06.rolesRight(sim, v) && SB06.rolesRight(sim, v, true) && ["pc", "mgr", "dpc1"].every(function (id) { return online(sim, id); }); },
+  partial(v, sim) {
+    if (!SB06.rolesRight(sim, v)) return "It works for the PC you tested, but not every interface is marked as the records have it: some traffic still won't be translated.";
+    if (!SB06.rolesRight(sim, v, true)) return "It works right now, but the router hasn't saved it: the next power cut or reload marks them the wrong way again.";
+    return "It works right now, but not everything is back the way the records have it.";
+  },
+  proves(f, sim, v) { const who = v.kind === "sub" ? /^(pc|mgr|bpc)$/ : /^(pc|mgr|bpc|dpc1|dpc2)$/; return who.test(f.dev) && ((f.cmd === "ping" && !!f.internet && f.replies > 0) || (f.cmd === "tracert" && f.ok === true && !/^(10|127)\.|^192\.168\./.test(String(f.target)))); },
+  proofText: "a ping or a tracert to the internet from a PC that couldn't get out",
+  evidence: [
+    { id: "noweb", test: function (f) { return f.cmd === "ping" && /^(pc|mgr|bpc)$/.test(f.dev) && f.ip && !/^10\.|^192\.168\./.test(f.ip) && !f.replies; }, text: function (f) { return "Ping from a staff PC to " + f.ip + ", on the internet: no reply"; } },
+    { id: "inside", test: function (f, v) { return f.cmd === "ping" && /^(pc|mgr|bpc)$/.test(f.dev) && (f.who || []).indexOf("printer") >= 0 && f.replies > 0; }, text: function () { return "Ping from a staff PC to the printer, through the router: replies"; } },
+    { id: "deptok", test: function (f, v) { return v.kind === "sub" && f.cmd === "ping" && /^dpc[12]$/.test(f.dev) && !!f.internet && f.replies > 0; }, text: function () { return "Ping from a department PC to the internet: replies"; } },
+    { id: "rtrok", test: function (f) { return f.on === "rtr" && /Success rate is [1-9]\d* percent/.test(devOut(f)) && /ICMP Echos to (?!10\.|192\.168\.)/.test(devOut(f)); }, text: function () { return "Ping from the router itself to the internet: it answers"; } },
+    { id: "xlate", test: function (f) { return f.on === "rtr" && /Pro\s+Inside global/.test(devOut(f)); }, text: function (f, v) { const L = devOut(f).split("\n").filter(function (l) { return /^(icmp|tcp|udp)\s/.test(l); }), pre = v.plan.vlans.staff.net.replace(/\.0$/, "."), staff = L.some(function (l) { return l.indexOf(" " + pre) >= 0; }); return "show ip nat translations: " + (staff ? "staff addresses translated" : "no translation for any staff address") + (L.length ? " (" + L.length + " other entr" + (L.length === 1 ? "y" : "ies") + ")" : ", nothing at all"); } },
+    { id: "run", test: function (f) { const o = devOut(f); return f.on === "rtr" && /Current configuration/.test(o) && /ip nat (inside|outside)/.test(o); }, text: function (f, v) { const o = devOut(f), blk = function (n) { return ((o.split("interface " + n + "\n")[1] || "").split("!")[0]); }, role = function (n) { const m = blk(n).match(/ip nat (inside|outside)/); return m ? "ip nat " + m[1] : "no NAT role"; }; return "show running-config on the router: the provider port GigabitEthernet0/0 has " + role("GigabitEthernet0/0") + "; the staff subinterface " + v.sub + " has " + role(v.sub); } }
+  ],
+  summary(v) {
+    const how = { swapped: "NAT's roles had been swapped on every interface and saved: the provider port marked inside, the business's interfaces outside.", wan: "The provider port had been marked ip nat inside as well and saved, leaving no outside: nothing was translated on its way out.", sub: "The staff VLAN's subinterface had been marked ip nat outside and saved: staff traffic was never translated, while the department and the guests were." }[v.kind];
+    return { cause: how + " A private address the provider won't route went out untranslated, and nothing came back. The router's own traffic, from its public address, still got out.", fix: "Marked every interface as the records have it, the business's interfaces ip nat inside and the provider port ip nat outside, saved, and tested from a PC." };
+  }
+};
+
+export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06];
 export const BUSINESS_COMING = [];

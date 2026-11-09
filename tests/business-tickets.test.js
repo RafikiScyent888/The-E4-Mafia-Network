@@ -41,21 +41,24 @@ const FIX = {
   "SB-02": (T) => onSw(T, T.v.sw, back(T)).concat(again(T)),
   "SB-03": (T) => trunk3(T, "switchport trunk allowed vlan add " + T.v.lost.join(",")).concat(again3(T)),
   "SB-04": (T) => onRt(T, ["ip dhcp pool " + T.v.pool, "default-router " + T.v.gw]).concat(again4(T)),
-  "SB-05": (T) => onRt(T, (T.v.wrong ? ["no ip route 0.0.0.0 0.0.0.0 " + T.v.wrong] : []).concat(["ip route 0.0.0.0 0.0.0.0 " + T.v.gw]))
+  "SB-05": (T) => onRt(T, (T.v.wrong ? ["no ip route 0.0.0.0 0.0.0.0 " + T.v.wrong] : []).concat(["ip route 0.0.0.0 0.0.0.0 " + T.v.gw])),
+  "SB-06": (T) => onRt(T, Object.keys(T.v.roles).flatMap((n) => ["interface " + n, "ip nat " + T.v.roles[n]]))
 };
 const PROOF = {
   "SB-01": (T) => [pc("ping " + T.v.printer)],
   "SB-02": (T) => T.v.kind === "staff" ? [{ t: "cmd", dev: "bpc", line: "ping " + T.v.printer }] : T.v.kind === "printers" ? [{ t: "print" }] : [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }],   /* connected already, the phone's page offers no Join: Wi-Fi off and on */
   "SB-03": (T) => T.v.kind === "back" ? [{ t: "cmd", dev: "bpc", line: "ping " + T.v.printer }] : T.v.kind === "router" ? [{ t: "print" }] : [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }],
   "SB-04": (T) => T.v.kind === "guest" ? [{ t: "view", dev: "guest", key: "wifi" }] : [{ t: "cmd", dev: T.v.devs[0], line: "ping " + T.v.printer }],
-  "SB-05": () => [pc("tracert 8.8.8.8"), pc("ping 8.8.8.8")]
+  "SB-05": () => [pc("tracert 8.8.8.8"), pc("ping 8.8.8.8")],
+  "SB-06": () => [pc("ping 8.8.8.8")]
 };
 const UNSAVED = {
   "SB-01": (T) => conf(T, ["interface gi0/1", "switchport access vlan " + staff(T).id]).concat([pc("ipconfig /renew")]),
   "SB-02": (T) => onSw(T, T.v.sw, back(T), false).concat(again(T)),
   "SB-03": (T) => trunk3(T, "switchport trunk allowed vlan add " + T.v.lost.join(","), false).concat(again3(T)),
   "SB-04": (T) => onRt(T, ["ip dhcp pool " + T.v.pool, "default-router " + T.v.gw], false).concat(again4(T)),
-  "SB-05": (T) => onRt(T, (T.v.wrong ? ["no ip route 0.0.0.0 0.0.0.0 " + T.v.wrong] : []).concat(["ip route 0.0.0.0 0.0.0.0 " + T.v.gw]), false)
+  "SB-05": (T) => onRt(T, (T.v.wrong ? ["no ip route 0.0.0.0 0.0.0.0 " + T.v.wrong] : []).concat(["ip route 0.0.0.0 0.0.0.0 " + T.v.gw]), false),
+  "SB-06": (T) => onRt(T, Object.keys(T.v.roles).flatMap((n) => ["interface " + n, "ip nat " + T.v.roles[n]]), false)
 };
 /* tempting fixes that treat a symptom, or the wrong part: none may fix it */
 const WRONG = {
@@ -103,6 +106,14 @@ const WRONG = {
       onRt(T, ["ip route 0.0.0.0 0.0.0.0 GigabitEthernet0/1"])];   /* out the inside port */
     if (v.wrong) L.push(onRt(T, ["ip route 0.0.0.0 0.0.0.0 " + v.gw]));   /* the right one added beside the wrong one */
     return L;
+  },
+  "SB-06": (T) => {
+    const v = T.v, staff = ["interface " + v.sub, "ip nat inside"], wan = ["interface GigabitEthernet0/0", "ip nat outside"];
+    return [[{ t: "power", dev: "rtr" }, pc("ping 8.8.8.8")],
+      onRt(T, ["access-list 1 permit any"]),   /* NAT's list widened: it was never the list */
+      onRt(T, ["interface GigabitEthernet0/0", "shutdown", "no shutdown"]),
+      v.kind === "sub" ? onRt(T, wan.concat(["interface GigabitEthernet0/0", "ip nat inside"])) : onRt(T, staff),   /* only part of it put right */
+      onRt(T, Object.keys(v.roles).flatMap((n) => ["interface " + n, "ip nat " + v.roles[n]]).concat(["interface GigabitEthernet0/1." + v.plan.vlans.printers.id, "ip nat inside"]))];   /* right, and the printers' subinterface given a role it never had */
   }
 };
 const SYMPTOM = {
@@ -118,6 +129,16 @@ const SYMPTOM = {
     assert.match(o, new RegExp("interface GigabitEthernet0/1\\n description \\S+\\n switchport access vlan " + v.vlan + "\\n switchport mode access\\n"));
     assert.match(o, new RegExp("^Gi0/2\\s+MANAGER-PC\\s+connected\\s+" + staff(T).id + "\\s", "m"), "the manager's PC is still in the staff VLAN");
     assert.ok(E.act(T, mgr("exit")) && E.act(T, mgr("ping " + v.printer)).facts.replies > 0, "the manager's PC still prints");
+  },
+  "SB-06": (T) => {
+    const v = T.v, p = v.plan;
+    assert.equal(E.act(T, pc("ping 8.8.8.8")).facts.replies, 0, "the PC gets nothing from the internet");
+    assert.ok(E.act(T, pc("ping " + v.printer)).facts.replies > 0, "inside works");
+    assert.equal(E.act(T, { t: "cmd", dev: "dpc1", line: "ping 8.8.8.8" }).facts.replies > 0, v.kind === "sub", "the department gets out only when only the staff VLAN is wrong");
+    const o = out(T, [mgr("ssh " + p.user + "@" + p.vlans.staff.gw), mgr(p.userPw), mgr("enable"), mgr(p.rtSecret), mgr("ping 8.8.8.8"), mgr("show running-config")]);
+    assert.match(o, /Success rate is 100 percent/, "the router itself reaches the internet");
+    const role = (n) => ((o.split("interface " + n + "\n")[1] || "").split("!")[0].match(/ip nat (inside|outside)/) || [])[1];
+    assert.equal(role("GigabitEthernet0/0"), v.kind === "sub" ? "outside" : "inside"); assert.equal(role(v.sub), v.kind === "wan" ? "inside" : "outside");
   },
   "SB-05": (T) => {
     const v = T.v, p = v.plan;
@@ -255,7 +276,7 @@ for (const def of BUSINESS_TICKETS) {
         assert.ok(x.indexOf(right) < 0, x);
         for (const bad of [p.rtSecret, p.rtConsole, p.swSecret, p.swConsole, p.userPw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, def.id + " names a password: " + x);
         for (const n of Object.values(p.vlans).map((V) => String(V.id))) assert.ok(!new RegExp("\\b" + n + "\\b").test(x), def.id + " names VLAN " + n + ": " + x);
-        for (const cmd of ["switchport access", "switchport mode", "switchport trunk", "allowed vlan", "default-router", "ip dhcp pool", "ip route 0", "copy running-config", "write memory", "interface gi", "ipconfig /renew"]) assert.ok(x.indexOf(cmd) < 0, def.id + " names the fix's command: " + x);
+        for (const cmd of ["switchport access", "switchport mode", "switchport trunk", "allowed vlan", "default-router", "ip dhcp pool", "ip route 0", "ip nat inside", "ip nat outside", "copy running-config", "write memory", "interface gi", "ipconfig /renew"]) assert.ok(x.indexOf(cmd) < 0, def.id + " names the fix's command: " + x);
       }
     }
   });

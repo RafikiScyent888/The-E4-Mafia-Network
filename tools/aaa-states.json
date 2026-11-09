@@ -1046,6 +1046,20 @@
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-05'); const v=c.T.v, P=v.plan; const m=l=>c.act({t:'cmd',dev:'mgr',line:l}); ['ssh '+P.user+'@'+P.vlans.staff.gw,P.userPw,'enable',P.rtSecret,'configure terminal'].concat(v.wrong?['no ip route 0.0.0.0 0.0.0.0 '+v.wrong]:[],['ip route 0.0.0.0 0.0.0.0 '+v.gw,'end','copy running-config startup-config','','exit']).forEach(m); c.guess('right'); c.act({t:'cmd',dev:'pc',line:'tracert 8.8.8.8'}); document.getElementById('board').scrollIntoView();"
  },
  {
+  "name": "business tickets: SB-06 the router reaching the internet itself, its NAT translations",
+  "page": "index.html",
+  "ticket": "SB-06",
+  "seed": 1,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-06'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.vlans.staff.gw,P.userPw,'enable',P.rtSecret,'ping 8.8.8.8','show ip nat translations'].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-06 the board at rung 3, the notebook",
+  "page": "index.html",
+  "ticket": "SB-06",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-06'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=pc]').click(); tab('Command Prompt'); ['ping 8.8.8.8','ping '+v.printer].forEach(k); const w=c.T.opts.filter(o=>!o.right).map(o=>o.id); w.slice(0,4).forEach(x=>c.guess(x)); c.resetBoard(); c.guess(w[4]); document.getElementById('board').scrollIntoView();"
+ },
+ {
   "name": "business tickets: the shelves, the small business's tickets",
   "page": "lab-bench.html",
   "ticket": "SB-01",

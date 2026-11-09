@@ -654,6 +654,46 @@ Object.assign(PLAN, {
       fix: async (p, v) => { await set(p, v, "trunk"); await again(p); },
       proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, "bpc"); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); }
     };
+  })(),
+  /* SB-10: a router subinterface tagged for the wrong VLAN; each VLAN's tag, gateway and block read off the card */
+  "SB-10": (() => {
+    const radio = async (p) => { await dev(p, "guest"); await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Turn Wi-Fi off")'); await p.waitForTimeout(40); await p.click('.pane button:text-is("Turn Wi-Fi on")'); await p.waitForTimeout(40); };
+    const again = async (p, v) => { if (v.kind === "guest") await radio(p); if (v.kind === "swap") { for (const id of ["dpc1", "dpc2"]) { await dev(p, id); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); } await radio(p); } };
+    const mask = (len) => [0, 1, 2, 3].map((i) => (0xffffffff << (32 - len) >>> (24 - i * 8)) & 255).join(".");
+    /* a VLAN's row on the card: its tag, its gateway (the router's address on it) and its block's length */
+    const card = async (p, v, k) => { const rows = await p.$$eval("#officeRecs dt", (l) => l.map((x) => [x.textContent, x.nextElementSibling.textContent])), std = ["Staff VLAN", "Guests' VLAN", "Cameras' VLAN", "Printers' VLAN", "Native VLAN", "Parking VLAN", "VLAN 1"];
+      const r = k === "dept" ? rows.find((x) => / VLAN$/.test(x[0]) && std.indexOf(x[0]) < 0) : rows.find((x) => x[0] === { printers: "Printers' VLAN", guest: "Guests' VLAN" }[k]);
+      if (!r) return null; const f = r[1].split(" · "); return { id: Number(f[0]), gw: r[1].split("gateway ").pop(), len: Number((f.find((x) => /\/\d+$/.test(x)) || "/24").split("/")[1]) }; };
+    return {
+      look: async (p, v) => {
+        if (v.kind === "printers") { await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); await p.waitForTimeout(40); check(/didn't print|nothing came out|couldn't|not/i.test(await p.$eval(".pane", (n) => n.textContent)), "SB-10 printers: the test page doesn't print");
+          await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); check(/Reply from 8\.8\.8\.8: bytes/.test((await term(p)).split("ping 8.8.8.8").pop()), "SB-10 printers: the internet works"); }
+        else if (v.kind === "guest") { await radio(p); check(/it gave itself this: no address came/.test(await p.$eval(".pane", (n) => n.textContent)), "SB-10 guest: the visitor's phone joins and gets 169.254"); }
+        else {
+          await dev(p, "dpc1"); await tab(p, "Command Prompt"); await type(p, "ipconfig"); const G = await card(p, v, "guest");
+          check(new RegExp("IPv4 Address[ .]*: " + G.gw.replace(/\.\d+$/, ".").replace(/\./g, "\\.")).test(await term(p)), "SB-10 swap: a department PC has an address on the guests' network (the card's " + G.gw + ")");
+          await radio(p); const D = await card(p, v, "dept"), w = await p.$eval(".pane", (n) => n.textContent); check(w.indexOf(D.gw.replace(/\.\d+$/, ".")) >= 0, "SB-10 swap: the visitor's phone has an address in the department's block");
+        }
+        await rtLogin(p, v); await type(p, "show ip interface brief"); check(/up\s+up/.test(await term(p)), "SB-10: show ip interface brief on the router");
+        for (const k of v.kind === "swap" ? ["dept", "guest"] : [v.kind]) { const c = await card(p, v, k), sub = Object.keys(v.before).find((n) => v.before[n].ip === c.gw);
+          await type(p, "show interfaces " + sub); const tag = Number(((await term(p)).split("show interfaces " + sub).pop().match(/Vlan ID\s+(\d+)/) || [])[1]);
+          check(sub && tag && tag !== c.id, "SB-10 " + v.kind + ": show interfaces " + sub + " (its address the card's " + k + " gateway) gives VLAN " + tag + ", the card's tag " + c.id); }
+        await type(p, "exit");
+        const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(ev.indexOf("tag") >= 0 && ev.indexOf({ printers: "noprint", guest: "phone", swap: "guestaddr" }[v.kind]) >= 0, "SB-10: the notebook has the symptom and the wrong tag (" + ev + ")");
+      },
+      wrong: async (p, v) => {   /* swap: the department's put right, the guests' left untagged; otherwise the tag back, its address gone with the old one */
+        if (v.kind === "swap") { const D = await card(p, v, "dept"); await rtConf(p, v, ["interface " + v.gs, "no encapsulation dot1Q", "interface " + v.ds, "encapsulation dot1Q " + D.id, "ip address " + D.gw + " " + mask(D.len)]); }
+        else { const c = await card(p, v, v.kind); await rtConf(p, v, ["interface " + v.sub, "encapsulation dot1Q " + c.id]); }
+        await again(p, v); },
+      fix: async (p, v) => {
+        if (v.kind === "swap") { const D = await card(p, v, "dept"), G = await card(p, v, "guest");
+          check(D.gw === v.before[v.ds].ip && G.gw === v.before[v.gs].ip && mask(D.len) === v.before[v.ds].mask, "SB-10 swap: the card gives both gateways and the department's block");
+          await rtConf(p, v, ["interface " + v.gs, "no encapsulation dot1Q", "interface " + v.ds, "encapsulation dot1Q " + D.id, "ip address " + D.gw + " " + mask(D.len), "interface " + v.gs, "encapsulation dot1Q " + G.id, "ip address " + G.gw + " " + mask(G.len)]); }
+        else { const c = await card(p, v, v.kind); check(c.id === v.vlan && c.gw === v.before[v.sub].ip && mask(c.len) === v.before[v.sub].mask, "SB-10 " + v.kind + ": the card gives the VLAN's tag, gateway and block (" + JSON.stringify(c) + ")");
+          await rtConf(p, v, ["interface " + v.sub, "encapsulation dot1Q " + c.id, "ip address " + c.gw + " " + mask(c.len)]); }
+        await again(p, v); },
+      proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "printers") { await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); } else if (v.kind === "guest") await radio(p); else { await dev(p, "dpc1"); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); } }
+    };
   })()
 });
 

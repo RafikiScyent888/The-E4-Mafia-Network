@@ -14,6 +14,7 @@ import * as E from "../js/tickets/engine.js";
 import { exec } from "../js/net/cmd.js";
 
 const N = Number(process.env.SEEDS || 30);
+const inNet = (ip, net, len) => { const n = (x) => x.split(".").reduce((a, b) => a * 256 + +b, 0), m = 2 ** 32 - 2 ** (32 - (len || 24)); return Math.floor(n(ip) / 2 ** (32 - (len || 24))) === Math.floor(n(net) / 2 ** (32 - (len || 24))); };
 const seeds = Array.from({ length: N }, (_, i) => 5000 + i * 7919);
 const pc = (line) => ({ t: "cmd", dev: "pc", line }), mgr = (line) => ({ t: "cmd", dev: "mgr", line });
 const out = (T, acts) => acts.map((a) => (E.act(T, a) || {}).out || "").join("");
@@ -40,6 +41,12 @@ const again8 = (T) => T.v.devs.map((id) => ({ t: "cmd", dev: id, line: "ipconfig
 /* SB-09: the ends that were changed, and the back room asking again */
 const ends9 = (T) => T.v.kind === "auto-auto" ? ["msw", "bsw"] : T.v.kind === "access-closet" ? ["msw"] : ["bsw"];
 const again9 = () => ["bpc", "dpc1", "dpc2"].map((id) => ({ t: "cmd", dev: id, line: "ipconfig /renew" }));
+/* SB-10: the subinterfaces put back (a new tag clears the address, so it goes back on too), and whatever lost its network asking again */
+const radioOn = [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }];
+const again10 = (T) => T.v.kind === "printers" ? [] : T.v.kind === "guest" ? radioOn : [{ t: "cmd", dev: "dpc1", line: "ipconfig /renew" }, { t: "cmd", dev: "dpc2", line: "ipconfig /renew" }].concat(radioOn);
+const subs10 = (T) => { const v = T.v, V = v.plan.vlans, B = v.before;
+  if (v.kind !== "swap") return ["interface " + v.sub, "encapsulation dot1Q " + v.vlan, "ip address " + B[v.sub].ip + " " + B[v.sub].mask];
+  return ["interface " + v.gs, "no encapsulation dot1Q", "interface " + v.ds, "encapsulation dot1Q " + V.dept.id, "ip address " + B[v.ds].ip + " " + B[v.ds].mask, "interface " + v.gs, "encapsulation dot1Q " + V.guest.id, "ip address " + B[v.gs].ip + " " + B[v.gs].mask]; };
 const again4 = (T) => T.v.devs.flatMap((id) => id === "guest" ? [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }] : [{ t: "cmd", dev: id, line: "ipconfig /renew" }]);
 
 const FIX = {
@@ -51,7 +58,8 @@ const FIX = {
   "SB-06": (T) => onRt(T, Object.keys(T.v.roles).flatMap((n) => ["interface " + n, "ip nat " + T.v.roles[n]])),
   "SB-07": (T) => onRt(T, ["no access-list 1"].concat(T.v.before.map((k) => "access-list 1 " + k))).concat(T.v.kind === "guest" ? [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }] : []),
   "SB-08": (T) => onSw(T, T.v.end, [port8(T.v.end), "switchport trunk native vlan " + T.v.native]).concat(again8(T)),
-  "SB-09": (T) => ends9(T).flatMap((sw) => onSw(T, sw, [port8(sw), "switchport mode trunk"])).concat(again9())
+  "SB-09": (T) => ends9(T).flatMap((sw) => onSw(T, sw, [port8(sw), "switchport mode trunk"])).concat(again9()),
+  "SB-10": (T) => onRt(T, subs10(T)).concat(again10(T))
 };
 const PROOF = {
   "SB-01": (T) => [pc("ping " + T.v.printer)],
@@ -62,7 +70,8 @@ const PROOF = {
   "SB-06": () => [pc("ping 8.8.8.8")],
   "SB-07": (T) => T.v.kind === "guest" ? [{ t: "view", dev: "guest", key: "wifi" }] : [{ t: "cmd", dev: T.v.dev, line: "ping 8.8.8.8" }],
   "SB-08": (T) => [{ t: "cmd", dev: T.v.devs[0], line: "ping " + T.v.printer }],
-  "SB-09": (T) => [{ t: "cmd", dev: "bpc", line: "ping " + T.v.printer }]
+  "SB-09": (T) => [{ t: "cmd", dev: "bpc", line: "ping " + T.v.printer }],
+  "SB-10": (T) => T.v.kind === "printers" ? [{ t: "print" }] : T.v.kind === "guest" ? radioOn : [{ t: "cmd", dev: "dpc1", line: "ping " + T.v.printer }]
 };
 const UNSAVED = {
   "SB-01": (T) => conf(T, ["interface gi0/1", "switchport access vlan " + staff(T).id]).concat([pc("ipconfig /renew")]),
@@ -73,7 +82,8 @@ const UNSAVED = {
   "SB-06": (T) => onRt(T, Object.keys(T.v.roles).flatMap((n) => ["interface " + n, "ip nat " + T.v.roles[n]]), false),
   "SB-07": (T) => onRt(T, ["no access-list 1"].concat(T.v.before.map((k) => "access-list 1 " + k)), false).concat(T.v.kind === "guest" ? [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }] : []),
   "SB-08": (T) => onSw(T, T.v.end, [port8(T.v.end), "switchport trunk native vlan " + T.v.native], false).concat(again8(T)),
-  "SB-09": (T) => ends9(T).flatMap((sw) => onSw(T, sw, [port8(sw), "switchport mode trunk"], false)).concat(again9())
+  "SB-09": (T) => ends9(T).flatMap((sw) => onSw(T, sw, [port8(sw), "switchport mode trunk"], false)).concat(again9()),
+  "SB-10": (T) => onRt(T, subs10(T), false).concat(again10(T))
 };
 /* tempting fixes that treat a symptom, or the wrong part: none may fix it */
 const WRONG = {
@@ -153,6 +163,20 @@ const WRONG = {
       onSw(T, e[0] === "msw" ? "bsw" : "msw", [port8(e[0] === "msw" ? "bsw" : "msw"), "switchport mode trunk"]).concat(again9()),   /* the end that was right already */
       e.flatMap((sw) => onSw(T, sw, [port8(sw), "switchport trunk allowed vlan all"])).concat(again9()),   /* the allowed list, on a port that isn't a trunk */
       e.flatMap((sw) => onSw(T, sw, [port8(sw), "shutdown", "no shutdown"])).concat(again9())];
+  },
+  "SB-10": (T) => {
+    const v = T.v, V = v.plan.vlans, L = [again10(T), [{ t: "power", dev: "rtr" }].concat(again10(T))];
+    if (v.kind !== "swap") {
+      L.push(onRt(T, ["interface " + v.sub, "encapsulation dot1Q " + v.vlan]).concat(again10(T)));   /* the tag back, and its address gone with the old one */
+      L.push(onSw(T, "msw", ["interface gi0/24", "switchport trunk allowed vlan add " + v.wrong]).concat(again10(T)));   /* the trunk told to carry the tag the router has */
+      L.push(onRt(T, ["interface " + v.sub, "shutdown", "no shutdown"]).concat(again10(T)));   /* the subinterface bounced */
+    } else {
+      const B = v.before;
+      L.push(onRt(T, ["interface " + v.gs, "no encapsulation dot1Q", "interface " + v.ds, "encapsulation dot1Q " + V.dept.id, "ip address " + B[v.ds].ip + " " + B[v.ds].mask]).concat(again10(T)));   /* the department's put right, the guests' left with no tag */
+      L.push(onRt(T, subs10(T)));   /* both right, and nothing asked again: the department's PCs keep guests' addresses, the phone the department's */
+      L.push(onRt(T, ["interface " + v.ds, "encapsulation dot1Q " + V.dept.id]).concat(again10(T)));   /* refused: the guests' subinterface still has that tag */
+    }
+    return L;
   }
 };
 const SYMPTOM = {
@@ -246,6 +270,25 @@ const SYMPTOM = {
     } else {
       E.act(T, { t: "radio", dev: "guest", on: false }); assert.ok(E.act(T, { t: "radio", dev: "guest", on: true }).facts.apipa, "the visitor joins and gets 169.254");
       assert.ok(T.sim.addr("pc").kind === "dhcp" && T.sim.addr("mgr").kind === "dhcp", "the staff are fine");
+    }
+  },
+  "SB-10": (T) => {
+    const v = T.v, V = v.plan.vlans, p = v.plan;
+    const o = out(T, [mgr("ssh " + p.user + "@" + V.staff.gw), mgr(p.userPw), mgr("enable"), mgr(p.rtSecret), mgr("show ip interface brief"), mgr("show running-config")].concat(Object.keys(v.before).map((n) => mgr("show interfaces " + n))));
+    E.act(T, mgr("exit"));
+    for (const n of Object.keys(v.before)) assert.match(o, new RegExp(n.replace(/[./]/g, "\\$&") + "\\s+" + v.before[n].ip.replace(/\./g, "\\.") + "\\s+YES\\s+\\S+\\s+up\\s+up"), n + " up and up on the records' address");
+    const tagOf = (n) => Number((o.match(new RegExp(n.replace(/[./]/g, "\\$&") + " is [^]*?Vlan ID\\s+(\\d+)")) || [])[1]);
+    if (v.kind !== "swap") { assert.equal(tagOf(v.sub), v.wrong, "show interfaces gives the wrong tag"); assert.match(o, new RegExp("interface " + v.sub.replace(/[./]/g, "\\$&") + "\\n[^!]* encapsulation dot1Q " + v.wrong + "\\n")); }
+    else { assert.equal(tagOf(v.ds), V.guest.id); assert.equal(tagOf(v.gs), V.dept.id); }
+    const t = out(T, ssh(T).concat([mgr("show interfaces trunk")])); E.act(T, mgr("exit"));
+    const act = (t.split("Vlans allowed and active in management domain\n")[1] || "").split("\n").find((l) => /^Gi0\/24\s/.test(l)) || "";
+    for (const k of v.kind === "swap" ? ["dept", "guest"] : [v.kind]) assert.ok(act.split(/\s+/)[1].split(",").some((x) => { const [a, b] = x.split("-").map(Number); return V[k].id >= a && V[k].id <= (b || a); }), "the switch's trunk to the router carries the " + k + " VLAN, active (" + act + ")");
+    if (v.kind === "printers") { assert.equal(E.act(T, { t: "print" }).facts.print, "fail"); assert.equal(E.act(T, pc("ping " + v.printer)).facts.replies, 0); assert.ok(E.act(T, pc("ping 8.8.8.8")).facts.replies > 0, "the internet works"); }
+    else if (v.kind === "guest") assert.ok(E.act(T, { t: "joinssid", dev: "guest", ssid: p.guestSsid, pass: p.guestPw }).facts.apipa, "the visitor joins and gets 169.254");
+    else {
+      assert.match(E.act(T, { t: "cmd", dev: "dpc1", line: "ipconfig" }).out, new RegExp("IPv4 Address[ .]*: " + V.guest.net.replace(/0$/, "").replace(/\./g, "\\.")), "a department PC has a guests' address");
+      assert.equal(E.act(T, { t: "cmd", dev: "dpc1", line: "ping " + v.printer }).facts.replies, 0, "and can't print");
+      const ph = E.act(T, { t: "radio", dev: "guest", on: false }) && E.act(T, { t: "radio", dev: "guest", on: true }).facts; assert.ok(inNet(ph.ip, V.dept.net, V.dept.len), "the visitor's phone has an address in the department's block (" + ph.ip + ")");
     }
   },
   "SB-02": (T) => {
@@ -345,7 +388,7 @@ for (const def of BUSINESS_TICKETS) {
         assert.ok(x.indexOf(right) < 0, x);
         for (const bad of [p.rtSecret, p.rtConsole, p.swSecret, p.swConsole, p.userPw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, def.id + " names a password: " + x);
         for (const n of Object.values(p.vlans).map((V) => String(V.id))) assert.ok(!new RegExp("\\b" + n + "\\b").test(x), def.id + " names VLAN " + n + ": " + x);
-        for (const cmd of ["switchport access", "switchport mode", "switchport trunk", "allowed vlan", "default-router", "ip dhcp pool", "ip route 0", "ip nat inside", "ip nat outside", "access-list 1", "copy running-config", "write memory", "interface gi", "ipconfig /renew"]) assert.ok(x.indexOf(cmd) < 0, def.id + " names the fix's command: " + x);
+        for (const cmd of ["switchport access", "switchport mode", "switchport trunk", "allowed vlan", "default-router", "ip dhcp pool", "ip route 0", "ip nat inside", "ip nat outside", "access-list 1", "copy running-config", "write memory", "interface gi", "ipconfig /renew", "encapsulation dot1q", "ip address 1", "no encapsulation"]) assert.ok(x.indexOf(cmd) < 0, def.id + " names the fix's command: " + x);
       }
     }
   });

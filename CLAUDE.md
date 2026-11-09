@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (9 November 2026): Level 3 (the small business) goes live stage by stage: stage 1 (the business, its router and switch on the page, work orders SB-J1 and SB-J2), stage 2 (SB-J3, guest Wi-Fi on a ceiling access point: the access point's page through a business PC's web browser, the visitor's phone, the ring in 3D), stage 3 (SB-J4, the back of house on its own switch over a trunk with its allowed list and native VLAN), stage 4 (SB-J5, two dome cameras on PoE injectors on a VLAN of their own, each one's fixed address set on its own page, port forwards tested from the manager's phone on mobile data) stage 5 (SB-J6, hardening after a card-payment check: SSH only, no readable passwords, guarded ports, DHCP snooping and ARP inspection, the closet cabinet locked, live 2 November 2026) stage 6 (SB-J7, the provider's fixed address: the block in CIDR only, the mask worked out by hand, the default route added by hand, the cameras opened at the new address from the manager's phone, live 8 November 2026) and stage 7 (SB-J8, the printers' VLAN: the printer moved onto a network of its own, its fixed address on its panel, every PC's printer port changed, the guests' list given a line in the right place, live 9 November 2026) are live; the level opens once the small office is finished, with `planned: 25` until all its work orders and tickets exist. See "Level 3, the small business" below.**
+**Status (9 November 2026): Level 3 (the small business) goes live stage by stage: stage 1 (the business, its router and switch on the page, work orders SB-J1 and SB-J2), stage 2 (SB-J3, guest Wi-Fi on a ceiling access point: the access point's page through a business PC's web browser, the visitor's phone, the ring in 3D), stage 3 (SB-J4, the back of house on its own switch over a trunk with its allowed list and native VLAN), stage 4 (SB-J5, two dome cameras on PoE injectors on a VLAN of their own, each one's fixed address set on its own page, port forwards tested from the manager's phone on mobile data) stage 5 (SB-J6, hardening after a card-payment check: SSH only, no readable passwords, guarded ports, DHCP snooping and ARP inspection, the closet cabinet locked, live 2 November 2026) stage 6 (SB-J7, the provider's fixed address: the block in CIDR only, the mask worked out by hand, the default route added by hand, the cameras opened at the new address from the manager's phone, live 8 November 2026) stage 7 (SB-J8, the printers' VLAN: the printer moved onto a network of its own, its fixed address on its panel, every PC's printer port changed, the guests' list given a line in the right place, live 9 November 2026), stage 8 (SB-J9, the router rebuilt from its backup: a replacement router racked, its backup copied in over TFTP from your laptop, keys made again, live 9 November 2026) and stage 9 (SB-J10, a new department end to end: a room of its own, its VLAN, its block in CIDR worked out by hand, its pool, a reservation for the manager's PC, an access list letting only the manager in, going live 9 November 2026 once its last contrast parts pass) are live; the level opens once the small office is finished, with `planned: 25` until all its work orders and tickets exist. See "Level 3, the small business" below.**
 **After E4 (the owner, 28 October 2026): proof of hands-on skill built into the labs** (technician's reports, resume lines, level certificates with a verify page on the hub, an Add to LinkedIn button, interview cards; two tiers, "Completed" and "Instructor verified"). The plan and its open questions are in the owner's doc "Hands-on proof from the labs: plan" (https://claude.ai/artifact/SpwGhuG7e4gNufyTvhJhRk). The owner: finish E4 first, build this after, and have everything finished and updated before presenting it to anyone.
 **Status (19 October 2026): Level 2 (the small office) is complete and live: the level lock, work orders SO-J1 to SO-J10, tickets SO-01 to SO-15 with the office's records on each, the managed switch, the closet rack and patch panel, SFP modules and fibre, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05", "Level 2, tickets SO-06, SO-07 and SO-09", "Level 2, ticket SO-08", "Level 2, ticket SO-10", "Level 2: the office's records on office tickets; tickets SO-11 to SO-15" and "Level 2: work orders SO-J6 to SO-J10, the small office complete" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
@@ -2463,7 +2463,7 @@ address); router and closet switch saved. Goes live after SB-J7.
   checks; `node tools/models.mjs` 202 of 202; AAA on painted pixels, all 228 states and 573,198 text runs passing (in four
   parts); its 5 page plants and 16 Node plants caught when it was built.
 
-### Level 3, SB-J9: the router rebuilt from its backup (talked out 2 November 2026, on `save/level3-stage8`)
+### Level 3, stage 8: SB-J9, the router rebuilt from its backup (talked out 2 November 2026, live 9 November 2026)
 
 The Network+ (V9) objectives were read from the owner's doc on 2 November 2026 (the Network+ section unchanged) and shown
 with the lines proposed: Network operations ("Configuration management: production, backup, baseline configurations";
@@ -2523,7 +2523,25 @@ unplugged, the cabinet locked again with its key away.
     has a hardware address of its own and the key is made from it too, so the plant never planted what it named. It now
     makes the replacement a copy of the old router (its hardware address, no unit of its own), and is caught.
 
-### Level 3, SB-J10: a new department, end to end (talked out 2 November 2026, on `save/level3-stage9`)
+**Going live (the owner, 8 November 2026: "Go ahead with SB-J9"; 9 November: "Go ahead with SB-J9 when checks pass").**
+Found and fixed on the way:
+- **A page plant missed:** "the TFTP server tab lists no files" passed the drive, which looked for the backup's name
+  anywhere in the tab, and the server log names it too. The drive now reads the files-received list (`ul.tfiles`); the
+  plant fails that check, and SB-J9's drive passes it (62 checks).
+- **SB-J9's contrast states, measured for the first time**, failed two:
+  - at SB-J9's start the old router is gone, the cabinet's frame holds only the closet switch, and its label, at the
+    frame's middle, fell behind the switch's tile (6.25:1). The label now sits just above the lowest device's tile.
+  - part way, the router-to-switch run is down and its diamond, halfway, sat on "Business router" and the cabinet's label
+    (1.08:1). A down-run diamond (`js/desk/draw.js`) now starts halfway and slides along its run to the first spot clear
+    of every name, label, tile and diamond; on a run covered end to end it takes a spot clear of the words, on a tile's
+    edge. Where halfway is clear it stays, so no other plan changes. Both states fail on the old code and pass now.
+- **The first full drive** stopped once, "SB-J4 2025: page.click: Timeout 5000ms exceeded", at a load average of 11 on 4
+  cores; SB-J4's drive alone then passed 80 of 80. After the plan fix the whole drive was run again: 4,089 checks, clean.
+- **Totals before going live**, run on a snapshot of this branch after the plan fix: `npm test` 376 of 376; `node
+  tools/drive.mjs` in full 4,089 checks; `node tools/models.mjs` 202 of 202; AAA on painted pixels, all 234 states and
+  595,244 text runs passing (in four parts); page plants 3 of 3 caught.
+
+### Level 3, stage 9: SB-J10, a new department, end to end (talked out 2 November 2026, going live 9 November 2026)
 
 The Network+ (V9) objectives read from the owner's doc on 2 November 2026 and shown: Network implementation (switching:
 "VLANs, interface configuration"; routing: "NAT, PAT ... subinterfaces"), Networking concepts ("IPv4 addressing: ...
@@ -2546,7 +2564,7 @@ else still works; all three devices saved.
 - **Its subnet: "A block to work out"**: the records give a smaller block in CIDR only (a /27 for up to 30 devices, say),
   as the provider's letter did in SB-J7, so the mask, the gateway and the pool's range are worked out by hand.
 
-**As built (2 November 2026, on `save/level3-stage9`; not live):**
+**As built (2 November 2026, on `save/level3-stage9`):**
 - **Where it starts:** SB-J9 done, then you come back with your laptop and its cables (SB-J9's first line keeps the laptop on
   the router's console, so SB-J10's `start` takes its cables away, as a technician arriving for a new job), then
   `addDepartment` (`js/net/business.js`, a stream of its own): each business's department from `DEPARTMENTS` (the vet's
@@ -2594,41 +2612,37 @@ else still works; all three devices saved.
   walk, replay and undo): 16 of 16. `tools/drive.mjs` has an SB-J10 block (three businesses, through the page); nine AAA
   states; 28 Node plants and 4 page plants written.
 
-**SAVE POINT (2 November 2026, the owner: "create a save point"). Resume SB-J10 here, on `save/level3-stage9`
-(worktree `e4-sb10b`).** SB-J6 is live (`main` at 9d28690, Pages deployed); its go-live notes were merged into stages 6-9.
-Where SB-J10 stands:
-- **Passing:** `tests/business-sb10.test.js` 5 of 5 (after every change below). `tests/business-jobs.test.js` 16 of 16, run
-  before the last round of page changes: run it again.
-- **The first page drive** (`ONLY=business JOB=SB-J10 node tools/drive.mjs`; without `ONLY=business` it drives every level
-  and runs out of time) failed three things, all changed since and **not yet driven again**:
-  - the manager's ping to a department PC: the sim models Windows Firewall (no Windows PC answers a ping, even on its own
-    network), so nothing could show who reaches the department. Its PCs now carry `echo: true` (their firewalls answer
-    pings; `attempt` and `tracert` in `js/net/cmd.js` honour it) and the records say so; the access line's evidence now
-    says what a technician sees (a ping answered, the rest read in the list).
-  - "Dispensing PC" ran off the diagram's left edge: the PCs are now at x -90, the diagram's `viewBox` from -180.
-  - on the plan (easier reading on) the PCs' long names collided: they now stand one above the other at px 845 (py 590 and
-    675) in a taller room (`dept: [780, 520, 980, 740]`, plan `viewBox` height 735), and the back switch moves along its
-    wall to px 820 when the room exists (`BUSINESS_LAYOUT.bsw.dept`, applied in `pos()` in `js/desk/draw.js`), so the
-    department's runs come down clear of the back PC. Look at it again (`node tools/wip/sb10page.mjs <out> 4242`).
-- **Node plants:** 8 run, 8 caught (the six router plants, the offer ignoring reservations, the block's first). The run was
-  stopped on the ninth, which left its defect in `js/net/business.js` (the manager's address drawn from .57-.59): found by
-  checking every plant's anchor and put back. **Run plants in a copy of the checkout, never in place while editing** (the
-  tool restores each file from its own copy, so an edit made meanwhile is lost, and tests run meanwhile see the defect).
-- **Plant anchors to fix before the next plant run** (each must match exactly once): `SB-J6 job: port security without
-  sticky` and `SB-J6 job: restrict` now match twice (SB-J10's port security reuses those lines: lengthen them to SB-J6's own
-  text); `SB-J10 job: the staff denied above the manager` matches twice (SB-J8's `C("late", late,` too: lengthen it);
-  `SB-J6 job: the walk-through never renews the staff PCs` matches nothing (the guest phone's rejoin became Wi-Fi off and on
-  in SB-J6's solve; the same on the live branch) and the page plant `SB-J4: the back switch has no device button` matches
-  nothing (the device order has had "cab" since SB-J6, and now "dpc1", "dpc2").
-- **Still to do:** the drive again; the remaining 20 Node plants (`TESTS="tests/business-sb10.test.js"`, and the two hint
-  plants with `TESTS="tests/business-jobs.test.js"`); the 4 page plants; the nine AAA states (`ONLY=SB-J10 node tools/aaa.mjs
-  tools/aaa-states.json`); the full `npm test`; then the owner's preview.
-- **Previews owed to the owner** before SB-J7, SB-J8, SB-J9 and SB-J10 go live, in that order: screenshots from
-  `node tools/wip/sb78page.mjs <out> 4242` (SB-J7 to SB-J9) and `tools/wip/sb10page.mjs` (SB-J10). Also owed from SB-J7 to
-  SB-J9: SB-J9's 3 page plants, the AAA states of SB-J7 (5), SB-J8 (7) and SB-J9 (6), and SB-J7's 3 page plants.
-- **To raise with the owner:** the instructor PIN is written in this public repo's `CLAUDE.md` (four places) and in
-  `tools/drive.mjs`, and Pages serves both, so a student could read it; it was there before SB-J6. Removing it from the
-  files and choosing a new PIN (the old one stays in the history) is the owner's call.
+**From the save point to going live (2 to 9 November 2026).**
+- **The three things the first drive found**, changed at the save point, were driven again and pass: the department's PCs
+  answer pings (`echo: true`, their firewalls opened for it, as the records say), "Dispensing PC" sits inside the diagram
+  (x -90, the `viewBox` from -180), and the PCs' names no longer collide on the plan.
+- **The floor plan relaid (8 November 2026).** The department's room is `dept: [800, 520, 980, 770]` (plan `viewBox` height
+  765), its first PC up at the right under the door (910, 580) and its second lower and to the left (880, 700). With the room
+  there, the back switch (785, 360), the back PC (895, 315) and your laptop carried to the back room (925, 435) have spots of
+  their own (`dept` in `BUSINESS_LAYOUT`). Found by scoring layouts on all six businesses, both fonts, at the start, with the
+  PCs cabled and done: no run under a device it doesn't join, no name (with its plate) on a wall, a tile or another name.
+- **A check for it in the page drive** (`planRunsClear`, `planBothFonts` in `tools/drive.mjs`): measured as painted, sampling
+  along each run, at SB-J10's start, with the PCs cabled and done, in both fonts. Seven older problems, live since SB-J5 and
+  waiting for the owner's word, were listed in `OLD_PLAN` and skipped. Calibrated: 86 pass on the new layout, 12 fail with the
+  first PC put back straight above the second (now a page plant).
+- **Plants:** Node 28 of 28 caught (26, and the two hint plants through `tests/business-jobs.test.js`); the anchors listed at the
+  save point were lengthened or re-aimed first (SB-J6's sticky and restrict, SB-J10's "late", the walk-through's renew, the
+  SB-J4 laptop's spot). Page 5 of 5 caught. One, the department's PCs left out of the page's device list, was first caught
+  only by the drive stalling in the Place form; the drive now checks by name that the Place form offers both PCs and that
+  each has a device button once out of its box (9 November 2026).
+- **The preview** (https://claude.ai/artifact/Dh189hwGd2kZUhPzbncGLw): the work order and its limits, the room, the terminals,
+  the reservation trap with Mason's third rung, both drawings in both fonts, the floor plan before and after.
+
+**Going live (the owner, 9 November 2026: "Go ahead with SB-J10 when checks pass and dont get stuck this time").**
+- **Totals before going live**, run on a snapshot of this branch with SB-J9's plan fix merged in: `npm test` 381 of 381;
+  `node tools/drive.mjs` in full 4,170 checks (SB-J10's own block 92 with the two new checks); `node tools/models.mjs` 202 of
+  202; AAA on painted pixels in four parts, parts 1 and 2 passing (122 states, 321,232 text runs), parts 3 and 4 running;
+  page plants 5 of 5 caught.
+- **Asked of the owner and answered the same day:** fix the floor plan's older problems ("Yes, fix all fourteen"). Built on
+  `save/level3-plan-fix`, to go live after SB-J10 with a preview first.
+- **Still to raise with the owner:** the instructor PIN is written in this public repo's `CLAUDE.md` and in `tools/drive.mjs`,
+  and Pages serves both, so a student could read it; it was there before SB-J6. Removing it from the files and choosing a new
+  PIN (the old one stays in the history) is the owner's call.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

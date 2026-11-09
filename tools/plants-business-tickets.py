@@ -33,7 +33,7 @@ PAGE += [("SB-04 left off the desk", "js/tickets/business.js", "export const BUS
 PAGE += [("SB-05 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07];", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB06, SB07];"),
  ("SB-05: the provider's letter left off the card", 'js/tickets/business.js', '].concat(p.fixed ? [["The provider", "fixed address "', '].concat(false ? [["The provider", "fixed address "'),
  ("the provider's gateway never answers a ping", 'js/net/sim.js', '      if (!this.wanHopOk(w, rt) && dst !== w.gw) return { fail: "no-reply", src: src,', '      if (!this.wanHopOk(w, rt)) return { fail: "no-reply", src: src,')]
-PAGE += [("SB-06 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07];", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB07];"),
+PAGE += [("SB-06 left off the desk", "js/tickets/business.js", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07];", "export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB07];")]
 PAGE += [('SB-07 left off the desk', 'js/tickets/business.js', 'export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07];', 'export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06];')]
 NODE = [
  ("a fix left unsaved counts as fixed", "js/tickets/business.js", "return port(run) && port(st) && !!a", "return port(run) && !!a"),

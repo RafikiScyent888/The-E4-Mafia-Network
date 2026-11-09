@@ -256,3 +256,18 @@ test("a cable refused says why, with each device named as it would be mid-senten
   assert.deepEqual(errs({ dev: "staff", port: "NIC" }, { dev: "staff", port: "NIC" }), ["Both ends are on the staff PC: a cable joins two devices"]);
   assert.deepEqual(errs({ dev: "isp", port: "x" }, { dev: "boxsw", port: "1" }), ["The ISP has no port x", "The back switch is still in its box: place it first"], "a name in capitals stays in capitals");
 });
+
+/* found writing SB-02 (9 November 2026): a ping through the business router to an address nothing answers on (its VLAN taken
+   out of the switch) crashed the packet trace that Step through shows, which read the far device off a route that has none */
+test("a ping through the router to a VLAN nothing answers on steps through to the router's unanswered ARP, without crashing", async () => {
+  const { BUSINESS_JOBS } = await import("../js/build/business.js"), { exec } = await import("../js/net/cmd.js");
+  const J = BUSINESS_JOBS.find((d) => d.id === "SB-J10"), b = J.start(4242), sim = b.sim, p = b.v.plan;
+  for (const a of J.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line, a.win); else sim.apply(a); }
+  const S = C.session(sim.d.msw.sw, { via: "console" }); S.mode = "priv"; S.pending = null; S.fresh = false;
+  ["configure terminal", "no vlan " + p.vlans.printers.id, "end"].forEach((l) => C.exec(S, l));
+  const r = exec(sim, "pc", "ping " + p.printerIp);
+  assert.equal(r.facts.replies, 0);
+  const tr = sim.lastTrace; assert.ok(tr && tr.length >= 4, "the trace has its steps");
+  assert.equal(tr[tr.length - 1].ok, false); assert.match(tr[tr.length - 1].what, /Nothing on that network answers/);
+  assert.equal(tr[tr.length - 1].at, sim.d.rtr.label, "it stops at the router");
+});

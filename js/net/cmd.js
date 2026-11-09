@@ -164,7 +164,7 @@ function serial(sim, id, raw) {
   const r = SW.exec(st.S, raw); st.prompt = r.prompt; r.out = linkNews(sim, tgt, r.out);
   const dup = sim.d[tgt].kind === "mswitch" && dupAddr(sim, tgt); if (dup && st.dup !== dup) { st.dup = dup; r.out = r.out.concat([dup]); }   /* once a session, as the console log shows it */
   const sl = sfpLog(sim, tgt), sk = sl.join("|"); if (sl.length && st.sfp !== sk) { st.sfp = sk; r.out = r.out.concat(sl); }
-  return { out: lines(r.out), facts: { cmd: "serial", dev: id, connected: true, mode: st.S.mode, line: raw.trim(), out: r.out.join("\n"), asked: !!r.secret }, secret: !!r.secret, cli: true, keep: r.keep };   /* asked: the switch is asking for a password next */
+  return { out: lines(r.out), facts: { cmd: "serial", dev: id, on: tgt, connected: true, mode: st.S.mode, line: raw.trim(), out: r.out.join("\n"), asked: !!r.secret }, secret: !!r.secret, cli: true, keep: r.keep };   /* asked: the switch is asking for a password next */
 }
 function remote(sim, id, raw, k) {
   const st = sim.cli[k], sw = sim.d[st.sw];
@@ -186,7 +186,7 @@ function remote(sim, id, raw, k) {
   const r = SW.exec(st.S, raw); r.out = linkNews(sim, st.sw, r.out);
   if (st.S.mode === "gone") { delete sim.cli[k]; return { out: lines(r.out.filter(function (l) { return !/con0 is now available|Press RETURN/.test(l); })).replace(/\n+$/, "\n") + (st.via === "ssh" ? "Connection to " + st.host + " closed.\n" : "\nConnection to host lost.\n"), facts: { cmd: st.via, closed: true } }; }
   st.prompt = r.prompt;
-  return { out: lines(r.out), facts: { cmd: st.via, dev: id, line: raw.trim(), mode: st.S.mode, out: r.out.join("\n") }, secret: !!r.secret, cli: true, keep: r.keep };
+  return { out: lines(r.out), facts: { cmd: st.via, dev: id, on: st.sw, line: raw.trim(), mode: st.S.mode, out: r.out.join("\n") }, secret: !!r.secret, cli: true, keep: r.keep };   /* on: the switch or router that printed it */
 }
 /* a switch hears another device answer ARP for its own address, and logs it to the console */
 function dupAddr(sim, sw) {
@@ -425,6 +425,14 @@ function trace(sim, id, ip, rt, ok) {
   const steps = [], a = rt.addr, me = sim.d[id];
   if (!a) { steps.push({ at: me.label, what: "No link on " + me.ifaces[0].name + ": the packet never leaves", ok: false }); return steps; }
   if (rt.fail === "no-route") { steps.push({ at: me.label, what: "No route to " + ip + " (no default gateway)", ok: false }); return steps; }
+  if (rt.fail === "no-reply" && !rt.local && rt.via && sim.d[rt.via] && !(rt.owner && rt.owner.length)) {   /* through a business router, and nothing answers on the far side (its VLAN gone, its trunk not carrying it) */
+    const r = sim.d[rt.via];
+    steps.push({ at: me.label, what: "ARP: who has " + a.gw + "? (broadcast to ff-ff-ff-ff-ff-ff)", l2: me.ifaces[0].mac + " → ff-ff-ff-ff-ff-ff", l3: "", ok: true });
+    steps.push({ at: r.label, what: "ARP reply: " + a.gw + " is at " + sim.macOf(rt.via), ok: true });
+    steps.push({ at: me.label, what: "ICMP echo request", l2: me.ifaces[0].mac + " → " + sim.macOf(rt.via), l3: a.ip + " → " + ip + "  TTL " + sim.ttlOf(id), ok: true });
+    steps.push({ at: r.label, what: rt.why === "arp" ? "ARP: who has " + ip + "? Nothing on that network answers, so the packet is dropped" : "Sent on towards " + ip + ": no reply comes back", ok: false });
+    return steps;
+  }
   const next = rt.local || rt.fail === "no-reply" ? ip : a.gw;
   steps.push({ at: me.label, what: "ARP: who has " + next + "? (broadcast to ff-ff-ff-ff-ff-ff)", l2: me.ifaces[0].mac + " → ff-ff-ff-ff-ff-ff", l3: "", ok: true });
   if (rt.fail === "host-unreachable" || rt.fail === "gateway-unreachable") { steps.push({ at: me.label, what: "No answer to the ARP: nobody on this network has " + next, ok: false }); return steps; }

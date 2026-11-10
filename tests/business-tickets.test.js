@@ -362,6 +362,7 @@ for (const def of BUSINESS_TICKETS) {
       assert.equal(T.opts.length, 6); assert.equal(T.opts.filter((o) => o.right).length, 1);
       for (const o of T.opts) { assert.ok(o.text && o.text.length > 10); if (!o.right) assert.ok(o.why && o.why.length > 20, o.id); }
       assert.equal(new Set(T.opts.map((o) => o.text)).size, 6);
+      const sum = def.summary(T.v); assert.ok(sum.cause.length > 40 && sum.fix.length > 20, "the summary builds on the " + T.v.kind + " variant");   /* SB-11's built every variant's sentence at once and crashed on the guests' */
     }
   });
   test(def.id + ": the real fix fixes it and is proven; the tempting wrong fixes don't; unsaved works but isn't the fix", () => {

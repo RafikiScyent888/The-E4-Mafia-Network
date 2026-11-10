@@ -53,6 +53,9 @@ const again10 = (T) => T.v.kind === "printers" ? [] : T.v.kind === "guest" ? rad
 const subs10 = (T) => { const v = T.v, V = v.plan.vlans, B = v.before;
   if (v.kind !== "swap") return ["interface " + v.sub, "encapsulation dot1Q " + v.vlan, "ip address " + B[v.sub].ip + " " + B[v.sub].mask];
   return ["interface " + v.gs, "no encapsulation dot1Q", "interface " + v.ds, "encapsulation dot1Q " + V.dept.id, "ip address " + B[v.ds].ip + " " + B[v.ds].mask, "interface " + v.gs, "encapsulation dot1Q " + V.guest.id, "ip address " + B[v.gs].ip + " " + B[v.gs].mask]; };
+/* SB-11: what keeps the pool's addresses from it undone; whatever had no address asking again */
+const again11 = (T) => T.v.kind === "guest" ? radioOn : [{ t: "cmd", dev: T.v.devs[0], line: "ipconfig /renew" }];
+const fix11 = (T) => T.v.kind === "guest" ? ["ip dhcp pool " + T.v.pool, "lease 1", "exit", "do clear ip dhcp binding *"] : ["no ip dhcp excluded-address " + T.v.line];
 const again4 = (T) => T.v.devs.flatMap((id) => id === "guest" ? [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }] : [{ t: "cmd", dev: id, line: "ipconfig /renew" }]);
 
 const FIX = {
@@ -65,7 +68,8 @@ const FIX = {
   "SB-07": (T) => onRt(T, ["no access-list 1"].concat(T.v.before.map((k) => "access-list 1 " + k))).concat(T.v.kind === "guest" ? [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }] : []),
   "SB-08": (T) => onSw(T, T.v.end, [port8(T.v.end), "switchport trunk native vlan " + T.v.native]).concat(again8(T)),
   "SB-09": (T) => ends9(T).flatMap((sw) => onSw(T, sw, [port8(sw), "switchport mode trunk"])).concat(again9()),
-  "SB-10": (T) => onRt(T, subs10(T)).concat(again10(T))
+  "SB-10": (T) => onRt(T, subs10(T)).concat(again10(T)),
+  "SB-11": (T) => onRt(T, fix11(T)).concat(again11(T))
 };
 const PROOF = {
   "SB-01": (T) => [pc("ping " + T.v.printer)],
@@ -77,7 +81,8 @@ const PROOF = {
   "SB-07": (T) => T.v.kind === "guest" ? [{ t: "view", dev: "guest", key: "wifi" }] : [{ t: "cmd", dev: T.v.dev, line: "ping 8.8.8.8" }],
   "SB-08": (T) => [{ t: "cmd", dev: T.v.devs[0], line: "ping " + T.v.printer }],
   "SB-09": (T) => [{ t: "cmd", dev: "bpc", line: "ping " + T.v.printer }],
-  "SB-10": (T) => T.v.kind === "printers" ? [{ t: "print" }] : T.v.kind === "guest" ? radioOn : [{ t: "cmd", dev: "dpc1", line: "ping " + T.v.printer }]
+  "SB-10": (T) => T.v.kind === "printers" ? [{ t: "print" }] : T.v.kind === "guest" ? radioOn : [{ t: "cmd", dev: "dpc1", line: "ping " + T.v.printer }],
+  "SB-11": (T) => T.v.kind === "guest" ? radioOn : [{ t: "cmd", dev: T.v.devs[0], line: "ping " + T.v.printer }]
 };
 const UNSAVED = {
   "SB-01": (T) => conf(T, ["interface gi0/1", "switchport access vlan " + staff(T).id]).concat([pc("ipconfig /renew")]),
@@ -89,7 +94,8 @@ const UNSAVED = {
   "SB-07": (T) => onRt(T, ["no access-list 1"].concat(T.v.before.map((k) => "access-list 1 " + k)), false).concat(T.v.kind === "guest" ? [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }] : []),
   "SB-08": (T) => onSw(T, T.v.end, [port8(T.v.end), "switchport trunk native vlan " + T.v.native], false).concat(again8(T)),
   "SB-09": (T) => ends9(T).flatMap((sw) => onSw(T, sw, [port8(sw), "switchport mode trunk"], false)).concat(again9()),
-  "SB-10": (T) => onRt(T, subs10(T), false).concat(again10(T))
+  "SB-10": (T) => onRt(T, subs10(T), false).concat(again10(T)),
+  "SB-11": (T) => onRt(T, fix11(T), false).concat(again11(T))
 };
 /* tempting fixes that treat a symptom, or the wrong part: none may fix it */
 const WRONG = {
@@ -170,6 +176,19 @@ const WRONG = {
       e.flatMap((sw) => onSw(T, sw, [port8(sw), "switchport trunk allowed vlan all"])).concat(again9()),   /* the allowed list, on a port that isn't a trunk */
       e.flatMap((sw) => onSw(T, sw, [port8(sw), "shutdown", "no shutdown"])).concat(again9())];
   },
+  "SB-11": (T) => {
+    const v = T.v, L = [again11(T), [{ t: "power", dev: "rtr" }].concat(again11(T))];
+    if (v.kind === "guest") {
+      L.push(onRt(T, ["ip dhcp pool " + v.pool, "lease 1"]).concat(again11(T)));   /* lends for a day again, and every address is still lent */
+      L.push(onRt(T, ["do clear ip dhcp binding *"]).concat(again11(T)));   /* let go, and still lending for ever: works today */
+    } else {
+      L.push(onRt(T, fix11(T)));   /* undone, and the PC never asked again */
+      if (v.kind === "staff") L.push(onRt(T, ["no ip dhcp excluded-address " + v.before.find((x) => x.startsWith(v.plan.vlans.staff.net.replace(/0$/, "1") + "-")).replace("-", " ")]).concat(again11(T)));   /* the router's own exclusion taken out instead: it works */
+      const d = v.devs[0], a = T.sim.addr(v.kind === "staff" ? "pc" : "dpc1"), net = v.kind === "staff" ? v.plan.vlans.staff : v.plan.vlans.dept;
+      L.push([{ t: "client", dev: d, values: { mode: "static", ip: net.gw.replace(/\d+$/, (x) => String(+x + (v.kind === "staff" ? 4 : 3))), mask: a.mask, gw: net.gw, dns: v.plan.dns } }]);   /* an address typed in on the PC */
+    }
+    return L;
+  },
   "SB-10": (T) => {
     const v = T.v, V = v.plan.vlans, L = [again10(T), [{ t: "power", dev: "rtr" }].concat(again10(T))];
     if (v.kind !== "swap") {
@@ -188,6 +207,17 @@ const WRONG = {
   }
 };
 const SYMPTOM = {
+  "SB-11": (T) => {
+    const v = T.v, V = v.plan.vlans, p = v.plan;
+    const o = out(T, [mgr("ssh " + p.user + "@" + V.staff.gw), mgr(p.userPw), mgr("enable"), mgr(p.rtSecret), mgr("show ip dhcp pool"), mgr("show running-config"), mgr("show ip dhcp binding")]); E.act(T, mgr("exit"));
+    const pool = o.split("Pool " + v.pool + " :")[1].split("Pool ")[0], num = (k) => Number((pool.match(new RegExp(k + "\\s+: (\\d+)")) || [])[1]);
+    assert.ok(num("Total addresses") - num("Excluded addresses") - num("Leased addresses") <= 0, "the " + v.pool + " pool has nothing left (" + pool.slice(0, 300) + ")");
+    if (v.kind === "guest") { assert.match(o, new RegExp("ip dhcp pool " + v.pool + "\\n[^!]*lease infinite")); assert.ok((o.match(/Infinite\s+Automatic/g) || []).length > 200, "the market's phones, lent for ever");
+      assert.ok(E.act(T, { t: "joinssid", dev: "guest", ssid: p.guestSsid, pass: p.guestPw }).facts.apipa, "the visitor joins and gets 169.254"); }
+    else { assert.ok(o.indexOf("ip dhcp excluded-address " + v.line + "\n") >= 0, "the added exclusion");
+      assert.match(E.act(T, { t: "cmd", dev: v.devs[0], line: "ipconfig" }).out, /Autoconfiguration IPv4 Address[ .]*: 169\.254\./);
+      assert.ok(E.act(T, { t: "cmd", dev: v.kind === "staff" ? "pc" : "dpc1", line: "ping " + v.printer }).facts.replies > 0, "the one that asked first took the last address and works"); }
+  },
   "SB-01": (T) => {
     const v = T.v, ip = E.act(T, pc("ipconfig")).out;
     if (v.kind === "guest") { assert.match(ip, new RegExp("IPv4 Address[ .]*: " + v.plan.vlans.guest.net.replace(/0$/, "").replace(/\./g, "\\."))); assert.ok(E.act(T, pc("ping 8.8.8.8")).facts.replies > 0, "a guest gets out"); }
@@ -396,7 +426,7 @@ for (const def of BUSINESS_TICKETS) {
         assert.ok(x.indexOf(right) < 0, x);
         for (const bad of [p.rtSecret, p.rtConsole, p.swSecret, p.swConsole, p.userPw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, def.id + " names a password: " + x);
         for (const n of Object.values(p.vlans).map((V) => String(V.id))) assert.ok(!new RegExp("\\b" + n + "\\b").test(x), def.id + " names VLAN " + n + ": " + x);
-        for (const cmd of ["switchport access", "switchport mode", "switchport trunk", "allowed vlan", "default-router", "ip dhcp pool", "ip route 0", "ip nat inside", "ip nat outside", "access-list 1", "copy running-config", "write memory", "interface gi", "ipconfig /renew", "encapsulation dot1q", "ip address 1", "no encapsulation"]) assert.ok(x.indexOf(cmd) < 0, def.id + " names the fix's command: " + x);
+        for (const cmd of ["switchport access", "switchport mode", "switchport trunk", "allowed vlan", "default-router", "ip dhcp pool", "ip route 0", "ip nat inside", "ip nat outside", "access-list 1", "copy running-config", "write memory", "interface gi", "ipconfig /renew", "encapsulation dot1q", "ip address 1", "no encapsulation", "clear ip dhcp", "excluded-address", "lease infinite", "lease 1"]) assert.ok(x.replace(/show ip dhcp pool/g, "show the pools").indexOf(cmd) < 0, def.id + " names the fix's command: " + x);   /* where to look may name a show command */
       }
     }
   });

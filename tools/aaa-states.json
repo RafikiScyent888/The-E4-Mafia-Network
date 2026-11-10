@@ -983,6 +983,27 @@
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-02'); const v=c.T.v, P=v.plan; const t=l=>c.act({t:'cmd',dev:'tech',line:l,cli:true}); ['',P.swConsole,'enable',P.swSecret,'configure terminal','vlan '+v.vlan,'name '+v.vname,'end','copy running-config startup-config','','disable','exit'].forEach(t); c.act({t:'cmd',dev:'bpc',line:'ipconfig /renew'}); c.guess('right'); c.act({t:'cmd',dev:'bpc',line:'ping '+v.printer}); document.getElementById('board').scrollIntoView();"
  },
  {
+  "name": "business tickets: SB-03 show interfaces trunk over SSH: the back room's trunk carrying one VLAN",
+  "page": "index.html",
+  "ticket": "SB-03",
+  "seed": 7,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-03'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.swIp,P.userPw,'enable',P.swSecret,'show interfaces trunk','show vlan brief'].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-03 the department's PC printing beside the dark back PC, the notebook",
+  "page": "index.html",
+  "ticket": "SB-03",
+  "seed": 7,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-03'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=bpc]').click(); tab('Command Prompt'); k('ipconfig'); document.querySelector('#devtabs [data-d=dpc1]').click(); tab('Command Prompt'); k('ping '+v.printer); document.getElementById('notebook').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-03 solved, the summary",
+  "page": "index.html",
+  "ticket": "SB-03",
+  "seed": 2,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-03'); const v=c.T.v, P=v.plan; const m=l=>c.act({t:'cmd',dev:'mgr',line:l}); ['ssh '+P.user+'@'+P.swIp,P.userPw,'enable',P.swSecret,'configure terminal','interface '+v.short,'switchport trunk allowed vlan add '+v.lost.join(','),'end','copy running-config startup-config','','exit'].forEach(m); c.guess('right'); c.act({t:'print'}); document.getElementById('board').scrollIntoView();"
+ },
+ {
   "name": "business tickets: the shelves, the small business's tickets",
   "page": "lab-bench.html",
   "ticket": "SB-01",

@@ -946,5 +946,91 @@ const SB11 = {
 const name0 = function (v) { return v.kind === "dept" ? "first " + v.deptName + " PC" : v.pc; };
 const name1 = function (v) { return v.kind === "dept" ? v.d2 : v.bpcName; };
 
-export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07, SB08, SB09, SB10, SB11];
+/* ---------------------------------------------------------------- SB-12 */
+/* An access list that blocks everything it was never meant to: the guests' list with its last line, the guests' network permitted
+   to anywhere, taken out by someone who read it as "guests can do anything" (guests get an address, the first line lets DHCP through, and nothing
+   else: the implicit deny takes the rest); the department's list with the same line gone (only the manager's PC reaches the
+   department, and nothing the department sends gets an answer back in); or a new list on the printers' subinterface with one
+   deny line, written from the card processor's checklist "printers must not reach the internet" (the implicit deny blocks every
+   reply the printer sends, and the printers' VLAN was never translated to the internet anyway). The fix: the list as the router
+   had it, the permit back at the end, after the denies, or the printers' new list taken off, saved. */
+const aclsOf = function (sim, saved) { const R = sim.d.rtr.sw, src = saved ? R.startup : R, A = (src && src.acls) || {}, out = {}; Object.keys(A).forEach(function (k) { out[k] = JSON.stringify(A[k].lines.filter(function (e) { return !e.remark; }).map(function (e) { const c = Object.assign({}, e); delete c.seq; return c; })); }); return out; };
+const groupsOf = function (sim, saved) { const R = sim.d.rtr.sw, src = saved ? R.startup : R, out = {}; if (!src) return out; ["ifs", "subs"].forEach(function (k) { Object.keys(src[k] || {}).forEach(function (n) { const f = src[k][n]; if (f && (f.aclIn || f.aclOut)) out[n] = (f.aclIn || "-") + "/" + (f.aclOut || "-"); }); }); return out; };
+const SB12_STORY = {
+  guest: function () { return "Since yesterday the guest Wi-Fi connects but nothing loads: customers' phones say connected, no internet. Our own computers are fine. My brother-in-law looked over the router for the card processor's check and said the guest settings \"let guests do anything\", so he took that bit out."; },
+  dept: function (v) { return "The " + v.deptName + "'s two PCs can't get online or print since this morning, though they have their addresses. My PC can still reach them. On Friday the company that set up the " + v.deptName + " \"tightened\" who can reach it."; },
+  printers: function (v) { return "Nobody can print since this morning: not the " + v.pc + ", not my PC, not the " + v.deptName + ". Everything else works. Last night our nephew did the line on the card processor's checklist that says printers mustn't reach the internet."; }
+};
+const SB12 = {
+  id: "SB-12", n: "12", level: 3, tier: "harder", title: "An access list on the router blocks far more than it should", priority: 2, due: "2 h",
+  kinds: ["guest", "dept", "printers"],   /* its variants, in the order a seed picks them (the tests find a business for each) */
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, V = p.vlans, r = rng(hash("SB-12:" + seed)), kind = r.pick(SB12.kinds), R = sim.d.rtr.sw;
+    const before = aclsOf(sim), groups = groupsOf(sim), list = kind === "guest" ? p.guestAcl : kind === "dept" ? p.dept.acl : "PRINTERS-IN";
+    const sub = Object.keys(R.subs).find(function (n) { return R.subs[n].vlan === V[kind === "guest" ? "guest" : kind === "dept" ? "dept" : "printers"].id; });
+    if (kind === "printers") onRouter(sim, ["configure terminal", "ip access-list extended " + list, "deny ip " + V.printers.net + " 0.0.0.255 any", "exit", "interface " + sub, "ip access-group " + list + " in", "end"].concat(SAVE));
+    else onRouter(sim, ["configure terminal", "ip access-list extended " + list, kind === "guest" ? "no permit ip " + V.guest.net + " 0.0.0.255 any" : "no permit ip any any", "end"].concat(SAVE));   /* each list's last line: the guests' network to anywhere; anything to anywhere */
+    if (kind === "guest") { sim.apply({ t: "radio", dev: "guest", on: false }); sim.apply({ t: "radio", dev: "guest", on: true }); }
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, before: before, groups: groups, list: list, sub: sub, printer: p.printerIp, pc: name(sim, "pc"), deptName: String(sim.net.roomNames.dept).toLowerCase() } };
+  },
+  brief(v) { return { quote: SB12_STORY[v.kind](v) }; },
+  mason: "Something is being dropped that nobody meant to drop. Find the list that sees it, and read it to the very end, including the line you can't see.",
+  affected(v) { return v.kind === "guest" ? "guest" : v.kind === "dept" ? "dpc1" : "pc"; },
+  options(v) {
+    const what = { guest: "guests'", dept: v.deptName + "'s", printers: "printers'" }[v.kind];
+    return [
+      { id: "right", right: true, text: v.kind === "printers" ? "A new access list on the printers' subinterface denies everything the printer sends" : "The " + what + " access list on the router now ends without its permit, so it denies everything it doesn't name" },
+      { id: "trunk", text: "The trunk to the router no longer carries the " + what + " VLAN", why: v.kind === "dept" ? "The manager's PC reaches the department's PCs, across that same trunk." : v.kind === "guest" ? "The phone got its address from the router's guest pool, across that same trunk." : "show interfaces trunk on the closet switch lists the printers' VLAN allowed and active on the router's port." },
+      { id: "nat", text: "NAT no longer translates the " + what + " VLAN", why: v.kind === "printers" ? "The printers' VLAN was never translated, and printing never leaves the business: NAT plays no part in it." : "show ip nat translations has no entries for the VLAN because nothing of it gets past the router's list, and NAT's own list still names its network." },
+      { id: "shut", text: "The router's subinterface for the " + what + " VLAN has been shut down", why: "show ip interface brief has every subinterface up and up." },
+      { id: "route", text: "The router's default route has gone", why: v.kind === "printers" ? "Everything else gets to the internet, and printing doesn't need the default route at all." : "The staff PCs get to the internet through the same router and its default route." },
+      v.kind === "guest" ? { id: "pw", text: "The guest Wi-Fi's password has been changed", why: "The phone is connected with a guests' address: a wrong password is refused before that, and the phone says so." }
+        : v.kind === "dept" ? { id: "pool", text: "The department's pool has run out of addresses", why: "Both PCs have addresses in the department's block, from its pool." }
+          : { id: "addr", text: "The printer's fixed address has been changed", why: "The printer's own panel gives the address the records have for it, and every PC prints to that address." }
+    ];
+  },
+  rung1(v) { return (v.kind === "guest" ? "On the visitor's phone: its Wi-Fi page." : v.kind === "dept" ? "On a " + v.deptName + " PC: ipconfig, and a ping out." : "On a PC: a test page, then a ping to the printer.") + " Then on the router, from the manager's PC: show interfaces for the subinterface on that VLAN (which lists are on it, and which way), then show access-lists, line by line."; },
+  rung2() { return "An access list is read top to bottom and stops at the first line that matches. After its last line comes one you never see: deny everything. A list that only denies, or that has lost its last permit, drops all the traffic it doesn't name."; },
+  fixHints(v) { return ["Find the list on the subinterface that VLAN's traffic passes, and read it to the end, the unseen line included.", v.kind === "printers" ? "That list does nothing the router didn't already do: the printers' VLAN was never translated to the internet. Take it off the subinterface." : "Give it back the line that lets everything else through, after the denies, where the router had it.", "Save it, then test from whatever lost its way" + (v.kind === "guest" ? ": the visitor's phone joins again." : ".")]; },
+  exhibits(sim, v) {
+    if (JSON.stringify(aclsOf(sim)) === JSON.stringify(v.before) && JSON.stringify(groupsOf(sim)) === JSON.stringify(v.groups)) return false;
+    if (v.kind === "guest") { const g = sim.addr("guest"); return !!g && g.kind === "dhcp" && !online(sim, "guest") && online(sim, "pc"); }
+    if (v.kind === "dept") { const d = sim.addr("dpc1"); return !!d && d.kind === "dhcp" && !online(sim, "dpc1") && online(sim, "pc"); }
+    return !reachesPrinter(sim, "pc", v.printer) && online(sim, "pc");
+  },
+  aclsRight(sim, v, saved) { const A = aclsOf(sim, saved), G = groupsOf(sim, saved); return Object.keys(v.before).every(function (k) { return A[k] === v.before[k]; }) && JSON.stringify(G) === JSON.stringify(v.groups); },   /* an unapplied list left over does nothing, and is let be */
+  works(sim, v) {
+    if (v.kind === "guest") { const g = sim.addr("guest"); return !!g && g.kind === "dhcp" && online(sim, "guest") && !reachesPrinter(sim, "guest", v.printer); }
+    if (v.kind === "dept") return ["dpc1", "dpc2"].every(function (id) { return online(sim, id) && reachesPrinter(sim, id, v.printer); });
+    return ["pc", "mgr", "bpc", "dpc1"].every(function (id) { return reachesPrinter(sim, id, v.printer); });
+  },
+  fixed(sim, v) { return SB12.aclsRight(sim, v) && SB12.aclsRight(sim, v, true) && SB12.works(sim, v) && online(sim, "pc") && online(sim, "mgr"); },
+  partial(v, sim) {
+    if (!SB12.aclsRight(sim, v)) return v.kind === "printers" ? "It works, but the printers' subinterface isn't the way the router had it." : "It works, but the list isn't the way the router had it: a permit ahead of the denies lets through what they were there to stop.";
+    if (!SB12.aclsRight(sim, v, true)) return "It works right now, but the router hasn't saved it: the next power cut or reload brings the block back.";
+    return "It works right now, but the router's lists aren't the way it had them.";
+  },
+  proves(f, sim, v) {
+    if (v.kind === "guest") return ((f.join || f.radio) && f.dev === "guest" && !!f.internet) || (f.page === "guest-wifi" && !!f.internet);
+    if (v.kind === "dept") return f.cmd === "ping" && (f.dev === "dpc1" || f.dev === "dpc2") && f.replies > 0 && (f.internet || (f.who || []).indexOf("printer") >= 0);
+    return (f.print === "ok" && f.port === v.printer) || (f.cmd === "ping" && f.replies > 0 && (f.who || []).indexOf("printer") >= 0);
+  },
+  proofText: "whatever lost its way reaching through the router: the visitor's phone online, a department PC reaching the printer or the internet, or a test page",
+  evidence: [
+    { id: "phone", test: function (f, v) { return v.kind === "guest" && f.page === "guest-wifi" && f.connected && !f.internet; }, text: function () { return "The visitor's phone's Wi-Fi page: connected, a guests' address, no internet"; } },
+    { id: "deptout", test: function (f, v) { return v.kind === "dept" && f.cmd === "ping" && (f.dev === "dpc1" || f.dev === "dpc2") && !f.replies; }, text: function (f, v, sim) { return "Ping from the " + name(sim, f.dev) + " to " + f.ip + ": no reply"; } },
+    { id: "mgrin", test: function (f, v) { return v.kind === "dept" && f.cmd === "ping" && f.dev === "mgr" && (f.who || []).some(function (w) { return /^dpc/.test(w); }) && f.replies > 0; }, text: function () { return "Ping from the manager's PC to a department PC: replies"; } },
+    { id: "noprint", test: function (f, v) { return v.kind === "printers" && (f.print === "fail" || (f.cmd === "ping" && f.ip === v.printer && !f.replies)); }, text: function (f) { return f.print ? "Test page from the PC: nothing came out" : "Ping to the printer: no reply"; } },
+    { id: "group", test: function (f, v) { return f.on === "rtr" && new RegExp((v.kind === "printers" ? "Inbound" : v.kind === "guest" ? "Inbound" : "Outgoing") + "\\s+access list is " + v.list).test(devOut(f)); }, text: function (f, v) { return "On the router: " + v.sub + ", " + (v.kind === "dept" ? "outgoing" : "inbound") + " access list " + v.list; } },
+    { id: "list", test: function (f, v) { const o = devOut(f); const blk = (o.split("IP access list " + v.list + "\n")[1] || "").split(/\n(?=\S)/)[0].trim().split("\n"); return f.on === "rtr" && new RegExp("IP access list " + v.list + "\\n").test(o) && !/\d+ permit ip \S+ (?:\S+ )?any\b/.test(blk[blk.length - 1] || "") && !/\d+ permit ip any any/.test(blk[blk.length - 1] || ""); }, text: function (f, v) { const blk = (devOut(f).split("IP access list " + v.list + "\n")[1] || "").split(/\n(?=\S)/)[0].trim().split("\n"); return "show access-lists on the router: " + v.list + " ends with \"" + blk[blk.length - 1].trim() + "\", then only the unseen deny"; } }
+  ],
+  summary(v) {
+    const how = v.kind === "printers" ? "A new list, " + v.list + ", with one line denying everything from the printers' network, had been put on the printers' subinterface coming in, and saved. With nothing permitted, the implicit deny dropped every reply the printer sent. The printers' VLAN was never translated, so it could never reach the internet anyway: the list did nothing the router didn't already do."
+      : "The " + (v.kind === "guest" ? "guests'" : v.deptName + "'s") + " list, " + v.list + ", had lost its last line, " + (v.kind === "guest" ? "the permit for the guests' network to anywhere" : "permit ip any any") + ", and been saved. After its denies, the implicit deny took everything else: " + (v.kind === "guest" ? "guests got their addresses (the first line lets DHCP through) and nothing more." : "only the manager's PC, named on its first line, still reached the department, and nothing the department sent got its answer back in.");
+    return { cause: how, fix: v.kind === "printers" ? "Took " + v.list + " off the printers' subinterface, saved, and sent a test page." : "Put " + (v.kind === "guest" ? "the guests' network's permit to anywhere" : "permit ip any any") + " back at the end of " + v.list + ", after the denies, saved, and tested from " + (v.kind === "guest" ? "the visitor's phone." : "a department PC.") };
+  }
+};
+
+export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07, SB08, SB09, SB10, SB11, SB12];
 export const BUSINESS_COMING = [];

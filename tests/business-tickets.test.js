@@ -56,6 +56,9 @@ const subs10 = (T) => { const v = T.v, V = v.plan.vlans, B = v.before;
 /* SB-11: what keeps the pool's addresses from it undone; whatever had no address asking again */
 const again11 = (T) => T.v.kind === "guest" ? radioOn : [{ t: "cmd", dev: T.v.devs[0], line: "ipconfig /renew" }];
 const fix11 = (T) => T.v.kind === "guest" ? ["ip dhcp pool " + T.v.pool, "lease 1", "exit", "do clear ip dhcp binding *"] : ["no ip dhcp excluded-address " + T.v.line];
+/* SB-12: the list put back as the router had it (or the printers' new list taken off); tested from what lost its way */
+const fix12 = (T) => { const v = T.v, V = v.plan.vlans; return v.kind === "printers" ? ["interface " + v.sub, "no ip access-group " + v.list + " in"] : ["ip access-list extended " + v.list, v.kind === "guest" ? "permit ip " + V.guest.net + " 0.0.0.255 any" : "permit ip any any"]; };
+const again12 = (T) => T.v.kind === "guest" ? radioOn : [];
 const again4 = (T) => T.v.devs.flatMap((id) => id === "guest" ? [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }] : [{ t: "cmd", dev: id, line: "ipconfig /renew" }]);
 
 const FIX = {
@@ -69,7 +72,8 @@ const FIX = {
   "SB-08": (T) => onSw(T, T.v.end, [port8(T.v.end), "switchport trunk native vlan " + T.v.native]).concat(again8(T)),
   "SB-09": (T) => ends9(T).flatMap((sw) => onSw(T, sw, [port8(sw), "switchport mode trunk"])).concat(again9()),
   "SB-10": (T) => onRt(T, subs10(T)).concat(again10(T)),
-  "SB-11": (T) => onRt(T, fix11(T)).concat(again11(T))
+  "SB-11": (T) => onRt(T, fix11(T)).concat(again11(T)),
+  "SB-12": (T) => onRt(T, fix12(T)).concat(again12(T))
 };
 const PROOF = {
   "SB-01": (T) => [pc("ping " + T.v.printer)],
@@ -82,7 +86,8 @@ const PROOF = {
   "SB-08": (T) => [{ t: "cmd", dev: T.v.devs[0], line: "ping " + T.v.printer }],
   "SB-09": (T) => [{ t: "cmd", dev: "bpc", line: "ping " + T.v.printer }],
   "SB-10": (T) => T.v.kind === "printers" ? [{ t: "print" }] : T.v.kind === "guest" ? radioOn : [{ t: "cmd", dev: "dpc1", line: "ping " + T.v.printer }],
-  "SB-11": (T) => T.v.kind === "guest" ? radioOn : [{ t: "cmd", dev: T.v.devs[0], line: "ping " + T.v.printer }]
+  "SB-11": (T) => T.v.kind === "guest" ? radioOn : [{ t: "cmd", dev: T.v.devs[0], line: "ping " + T.v.printer }],
+  "SB-12": (T) => T.v.kind === "guest" ? radioOn : T.v.kind === "dept" ? [{ t: "cmd", dev: "dpc1", line: "ping " + T.v.printer }] : [{ t: "print" }]
 };
 const UNSAVED = {
   "SB-01": (T) => conf(T, ["interface gi0/1", "switchport access vlan " + staff(T).id]).concat([pc("ipconfig /renew")]),
@@ -95,7 +100,8 @@ const UNSAVED = {
   "SB-08": (T) => onSw(T, T.v.end, [port8(T.v.end), "switchport trunk native vlan " + T.v.native], false).concat(again8(T)),
   "SB-09": (T) => ends9(T).flatMap((sw) => onSw(T, sw, [port8(sw), "switchport mode trunk"], false)).concat(again9()),
   "SB-10": (T) => onRt(T, subs10(T), false).concat(again10(T)),
-  "SB-11": (T) => onRt(T, fix11(T), false).concat(again11(T))
+  "SB-11": (T) => onRt(T, fix11(T), false).concat(again11(T)),
+  "SB-12": (T) => onRt(T, fix12(T), false).concat(again12(T))
 };
 /* tempting fixes that treat a symptom, or the wrong part: none may fix it */
 const WRONG = {
@@ -176,6 +182,17 @@ const WRONG = {
       e.flatMap((sw) => onSw(T, sw, [port8(sw), "switchport trunk allowed vlan all"])).concat(again9()),   /* the allowed list, on a port that isn't a trunk */
       e.flatMap((sw) => onSw(T, sw, [port8(sw), "shutdown", "no shutdown"])).concat(again9())];
   },
+  "SB-12": (T) => {
+    const v = T.v, V = v.plan.vlans, L = [again12(T), [{ t: "power", dev: "rtr" }].concat(again12(T))];
+    if (v.kind === "printers") {
+      L.push(onRt(T, ["ip access-list extended " + v.list, "permit ip any any"]).concat(again12(T)));   /* the list given a permit: it works, and the printers' subinterface isn't as the router had it */
+      L.push(onRt(T, ["no ip access-list extended " + v.list]));   /* the list deleted and left named on the subinterface */
+    } else {
+      L.push(onRt(T, ["ip access-list extended " + v.list, "5 permit ip any any"]).concat(again12(T)));   /* the permit put first, ahead of the denies */
+      L.push(onRt(T, ["interface " + v.sub, "no ip access-group " + v.list + (v.kind === "dept" ? " out" : " in")]).concat(again12(T)));   /* the list taken off: it works, and nothing's kept out */
+    }
+    return L;
+  },
   "SB-11": (T) => {
     const v = T.v, L = [again11(T), [{ t: "power", dev: "rtr" }].concat(again11(T))];
     if (v.kind === "guest") {
@@ -207,6 +224,16 @@ const WRONG = {
   }
 };
 const SYMPTOM = {
+  "SB-12": (T) => {
+    const v = T.v, V = v.plan.vlans, p = v.plan;
+    const o = out(T, [mgr("ssh " + p.user + "@" + V.staff.gw), mgr(p.userPw), mgr("enable"), mgr(p.rtSecret), mgr("show interfaces " + v.sub), mgr("show access-lists")]); E.act(T, mgr("exit"));
+    assert.match(o, new RegExp((v.kind === "dept" ? "Outgoing" : "Inbound") + "\\s+access list is " + v.list));
+    const blk = o.split("IP access list " + v.list + "\n")[1].split(/\n(?=\S)/)[0].trim().split("\n"), last = blk[blk.length - 1].trim();
+    assert.ok(!/permit ip \S+ (\S+ )?any$/.test(last), v.list + " no longer ends with a permit to anywhere (" + last + ")");
+    if (v.kind === "guest") { const ph = E.act(T, { t: "radio", dev: "guest", on: false }) && E.act(T, { t: "radio", dev: "guest", on: true }).facts; assert.ok(ph.ip && !ph.apipa && !ph.internet, "the phone has a guests' address and no internet"); }
+    else if (v.kind === "dept") { assert.equal(E.act(T, { t: "cmd", dev: "dpc1", line: "ping 8.8.8.8" }).facts.replies, 0, "the department gets nothing back"); assert.ok(E.act(T, mgr("ping " + T.sim.addr("dpc1").ip)).facts.replies > 0, "the manager's PC still reaches it"); }
+    else { assert.equal(E.act(T, { t: "print" }).facts.print, "fail"); assert.ok(E.act(T, pc("ping 8.8.8.8")).facts.replies > 0, "the internet works"); }
+  },
   "SB-11": (T) => {
     const v = T.v, V = v.plan.vlans, p = v.plan;
     const o = out(T, [mgr("ssh " + p.user + "@" + V.staff.gw), mgr(p.userPw), mgr("enable"), mgr(p.rtSecret), mgr("show ip dhcp pool"), mgr("show running-config"), mgr("show ip dhcp binding")]); E.act(T, mgr("exit"));
@@ -427,7 +454,7 @@ for (const def of BUSINESS_TICKETS) {
         assert.ok(x.indexOf(right) < 0, x);
         for (const bad of [p.rtSecret, p.rtConsole, p.swSecret, p.swConsole, p.userPw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, def.id + " names a password: " + x);
         for (const n of Object.values(p.vlans).map((V) => String(V.id))) assert.ok(!new RegExp("\\b" + n + "\\b").test(x), def.id + " names VLAN " + n + ": " + x);
-        for (const cmd of ["switchport access", "switchport mode", "switchport trunk", "allowed vlan", "default-router", "ip dhcp pool", "ip route 0", "ip nat inside", "ip nat outside", "access-list 1", "copy running-config", "write memory", "interface gi", "ipconfig /renew", "encapsulation dot1q", "ip address 1", "no encapsulation", "clear ip dhcp", "excluded-address", "lease infinite", "lease 1"]) assert.ok(x.replace(/show ip dhcp pool/g, "show the pools").indexOf(cmd) < 0, def.id + " names the fix's command: " + x);   /* where to look may name a show command */
+        for (const cmd of ["switchport access", "switchport mode", "switchport trunk", "allowed vlan", "default-router", "ip dhcp pool", "ip route 0", "ip nat inside", "ip nat outside", "access-list 1", "copy running-config", "write memory", "interface gi", "ipconfig /renew", "encapsulation dot1q", "ip address 1", "no encapsulation", "clear ip dhcp", "excluded-address", "lease infinite", "lease 1", "permit ip any any", "ip access-group", "no ip access-group"]) assert.ok(x.replace(/show ip dhcp pool/g, "show the pools").indexOf(cmd) < 0, def.id + " names the fix's command: " + x);   /* where to look may name a show command */
       }
     }
   });

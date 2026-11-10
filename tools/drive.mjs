@@ -724,6 +724,33 @@ Object.assign(PLAN, {
         await again(p, v); },
       proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "guest") await radio(p); else { await dev(p, v.devs[0]); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); } }
     };
+  })(),
+  /* SB-12: an access list that blocks far more than it should; the router's lists read over SSH, to the end */
+  "SB-12": (() => {
+    const radio = async (p) => { await dev(p, "guest"); await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Turn Wi-Fi off")'); await p.waitForTimeout(40); await p.click('.pane button:text-is("Turn Wi-Fi on")'); await p.waitForTimeout(40); };
+    const lastLine = (t, list) => { const blk = (t.split("IP access list " + list + "\n")[1] || "").split(/\n(?=\S)/)[0].trim().split("\n"); return (blk[blk.length - 1] || "").trim(); };
+    return {
+      look: async (p, v) => {
+        if (v.kind === "guest") { await radio(p); const w = await p.$eval(".pane", (n) => n.textContent); check(/No internet/.test(w) && !/it gave itself this/.test(w), "SB-12 guest: the visitor's phone gets an address and no internet"); }
+        else if (v.kind === "dept") { await dev(p, "dpc1"); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); check(/Received = 0/.test((await term(p)).split("ping 8.8.8.8").pop()), "SB-12 dept: the department gets nothing back");
+          const ip = await T(p, () => window.__e4.T.sim.addr("dpc1").ip); await dev(p, "mgr"); await tab(p, "Command Prompt"); await type(p, "ping " + ip); check(/Received = [1-4]/.test((await term(p)).split("ping " + ip).pop()), "SB-12 dept: the manager's PC still reaches it"); }
+        else { await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); await p.waitForTimeout(40); check(/didn't print|nothing came out|couldn't|not/i.test(await p.$eval(".pane", (n) => n.textContent)), "SB-12 printers: the test page doesn't print"); }
+        await rtLogin(p, v); await type(p, "show interfaces " + v.sub); check(new RegExp((v.kind === "dept" ? "Outgoing" : "Inbound") + "\\s+access list is " + v.list).test(await term(p)), "SB-12 " + v.kind + ": show interfaces " + v.sub + " names the list on it");
+        await type(p, "show access-lists"); const last = lastLine((await term(p)).split("show access-lists").pop(), v.list);
+        check(last && !/permit ip \S+ (\S+ )?any$/.test(last), "SB-12 " + v.kind + ": " + v.list + " ends \"" + last + "\", then only the unseen deny");
+        await type(p, "exit");
+        const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(ev.indexOf("group") >= 0 && ev.indexOf("list") >= 0, "SB-12: the notebook has the list on the subinterface and how it ends (" + ev + ")");
+      },
+      wrong: async (p, v) => { if (v.kind === "printers") await rtConf(p, v, ["ip access-list extended " + v.list, "permit ip any any"]); else await rtConf(p, v, ["ip access-list extended " + v.list, "5 permit ip any any"]); if (v.kind === "guest") await radio(p); },   /* a permit that makes it work, in the wrong place */
+      afterWrong: async (p) => { const v = await T(p, () => window.__e4.T.v); check(new RegExp(v.kind === "printers" ? "isn't the way the router had it" : "ahead of the denies").test(await p.$eval("#board", (n) => n.textContent)), "SB-12 " + v.kind + ": Mason says the list isn't the router's way"); },
+      fix: async (p, v) => {
+        if (v.kind === "printers") await rtConf(p, v, ["interface " + v.sub, "no ip access-group " + v.list + " in"]);
+        else { const net = v.kind === "guest" ? (await rec(p, "Guests' VLAN")).split(" · ")[2].replace(/\/24$/, "") : null;   /* the guests' network, off the card */
+          check(v.kind !== "guest" || net === v.plan.vlans.guest.net, "SB-12 guest: the card gives the guests' network (" + net + ")");
+          await rtConf(p, v, ["ip access-list extended " + v.list, v.kind === "guest" ? "permit ip " + net + " 0.0.0.255 any" : "permit ip any any"]); }
+        if (v.kind === "guest") await radio(p); },
+      proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "guest") await radio(p); else if (v.kind === "dept") { await dev(p, "dpc1"); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); } else { await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); } }
+    };
   })()
 });
 

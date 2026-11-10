@@ -88,6 +88,54 @@ at runtime.
 - Check a model by putting the owner's photo beside a render from the same
   angle and distance; a wide render hides missing detail.
 
+## SAVE POINT (10 November 2026): Level 3's tickets, going live one at a time
+
+The owner, 10 November 2026: "create a save point here." Where everything stands:
+
+- **Live on `main`:** the business Ticket Desk with SB-01 (9 November, 72f420e), SB-02 (9 November, c151323), SB-03
+  (10 November, a344844). Each went up from a tree staged off `main` with the later tickets cut out
+  (`python3 tools/wip/stage.py N DEST`), then `tools/wip/golive.sh DEST "message"` (makes the live worktree, branch
+  `save/level3-sb01` at `/home/user/e4-sb01`, exactly that tree, and commits; push with `git push origin HEAD:main` and
+  `HEAD:save/level3-sb01`), then `main` merged back into this branch keeping this branch's full files and `main`'s CLAUDE.md.
+- **This branch (`save/level3-tickets`, worktree `/home/user/e4-sbt`)** holds SB-01 to SB-12, every one with `kinds` (its
+  variants; the tests add a business for any variant the seeds miss).
+- **SB-04: every check passed, ready to go live.** On its staged tree: `npm test` 412 of 412; `ONLY=tickets-business node
+  tools/drive.mjs` 566 checks; the business tickets' 17 contrast states (47,504 text runs); its plants 6 of 6. Its notes are
+  in `tools/wip/notes/sb04.md`, complete. To go live: stage 4 again from this branch, check the site code matches what was
+  checked (only `kinds` and later tickets' test entries have changed since), insert the notes after SB-03's in CLAUDE.md,
+  add it to the status line, golive, push, check GitHub.
+- **SB-05 next:** it carries shared code (the provider's gateway answering pings in `js/net/sim.js`, the provider's row on
+  the card), so it gets the full drive. The full drive on its staged tree was stopped twice by worker restarts (a background
+  run dies with the worker); start it again with the 2-hour limit. Then its business-ticket contrast states, its plants, its
+  unit tests. Notes drafted in `tools/wip/notes/sb05.md` (results to fill in).
+- **SB-06 to SB-09:** built and passing in Node; each goes live the same way. SB-08 carries shared code (the console's native
+  VLAN mismatch log in `js/net/cmd.js`): full drive there too. Notes still to write (each from its section of
+  `js/tickets/business.js` and its WRONG entry in the tests).
+- **SB-10** (a router subinterface tagged for the wrong VLAN: printers, guests, the department's and guests' swapped; never
+  the staff VLAN, or no PC could reach the router to fix it): Node tests pass, drive 119 checks, Node plants 5 of 5 (two
+  wrong fixes added on the way). Notes in `tools/wip/notes/sb10.md` (results to fill in).
+- **SB-11** (a pool with nothing left to lend: the guests' pool lending for ever after a market day, an exclusion leaving the
+  staff pool one address, the same in the department's): built before "the printer's address handed out" because it needs
+  nothing new in the business (the owner: "Keep building everything in order of increasing in size"). Node tests pass, drive
+  126 checks; the drive caught its summary crashing on the guests' variant (fixed; every summary is now built on every
+  variant in the tests, with a plant). Its plants and contrast states are written, not yet run.
+- **SB-12** (an access list that blocks far more than it should: the guests' list without its last permit, the
+  department's likewise, a printers' list of one deny): Node tests pass; its drive plan is written, not yet run; contrast
+  states and plants still to write.
+- **Still to build, re-sized 10 November 2026:** SB-13 an access list applied the wrong way (configuration only); then the two
+  that need a new device, last: "the printer's address handed out" (a label printer at the counter on the printers' VLAN,
+  on a closet switch spare port, which took the printer's address while the printer was off, from a printers' pool keeping
+  back only .1 to .19: positions on both drawings and the drive's drawing checks) and VLAN hopping (a device that negotiates
+  a trunk on a port left dynamic). Tell the owner the order changed and why when they go live; the titles are theirs.
+- **Found on the way and worth keeping:** the card never gave a VLAN's name (now "20 · named STAFF · ..."); every value a fix
+  types is now read off the card by the drive; the plant script runs the tests on 6 businesses, which had left a variant of
+  SB-03, SB-06, SB-09 and SB-10 untried (fixed with `kinds`); several plants hit one of two guards (re-aimed at both); the
+  router answers `show interfaces <subinterface>` (with its access lists), not `show ip interface <subinterface>`.
+- **Checks per stage:** unit tests, the business-ticket drive, the business-ticket contrast states, the ticket's own plants
+  (`python3 tools/plants-business-tickets.py SB-0N`, in a throwaway copy; a plant naming a ticket not on the desk is
+  skipped); the full drive where shared code changes (SB-05, SB-08) and on the last. Background runs default to a 30-minute
+  limit: give long ones the 2-hour limit.
+
 ## What it is
 
 The Network+ (V9) Under the Hood build: an **interactive networking model**,

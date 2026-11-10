@@ -87,6 +87,11 @@ NODE += [('SB-10: a tag put back unsaved counts', 'js/tickets/business.js', '  f
  ('SB-10: the visitor left with the department\'s address counts', 'js/tickets/business.js', 'const g = sim.addr("guest"), gOk = !!g && g.kind === "dhcp" && inNet(g.ip, V.guest.net, 24) && online(sim, "guest");', 'const g = sim.addr("guest"), gOk = true;'),
  ('SB-10: a hint names the fix\'s command', 'js/tickets/business.js', '"Tag it for its own VLAN again.', '"Tag it with encapsulation dot1Q for its own VLAN again.'),
  ('SB-10: a ping from the visitor proves the swap', 'js/tickets/business.js', 'if (v.kind === "swap") return f.cmd === "ping" && (f.dev === "dpc1" || f.dev === "dpc2") && f.replies > 0', 'if (v.kind === "swap") return f.cmd === "ping" && f.replies > 0')]
+NODE += [("SB-11: a pool's fix left unsaved counts", 'js/tickets/business.js', '  fixed(sim, v) { return SB11.exclRight(sim, v) && SB11.exclRight(sim, v, true) &&', '  fixed(sim, v) { return SB11.exclRight(sim, v) &&'),
+ ('SB-11: the guests\' pool still lending for ever counts', 'js/tickets/business.js', '(v.kind !== "guest" || (SB11.leaseOk(sim, v) && SB11.leaseOk(sim, v, true)))', 'true'),
+ ('SB-11: the router\'s own exclusion taken out instead counts', 'js/tickets/business.js', '  exclRight(sim, v, saved) { return exclOf(sim, saved).join("|") === v.before.join("|"); },', '  exclRight(sim, v, saved) { return exclOf(sim, saved).indexOf(v.line ? v.line.replace(" ", "-") : "") < 0; },'),
+ ('SB-11: a hint names the pool\'s commands', 'js/tickets/business.js', '"Take away only the line that keeps back what the router never did;', '"Take away only the ip dhcp excluded-address line that keeps back what the router never did;'),
+ ('SB-11: a ping from another PC proves it', 'js/tickets/business.js', 'return f.cmd === "ping" && f.dev === v.devs[0] && f.replies > 0 && (f.internet', 'return f.cmd === "ping" && f.replies > 0 && (f.internet')]
 AAA = [
  ("the cabinet's label left without its plate on the desk's floor plan", "js/desk/app.js", 'if (phy) plates($("plan"), ".rl, .ns, .cabl", "#f4f6fb");', 'if (phy) plates($("plan"), ".rl, .ns", "#f4f6fb");', "SB-01 the floor plan"),
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "SB-01 the ticket card"),

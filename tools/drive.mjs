@@ -694,6 +694,36 @@ Object.assign(PLAN, {
         await again(p, v); },
       proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "printers") { await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); } else if (v.kind === "guest") await radio(p); else { await dev(p, "dpc1"); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); } }
     };
+  })(),
+  /* SB-11: a pool with nothing left to lend; the router's pools read over SSH */
+  "SB-11": (() => {
+    const radio = async (p) => { await dev(p, "guest"); await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Turn Wi-Fi off")'); await p.waitForTimeout(40); await p.click('.pane button:text-is("Turn Wi-Fi on")'); await p.waitForTimeout(40); };
+    const again = async (p, v) => { if (v.kind === "guest") await radio(p); else { await dev(p, v.devs[0]); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); } };
+    const left = (t, pool) => { const o = (t.split("Pool " + pool + " :")[1] || "").split("Pool ")[0], n = (k) => Number((o.match(new RegExp(k + "\\s+: (\\d+)")) || [])[1]); return n("Total addresses") - n("Excluded addresses") - n("Leased addresses"); };
+    return {
+      look: async (p, v) => {
+        if (v.kind === "guest") { await radio(p); check(/it gave itself this: no address came/.test(await p.$eval(".pane", (n) => n.textContent)), "SB-11 guest: the visitor's phone joins and gets 169.254"); }
+        else { await dev(p, v.devs[0]); await tab(p, "Command Prompt"); await type(p, "ipconfig"); check(/169\.254\./.test(await term(p)), "SB-11 " + v.kind + ": the PC that asked last is on 169.254");
+          const o = v.kind === "staff" ? "pc" : "dpc1"; await dev(p, o); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); check(/Received = [1-4]/.test((await term(p)).split("ping " + v.printer).pop()), "SB-11 " + v.kind + ": the one that asked first works"); }
+        await rtLogin(p, v); await type(p, "show ip dhcp pool"); const t = (await term(p)).split("show ip dhcp pool").pop();
+        check(left(t, v.pool) <= 0, "SB-11 " + v.kind + ": show ip dhcp pool: " + v.pool + " has nothing left to lend");
+        await type(p, "show running-config"); const rc = (await term(p)).split("show running-config").pop();
+        if (v.kind === "guest") check(new RegExp("ip dhcp pool " + v.pool + "\\n[^!]*lease infinite").test(rc), "SB-11 guest: the pool lends for ever");
+        else check(rc.indexOf("ip dhcp excluded-address " + v.line + "\n") >= 0, "SB-11 " + v.kind + ": show running-config has the added exclusion");
+        if (v.kind === "guest") { await type(p, "show ip dhcp binding"); check(((await term(p)).match(/Infinite\s+Automatic/g) || []).length > 200, "SB-11 guest: the market's phones, lent for ever"); }
+        await type(p, "exit");
+        const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(ev.indexOf("pool") >= 0 && ev.indexOf("run") >= 0 && ev.indexOf(v.kind === "guest" ? "phone" : "apipa") >= 0, "SB-11: the notebook has the symptom, the pool's count and the line that did it (" + ev + ")");
+      },
+      wrong: async (p, v) => { if (v.kind === "guest") await rtConf(p, v, ["do clear ip dhcp binding *"]); else await rtConf(p, v, ["no ip dhcp excluded-address " + v.line], false); await again(p, v); },   /* guest: let go, still lending for ever; otherwise put right, unsaved */
+      afterWrong: async (p) => { const v = await T(p, () => window.__e4.T.v); check(new RegExp(v.kind === "guest" ? "lends its addresses for ever" : "hasn't saved it").test(await p.$eval("#board", (n) => n.textContent)), "SB-11 " + v.kind + ": Mason says what's still wrong"); },
+      fix: async (p, v) => {
+        if (v.kind === "guest") await rtConf(p, v, ["ip dhcp pool " + v.pool, "lease 1", "exit", "do clear ip dhcp binding *"]);
+        else { await rtLogin(p, v); await type(p, "show running-config"); const rc = (await term(p)).split("show running-config").pop(), lines = (rc.match(/^ip dhcp excluded-address .+$/gm) || []);   /* the line the router never had, found among the exclusions as a student would */
+          const odd = lines.map((l) => l.replace("ip dhcp excluded-address ", "")).find((x) => x === v.line); check(!!odd && lines.length === v.before.length + 1, "SB-11 " + v.kind + ": show running-config lists the exclusions, the added one among them (" + lines.length + ")"); await type(p, "exit");
+          await rtConf(p, v, ["no ip dhcp excluded-address " + odd]); }
+        await again(p, v); },
+      proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "guest") await radio(p); else { await dev(p, v.devs[0]); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); } }
+    };
   })()
 });
 

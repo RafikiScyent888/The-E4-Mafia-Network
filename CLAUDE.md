@@ -3386,6 +3386,32 @@ speed counting as fast, WPA2 accepted for WPA3 devices, a moved printer's
 printing not checked; on the page, the visitor's phone without a device
 button.
 
+## Level 4, the campus: the owner's decisions, 15 November 2026
+
+The owner, asked to choose before anything is built: **"Go with your recommendations, Rafiki's HQ"**. So:
+- **Site:** Rafiki's IT Services' own headquarters, three-tier (core, distribution, access), and a second, smaller building on a
+  collapsed core, joined to HQ by fibre (the placement agreed 10 October 2026).
+- **First-hop redundancy:** the industry-standard `standby` commands, as the rest of the command line; the teaching says VRRP is
+  the open standard that does the same job.
+- **OSPF:** a single area at the campus; several areas wait for Enterprise.
+- **Spanning tree:** the rapid, per-VLAN kind, with the classic port states taught beside it.
+- **Objectives** (Network+ V9, the owner's doc read 15 November 2026, unchanged since 30 September), the parts Campus covers,
+  quoted: Network topologies: "three-tier, and collapsed core"; Routing technologies: "dynamic routing (… OSPF), route
+  selection, … FHRP, VIP"; Switching technologies: "VLANs, interface configuration, spanning tree, MTU, and jumbo frames";
+  Network services issues: "switching issues (STP, VLAN assignment, ACLs), routing issues (routing table and default routes)";
+  Cabling and physical interface issues: "interface issues (increasing counters, port status), and hardware issues (…
+  transceiver mismatch …)"; Performance issues: "congestion, latency, packet loss"; Types of attacks: "MAC flooding, … rogue
+  devices/services" (port security answers them); Transceivers and connectors: "SC, LC, … MPO" (the fibre between buildings).
+- **What students configure** (the table above): Layer 3 switches with a gateway per VLAN; spanning tree (root bridge, port
+  roles, protections); link aggregation; OSPF; first-hop redundancy with a virtual gateway; MTU and jumbo frames; port security.
+- **Order, smallest first** (the owner's rule): work orders first, as Level 3 had them: port security at the access layer (the
+  engine already enforces it), the switch gateways, link aggregation, the spanning-tree root, OSPF, the virtual gateway, jumbo
+  frames for the backup network; then 15 tickets, smallest first, with the standing five extra scenarios.
+- **New to the engine:** routing on a switch (its VLAN interfaces as gateways), spanning tree, link aggregation, OSPF, the
+  virtual gateway, MTU. Port security and switch VLAN interfaces exist already.
+- **3D models:** a Layer 3 switch with fibre uplink slots, SFP transceivers, LC patch cords: the owner was asked for photographs
+  on 15 November 2026 (as for SB-14's label printer). The engine and command line are built first; the models when they come.
+
 ## Objectives
 
 Read from the owner's "All updated Objectives" Google Doc

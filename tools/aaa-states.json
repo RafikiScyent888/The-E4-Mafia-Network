@@ -1088,6 +1088,13 @@
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-08'); const v=c.T.v, P=v.plan; const t=l=>c.act({t:'cmd',dev:'tech',line:l,cli:true}); ['',P.swConsole,'enable',P.swSecret,'configure terminal','interface gi0/24','switchport trunk native vlan '+v.native,'end','copy running-config startup-config','','disable','exit'].forEach(t); v.devs.forEach(id=>c.act({t:'cmd',dev:id,line:'ipconfig /renew'})); c.guess('right'); c.act({t:'cmd',dev:v.devs[0],line:'ping '+v.printer}); document.getElementById('board').scrollIntoView();"
  },
  {
+  "name": "business tickets: SB-09 the back switch's end of the link: show interfaces switchport and status",
+  "page": "index.html",
+  "ticket": "SB-09",
+  "seed": 1,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-09'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=tech]').click(); ['',P.swConsole,'enable',P.swSecret,'show interfaces gi0/24 switchport','show interfaces status'].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
   "name": "business tickets: the shelves, the small business's tickets",
   "page": "lab-bench.html",
   "ticket": "SB-01",

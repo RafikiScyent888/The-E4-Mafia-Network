@@ -103,6 +103,17 @@ NODE += [("SB-13: a list put back unsaved counts", 'js/tickets/business.js', '  
  ("SB-13: guests reaching the department count as working", 'js/tickets/business.js', 'const guestsOut = !!d && !!sim.route("guest", d.ip).fail && !!sim.route("guest", sim.addr("pc").ip).fail;', 'const guestsOut = true;'),
  ("SB-13: a hint names the access-group command", 'js/tickets/business.js', '"Face it the way it meets what the guests send."', '"Face it in with ip access-group, the way it meets what the guests send."'),
  ("SB-13: any failed ping proves the department's fix", 'js/tickets/business.js', 'inNet(f.ip, D.net, D.len) && f.kind === "blocked";', 'inNet(f.ip, D.net, D.len) && !f.replies;')]
+PAGE += [
+ ("SB-14: the label printer left off the floor plan", 'js/desk/draw.js', ', printer2: "Label printer" };', ' };'),
+ ("SB-14: the label printer has no device button", 'js/desk/app.js', '"dpc2", "printer", "printer2", "msw"', '"dpc2", "printer", "msw"'),
+ ("SB-14: the router's ARP table never flips", 'js/net/sim.js', 'const last = o.length > 1 && cache[ip] && o.some(function (k) { return this.macOf(k) === cache[ip]; }, this) ? cache[ip] : this.macOf(o[0]);', 'const last = this.macOf(o[0]);'),
+ ("SB-14: the counter's PC and printer left where they were, under the label printer", 'js/desk/draw.js', '  const usual = function (id) { if (LAY[id].lp && sim.d.printer2', '  const usual = function (id) { if (false && LAY[id].lp && sim.d.printer2')]
+NODE += [("SB-14: the pool left lending the printer's address counts", 'js/tickets/business.js', ' && !lends(R, v.printer) && !lends(R.startup, v.printer)\n      && SB14.labelOk(sim, v)', '\n      && SB14.labelOk(sim, v)'),
+ ("SB-14: a fixed address the pool can lend counts", 'js/tickets/business.js', 'return a.kind === "static" ? !lends(src, a.ip) : lends(src, a.ip, v.cid);', 'return a.kind === "static" ? true : lends(src, a.ip, v.cid);'),
+ ("SB-14: a lease from a pool that's gone counts", 'js/tickets/business.js', 'return a.kind === "static" ? !lends(src, a.ip) : lends(src, a.ip, v.cid);', 'return a.kind === "static" ? !lends(src, a.ip) : true;'),
+ ("SB-14: put right unsaved counts", 'js/tickets/business.js', ' && !lends(R, v.printer) && !lends(R.startup, v.printer)\n      && SB14.labelOk(sim, v) && SB14.labelOk(sim, v, true) && dhcpOf(sim) === dhcpOf(sim, true) &&', ' && !lends(R, v.printer)\n      && SB14.labelOk(sim, v) &&'),
+ ("SB-14: a page that prints with the clash still there proves it", 'js/tickets/business.js', 'proves(f, sim, v) { return f.print === "ok" && !!f.port && JSON.stringify(ownersAt(sim, f.port)) === JSON.stringify(["printer"]); },', 'proves(f, sim, v) { return f.print === "ok"; },'),
+ ("SB-14: a hint names the pool's command", 'js/tickets/business.js', '"The printer\'s address has to be one nothing can lend: keep it out of what the pool hands out,', '"The printer\'s address has to be one nothing can lend: an ip dhcp excluded-address for it,')]
 AAA = [
  ("the cabinet's label left without its plate on the desk's floor plan", "js/desk/app.js", 'if (phy) plates($("plan"), ".rl, .ns, .cabl", "#f4f6fb");', 'if (phy) plates($("plan"), ".rl, .ns", "#f4f6fb");', "SB-01 the floor plan"),
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "SB-01 the ticket card"),
@@ -122,7 +133,7 @@ def run(kind, name, f, a, b, extra=None):
     bak = f + ".plant-bak"; shutil.copy(f, bak)
     open(f, "w").write(src.replace(a, b))
     try:
-        if kind == "page": r = subprocess.run(["node", "tools/drive.mjs"], env=dict(os.environ, ONLY="tickets-business"), capture_output=True, text=True, timeout=2400)
+        if kind == "page": r = subprocess.run(["node", "tools/drive.mjs"], env=dict(os.environ, ONLY=os.environ.get("DRIVE_ONLY", "tickets-business")), capture_output=True, text=True, timeout=2400)   # DRIVE_ONLY=SB-14: one ticket's page plants on its own drive
         elif kind == "node": r = subprocess.run(["node", "--test", "tests/business-tickets.test.js"], env=dict(os.environ, SEEDS="6"), capture_output=True, text=True, timeout=2400)
         else: r = subprocess.run(["node", "tools/aaa.mjs", "tools/aaa-states.json"], env=dict(os.environ, ONLY=extra), capture_output=True, text=True, timeout=2400)
         out = r.stdout.strip().splitlines()

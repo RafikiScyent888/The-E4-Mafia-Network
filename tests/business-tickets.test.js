@@ -260,6 +260,8 @@ WRONG["SB-14"] = (T) => {
     L.push([hand14(T, 40)]);   /* set by hand inside what the pool lends, the pool left lending the printer's address */
     L.push(onRt(T, ["no ip dhcp pool PRINTERS"]).concat([lp14]));   /* the pool taken away: the label printer has nothing to ask */
     L.push(onRt(T, ["do clear ip dhcp binding *"]).concat([lp14]));   /* let go: the router finds the printer answering and lends the next one, and still lends the printer's when it's off */
+    L.push(onRt(T, fix14(T)).concat([hand14(T, 40)]));   /* the printer kept back, the label printer set by hand on an address the pool still lends */
+    L.push(onRt(T, fix14(T)).concat([lp14], onRt(T, ["no ip dhcp pool PRINTERS"])));   /* put right, then the pool taken away under the label printer's lease */
   } else if (v.kind === "reserved") {
     L.push(onRt(T, fix14(T)));   /* the reservation gone, and the label printer never asked again */
     L.push(onRt(T, ["ip dhcp excluded-address " + v.printer]).concat([lp14]));   /* kept back from the pool: a reservation doesn't care, and the router finds the printer answering and lends nothing */

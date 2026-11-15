@@ -751,6 +751,28 @@ Object.assign(PLAN, {
         if (v.kind === "guest") await radio(p); },
       proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "guest") await radio(p); else if (v.kind === "dept") { await dev(p, "dpc1"); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); } else { await dev(p, "pc"); await tab(p, "Printers"); await p.click('.pane button:text-is("Print a test page")'); } }
     };
+  })(),
+  /* SB-13: an access list applied the wrong way; which subinterface it's on, and which way, read over SSH */
+  "SB-13": (() => {
+    const radio = async (p) => { await dev(p, "guest"); await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Turn Wi-Fi off")'); await p.waitForTimeout(40); await p.click('.pane button:text-is("Turn Wi-Fi on")'); await p.waitForTimeout(40); };
+    const fixLines = (v) => v.kind === "guest-out" ? ["interface " + v.gs, "no ip access-group " + v.list + " out", "ip access-group " + v.list + " in"] : v.kind === "dept-in" ? ["interface " + v.ds, "no ip access-group " + v.list + " in", "ip access-group " + v.list + " out"] : ["interface " + v.ss, "no ip access-group " + v.list + " out", "interface " + v.ds, "ip access-group " + v.list + " out"];
+    return {
+      look: async (p, v) => {
+        const d1 = await T(p, () => window.__e4.T.sim.addr("dpc1").ip);
+        if (v.kind === "guest-out") { await radio(p); const w = await p.$eval(".pane", (n) => n.textContent); check(/No internet/.test(w) && !/it gave itself this/.test(w), "SB-13 guest-out: the visitor's phone gets an address and no internet"); }
+        else { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping " + d1); check(/Received = [1-4]/.test((await term(p)).split("ping " + d1).pop()), "SB-13 " + v.kind + ": the counter's PC reaches the department's PC"); }
+        await rtLogin(p, v); await type(p, "show access-lists"); check(new RegExp("IP access list " + v.list + "\\n").test(await term(p)), "SB-13: the list is still there");
+        await type(p, "show running-config"); const rc = (await term(p)).split("show running-config").pop(), m = rc.match(new RegExp("interface (\\S+)\\n[^!]*?ip access-group " + v.list + " (in|out)"));
+        check(!!m && (v.kind === "guest-out" ? m[1] === v.gs && m[2] === "out" : !(m[1] === v.ds && m[2] === "out")), "SB-13 " + v.kind + ": show running-config has " + v.list + " on " + (m ? m[1] + " " + m[2] : "nothing"));
+        await type(p, "show interfaces " + (m ? m[1] : v.gs)); check(/access list is/.test(await term(p)), "SB-13: show interfaces on that subinterface names the list and its direction");
+        await type(p, "exit");
+        const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(ev.indexOf("acls") >= 0 && ev.indexOf("run") >= 0 && ev.indexOf(v.kind === "guest-out" ? "phone" : "reach") >= 0, "SB-13: the notebook has the symptom, the list untouched and where it's applied (" + ev + ")");
+      },
+      wrong: async (p, v) => { await rtConf(p, v, v.kind === "guest-out" ? ["interface " + v.gs, "ip access-group " + v.list + " in"] : ["interface " + v.ds, "ip access-group " + v.list + " out"]); if (v.kind === "guest-out") await radio(p); },   /* the right one added, the wrong one left */
+      afterWrong: async (p) => { check(!(await T(p, () => window.__e4.T.fixed)), "SB-13: the right way added with the wrong way left in place doesn't fix it"); },
+      fix: async (p, v) => { await rtConf(p, v, fixLines(v)); if (v.kind === "guest-out") await radio(p); },
+      proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "guest-out") await radio(p); else { const d1 = await T(p, () => window.__e4.T.sim.addr("dpc1").ip); await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping " + d1); } }
+    };
   })()
 });
 

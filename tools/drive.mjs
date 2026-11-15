@@ -741,7 +741,7 @@ Object.assign(PLAN, {
         await type(p, "exit");
         const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(ev.indexOf("group") >= 0 && ev.indexOf("list") >= 0, "SB-12: the notebook has the list on the subinterface and how it ends (" + ev + ")");
       },
-      wrong: async (p, v) => { if (v.kind === "printers") await rtConf(p, v, ["ip access-list extended " + v.list, "permit ip any any"]); else await rtConf(p, v, ["ip access-list extended " + v.list, "5 permit ip any any"]); if (v.kind === "guest") await radio(p); },   /* a permit that makes it work, in the wrong place */
+      wrong: async (p, v) => { await rtConf(p, v, ["ip access-list extended " + v.list, "5 permit ip any any"]); if (v.kind === "guest") await radio(p); },   /* a permit ahead of the denies: it works, and isn't the router's way (after a deny it would block as before) */
       afterWrong: async (p) => { const v = await T(p, () => window.__e4.T.v); check(new RegExp(v.kind === "printers" ? "isn't the way the router had it" : "ahead of the denies").test(await p.$eval("#board", (n) => n.textContent)), "SB-12 " + v.kind + ": Mason says the list isn't the router's way"); },
       fix: async (p, v) => {
         if (v.kind === "printers") await rtConf(p, v, ["interface " + v.sub, "no ip access-group " + v.list + " in"]);

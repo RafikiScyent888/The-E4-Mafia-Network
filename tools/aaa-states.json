@@ -1074,6 +1074,20 @@
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-07'); const v=c.T.v, P=v.plan; const m=l=>c.act({t:'cmd',dev:'mgr',line:l}); ['ssh '+P.user+'@'+P.vlans.staff.gw,P.userPw,'enable',P.rtSecret,'configure terminal','no access-list 1'].concat(v.before.map(x=>'access-list 1 '+x),['end','copy running-config startup-config','','exit']).forEach(m); c.guess('right'); c.act({t:'cmd',dev:v.dev,line:'ping 8.8.8.8'}); document.getElementById('board').scrollIntoView();"
  },
  {
+  "name": "business tickets: SB-08 the back switch's console logging the native VLAN mismatch, show interfaces trunk",
+  "page": "index.html",
+  "ticket": "SB-08",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-08'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=tech]').click(); ['',P.swConsole,'enable',P.swSecret,'show interfaces trunk'].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-08 solved, the summary",
+  "page": "index.html",
+  "ticket": "SB-08",
+  "seed": 777777,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-08'); const v=c.T.v, P=v.plan; const t=l=>c.act({t:'cmd',dev:'tech',line:l,cli:true}); ['',P.swConsole,'enable',P.swSecret,'configure terminal','interface gi0/24','switchport trunk native vlan '+v.native,'end','copy running-config startup-config','','disable','exit'].forEach(t); v.devs.forEach(id=>c.act({t:'cmd',dev:id,line:'ipconfig /renew'})); c.guess('right'); c.act({t:'cmd',dev:v.devs[0],line:'ping '+v.printer}); document.getElementById('board').scrollIntoView();"
+ },
+ {
   "name": "business tickets: the shelves, the small business's tickets",
   "page": "lab-bench.html",
   "ticket": "SB-01",

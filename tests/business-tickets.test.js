@@ -194,7 +194,10 @@ const WRONG = {
       e.flatMap((sw) => onSw(T, sw, [port8(sw), "shutdown", "no shutdown"])).concat(again9())];
   },
   "SB-13": (T) => {
-    const v = T.v, Lst = v.list, L = [again13(T), [{ t: "power", dev: "rtr" }].concat(again13(T))];
+    const v = T.v, V = v.plan.vlans, Lst = v.list, L = [again13(T), [{ t: "power", dev: "rtr" }].concat(again13(T))];
+    /* the lists' own lines changed with it: the clause keeping guests off the staff and the department decides these (its plant went uncaught) */
+    if (v.kind === "guest-out") L.push(onRt(T, fix13(T).concat(["exit", "ip access-list extended " + Lst, "no deny ip " + V.guest.net + " 0.0.0.255 " + V.staff.net + " 0.0.0.255"])).concat(again13(T)));   /* turned the right way, and the line keeping guests off the staff taken out while hunting the block: they reach the counter's PC */
+    else L.push(onRt(T, fix13(T).concat(["exit", "ip access-list extended " + Lst, "no deny ip " + V.guest.net + " 0.0.0.255 " + V.dept.net + " " + V.dept.wild])));   /* back where it was, rebuilt without its guests' line: guests reach the department */
     if (v.kind === "guest-out") {
       L.push(onRt(T, ["interface " + v.gs, "no ip access-group " + Lst + " out"]).concat(again13(T)));   /* taken off altogether: guests online, and nothing keeps them off the staff */
       L.push(onRt(T, ["interface " + v.gs, "ip access-group " + Lst + " in"]).concat(again13(T)));   /* in as well, still out too: the replies still stopped */

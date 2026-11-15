@@ -63,9 +63,9 @@ export const BUSINESS_LAYOUT = {
   rtr: { x: 440, y: 180, px: 280, py: 105, room: "closet", lab: "right" },
   msw: { x: 560, y: 300, px: 280, py: 225, room: "closet" },
   tech: { x: 240, y: 290, px: 115, py: 345, room: "closet", alt: { back: { x: 270, y: 330, lab: "right", px: 925, py: 435 } } },   /* carried to the back room (SB-J4): far enough from the back switch for its console line to carry both names, its own name to its right; on the plan, low at the right, out of the trunk's way (9 November 2026: placed afresh it took the trunk's only way in, under the room's name) */
-  pc: { x: 300, y: 440, px: 430, py: 130, room: "counter" },
+  pc: { x: 300, y: 440, px: 430, py: 130, room: "counter", lp: { px: 430, py: 112 } },   /* lp: with SB-14's label printer at the counter, up to make room under it */
   mgr: { x: 735, y: 150, px: 820, py: 150, room: "office" },
-  printer: { x: 430, y: 440, px: 560, py: 140, room: "counter" },
+  printer: { x: 430, y: 440, px: 560, py: 140, room: "counter", lp: { px: 565, py: 112 } },
   bpc: { x: 110, y: 440, px: 895, py: 315, room: "back" },   /* on the plan, up at the right, its long name clear of the back door camera's injector and the department's runs */
   /* SB-J3's: the access point on the waiting area's ceiling, its injector in the closet, the visitor's phone */
   injector: { x: 735, y: 320, px: 280, py: 345, room: "closet", lab: "above" },   /* in line with the manager's PC and the access point, its name clear of the PC's address */
@@ -82,6 +82,7 @@ export const BUSINESS_LAYOUT = {
   cinj2: { x: 265, y: 600, px: 740, py: 455, room: "back" },   /* on the plan, its name clear of the back room's wall and of the back PC's name (9 November 2026) */
   cam2: { x: 110, y: 600, px: 720, py: 562, room: "back" },   /* on the plan, on the wall outside the back door */
   mphone: { px: 720, py: 215, room: "office" },
+  printer2: { px: 520, py: 200, room: "counter" },   /* SB-14's label printer: on the plan only (it isn't in the records), at the counter */
   /* SB-J10's department: its two PCs in the new room off the back room, on the plan below it (beside the strip outside the back
      door), the first up at the right under the door and the second lower and to the left, so neither one's run passes the
      other's tile or name; on the diagram, a column of their own left of the back switch (the diagram widens to the left for
@@ -234,6 +235,20 @@ export function addDepartment(sim) {
     net.rooms[id] = "back"; sim.arp[id] = {};   /* delivered to the back room in their boxes */
   });
   net.roomNames.dept = D.room;
+}
+
+/* what SB-14 finds: a label printer for the counter, bought and set up while the printer was away for repair. Nobody told the
+   technician, so it's in none of the records and not on the diagram (the records are the documentation); it's on the floor plan
+   at the counter, cabled to a closet switch spare the supplier opened in the printers' VLAN. It starts as it came from its box,
+   asking for an address (the ticket sets it the way it was really set up). From a stream of its own, so every business before it
+   comes out exactly as it always has */
+export const LABEL_PORT = "7";
+export function addLabelPrinter(sim) {
+  const net = sim.net, r = rng(net.seed ^ 0x14b2), m = mac(r);
+  net.devices.printer2 = { id: "printer2", kind: "printer", label: "Label printer", sub: "not on the diagram", on: true, undocumented: true,
+    ifaces: [{ name: "Wired", type: "eth", port: "NET", mac: m, cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] };
+  net.cables.push({ id: "c-msw-printer2", kind: "cat6", a: { dev: "msw", port: LABEL_PORT, seated: true }, b: { dev: "printer2", port: "NET", seated: true }, cond: "good", length: BUSINESS_RUN.closet.counter });
+  net.rooms.printer2 = "counter"; sim.arp.printer2 = {};
 }
 
 export function makeBusiness(seed) {

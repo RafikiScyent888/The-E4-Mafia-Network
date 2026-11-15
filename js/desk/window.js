@@ -560,7 +560,7 @@ function printerForm(P, ctx, rerender) {
   f.addEventListener("submit", function (e) {
     e.preventDefault(); const d = new FormData(f);
     const values = d.get("mode") === "dhcp" ? { mode: "dhcp" } : { mode: "static", ip: String(d.get("ip")).trim(), mask: String(d.get("mask")).trim(), gw: String(d.get("gw")).trim() };
-    const x = ctx.act({ t: "client", dev: "printer", values: values });
+    const x = ctx.act({ t: "client", dev: P.dev || "printer", values: values });
     if (x && x.result && x.result.ok) { ctx.flash = "Saved. The printer restarted its network with the new settings."; rerender(); }
     else { msg.className = "msg err"; msg.textContent = "Not saved: " + ((x && x.result && x.result.errs) || []).join(". ") + "."; }
   });

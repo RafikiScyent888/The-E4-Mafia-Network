@@ -97,6 +97,9 @@ const PROOF = {
 /* the guests' Wi-Fi moved at the access point onto its own network (the VLAN left blank): the visitor's phone works, among the
    business's own devices. On SB-12 a plant that let guests reach the printer went uncaught, and Mason's word was wrong on eight variants */
 const moveWifi = (T) => { const w = T.sim.d.ap.ssids.find((x) => x.ssid === T.v.plan.guestSsid); return [{ t: "apnet", dev: "ap", net: { ssid: w.ssid, sec: w.sec, psk: w.psk, vlan: "" } }]; };
+/* before the fix, a ping that fails because nothing answers there, not because the router stopped it, proves nothing and gets no word
+   from Mason (SB-13: a plant counting any failed ping to the department went uncaught) */
+const DEADPING = { "SB-13": (T) => T.v.kind === "guest-out" ? [] : [pc("ping " + T.v.plan.vlans.dept.last)] };
 /* a proof from a device the fault never touched proves nothing (SB-10's swap: the staff always reached the printer; its plant went uncaught) */
 const NOPROOF = { "SB-10": (T) => T.v.kind === "swap" ? [pc("ping " + T.v.printer), mgr("ping " + T.v.printer)] : [] };
 const UNSAVED = {
@@ -460,6 +463,7 @@ for (const def of BUSINESS_TICKETS) {
     for (const s of seedsOf(def, 6)) {
       const T = E.open(def, s); for (const a of PROOF[def.id](T)) E.act(T, a); assert.equal(T.proven, false);
       E.act(T, pc("ping 8.8.8.8")); E.act(T, { t: "print" });
+      for (const a of (DEADPING[def.id] ? DEADPING[def.id](T) : [])) { const r = E.act(T, a); assert.ok(r.facts && !r.facts.replies && r.facts.kind !== "blocked", "nothing answers there, and the router doesn't stop it (" + (r.facts && r.facts.kind) + ")"); }
       assert.equal(T.proven, false); assert.equal(T.partial, null, "a guest reaching the internet isn't the fix half done");
       E.guess(T, "right"); for (const a of FIX[def.id](T)) E.act(T, a); assert.equal(T.fixed, true);
       const byFix = T.proven;

@@ -436,14 +436,14 @@ for (const def of BUSINESS_TICKETS) {
       assert.equal(T.proven, true, def.id + " seed " + s + " proof"); assert.equal(T.solved, true);
     }
   });
-  test(def.id + ": a proof run before the fix does not count, the internet proves nothing, and nor does a ping to itself", () => {
+  test(def.id + ": a proof run before the fix does not count, the internet proves nothing, and nor does a ping to itself or a tracert to its own router", () => {
     for (const s of seedsOf(def, 6)) {
       const T = E.open(def, s); for (const a of PROOF[def.id](T)) E.act(T, a); assert.equal(T.proven, false);
       E.act(T, pc("ping 8.8.8.8")); E.act(T, { t: "print" });
       assert.equal(T.proven, false); assert.equal(T.partial, null, "a guest reaching the internet isn't the fix half done");
       E.guess(T, "right"); for (const a of FIX[def.id](T)) E.act(T, a); assert.equal(T.fixed, true);
       const byFix = T.proven;
-      E.act(T, pc("ping 127.0.0.1")); E.act(T, pc("ping -n 6 " + T.sim.addr("pc").ip));
+      E.act(T, pc("ping 127.0.0.1")); E.act(T, pc("ping -n 6 " + T.sim.addr("pc").ip)); E.act(T, pc("tracert " + T.sim.addr("pc").gw));   /* a tracert that ends at the PC's own router proves nothing past it (SB-05's plant) */
       E.act(T, { t: "cmd", dev: "bpc", line: "ping 127.0.0.1" }); E.act(T, { t: "cmd", dev: "bpc", line: "ping " + T.sim.addr("bpc").ip });
       assert.equal(T.proven, byFix, "pinging itself proves nothing");
       for (const a of PROOF[def.id](T)) E.act(T, a); assert.equal(T.proven, true);

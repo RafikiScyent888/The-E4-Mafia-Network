@@ -266,11 +266,11 @@ export function page(sim, id, key, opts) {
     for (const ap of sim.aps()) { const sg = sim.heardAt(ap, sim.net.rooms.laptop); if (sg < 15) continue; const k = ap.ssid + (ap.sec === "Open" ? "|open" : "|sec"); if (seen[k]) { seen[k].signal = Math.max(seen[k].signal, sg); continue; } seen[k] = { ssid: ap.ssid, open: ap.sec === "Open", sec: ap.sec, signal: sg, now: !!(l && l.connected && l.ap.ssid === ap.ssid && (l.ap.sec === "Open") === (ap.sec === "Open")) }; nets.push(seen[k]); }
     return { kind: "rows", title: "Wi-Fi", rows: rows, speedTest: !!(l && l.connected), networks: nets, forget: !!f.saved.ssid, facts: { page: "laptop-wifi", connected: !!(l && l.connected), reason: l && l.reason, ch: l && l.ch, band: l && l.band, signal: l && l.signal } };
   }
-  if (id === "printer" && key === "panel") {
-    const f = x.ifaces[0], a = sim.addr("printer");
-    return { kind: "form", form: "printer", title: "Control panel", status: a ? "Ready" : "No network connection", mac: f.mac, link: f.cfg.speed ? f.cfg.speed + " Mb/s, " + (f.cfg.duplex || "full") + " duplex (fixed: this card can't negotiate)" : null,
-      values: { mode: f.cfg.mode, ip: f.cfg.mode === "static" ? f.cfg.ip : a ? a.ip : "", mask: f.cfg.mode === "static" ? f.cfg.mask : a ? a.mask : sim.d.router.lan.mask, gw: f.cfg.mode === "static" ? f.cfg.gw : a ? a.gw : sim.d.router.lan.ip },
-      facts: { page: "printer-panel", ip: f.cfg.mode === "static" ? f.cfg.ip : a && a.ip, mode: f.cfg.mode, mac: f.mac, mask: f.cfg.mode === "static" ? f.cfg.mask : a && a.mask, gw: f.cfg.mode === "static" ? f.cfg.gw : a && a.gw } };
+  if (x.kind === "printer" && key === "panel") {   /* any printer's own panel (a second printer came with SB-14) */
+    const f = x.ifaces[0], a = sim.addr(id);
+    return { kind: "form", form: "printer", dev: id, title: "Control panel", status: a ? "Ready" : "No network connection", mac: f.mac, link: f.cfg.speed ? f.cfg.speed + " Mb/s, " + (f.cfg.duplex || "full") + " duplex (fixed: this card can't negotiate)" : null,
+      values: { mode: f.cfg.mode, ip: f.cfg.mode === "static" ? f.cfg.ip : a ? a.ip : "", mask: f.cfg.mode === "static" ? f.cfg.mask : a ? a.mask : (sim.d.router ? sim.d.router.lan.mask : ""), gw: f.cfg.mode === "static" ? f.cfg.gw : a ? a.gw : sim.d.router.lan.ip },
+      facts: { page: id === "printer" ? "printer-panel" : id + "-panel", dev: id, ip: f.cfg.mode === "static" ? f.cfg.ip : a && a.ip, mode: f.cfg.mode, mac: f.mac, mask: f.cfg.mode === "static" ? f.cfg.mask : a && a.mask, gw: f.cfg.mode === "static" ? f.cfg.gw : a && a.gw } };
   }
   if (id === "camera" && key === "web") {
     const a = sim.addr("camera"), up = a && sim.route("camera", "203.0.113.80").internet;

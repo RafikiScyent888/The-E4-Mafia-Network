@@ -111,7 +111,7 @@ export function physicalState(sim, id) {
     L("STATUS", "Status ring", on ? "on" : "off", ok ? "green" : "amber"); L("LINK", "Side light", on && !ok ? "on" : "off", "amber");
     opts.weak = !ok;
   } else if (model === "printer") {
-    const P = page(sim, "printer", "panel"), a = sim.addr("printer");
+    const P = page(sim, id, "panel"), a = sim.addr(id);   /* whichever printer this is */
     L("attention", "Attention light", a ? "off" : "on", "amber");
     opts.screen = { status: a ? "ONLINE (" + a.ip + ")" : "NO NETWORK CONNECTION", ip: P.values.ip || "--" };
   } else if (model === "tv") {

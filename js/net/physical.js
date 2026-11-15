@@ -9,7 +9,7 @@ import { prompt } from "./cmd.js";
 import { POE, SFP_MODULES } from "./sim.js";
 
 /* the model each device is drawn with (the old router in HOME-10 is a home router too) */
-export const MODEL_OF = { modem: "modem", router: "router", rogue: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", injector: "injector", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc", bpc: "pc" };   /* the office's meeting room (SO-04): an old 5-port switch in the same housing, and a desktop */
+export const MODEL_OF = { modem: "modem", router: "router", rogue: "router", switch: "switch", pc: "pc", laptop: "laptop", intruder: "laptop", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", injector: "injector", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc", bpc: "pc" };   /* the office's meeting room (SO-04): an old 5-port switch in the same housing, and a desktop */
 
 /* each model's network ports: the name printed on the model, and the sim's port at that device */
 const PORTS = {
@@ -117,6 +117,9 @@ export function physicalState(sim, id) {
   } else if (model === "tv") {
     const P = page(sim, "tv", "net");
     opts.screen = { connected: !!sim.addr("tv"), rows: P.rows.slice(1, 4).concat([["MAC address", "██:██:██:██:██:██"]]) };
+  } else if (model === "laptop" && x.kind === "intruder") {
+    opts.screen = ["Locked", "Enter your password"];   /* SB-15's unknown laptop: locked, its owner gone */
+    says.push("On screen: locked, asking for its owner's password.");
   } else if (model === "laptop") {
     opts.screen = [prompt(sim, id) + "_"];   /* Command Prompt open and waiting: what it says is for the student to find out */
   } else if (model === "techlaptop") {

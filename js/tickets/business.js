@@ -1041,6 +1041,88 @@ const SB12 = {
   }
 };
 
-export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07, SB08, SB09, SB10, SB11, SB12];
+/* ---------------------------------------------------------------- SB-13 */
+/* An access list applied the wrong way: the guests' list turned to face out of the guests' subinterface ("it's what goes out to
+   the guests"), so it filters the replies coming back to them instead of what they send (guests get an address, from the router
+   itself, and nothing else); or the department's list, which keeps the staff and guests out of the department, turned to face in
+   on the department's subinterface, or moved to the staff's, where it stops nothing (everything works, and the staff and guests
+   can reach the department's PCs: the department's owner noticed). The lists themselves are right; where and which way they face
+   is not. The fix: each list back on its interface, facing as the router had it, saved. */
+const SB13_STORY = {
+  "guest-out": function () { return "Since Saturday the guest Wi-Fi connects but nothing loads: phones say connected, no internet. Our own computers are fine. On Friday my brother-in-law went over the router for the card processor's check and \"turned the guest filter round to face the guests\"."; },
+  "dept-in": function (v) { return "Nothing's broken, but this morning I could open the " + v.deptName + "'s PC from the " + v.pc + ", and only my PC is meant to reach it. Last night the company that set up the " + v.deptName + " re-applied its filter on the router after an update, \"facing the " + v.deptName + "\"."; },
+  "dept-staff": function (v) { return "Everything works, but the " + v.deptName + " says the counter staff can see its PCs again, and a customer's phone on the guest Wi-Fi showed them too. Only my PC is meant to reach them. On Friday our nephew moved the " + v.deptName + "'s filter on the router \"to the staff side, where the staff come from\"."; }
+};
+const SB13 = {
+  id: "SB-13", n: "13", level: 3, tier: "harder", title: "An access list is on the router, just not where it works", priority: 2, due: "2 h",
+  kinds: ["guest-out", "dept-in", "dept-staff"],   /* its variants, in the order a seed picks them (the tests find a business for each) */
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, V = p.vlans, r = rng(hash("SB-13:" + seed)), kind = r.pick(SB13.kinds), R = sim.d.rtr.sw, groups = groupsOf(sim);
+    const subOf = function (id) { return Object.keys(R.subs).find(function (n) { return R.subs[n].vlan === id; }); };
+    const gs = subOf(V.guest.id), ds = subOf(V.dept.id), ss = subOf(V.staff.id), list = kind === "guest-out" ? p.guestAcl : p.dept.acl;
+    const L = kind === "guest-out" ? ["interface " + gs, "no ip access-group " + list + " in", "ip access-group " + list + " out"]
+      : kind === "dept-in" ? ["interface " + ds, "no ip access-group " + list + " out", "ip access-group " + list + " in"]
+        : ["interface " + ds, "no ip access-group " + list + " out", "interface " + ss, "ip access-group " + list + " out"];
+    onRouter(sim, ["configure terminal"].concat(L, ["end"], SAVE));
+    if (kind === "guest-out") { sim.apply({ t: "radio", dev: "guest", on: false }); sim.apply({ t: "radio", dev: "guest", on: true }); }
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, groups: groups, list: list, gs: gs, ds: ds, ss: ss, printer: p.printerIp, pc: name(sim, "pc"), deptName: String(sim.net.roomNames.dept).toLowerCase() } };
+  },
+  brief(v) { return { quote: SB13_STORY[v.kind](v) }; },
+  mason: "A list does nothing on its own: it works only on the interface it's applied to, and only on the traffic going the way it faces. Follow the traffic, and see where it meets the list.",
+  affected(v) { return v.kind === "guest-out" ? "guest" : "pc"; },
+  options(v) {
+    const g = v.kind === "guest-out";
+    return [
+      { id: "right", right: true, text: g ? "The guests' access list is applied facing out of the guests' subinterface, not in" : "The " + v.deptName + "'s access list isn't applied facing out of the " + v.deptName + "'s subinterface any more" },
+      { id: "lines", text: g ? "A line has gone from the guests' access list" : "The " + v.deptName + "'s access list has lost its line keeping the staff out", why: "show access-lists gives every line of it as the router had it: the list itself is untouched." },
+      { id: "nat", text: g ? "NAT no longer translates the guests' network" : "NAT now translates the " + v.deptName + "'s addresses for the staff", why: g ? "NAT's list still names the guests' network, and the guests' subinterface is still NAT's inside." : "NAT only changes addresses on the way out to the internet; inside the business nothing is translated." },
+      { id: "trunk", text: g ? "The trunk to the router no longer carries the guests' VLAN" : "The " + v.deptName + "'s PCs have been moved into the staff VLAN", why: g ? "The phone got its address from the router's guest pool, across that same trunk." : "Their addresses are still in the " + v.deptName + "'s block, from its pool, and their ports are still in its VLAN." },
+      { id: "shut", text: g ? "The router's guest subinterface has been shut down" : "The manager's PC's reservation has been given to the counter's PC", why: g ? "show ip interface brief has it up and up, and the phone got its address through it." : "The manager's PC still has its reserved address, and the counter's PC an address from the staff pool." },
+      g ? { id: "pw", text: "The guest Wi-Fi's password has been changed", why: "The phone is connected with a guests' address: a wrong password is refused before that, and the phone says so." }
+        : { id: "deleted", text: "The " + v.deptName + "'s access list has been deleted", why: "show access-lists still lists it, every line; show running-config still names it on an interface." }
+    ];
+  },
+  rung1(v) { return (v.kind === "guest-out" ? "On the visitor's phone: its Wi-Fi page." : "On the " + v.pc + ": a ping to a " + v.deptName + " PC.") + " Then on the router, from the manager's PC: show access-lists, then show interfaces for each subinterface (which list is on it, and which way), and show running-config."; },
+  rung2() { return "A list applied in filters what arrives on that interface; applied out, what leaves by it. Turned the other way, or put on another interface, the same lines meet different traffic: they can block everything, or nothing at all."; },
+  fixHints(v) { return ["The list's lines are right. Find which interface it's on and which way it faces, and ask what traffic its lines were written for.", v.kind === "guest-out" ? "Face it the way it meets what the guests send." : "Put it back where it meets what goes to the " + v.deptName + ", facing that way, and nowhere else.", "Save it, then test" + (v.kind === "guest-out" ? " from the visitor's phone (it joins again)." : ": the staff kept out, the manager still let in.")]; },
+  exhibits(sim, v) {
+    if (JSON.stringify(groupsOf(sim)) === JSON.stringify(v.groups)) return false;
+    if (v.kind === "guest-out") { const g = sim.addr("guest"); return !!g && g.kind === "dhcp" && !online(sim, "guest") && online(sim, "pc"); }
+    const d = sim.addr("dpc1"); return !!d && !sim.route("pc", d.ip).fail && online(sim, "dpc1") && online(sim, "pc");
+  },
+  groupsRight(sim, v, saved) { return JSON.stringify(groupsOf(sim, saved)) === JSON.stringify(v.groups); },
+  works(sim, v) {
+    const d = sim.addr("dpc1"), g = sim.addr("guest");
+    const guestsOut = !!d && !!sim.route("guest", d.ip).fail && !!sim.route("guest", sim.addr("pc").ip).fail;
+    if (v.kind === "guest-out") return !!g && g.kind === "dhcp" && online(sim, "guest") && guestsOut && !reachesPrinter(sim, "guest", v.printer);
+    return !!d && sim.route("pc", d.ip).fail === "blocked" && !sim.route("mgr", d.ip).fail && guestsOut && online(sim, "dpc1") && reachesPrinter(sim, "dpc1", v.printer);
+  },
+  fixed(sim, v) { return SB13.groupsRight(sim, v) && SB13.groupsRight(sim, v, true) && SB13.works(sim, v) && online(sim, "pc") && online(sim, "mgr"); },
+  partial(v, sim) {
+    if (!SB13.groupsRight(sim, v)) return "It does what you tested, but the router's lists aren't on the interfaces, or facing the ways, it had them.";
+    if (!SB13.groupsRight(sim, v, true)) return "It works right now, but the router hasn't saved it: the next power cut or reload puts the list back where it was.";
+    return "It works right now, but not everything is back the way the router had it.";
+  },
+  proves(f, sim, v) {
+    if (v.kind === "guest-out") return ((f.join || f.radio) && f.dev === "guest" && !!f.internet) || (f.page === "guest-wifi" && !!f.internet);
+    const D = v.plan.vlans.dept; return f.cmd === "ping" && (f.dev === "pc" || f.dev === "bpc") && !!f.ip && inNet(f.ip, D.net, D.len) && f.kind === "blocked";
+  },
+  proofText: "the visitor's phone online, or a staff PC's ping to the department's PC stopped by the router",
+  evidence: [
+    { id: "phone", test: function (f, v) { return v.kind === "guest-out" && f.page === "guest-wifi" && f.connected && !f.internet; }, text: function () { return "The visitor's phone's Wi-Fi page: connected, a guests' address, no internet"; } },
+    { id: "reach", test: function (f, v) { const D = v.plan.vlans.dept; return v.kind !== "guest-out" && f.cmd === "ping" && (f.dev === "pc" || f.dev === "bpc") && !!f.ip && inNet(f.ip, D.net, D.len) && f.replies > 0; }, text: function (f, v, sim) { return "Ping from the " + name(sim, f.dev) + " to a " + v.deptName + " PC: replies (only the manager's PC is meant to reach it)"; } },
+    { id: "acls", test: function (f, v) { return f.on === "rtr" && new RegExp("IP access list " + v.list + "\\n").test(devOut(f)); }, text: function (f, v) { return "show access-lists on the router: " + v.list + ", every line as the router had it"; } },
+    { id: "facing", test: function (f, v) { return f.on === "rtr" && new RegExp("(?:Inbound|Outgoing)\\s+access list is " + v.list).test(devOut(f)); }, text: function (f, v) { const o = devOut(f), m = o.match(/^(\S+) is [^\n]*/m), d = o.match(new RegExp("(Inbound|Outgoing)\\s+access list is " + v.list)); return "On the router: " + (m ? m[1] : "a subinterface") + ", " + (d ? d[1].toLowerCase() : "") + " access list " + v.list; } },
+    { id: "run", test: function (f, v) { return f.on === "rtr" && /Current configuration/.test(devOut(f)) && new RegExp("ip access-group " + v.list + " (in|out)").test(devOut(f)); }, text: function (f, v) { const o = devOut(f), m = o.match(new RegExp("interface (\\S+)\\n[^!]*?ip access-group " + v.list + " (in|out)")); return "show running-config on the router: " + (m ? "interface " + m[1] + ", ip access-group " + v.list + " " + m[2] : "ip access-group " + v.list); } }
+  ],
+  summary(v) {
+    const how = v.kind === "guest-out" ? "The guests' list, " + v.list + ", had been turned to face out of the guests' subinterface, and saved. Its lines are written for what guests send, so facing out it met the replies coming back to them instead: guests still got their addresses, from the router itself, and nothing more."
+      : "The " + v.deptName + "'s list, " + v.list + ", had been " + (v.kind === "dept-in" ? "turned to face in on the " + v.deptName + "'s subinterface" : "moved to face out of the staff's subinterface") + ", and saved. Its lines are written for what goes to the " + v.deptName + ", so where it was now it stopped nothing: the staff and the guests could reach the " + v.deptName + "'s PCs.";
+    return { cause: how, fix: "Put " + v.list + " back facing " + (v.kind === "guest-out" ? "in on the guests' subinterface" : "out of the " + v.deptName + "'s subinterface, and nowhere else") + ", saved, and tested " + (v.kind === "guest-out" ? "from the visitor's phone." : "that the staff were kept out and the manager still let in.") };
+  }
+};
+
+export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07, SB08, SB09, SB10, SB11, SB12, SB13];
 BUSINESS_TICKETS.forEach(function (d) { if (!d.partial) return; const own = d.partial; d.partial = function (v, sim) { return guestMoved(sim, v) ? GUEST_MOVED : own(v, sim); }; });
 export const BUSINESS_COMING = [];

@@ -828,13 +828,13 @@ export class Sim {
     if (!pass(outIf, "out", req)) return Object.assign({ fail: "blocked", hops: [gwIp], acl: { iface: outIf, dir: "out" } }, base);
     if (w && outIf === w.iface) {   /* towards the provider */
       if (!w.ok) return Object.assign({ fail: "net-unreachable", hops: [gwIp], why: "wan" }, base);
-      if (!this.wanHopOk(w, rt)) return Object.assign({ fail: "no-reply", hops: [gwIp], why: rt.nh ? "next-hop" : "no-arp" }, base);   /* sent to a next hop that isn't the provider's: nothing comes back */
+      if (!this.wanHopOk(w, rt) && dst !== w.gw) return Object.assign({ fail: "no-reply", hops: [gwIp], why: rt.nh ? "next-hop" : "no-arp" }, base);   /* sent to a next hop that isn't the provider's: nothing comes back (the provider's gateway itself answers on the connected network) */
       if (!isPublic(dst)) return Object.assign({ fail: "beyond", hops: [gwIp, w.gw] }, base);
       const fin = (inIf.indexOf(".") > 0 ? R.subs[inIf] : R.ifs[inIf]).nat, fout = R.ifs[outIf].nat;
       const rule = R.nat.find(function (x) { return x.iface === outIf && RT.aclVerdict(R, x.list, { proto: "ip", src: a.ip, dst: dst }).permit && R.acls[x.list]; });
       if (isPrivate(a.ip) && !(fin === "inside" && fout === "outside" && rule && rule.overload)) return Object.assign({ fail: "no-nat", hops: [gwIp], why: !rule ? "no rule" : fin !== "inside" ? "inside" : fout !== "outside" ? "outside" : "overload" }, base);   /* a private source the provider won't route: no reply ever comes */
       if (!pass(outIf, "in", Object.assign({}, rep, { dst: w.addr })) || !pass(inIf, "out", rep)) return Object.assign({ fail: "no-reply", hops: [gwIp] }, base);
-      return Object.assign({ internet: true, nat: { inside: a.ip, global: w.addr }, hops: [gwIp, w.gw, this.net.isp.core, dst] }, base);
+      return Object.assign({ internet: true, nat: { inside: a.ip, global: w.addr }, hops: dst === w.gw ? [gwIp, w.gw] : [gwIp, w.gw, this.net.isp.core, dst] }, base);
     }
     /* out onto another of the business's own networks */
     const odom = this.domain(this.rtNode(rid, outIf)), next = rt.nh || dst, oa = RT.addrOf(R, outIf, live);
@@ -860,9 +860,9 @@ export class Sim {
     const inOk = function (n, pk) { const f = n.indexOf(".") > 0 ? R.subs[n] : R.ifs[n]; if (!f || !f.aclIn) return true; const v = RT.aclVerdict(R, f.aclIn, pk); if (!v.missing) acls.push([f.aclIn, v.line]); return v.permit; };
     if (w && outIf === w.iface) {
       if (!w.ok) return { fail: "net-unreachable", src: src };
-      if (!this.wanHopOk(w, rt)) return { fail: "no-reply", src: src, why: rt.nh ? "next-hop" : "no-arp" };
+      if (!this.wanHopOk(w, rt) && dst !== w.gw) return { fail: "no-reply", src: src, why: rt.nh ? "next-hop" : "no-arp" };   /* the provider's gateway itself answers on the connected network, whatever the routes say */
       if (!isPublic(dst)) return { fail: "beyond", src: src, hops: [w.gw] };
-      return inOk(outIf, rep) ? { internet: true, src: src, outIf: outIf, hops: [w.gw, this.net.isp.core, dst], acls: acls } : { fail: "no-reply", src: src, acls: acls };
+      return inOk(outIf, rep) ? { internet: true, src: src, outIf: outIf, hops: dst === w.gw ? [w.gw] : [w.gw, this.net.isp.core, dst], acls: acls } : { fail: "no-reply", src: src, acls: acls };
     }
     const odom = this.domain(this.rtNode(rid, outIf)), next = rt.nh || dst;
     let blk = null; const owners = this.owners(next, odom).filter(function (o) { if (o === rid) return false; const b = src && this.arpBlocked(this.rtNode(rid, outIf), this.macOf(rid), src, o, next, odom); if (b) blk = blk || b; return !b; }, this);

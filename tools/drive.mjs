@@ -558,6 +558,23 @@ Object.assign(PLAN, {
     };
   })(),
   /* SB-05: the router's default route wrong; the provider's gateway off the card */
+  "SB-05": {
+    look: async (p, v) => {
+      await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); check(!/Reply from 8\.8\.8\.8: bytes/.test((await term(p)).split("ping 8.8.8.8").pop()), "SB-05: the PC gets nothing from the internet");
+      await type(p, "ping " + v.printer); check(/Reply from [\d.]+: bytes/.test((await term(p)).split("ping " + v.printer).pop()), "SB-05: the PC reaches the printer across the router");
+      await type(p, "tracert 8.8.8.8"); check(new RegExp("1\\s+.*" + v.plan.vlans.staff.gw.replace(/\./g, "\\.")).test((await term(p)).split("tracert 8.8.8.8").pop()), "SB-05: tracert gets as far as the router");
+      const prov = await rec(p, "The provider"), gw = (prov.match(/their gateway (\S+)/) || [])[1]; check(gw === v.gw, "SB-05: the records give the provider's gateway (" + prov + ")");
+      await rtLogin(p, v); await type(p, "show ip route"); check(v.wrong ? new RegExp("Gateway of last resort is " + v.wrong.replace(/\./g, "\\.")).test(await term(p)) : /Gateway of last resort is not set/.test(await term(p)), "SB-05 " + v.kind + ": show ip route on the router");
+      await type(p, "ping " + gw); check(/Success rate is 100 percent/.test((await term(p)).split("ping " + gw).pop()), "SB-05: the router reaches the provider's gateway on its own network");
+      await type(p, "exit");
+      const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(["noweb", "inside", "tracert", "route"].every((x) => ev.indexOf(x) >= 0), "SB-05: the notebook has the internet dead, the inside fine, tracert stopping, the router's routes (" + ev + ")");
+    },
+    wrong: async (p, v) => { await rtConf(p, v, (v.wrong ? ["no ip route 0.0.0.0 0.0.0.0 " + v.wrong] : []).concat(["ip route 0.0.0.0 0.0.0.0 " + v.gw]), false); },
+    afterWrong: async (p) => { check(/hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SB-05: the route put right but not saved: Mason says so"); },
+    fix: async (p, v) => { await rtConf(p, v, (v.wrong ? ["no ip route 0.0.0.0 0.0.0.0 " + v.wrong] : []).concat(["ip route 0.0.0.0 0.0.0.0 " + v.gw])); },
+    proof: async (p) => { await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "tracert 8.8.8.8"); }
+  },
+  /* SB-06: NAT's inside and outside the wrong way round */
 });
 
 for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY || k === process.env.ONLY || (process.env.ONLY === "tickets-office" && /^SO-/.test(k)) || (process.env.ONLY === "tickets-business" && /^SB-/.test(k)))) for (const seed of seedsFor(id)) {

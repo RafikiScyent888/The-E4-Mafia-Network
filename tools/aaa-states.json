@@ -1025,6 +1025,27 @@
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-04'); const v=c.T.v, P=v.plan; document.querySelector('#devtabs [data-d=guest]').click(); document.querySelector('.side').scrollIntoView();"
  },
  {
+  "name": "business tickets: SB-05 tracert from the PC stopping at the router; the card with the provider's letter",
+  "page": "index.html",
+  "ticket": "SB-05",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-05'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=pc]').click(); tab('Command Prompt'); ['ping 8.8.8.8','tracert 8.8.8.8'].forEach(k); document.getElementById('tk').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-05 show ip route on the router, no gateway of last resort",
+  "page": "index.html",
+  "ticket": "SB-05",
+  "seed": 1,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-05'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.vlans.staff.gw,P.userPw,'enable',P.rtSecret,'show ip route','ping '+v.gw].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-05 solved, the summary",
+  "page": "index.html",
+  "ticket": "SB-05",
+  "seed": 2,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-05'); const v=c.T.v, P=v.plan; const m=l=>c.act({t:'cmd',dev:'mgr',line:l}); ['ssh '+P.user+'@'+P.vlans.staff.gw,P.userPw,'enable',P.rtSecret,'configure terminal'].concat(v.wrong?['no ip route 0.0.0.0 0.0.0.0 '+v.wrong]:[],['ip route 0.0.0.0 0.0.0.0 '+v.gw,'end','copy running-config startup-config','','exit']).forEach(m); c.guess('right'); c.act({t:'cmd',dev:'pc',line:'tracert 8.8.8.8'}); document.getElementById('board').scrollIntoView();"
+ },
+ {
   "name": "business tickets: the shelves, the small business's tickets",
   "page": "lab-bench.html",
   "ticket": "SB-01",

@@ -271,3 +271,18 @@ test("a ping through the router to a VLAN nothing answers on steps through to th
   assert.equal(tr[tr.length - 1].ok, false); assert.match(tr[tr.length - 1].what, /Nothing on that network answers/);
   assert.equal(tr[tr.length - 1].at, sim.d.rtr.label, "it stops at the router");
 });
+
+/* found writing SB-05 (9 November 2026): the provider's gateway itself never answered a ping, from the router or through it,
+   though everything routed through it worked: a student checking the line from the router was told it was dead */
+test("the provider's gateway on the fixed block answers pings, from the router and from a staff PC through it", async () => {
+  const { BUSINESS_JOBS } = await import("../js/build/business.js"), { exec } = await import("../js/net/cmd.js");
+  const J = BUSINESS_JOBS.find((d) => d.id === "SB-J10"), b = J.start(4242), sim = b.sim, p = b.v.plan, F = p.fixed;
+  for (const a of J.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line, a.win); else sim.apply(a); }
+  assert.equal(sim.route("rtr", F.gw).internet, true, "from the router");
+  const r = exec(sim, "mgr", "ping " + F.gw); assert.equal(r.facts.replies, 4, "from the manager's PC");
+  assert.match(exec(sim, "mgr", "tracert " + F.gw).out, new RegExp("2\\s+.*" + F.gw.replace(/\./g, "\\.") + "\\n\\nTrace complete"), "one hop past the router");
+  /* and a route that names only the port still gets nothing else out */
+  const S = C.session(sim.d.rtr.sw, { via: "console" }); S.mode = "priv"; S.pending = null; S.fresh = false;
+  ["configure terminal", "no ip route 0.0.0.0 0.0.0.0 " + F.gw, "ip route 0.0.0.0 0.0.0.0 GigabitEthernet0/0", "end"].forEach((l) => C.exec(S, l));
+  assert.equal(exec(sim, "mgr", "ping 8.8.8.8").facts.replies, 0); assert.equal(exec(sim, "mgr", "ping " + F.gw).facts.replies, 4, "the gateway still answers on its own network");
+});

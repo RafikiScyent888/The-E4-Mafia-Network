@@ -491,6 +491,11 @@ function rtPools(r, live) {
   });
   return L.length ? L : ["% No DHCP pools are configured"];
 }
+/* the router's ARP table (show ip arp, show arp): its own addresses (no age), then what it has heard on each network */
+function rtArp(live) {
+  const T = (live && live("arp")) || [];
+  return [pad("Protocol", 10) + pad("Address", 17) + pad("Age (min)", 11) + pad("Hardware Addr", 16) + pad("Type", 7) + "Interface"].concat(T.map(function (e) { return pad("Internet", 10) + pad(e.ip, 17) + pad(e.own ? "-" : String(e.age), 11) + pad(e.mac, 16) + pad("ARPA", 7) + e.iface; }));
+}
 function rtNat(r, live) {
   const T = (live && live("nat")) || [];
   const L = [pad("Pro", 5) + pad("Inside global", 22) + pad("Inside local", 22) + pad("Outside local", 22) + "Outside global"];
@@ -564,11 +569,13 @@ const RT_SHOW = pick(SHOW, ["startup-config", "history", "clock", "users", "ssh"
   ["running-config", "Current operating configuration", function (S) { return rtRunning(S.sw); }],
   ["ip", "IP information", [
     ["interface", "IP interface status and configuration", [["brief", "Brief summary of IP status and configuration", function (S) { return rtBrief(S.sw, S.live); }]]],
+    ["arp", "IP ARP table", function (S) { return rtArp(S.live); }],
     ["route", "IP routing table", function (S) { return rtRoutes(S.sw, S.live); }],
     ["dhcp", "Show items in the DHCP database", [["binding", "DHCP address bindings", function (S) { return rtBindings(S.sw, S.live); }], ["pool", "DHCP pools information", function (S) { return rtPools(S.sw, S.live); }]]],
     ["nat", "IP NAT information", [["translations", "Translation entries", function (S) { return rtNat(S.sw, S.live); }]]],
     ["access-lists", "List IP access lists", function (S, a) { return rtAcls(S.sw, a[0], S.live); }]]],
   ["access-lists", "List access lists", function (S, a) { return rtAcls(S.sw, a[0], S.live); }],
+  ["arp", "ARP table", function (S) { return rtArp(S.live); }],
   ["lldp", "LLDP information (neighbour discovery)", [["neighbors", "LLDP neighbor entries", function (S, a) { if (S.sw.lldp === false) return ["% LLDP is not enabled"]; return lldpTable(S.sw, a[0] && /^d/i.test(a[0]), RT_PORTS.filter(function (n) { return !(S.sw.ifs[n] && S.sw.ifs[n].lldpRx === false); })); }, { sub: [["detail", "Show detailed information: each neighbour's management address"]] }]]],
   ["interfaces", "Interface status and configuration", function (S, a) {
     if (!a.length) return allIfs(S.sw).reduce(function (L, n) { return L.concat(rtIfDetail(S.sw, n, S.live)); }, []);

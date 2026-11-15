@@ -62,6 +62,12 @@ const again12 = (T) => T.v.kind === "guest" ? radioOn : [];
 /* SB-13: the list back where and which way the router had it */
 const fix13 = (T) => { const v = T.v, L = v.list; return v.kind === "guest-out" ? ["interface " + v.gs, "no ip access-group " + L + " out", "ip access-group " + L + " in"] : v.kind === "dept-in" ? ["interface " + v.ds, "no ip access-group " + L + " in", "ip access-group " + L + " out"] : ["interface " + v.ss, "no ip access-group " + L + " out", "interface " + v.ds, "ip access-group " + L + " out"]; };
 const again13 = (T) => T.v.kind === "guest-out" ? radioOn : [];
+/* SB-14: the label printer off the printer's address, the way it came by it; it asks again (or is set by hand) */
+const pre14 = (T) => T.v.plan.vlans.printers.net.replace(/0$/, "");
+const lp14 = { t: "client", dev: "printer2", values: { mode: "dhcp" } };   /* saved on its control panel as DHCP again: it asks for an address (as on the page; it has no Physical tab) */
+const fix14 = (T) => T.v.kind === "pool" ? ["ip dhcp excluded-address " + T.v.printer] : ["no ip dhcp pool LABEL-PRINTER"];
+const pool14 = (T) => { const P = T.v.plan.vlans.printers; return ["ip dhcp excluded-address " + pre14(T) + "1 " + pre14(T) + "29", "ip dhcp pool PRINTERS", "network " + P.net + " 255.255.255.0", "default-router " + P.gw, "exit"]; };
+const hand14 = (T, host) => ({ t: "client", dev: "printer2", values: { mode: "static", ip: pre14(T) + host, mask: "255.255.255.0", gw: T.v.plan.vlans.printers.gw } });
 const again4 = (T) => T.v.devs.flatMap((id) => id === "guest" ? [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }] : [{ t: "cmd", dev: id, line: "ipconfig /renew" }]);
 
 const FIX = {
@@ -77,7 +83,8 @@ const FIX = {
   "SB-10": (T) => onRt(T, subs10(T)).concat(again10(T)),
   "SB-11": (T) => onRt(T, fix11(T)).concat(again11(T)),
   "SB-12": (T) => onRt(T, fix12(T)).concat(again12(T)),
-  "SB-13": (T) => onRt(T, fix13(T)).concat(again13(T))
+  "SB-13": (T) => onRt(T, fix13(T)).concat(again13(T)),
+  "SB-14": (T) => T.v.kind === "static" ? [hand14(T, 30)] : onRt(T, fix14(T)).concat([lp14])
 };
 const PROOF = {
   "SB-01": (T) => [pc("ping " + T.v.printer)],
@@ -92,7 +99,8 @@ const PROOF = {
   "SB-10": (T) => T.v.kind === "printers" ? [{ t: "print" }] : T.v.kind === "guest" ? radioOn : [{ t: "cmd", dev: "dpc1", line: "ping " + T.v.printer }],
   "SB-11": (T) => T.v.kind === "guest" ? radioOn : [{ t: "cmd", dev: T.v.devs[0], line: "ping " + T.v.printer }],
   "SB-12": (T) => T.v.kind === "guest" ? radioOn : T.v.kind === "dept" ? [{ t: "cmd", dev: "dpc1", line: "ping " + T.v.printer }] : [{ t: "print" }],
-  "SB-13": (T) => T.v.kind === "guest-out" ? radioOn : [pc("ping " + T.sim.addr("dpc1").ip)]
+  "SB-13": (T) => T.v.kind === "guest-out" ? radioOn : [pc("ping " + T.sim.addr("dpc1").ip)],
+  "SB-14": () => [{ t: "print" }, { t: "print" }]
 };
 const UNSAVED = {
   "SB-01": (T) => conf(T, ["interface gi0/1", "switchport access vlan " + staff(T).id]).concat([pc("ipconfig /renew")]),
@@ -107,7 +115,8 @@ const UNSAVED = {
   "SB-10": (T) => onRt(T, subs10(T), false).concat(again10(T)),
   "SB-11": (T) => onRt(T, fix11(T), false).concat(again11(T)),
   "SB-12": (T) => onRt(T, fix12(T), false).concat(again12(T)),
-  "SB-13": (T) => onRt(T, fix13(T), false).concat(again13(T))
+  "SB-13": (T) => onRt(T, fix13(T), false).concat(again13(T)),
+  "SB-14": (T) => T.v.kind === "static" ? onRt(T, pool14(T), false).concat([{ t: "client", dev: "printer2", values: { mode: "dhcp" } }]) : onRt(T, fix14(T), false).concat([lp14])   /* the label printer given a proper pool to lend from, not saved */
 };
 /* tempting fixes that treat a symptom, or the wrong part: none may fix it */
 const WRONG = {
@@ -240,7 +249,48 @@ const WRONG = {
     return L;
   }
 };
+WRONG["SB-14"] = (T) => {
+  const v = T.v, pre = pre14(T), L = [[lp14], [{ t: "power", dev: "printer2" }], [{ t: "power", dev: "printer" }], [{ t: "power", dev: "rtr" }, lp14],
+    [{ t: "unplug", cable: "c-msw-printer2", end: "b" }],   /* the label printer unplugged: every page prints, and the counter has lost it */
+    onSw(T, "msw", ["interface gi0/" + v.port, "shutdown"]),   /* its port shut */
+    [{ t: "client", dev: "printer", values: { mode: "static", ip: pre + "31", mask: "255.255.255.0", gw: v.plan.vlans.printers.gw } }, { t: "pcprinter", ip: pre + "31" }],   /* the printer moved instead, and the counter's PC pointed at it */
+    [hand14(T, v.plan.vlans.printers.gw.split(".")[3])]];   /* the label printer given the gateway's address */
+  if (v.kind === "pool") {
+    L.push(onRt(T, fix14(T)));   /* the printer kept back, and the label printer never asked again */
+    L.push([hand14(T, 40)]);   /* set by hand inside what the pool lends, the pool left lending the printer's address */
+    L.push(onRt(T, ["no ip dhcp pool PRINTERS"]).concat([lp14]));   /* the pool taken away: the label printer has nothing to ask */
+    L.push(onRt(T, ["do clear ip dhcp binding *"]).concat([lp14]));   /* let go: the router finds the printer answering and lends the next one, and still lends the printer's when it's off */
+  } else if (v.kind === "reserved") {
+    L.push(onRt(T, fix14(T)));   /* the reservation gone, and the label printer never asked again */
+    L.push(onRt(T, ["ip dhcp excluded-address " + v.printer]).concat([lp14]));   /* kept back from the pool: a reservation doesn't care, and the router finds the printer answering and lends nothing */
+  } else {
+    L.push([{ t: "client", dev: "printer2", values: { mode: "dhcp" } }]);   /* set to ask for an address: nothing on the printers' network lends one */
+    L.push(onRt(T, ["ip dhcp excluded-address " + pre + "1 " + pre + "9", "ip dhcp pool PRINTERS", "network " + v.plan.vlans.printers.net + " 255.255.255.0", "default-router " + v.plan.vlans.printers.gw, "exit"]).concat([hand14(T, 40)]));   /* a pool made that lends the printer's address (and the label printer's) */
+  }
+  return L;
+};
 const SYMPTOM = {
+  "SB-14": (T) => {
+    const v = T.v, p = v.plan, P = p.vlans.printers, ip = v.printer.replace(/\./g, "\\.");
+    const rt = [mgr("ssh " + p.user + "@" + p.vlans.staff.gw), mgr(p.userPw), mgr("enable"), mgr(p.rtSecret)];
+    const a1 = out(T, rt.concat([mgr("show ip arp")]));
+    const f1 = E.act(T, { t: "print" }).facts, a2 = out(T, [mgr("show ip arp")]), f2 = E.act(T, { t: "print" }).facts, a3 = out(T, [mgr("show ip arp")]);
+    assert.equal(f1.print, "fail", "the first page goes to the label printer"); assert.equal(f2.print, "ok", "the next one prints");
+    const mac = (o) => (o.match(new RegExp("^Internet\\s+" + ip + "\\s+\\S+\\s+(\\S+)", "m")) || [])[1];
+    assert.ok(mac(a2) && mac(a3) && mac(a2) !== mac(a3), "the router's ARP for the printer's address flips between two hardware addresses (" + mac(a2) + ", " + mac(a3) + ")");
+    assert.equal(mac(a1), mac(a3), "this morning's page went to the printer");
+    const o = out(T, [mgr("show ip dhcp binding"), mgr("show running-config")]); E.act(T, mgr("exit"));
+    const bind = (o.match(new RegExp("^" + ip + "\\s.*$", "m")) || [""])[0];
+    if (v.kind === "pool") { assert.match(bind, /Automatic$/); assert.match(o, new RegExp("ip dhcp excluded-address " + P.net.replace(/0$/, "1").replace(/\./g, "\\.") + " \\S+\\n")); assert.match(o, /ip dhcp pool PRINTERS\n/); }
+    else if (v.kind === "reserved") { assert.match(bind, /Manual$/); assert.match(o, new RegExp("ip dhcp pool LABEL-PRINTER\\n host " + ip + " ")); }
+    else { assert.equal(bind, "", "no lease for the printer's address"); assert.doesNotMatch(o, /ip dhcp pool (PRINTERS|LABEL-PRINTER)/); }
+    const lp = E.act(T, { t: "view", dev: "printer2", key: "panel" }).facts; assert.equal(lp.ip, v.printer); assert.equal(lp.mode, v.kind === "static" ? "static" : "dhcp");
+    const pr = E.act(T, { t: "view", dev: "printer", key: "panel" }).facts; assert.equal(pr.ip, v.printer); assert.equal(pr.mode, "static");
+    const s = out(T, ssh(T).concat([mgr("show mac address-table"), mgr("show interfaces status"), mgr("exit")]));
+    assert.equal((s.match(new RegExp("^\\s*" + P.id + "\\s+\\S+\\s+DYNAMIC", "gm")) || []).length, 2, "two devices in the printers' VLAN");
+    assert.match(s, new RegExp("^Gi0/" + v.port + "\\s+LABEL-PRINTER\\s+connected\\s+" + P.id + "\\b", "m"));
+    assert.ok(E.act(T, pc("ping " + v.printer)).facts.replies > 0, "a ping always gets an answer: both of them reply");
+  },
   "SB-13": (T) => {
     const v = T.v, V = v.plan.vlans, p = v.plan;
     const o = out(T, [mgr("ssh " + p.user + "@" + V.staff.gw), mgr(p.userPw), mgr("enable"), mgr(p.rtSecret), mgr("show access-lists"), mgr("show interfaces " + v.gs), mgr("show interfaces " + v.ds), mgr("show interfaces " + v.ss)]); E.act(T, mgr("exit"));
@@ -403,6 +453,23 @@ const SYMPTOM = {
   }
 };
 
+/* SB-14: any way that leaves the label printer an address of its own and the printer's address lent by nothing counts */
+test("SB-14: other right ways pass: the pool's kept-back range widened, the pool gone and the label printer set by hand, the reservation moved, a proper pool to lend from", () => {
+  const def = BUSINESS_TICKETS.find((d) => d.id === "SB-14");
+  if (!def) return;
+  const ways = {
+    pool: [(T) => onRt(T, ["no ip dhcp excluded-address " + pre14(T) + "1 " + pre14(T) + (+T.v.printer.split(".")[3] - 1), "ip dhcp excluded-address " + pre14(T) + "1 " + pre14(T) + "29"]).concat([lp14]),
+      (T) => onRt(T, ["no ip dhcp pool PRINTERS"]).concat([hand14(T, 30)]), (T) => onRt(T, ["ip dhcp excluded-address " + T.v.printer]).concat([hand14(T, 3)])],
+    reserved: [(T) => onRt(T, ["ip dhcp pool LABEL-PRINTER", "host " + pre14(T) + "40 255.255.255.0", "exit"]).concat([lp14]), (T) => onRt(T, ["no ip dhcp pool LABEL-PRINTER"]).concat([hand14(T, 25)])],
+    static: [(T) => onRt(T, pool14(T)).concat([lp14]), (T) => [hand14(T, 99)]]
+  };
+  for (const s of seedsOf(def, 6)) for (const w of ways[E.open(def, s).v.kind]) {
+    const T = E.open(def, s); E.guess(T, "right"); for (const a of w(T)) E.act(T, a);
+    assert.equal(T.fixed, true, "SB-14 seed " + s + " " + T.v.kind + ": " + JSON.stringify(w(T).map((a) => a.line || a.t)));
+    for (const a of PROOF["SB-14"](T)) E.act(T, a); assert.equal(T.solved, true);
+  }
+});
+
 for (const def of BUSINESS_TICKETS) {
   test(def.id + ": the fault shows on every generated business, in the commands themselves", () => {
     let reseeded = 0;
@@ -425,7 +492,7 @@ for (const def of BUSINESS_TICKETS) {
         assert.equal(T.fixed, false, def.id + " seed " + s + " wrong fix " + JSON.stringify(wrong.map((a) => a.line || a.t)) + " should not fix");
       }
       let T = E.open(def, s);
-      for (const a of UNSAVED[def.id](T)) E.act(T, a);
+      for (const a of UNSAVED[def.id](T) || []) E.act(T, a);
       assert.equal(T.fixed, false, def.id + " seed " + s + ": not saved isn't fixed");
       for (const a of PROOF[def.id](T)) E.act(T, a);
       assert.equal(T.proven, false); assert.ok(T.partial && /hasn't saved it/.test(T.partial), def.id + " seed " + s + ": Mason says it works but isn't saved (" + T.partial + ")");

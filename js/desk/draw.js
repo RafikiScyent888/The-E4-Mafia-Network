@@ -29,7 +29,7 @@ export const ICONS = {
   patchpanel: '<rect x="4" y="22" width="56" height="20" rx="2" class="ib"/><rect x="9" y="26" width="8" height="3" class="is"/><rect x="20" y="26" width="8" height="3" class="is"/><rect x="31" y="26" width="8" height="3" class="is"/><rect x="42" y="26" width="8" height="3" class="is"/><rect x="10" y="32" width="6" height="5" class="ip"/><rect x="21" y="32" width="6" height="5" class="ip"/><rect x="32" y="32" width="6" height="5" class="ip"/><rect x="43" y="32" width="6" height="5" class="ip"/><path d="M13 42v8M35 42v8" class="il"/>',
   jack: '<rect x="20" y="10" width="24" height="44" rx="3" class="ib"/><rect x="26" y="22" width="12" height="10" rx="1" class="ip"/><path d="M29 32v-4M35 32v-4" class="il"/>'
 };
-const ICON_OF = { isp: "cloud", modem: "modem", router: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", tv: "tv", camera: "camera", mesh: "mesh", phone: "phone", guest: "phone", rogue: "router", injector: "injector", injector2: "injector", msw: "mswitch", tech: "laptop", meet: "switch", mpc: "pc", pp: "patchpanel", mjack: "jack", ojack: "jack", mgr: "pc", bsw: "mswitch", hire: "pc", rtr: "brouter", bpc: "pc", ap: "ap", cam1: "dome", cam2: "dome", cinj1: "injector", cinj2: "injector", mphone: "phone", dpc1: "pc", dpc2: "pc" };
+const ICON_OF = { isp: "cloud", modem: "modem", router: "router", switch: "switch", pc: "pc", laptop: "laptop", printer: "printer", printer2: "printer", tv: "tv", camera: "camera", mesh: "mesh", phone: "phone", guest: "phone", rogue: "router", injector: "injector", injector2: "injector", msw: "mswitch", tech: "laptop", meet: "switch", mpc: "pc", pp: "patchpanel", mjack: "jack", ojack: "jack", mgr: "pc", bsw: "mswitch", hire: "pc", rtr: "brouter", bpc: "pc", ap: "ap", cam1: "dome", cam2: "dome", cinj1: "injector", cinj2: "injector", mphone: "phone", dpc1: "pc", dpc2: "pc" };
 function defs(svg, prefix) {
   const d = document.createElementNS(NS, "defs");
   d.innerHTML = Object.keys(ICONS).map(function (k) { return '<symbol id="' + prefix + k + '" viewBox="0 0 64 64">' + ICONS[k] + "</symbol>"; }).join("");
@@ -66,7 +66,8 @@ function planSpots(sim, ids) {
   const off = office(sim);
   const box = function (x, y) { return [x - 44, y - 26, x + 44, y + 54]; };
   const clear = function (b) { return taken.every(function (t) { return b[2] < t[0] || b[0] > t[2] || b[3] < t[1] || b[1] > t[3]; }); };
-  const usual = function (id) { const p = pos(sim, id), room = sim.net.rooms[id], a0 = LAY[id].alt && LAY[id].alt[room], alt = a0 && a0.dept && sim.net.roomNames && sim.net.roomNames.dept ? Object.assign({}, a0, a0.dept) : a0; if (alt && alt.px != null) return alt; return p.px != null && room !== "upstairs" && (!LAY[id].room || LAY[id].room === room || (id === "laptop" && (room === "living" || room === "kitchen"))) ? p : null; };   /* upstairs is laid out afresh: it's split in two; alt: a device's own spot in another room (one with no spot on the plan is placed there afresh) */
+  const usual = function (id) { if (LAY[id].lp && sim.d.printer2 && sim.net.rooms[id] === LAY[id].room) return LAY[id].lp;   /* SB-14's label printer at the counter: the counter's PC and printer move up to make room for it */
+    const p = pos(sim, id), room = sim.net.rooms[id], a0 = LAY[id].alt && LAY[id].alt[room], alt = a0 && a0.dept && sim.net.roomNames && sim.net.roomNames.dept ? Object.assign({}, a0, a0.dept) : a0; if (alt && alt.px != null) return alt; return p.px != null && room !== "upstairs" && (!LAY[id].room || LAY[id].room === room || (id === "laptop" && (room === "living" || room === "kitchen"))) ? p : null; };   /* upstairs is laid out afresh: it's split in two; alt: a device's own spot in another room (one with no spot on the plan is placed there afresh) */
   for (const id of ids) { const p = usual(id); if (p && clear(box(p.px, p.py))) { out[id] = { px: p.px, py: p.py }; taken.push(box(p.px, p.py)); } }
   for (const id of ids) {
     if (out[id]) continue;
@@ -234,7 +235,7 @@ const RUNS = {
 };
 /* the office's and the business's runs and names are in SITES: the provider's line comes in on the closet wall, beside the modem */
 const PLAN_NAME = { ap: "Access point", rtr: "Business router", bpc: "Back PC", hire: "New hire's PC", bsw: "Back office switch", pp: "Patch panel", mgr: "Manager's PC", mjack: "Wall jack", ojack: "Wall jack", msw: "Managed switch", meet: "Back office switch", mpc: "Back office PC", tech: "Your laptop", injector: "PoE injector", injector2: "PoE+ injector", modem: "Modem", router: "Router", tv: "Smart TV", switch: "Switch", pc: "Office PC", printer: "Printer", camera: "Camera", mesh: "Mesh node", laptop: "Laptop", phone: "Phone", guest: "Guest's phone", rogue: "Old router",
-  cinj1: "PoE injector", cam1: "Ceiling camera", cinj2: "PoE injector", cam2: "Back door camera", mphone: "Manager's phone", dpc1: "Department PC", dpc2: "Department PC" };
+  cinj1: "PoE injector", cam1: "Ceiling camera", cinj2: "PoE injector", cam2: "Back door camera", mphone: "Manager's phone", dpc1: "Department PC", dpc2: "Department PC", printer2: "Label printer" };
 export function drawPlan(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "p-");
   svg.setAttribute("viewBox", "20 20 970 " + (sim.net.site === "business" && sim.net.roomNames.dept ? 765 : sim.net.site === "business" && sim.d.cam2 ? 600 : 510));   /* with the department's room (SB-J10) below the back room: taller again */   /* the business with its cameras (SB-J5): a strip outside, under the back door, for the back door camera */

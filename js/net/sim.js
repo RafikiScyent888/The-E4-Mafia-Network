@@ -797,11 +797,39 @@ export class Sim {
       if (k === "leases") return (x.leases || []).slice();
       if (k === "nat") return (x.xlate || []).slice();
       if (k === "hits") return x.hits || {};
+      if (k === "arp") return self.rtArp(id);
       if (k === "clear-nat") { x.xlate = []; return null; }
       if (k === "clear-dhcp") { x.leases = []; return null; }
       if (k === "clear-hits") { x.hits = {}; return null; }
       return null;
     };
+  }
+  /* the router's ARP table, as show ip arp lists it: its own address on each interface that's up, then each device it hears on
+     its inside networks, by the hardware address that answered last (two devices on one address take turns, so the entry flips
+     between them: SB-14). Worked out, never stored: a check changes nothing */
+  rtArp(id) {
+    const R = this.rtView(id), live = this.rtLive(id), w = this.rtWan(id, R), cache = this.arp[id] || {}, out = [];
+    const dot = function (m) { const h = String(m || "").replace(/[^0-9a-f]/gi, "").toLowerCase(); return h.length === 12 ? h.replace(/(.{4})(?=.)/g, "$1.") : String(m || ""); };
+    const ips = [];
+    for (const d in this.d) {
+      if (d === id) continue; const x = this.d[d];
+      if (x.kind === "mswitch") { if (this.on(d)) this.mgmtAddrs(d).forEach(function (o) { ips.push(o.ip); }); continue; }
+      if (x.kind === "brouter" || !(x.ifaces || x.kind === "router" || x.kind === "rogue")) continue;
+      const a = this.addr(d); if (a && a.ip && a.kind !== "apipa") ips.push(a.ip);
+    }
+    RT.allIfs(R).forEach(function (n) {
+      const a = RT.addrOf(R, n, live); if (!a || RT.rtStatus(R, n)[1] !== "up") return;
+      out.push({ ip: a.ip, mac: dot(this.macOf(id)), iface: n, own: true });
+      if (w && w.iface === n) return;   /* the provider's side: nothing of the business's is out there */
+      const dom = this.domain(this.rtNode(id, n)), seen = {};
+      ips.forEach(function (ip) {
+        if (seen[ip] || ip === a.ip || !sameSubnet(ip, a.ip, a.mask)) return; seen[ip] = true;
+        const o = this.owners(ip, dom).filter(function (k) { return k !== id; }, this); if (!o.length) return;
+        const last = o.length > 1 && cache[ip] && o.some(function (k) { return this.macOf(k) === cache[ip]; }, this) ? cache[ip] : this.macOf(o[0]);
+        out.push({ ip: ip, mac: dot(last), iface: n, own: false, age: cache[ip] ? 0 : hash(ip) % 4 });
+      }, this);
+    }, this);
+    return out.sort(function (p, q) { return ip2n(p.ip) - ip2n(q.ip); });
   }
   /* the router's interface with this address that a device in this broadcast domain reaches (up, its address set) */
   rtIfFor(id, ip, dom, R) {

@@ -269,7 +269,7 @@ export function page(sim, id, key, opts) {
   if (x.kind === "printer" && key === "panel") {   /* any printer's own panel (a second printer came with SB-14) */
     const f = x.ifaces[0], a = sim.addr(id);
     return { kind: "form", form: "printer", dev: id, title: "Control panel", status: a ? "Ready" : "No network connection", mac: f.mac, link: f.cfg.speed ? f.cfg.speed + " Mb/s, " + (f.cfg.duplex || "full") + " duplex (fixed: this card can't negotiate)" : null,
-      values: { mode: f.cfg.mode, ip: f.cfg.mode === "static" ? f.cfg.ip : a ? a.ip : "", mask: f.cfg.mode === "static" ? f.cfg.mask : a ? a.mask : (sim.d.router ? sim.d.router.lan.mask : ""), gw: f.cfg.mode === "static" ? f.cfg.gw : a ? a.gw : sim.d.router.lan.ip },
+      values: { mode: f.cfg.mode, ip: f.cfg.mode === "static" ? f.cfg.ip : a ? a.ip : "", mask: f.cfg.mode === "static" ? f.cfg.mask : a ? a.mask : (sim.d.router ? sim.d.router.lan.mask : ""), gw: f.cfg.mode === "static" ? f.cfg.gw : a ? a.gw : (sim.d.router ? sim.d.router.lan.ip : "") },
       facts: { page: id === "printer" ? "printer-panel" : id + "-panel", dev: id, ip: f.cfg.mode === "static" ? f.cfg.ip : a && a.ip, mode: f.cfg.mode, mac: f.mac, mask: f.cfg.mode === "static" ? f.cfg.mask : a && a.mask, gw: f.cfg.mode === "static" ? f.cfg.gw : a && a.gw } };
   }
   if (id === "camera" && key === "web") {

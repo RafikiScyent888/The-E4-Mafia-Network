@@ -16,6 +16,7 @@ import { online } from "../build/jobs.js";
 import { exec } from "../net/cmd.js";
 import * as SW from "../net/swcli.js";
 import { rng, hash, ip2n } from "../net/util.js";
+import { addLabelPrinter, LABEL_PORT } from "../net/business.js";
 
 const J10 = BUSINESS_JOBS.find(function (d) { return d.id === "SB-J10"; });
 /* the business as SB-J10 left it, on a day like any other: nobody logged in, the TFTP server closed, the moment frozen */
@@ -1114,5 +1115,134 @@ const SB13 = {
   }
 };
 
-export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07, SB08, SB09, SB10, SB11, SB12, SB13];
+/* ---------------------------------------------------------------- SB-14 */
+/* The printer's address handed out (the owner's title for it). While the printer was away for repair, a label printer was set up at
+   the counter, on a closet switch spare opened in the printers' VLAN, and it ended up on the printer's own address: from a printers'
+   pool the supplier made keeping back too few addresses, from a reservation made "with the printers' address from the records", or
+   typed in by hand from the records card. Nothing noticed while the printer was away (the router checks an address is free before
+   lending it, and nothing answered). The printer came back with its fixed address, and since then the two take turns answering the
+   router: one job prints, the next goes to the label printer. The label printer is in none of the records and not on the diagram
+   (nobody told the technician), only on the floor plan. The fix: the label printer on an address of its own, the printer's address
+   never handed out, and the router saved. */
+const SB14_STORY = {
+  pool: function (v) { return "Since the printer came back from repair on Monday, half of what we print never comes out. One page prints, the next doesn't, and the " + v.pc + " says the printer is offline; my PC's the same. While it was away the supplier set up our new label printer at the counter and made it \"get its address by itself\" from the router."; },
+  reserved: function (v) { return "Since the printer came back from repair on Monday, every other page never comes out: the " + v.pc + " says the printer is offline, then the next one prints. While it was away we got a label printer for the counter; the supplier set it up, and our nephew made sure it keeps the same address, \"the printers' address from your records\"."; },
+  static: function (v) { return "Since the printer came back from repair on Monday, half of what we print never comes out, from the " + v.pc + " or my PC: one page prints, the next doesn't. While it was away the supplier put in our new label printer at the counter, with \"a fixed address, the way your records say printers have\", typed in from your card."; }
+};
+const cidOf = function (m) { return ("01" + String(m || "").replace(/[^0-9a-f]/gi, "").toLowerCase()); };
+const maskBits = function (m) { let n = ip2n(m), b = 0; while (n) { b += n & 1; n >>>= 1; } return b; };
+/* would the router, set up this way (running, or as saved), hand this address out: from a pool's network (not excluded), or by a
+   reservation (to this client, when one is named)? */
+const lends = function (src, ip, cid) {
+  if (!src || !ip) return false;
+  const pools = src.pools || {}, x = ip2n(ip), ex = src.excluded || [];
+  return Object.keys(pools).some(function (k) {
+    const q = pools[k];
+    if (q.host) return q.host === ip && (!cid || q.clientId === cid);
+    if (!q.network || !q.mask) return false;
+    const lo = ip2n(q.network), hi = lo + Math.pow(2, 32 - maskBits(q.mask)) - 1;
+    return x > lo && x < hi && !ex.some(function (e) { return x >= ip2n(e[0]) && x <= ip2n(e[1]); });
+  });
+};
+const dhcpOf = function (sim, saved) { const R = sim.d.rtr.sw, src = saved ? R.startup : R; return src ? JSON.stringify({ pools: src.pools || {}, excluded: (src.excluded || []).slice().sort() }) : "{}"; };
+const ownersAt = function (sim, ip) { const r = sim.route("pc", ip); return !r.fail && r.owner ? r.owner.slice().sort() : []; };
+const SB14 = {
+  id: "SB-14", n: "14", level: 3, tier: "harder", title: "Half of what we print never comes out", priority: 2, due: "2 h",
+  kinds: ["pool", "reserved", "static"],   /* its variants, in the order a seed picks them (the tests find a business for each) */
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, P = p.vlans.printers, r = rng(hash("SB-14:" + seed)), kind = r.pick(SB14.kinds);
+    const ip = p.printerIp, pre = P.net.replace(/0$/, ""), h = +ip.split(".")[3];
+    sim.d.printer.on = false;   /* away for repair */
+    addLabelPrinter(sim);
+    const cid = cidOf(sim.d.printer2.ifaces[0].mac), cidDot = cid.match(/.{1,4}/g).join(".");
+    onSwitch(sim, "msw", ["configure terminal", "interface gi0/" + LABEL_PORT, "description LABEL-PRINTER", "switchport access vlan " + P.id, "no shutdown", "end"].concat(SAVE));   /* the supplier opened a spare for it, in the printers' VLAN, and saved */
+    const pool = function (keep) { return ["ip dhcp excluded-address " + pre + "1 " + pre + keep, "ip dhcp pool PRINTERS", "network " + P.net + " " + p.vmask, "default-router " + P.gw, "exit"]; };
+    if (kind === "pool") onRouter(sim, ["configure terminal"].concat(pool(h - 1), ["end"], SAVE));   /* "the first few kept back": one short of the printer */
+    if (kind === "reserved") onRouter(sim, ["configure terminal"].concat(pool(29), ["ip dhcp pool LABEL-PRINTER", "host " + ip + " " + p.vmask, "client-identifier " + cidDot, "exit", "end"], SAVE));   /* the supplier's pool keeps the printer back; the reservation hands it out anyway */
+    if (kind === "static") sim.apply({ t: "client", dev: "printer2", values: { mode: "static", ip: ip, mask: p.vmask, gw: P.gw } });
+    else sim.apply({ t: "power", dev: "printer2" });   /* it asks, and with the printer away nothing answers at its address */
+    sim.d.printer.on = true;   /* back from repair, on its fixed address */
+    const r0 = sim.route("pc", ip); sim.turn(r0.via || "rtr", ip, r0.owner || []);   /* this morning's first page printed; the next goes to the label printer */
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, printer: ip, pc: name(sim, "pc"), mac: sim.d.printer.ifaces[0].mac, lmac: sim.d.printer2.ifaces[0].mac, cid: cid, port: LABEL_PORT } };
+  },
+  brief(v) { return { quote: SB14_STORY[v.kind](v) }; },
+  mason: "Something that works one time and not the next usually isn't broken: it's taking turns with something. Find out what.",
+  affected: "pc",
+  options(v) {
+    const k = v.kind, LP = "the label printer";
+    const why = {
+      pool: k === "reserved" ? "show ip dhcp binding gives the label printer's lease as Manual: a reservation. The printers' pool keeps the printer's address back (its excluded addresses, in show running-config)."
+        : "The router lends the label printer nothing: show ip dhcp binding has no lease for it, and its control panel says Manual (static).",
+      reserved: k === "pool" ? "show ip dhcp binding gives the label printer's lease as Automatic, from a pool, and show running-config has no host binding for it."
+        : "The router has no lease for it at all, reserved or not, and its control panel says Manual (static).",
+      static: "The label printer's control panel says Automatic (DHCP), and the router lists its lease (show ip dhcp binding)."
+    };
+    return [
+      { id: "right", right: true, text: k === "pool" ? "A printers' pool on the router lent the printer's address to " + LP : k === "reserved" ? "A reservation on the router gives " + LP + " the printer's address" : "The label printer was given the printer's address by hand" },
+      k === "pool" ? null : { id: "pool", text: "A printers' pool on the router lent the printer's address to " + LP, why: why.pool },
+      k === "reserved" ? null : { id: "reserved", text: "A reservation on the router gives " + LP + " the printer's address", why: why.reserved },
+      k === "static" ? null : { id: "static", text: "The label printer was given the printer's address by hand", why: why.static },
+      { id: "duplex", text: "The printer's switch port has a duplex mismatch", why: "show interfaces on the closet switch: the printer's port at full duplex, with no late collisions or CRC errors. A mismatch slows every page; it doesn't lose every other one." },
+      { id: "panel", text: "The printer's address was changed at the repair shop", why: "Its control panel has the records' address, mask and gateway, and half the pages reach it there." },
+      { id: "vlan", text: "The printer's switch port has been put in another VLAN", why: "show vlan brief: the printer's port is in the printers' VLAN, and half the pages print. A printer in the wrong VLAN prints none." }
+    ].filter(Boolean);
+  },
+  rung1(v) { return "Print two test pages from the " + v.pc + ", one after the other. Then on the router, from the manager's PC: show ip arp after each, show ip dhcp binding, and show running-config. On the closet switch: show mac address-table and show interfaces status."; },
+  rung2() { return "An address belongs to one device. When two answer for it, whichever answered the router's ARP last gets the next packet, so the traffic goes back and forth between them. How the second one came by the address decides what has to change: a pool, a reservation, or its own settings."; },
+  fixHints(v) { return ["Find which device shouldn't have the printer's address, and where it got it: the router's bindings and configuration, and the device's own control panel (it's on the floor plan).",
+    v.kind === "pool" ? "The printer's address has to be one nothing can lend: keep it out of what the pool hands out, then have the label printer ask again." : v.kind === "reserved" ? "Give the reservation an address nothing else uses (or take it away and set one by hand, outside what the pool lends), then have the label printer ask again." : "Give the label printer an address of its own on the printers' network, on its control panel: not the printer's, not the gateway, not anything another device uses.",
+    "Save the router if you changed it, then print two test pages in a row."]; },
+  exhibits(sim, v) {
+    const own = ownersAt(sim, v.printer), a = sim.addr("printer2");
+    return own.length === 2 && own.indexOf("printer") >= 0 && own.indexOf("printer2") >= 0 && !!a && a.ip === v.printer && a.kind === (v.kind === "static" ? "static" : "dhcp") && online(sim, "pc");
+  },
+  /* the label printer as it should be: an address of its own on the printers' network, the printers' mask and gateway, reachable
+     and nobody else's; a fixed one outside anything the router lends, a lent one from a pool or reservation still there */
+  labelOk(sim, v, saved) {
+    const P = v.plan.vlans.printers, a = sim.addr("printer2"), R = sim.d.rtr.sw, src = saved ? R.startup : R;
+    if (!a || a.kind === "apipa" || !inNet(a.ip, P.net, 24) || a.ip === v.printer || a.ip === P.gw || a.mask !== v.plan.vmask || a.gw !== P.gw) return false;
+    if (JSON.stringify(ownersAt(sim, a.ip)) !== JSON.stringify(["printer2"])) return false;
+    return a.kind === "static" ? !lends(src, a.ip) : lends(src, a.ip, v.cid);
+  },
+  printerOk(sim, v) { const f = sim.d.printer.ifaces[0].cfg, P = v.plan.vlans.printers; return f.mode === "static" && f.ip === v.printer && f.mask === v.plan.vmask && f.gw === P.gw && sim.on("printer"); },
+  fixed(sim, v) {
+    const R = sim.d.rtr.sw;
+    return SB14.printerOk(sim, v) && JSON.stringify(ownersAt(sim, v.printer)) === JSON.stringify(["printer"]) && !lends(R, v.printer) && !lends(R.startup, v.printer)
+      && SB14.labelOk(sim, v) && SB14.labelOk(sim, v, true) && dhcpOf(sim) === dhcpOf(sim, true) && reachesPrinter(sim, "pc", v.printer) && online(sim, "pc");
+  },
+  partial(v, sim) {
+    const R = sim.d.rtr.sw, a = sim.addr("printer2"), P = v.plan.vlans.printers;
+    if (!SB14.printerOk(sim, v)) return "Pages print, but the printer isn't on its address from the records any more: every PC's printer port and the records say " + v.printer + ", and the next technician goes by them.";
+    if (!a || a.kind === "apipa" || !inNet(a.ip, P.net, 24)) return "Every page prints now, but the label printer has no address on its network: the counter needs it too.";
+    if (a.kind === "static" && lends(R, a.ip)) return "It works today, but the label printer's fixed address is one the router can lend: the next device that asks can be handed it, and you're back here.";
+    if (lends(R, v.printer)) return "It works while the printer's on, but the router can still lend the printer's address: the next time the printer's off when something asks, it's handed out again.";
+    if (a.kind === "dhcp" && !lends(R, a.ip, v.cid)) return "It works today, but the label printer's lease is from a pool or reservation that isn't there any more: when it next asks, nothing will answer it.";
+    if (dhcpOf(sim) !== dhcpOf(sim, true)) return "It works right now, but the router hasn't saved it: the next power cut or reload puts it back the way it was.";
+    return "Pages print, but the label printer isn't set up the way its network has it: the printers' mask and gateway, an address nothing else uses.";
+  },
+  proves(f, sim, v) { return f.print === "ok" && !!f.port && JSON.stringify(ownersAt(sim, f.port)) === JSON.stringify(["printer"]); },   /* wherever the PC prints to, only the printer answering there (a printer moved instead prints, and Mason says why that isn't it) */
+  proofText: "a test page from the counter PC that prints, with only the printer answering at its address",
+  evidence: [
+    { id: "nopage", test: function (f, v) { return f.print === "fail" && f.port === v.printer; }, text: function (f, v) { return "Test page from the " + v.pc + ": nothing printed. Windows says the printer is offline"; } },
+    { id: "page", test: function (f, v, sim) { return f.print === "ok" && f.port === v.printer && ownersAt(sim, v.printer).length > 1; }, text: function (f, v) { return "Test page from the " + v.pc + ": this one printed"; } },
+    { id: "arp1", test: function (f, v) { return f.on === "rtr" && SB14.arpMac(f, v) === SW.dotMac(v.mac); }, text: function (f, v) { return "show ip arp on the router: " + v.printer + " at " + SW.dotMac(v.mac); } },
+    { id: "arp2", test: function (f, v) { return f.on === "rtr" && SB14.arpMac(f, v) === SW.dotMac(v.lmac); }, text: function (f, v) { return "show ip arp on the router: " + v.printer + " at " + SW.dotMac(v.lmac); } },
+    { id: "panel", test: function (f) { return f.page === "printer-panel"; }, text: function (f) { return "The printer's control panel: " + f.ip + ", " + (f.mode === "static" ? "Manual (static)" : "Automatic (DHCP)") + ", hardware address " + f.mac; } },
+    { id: "lpanel", test: function (f) { return f.page === "printer2-panel"; }, text: function (f) { return "The label printer's control panel: " + (f.ip || "no address") + ", " + (f.mode === "static" ? "Manual (static)" : "Automatic (DHCP)") + ", hardware address " + f.mac; } },
+    { id: "binding", test: function (f, v) { return f.on === "rtr" && /Bindings from all pools/.test(devOut(f)) && new RegExp("^" + v.printer.replace(/\./g, "\\.") + "\\s", "m").test(devOut(f)); }, text: function (f, v) { const m = devOut(f).match(new RegExp("^" + v.printer.replace(/\./g, "\\.") + "\\s+(\\S+).*?(Automatic|Manual)\\s*$", "m")); return "show ip dhcp binding on the router: " + v.printer + " leased to " + (m ? m[1] + " (" + m[2] + ")" : "a client"); } },
+    { id: "pools", test: function (f, v) { return f.on === "rtr" && /Current configuration/.test(devOut(f)) && /ip dhcp pool (PRINTERS|LABEL-PRINTER)/.test(devOut(f)); }, text: function (f, v) { const o = devOut(f), x = o.match(/ip dhcp excluded-address (\S+) (\S+)\n(?=[\s\S]*ip dhcp pool PRINTERS)/), hb = o.match(/ip dhcp pool LABEL-PRINTER\n host (\S+)/); return "show running-config on the router: a printers' pool, PRINTERS" + (x ? " (" + x[1] + " to " + x[2] + " kept back)" : "") + (hb ? "; a reservation, LABEL-PRINTER, host " + hb[1] : ""); } },
+    { id: "macs", test: function (f, v) { const P = v.plan.vlans.printers.id, o = devOut(f); return f.on === "msw" && /Mac Address Table/.test(o) && (o.match(new RegExp("^\\s*" + P + "\\s+\\S+\\s+DYNAMIC", "gm")) || []).length >= 2; }, text: function (f, v) { const P = v.plan.vlans.printers.id, ports = (devOut(f).match(new RegExp("^\\s*" + P + "\\s+\\S+\\s+DYNAMIC\\s+(\\S+)", "gm")) || []).map(function (l) { return l.trim().split(/\s+/).pop(); }); return "show mac address-table on the closet switch: two devices in the printers' VLAN (" + P + "), on " + ports.join(" and "); } },
+    { id: "status", test: function (f, v) { return f.on === "msw" && new RegExp("^Gi0/" + v.port + "\\s+LABEL-PRINTER\\s+connected\\s+" + v.plan.vlans.printers.id + "\\b", "m").test(devOut(f)); }, text: function (f, v) { return "show interfaces status on the closet switch: Gi0/" + v.port + ", LABEL-PRINTER, connected in the printers' VLAN"; } }
+  ],
+  /* the hardware address show ip arp gives for the printer's address, dotted as the router prints it */
+  arpMac(f, v) { const m = devOut(f).match(new RegExp("^Internet\\s+" + v.printer.replace(/\./g, "\\.") + "\\s+\\S+\\s+(\\S+)", "m")); return m ? m[1] : null; },
+  summary(v) {
+    const how = { pool: "a printers' pool the supplier made on the router kept back one address too few, so it lent the label printer the printer's", reserved: "a reservation on the router, LABEL-PRINTER, gave the label printer the printer's address from the records", static: "the supplier typed the printer's address from the records into the label printer by hand" }[v.kind];
+    const fix = { pool: "Kept the printer's address out of what the pool lends (or gave the label printer a fixed address and lent nothing there), had the label printer ask again, and saved the router.", reserved: "Gave the reservation an address of its own (or removed it and set one by hand, outside what the pool lends), had the label printer ask again, and saved the router.", static: "Gave the label printer an address of its own on the printers' network, on its control panel, outside anything the router lends." }[v.kind];
+    return { cause: "While the printer was away for repair, " + how + ". Nothing answered there, so nothing stopped it. When the printer came back on its fixed address, the two took turns answering the router, so every other page went to the label printer.", fix: fix };
+  }
+};
+
+export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07, SB08, SB09, SB10, SB11, SB12, SB13, SB14];
 export const BUSINESS_COMING = [];

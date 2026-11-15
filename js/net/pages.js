@@ -5,7 +5,7 @@
 import { isIp, isPublic } from "./util.js";
 import { portName as printedPort, SFP_MODULES } from "./sim.js";
 
-const STILL = { pc: "pc", laptop: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc", bpc: "pc" };   /* the business's back PC (the treatment room's, the kitchen's) too; the office's back office (SO-04) and the manager's PC (SO-08): the same housings */
+const STILL = { pc: "pc", laptop: "laptop", intruder: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc", bpc: "pc" };   /* the business's back PC (the treatment room's, the kitchen's) too; the office's back office (SO-04) and the manager's PC (SO-08): the same housings */
 
 export function tabsFor(sim, id) {
   const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" || k === "brouter" || k === "techlaptop" || k === "patchpanel" || k === "jack" || k === "bap" || k === "dcam" || k === "cabinet" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */

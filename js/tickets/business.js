@@ -16,7 +16,7 @@ import { online } from "../build/jobs.js";
 import { exec } from "../net/cmd.js";
 import * as SW from "../net/swcli.js";
 import { rng, hash, ip2n } from "../net/util.js";
-import { addLabelPrinter, LABEL_PORT } from "../net/business.js";
+import { addLabelPrinter, LABEL_PORT, addIntruder } from "../net/business.js";
 
 const J10 = BUSINESS_JOBS.find(function (d) { return d.id === "SB-J10"; });
 /* the business as SB-J10 left it, on a day like any other: nobody logged in, the TFTP server closed, the moment frozen */
@@ -1244,5 +1244,84 @@ const SB14 = {
   }
 };
 
-export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07, SB08, SB09, SB10, SB11, SB12, SB13, SB14];
+/* ---------------------------------------------------------------- SB-15 */
+/* VLAN hopping (the owner's title for it), by switch spoofing. A spare port was reopened and left to negotiate trunking (DTP): the
+   sign company "set up the old socket under the waiting area's bench" for a screen that turned out to need Wi-Fi, reset to the
+   box's settings (dynamic auto), or set to ask for a trunk itself (dynamic desirable) "so the screen's box can carry its own
+   network"; or the department's company left a socket live in its room for a scanner coming next month. Then someone sat with a
+   laptop plugged into it, a laptop that asks to trunk as attack tools do, and left it. The port became a trunk, and the laptop sits
+   in every VLAN the port carries: the card processor's monitoring saw one device on several networks at once. The laptop isn't in
+   the records or on the diagram; it's on the floor plan where it is. The fix: the port back as the records keep a spare (an access
+   port, parked, shut), saved; set as access, nothing can negotiate it into a trunk. */
+const SB15_KIND = {
+  auto: { sw: "msw", port: "9", room: "counter", len: 16, desc: "COUNTER-SCREEN", mode: "no switchport mode", dtp: "dynamic desirable" },
+  desirable: { sw: "msw", port: "9", room: "counter", len: 16, desc: "COUNTER-SCREEN", mode: "switchport mode dynamic desirable", dtp: "dynamic auto" },
+  vlan: { sw: "msw", port: "9", room: "counter", len: 16, desc: "CAM-03-COUNTER", mode: "no switchport mode", dtp: "dynamic desirable", cams: true }
+};
+const SB15_STORY = {
+  auto: function (v) { return "A man waited at our " + v.room + " for an hour yesterday with a laptop plugged into the old socket on the customers' side of the counter, and it's still there: he never came back for it. This morning the card processor's monitoring emailed that one device on our network was seen on the staff, cameras' and " + v.deptName + "'s networks at once. On Friday the sign company had the closet open to set that socket up for a screen, then found the screen needs Wi-Fi."; },
+  desirable: function (v) { return "This morning the card processor's monitoring emailed that one device on our network was seen on the staff, cameras' and " + v.deptName + "'s networks at once. There's a laptop nobody owns plugged into the old socket on the customers' side of the " + v.room + ": a man waited there with it yesterday. On Friday the sign company's technician set that socket up \"so the screen's box can carry its own network\"; the screen turned out to need Wi-Fi."; },
+  vlan: function (v) { return "This morning the card processor's monitoring emailed that one device on our network was seen on the staff, cameras' and " + v.deptName + "'s networks at once. A laptop nobody owns is plugged into the new socket on the customers' side of the " + v.room + ": a man waited there with it yesterday. On Friday the camera company set that socket up for a third camera, \"in the cameras' network\"; the camera's still on order."; }
+};
+/* the ports running as trunks on a switch, worked out with whatever is on the far end of each (a check changes nothing) */
+const trunking = function (sim, id) { const x = sim.d[id], L = sim.switchLinks(id); return Object.keys(x.sw.ports).filter(function (n) { const q = x.sw.ports[n], l = L[n]; return !!l && !q.shutdown && SW.operMode(q, l.dtp || null) === "trunk"; }).sort(); };
+const sparePort = function (q, v) { return !!q && q.mode === "access" && q.access === v.plan.vlans.parking.id && !!q.shutdown; };
+const SB15 = {
+  id: "SB-15", n: "15", level: 3, tier: "harder", title: "One device seen on every network at once", priority: 1, due: "1 h",
+  kinds: ["auto", "desirable", "vlan"],   /* its variants, in the order a seed picks them (the tests find a business for each) */
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("SB-15:" + seed)), kind = r.pick(SB15.kinds), K = SB15_KIND[kind];
+    const trunks = { msw: trunking(sim, "msw"), bsw: trunking(sim, "bsw") };   /* the trunks the records have, before anything's planted */
+    onSwitch(sim, K.sw, ["configure terminal", "interface gi0/" + K.port, K.cams ? "switchport access vlan " + p.vlans.cameras.id : "no switchport access vlan", K.mode, "description " + K.desc, "no shutdown", "end"].concat(SAVE));   /* an access VLAN set (the camera company's) doesn't make an access port: the mode is still the box's */
+    addIntruder(sim, { sw: K.sw, port: K.port, room: K.room, len: K.len, dtp: K.dtp });
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, sw: K.sw, port: K.port, pname: "GigabitEthernet0/" + K.port, short: "Gi0/" + K.port, desc: K.desc, trunks: trunks, lmac: sim.d.intruder.ifaces[0].mac,
+      swName: name(sim, K.sw), room: String(sim.net.roomNames[K.room]).toLowerCase(), deptName: String(sim.net.roomNames.dept).toLowerCase(), printer: p.printerIp, pc: name(sim, "pc") } };
+  },
+  brief(v) { return { quote: SB15_STORY[v.kind](v) }; },
+  mason: "Anything can be plugged into a socket. What it gets depends on the switch port at the other end of the cable. Find that port and ask what it lets a device become.",
+  affected(v) { return v.sw; },
+  options(v) {
+    return [
+      { id: "right", right: true, text: "A switch port left to negotiate trunking let the unknown laptop make itself a trunk" },
+      { id: "native", text: "The trunks' native VLAN is one in use, so frames hop across it (double tagging)", why: "show interfaces trunk: the trunks' native VLANs are as the work orders left them (between the switches, the records' unused one). And double tagging sends a frame one way, into one VLAN; this laptop's hardware address is in every VLAN, on a port of its own." },
+      { id: "portsec", text: "Port security is off on the laptop's port", why: "Port security limits how many hardware addresses a port learns. The laptop is one address; port security never stops a port negotiating a trunk." },
+      { id: "acl", text: "An access list on the router has gone, so the VLANs route to each other", why: "show access-lists on the router lists every list as it was. And the laptop's hardware address is in every VLAN on the switch itself (show mac address-table): it's in them without the router." },
+      { id: "wifi", text: "The guest Wi-Fi lets visitors onto the staff network", why: "The laptop is wired: show mac address-table has it on " + v.short + ", not on the access point's port, and the guests' list is unchanged." },
+      { id: "dhcp", text: "The router's pools have leased the laptop an address on every network", why: "show ip dhcp binding on the router has no lease for its hardware address: it needs none. It's in every VLAN on the switch itself (show mac address-table), on " + v.short + "." }
+    ];
+  },
+  rung1(v) { return "Find on the floor plan where the laptop is and which switch its cable goes to. On that switch: show interfaces trunk, show interfaces status, show mac address-table, and the switchport settings of the laptop's port."; },
+  rung2() { return "A port left to negotiate (dynamic auto or desirable) becomes a trunk with whatever asks for one, and a trunk carries every VLAN it allows. A device that speaks the trunking protocol, plugged into it, sits in every network at once: VLAN hopping by switch spoofing. An access port never negotiates."; },
+  fixHints(v) { return ["Find the port the laptop's cable reaches, and compare it with what the records say a spare is.", "Put that port back the way the records keep a spare: an access port, parked, shut. Set as access, nothing can negotiate it into a trunk.", "Save it, then look at which ports run as trunks now."]; },
+  exhibits(sim, v) { return trunking(sim, v.sw).indexOf(v.pname) >= 0 && JSON.stringify(trunking(sim, v.sw === "msw" ? "bsw" : "msw")) === JSON.stringify(v.trunks[v.sw === "msw" ? "bsw" : "msw"]) && online(sim, "pc"); },
+  portOf(sim, v, saved) { const sw = sim.d[v.sw].sw, src = saved ? sw.startup && sw.startup.ports : sw.ports; return src ? src[v.pname] : null; },
+  trunksRight(sim, v) { return JSON.stringify(trunking(sim, "msw")) === JSON.stringify(v.trunks.msw) && JSON.stringify(trunking(sim, "bsw")) === JSON.stringify(v.trunks.bsw); },
+  fixed(sim, v) { return sparePort(SB15.portOf(sim, v), v) && sparePort(SB15.portOf(sim, v, true), v) && SB15.trunksRight(sim, v) && online(sim, "pc") && online(sim, "mgr") && reachesPrinter(sim, "pc", v.printer); },
+  partial(v, sim) {
+    const q = SB15.portOf(sim, v), st = SB15.portOf(sim, v, true);
+    if (!SB15.trunksRight(sim, v)) return "The laptop's port isn't trunking, but the switches' own trunks aren't as the records have them any more.";
+    if (q && q.mode !== "access") return (q.shutdown ? "It's shut, so nothing's trunking today" : "Nothing's trunking right now") + ", but " + v.short + " is still left to negotiate: whoever opens it, or plugs into it, next can make it a trunk again. The records set every port as access.";
+    if (!sparePort(q, v)) return "Nothing can negotiate " + v.short + " into a trunk any more, but it isn't a spare as the records keep one: parked, and shut.";
+    if (!sparePort(st, v)) return "It's right now, but the " + v.swName + " hasn't saved it: the next power cut or reload reopens " + v.short + ".";
+    return "Nothing's trunking that shouldn't, but not everything is the way the records have it.";
+  },
+  proves(f, sim, v) { return f.on === v.sw && /Port\s+Mode\s+Encapsulation\s+Status/.test(devOut(f)) && !new RegExp("^" + v.short + "\\s", "m").test(devOut(f)); },   /* the laptop's port no longer among the trunks (the rest is the fix's own check, so Mason can say what else is wrong) */
+  proofText: "show interfaces trunk on that switch, listing only the trunks the records have",
+  evidence: [
+    { id: "trunk", test: function (f, v) { return f.on === v.sw && new RegExp("^" + v.short + "\\s+(auto|desirable)\\s+802\\.1q\\s+trunking", "m").test(devOut(f)); }, text: function (f, v) { const m = devOut(f).match(new RegExp("^" + v.short + "\\s+(auto|desirable)", "m")); return "show interfaces trunk on the " + v.swName + ": " + v.short + " trunking (" + (m ? m[1] : "") + "), beside the trunks the records have"; } },
+    { id: "swport", test: function (f, v) { return f.on === v.sw && new RegExp("^Name: " + v.short + "$", "m").test(devOut(f)) && /Operational Mode: trunk/.test(devOut(f)); }, text: function (f, v) { const m = devOut(f).match(/Administrative Mode: ([^\n]+)/); return "show interfaces " + v.short.toLowerCase() + " switchport: Administrative Mode " + (m ? m[1] : "") + ", Operational Mode trunk"; } },
+    { id: "macs", test: function (f, v) { const d = SW.dotMac(v.lmac); return f.on === v.sw && /Mac Address Table/.test(devOut(f)) && (devOut(f).match(new RegExp(d.replace(/\./g, "\\.") + "\\s+DYNAMIC\\s+" + v.short + "\\b", "g")) || []).length >= 3; }, text: function (f, v) { const d = SW.dotMac(v.lmac), n = (devOut(f).match(new RegExp(d.replace(/\./g, "\\.") + "\\s+DYNAMIC\\s+" + v.short + "\\b", "g")) || []).length; return "show mac address-table on the " + v.swName + ": " + d + " on " + v.short + " in " + n + " VLANs"; } },
+    { id: "status", test: function (f, v) { return f.on === v.sw && new RegExp("^" + v.short + "\\s+" + v.desc + "\\s+connected\\s+trunk\\b", "m").test(devOut(f)); }, text: function (f, v) { return "show interfaces status on the " + v.swName + ": " + v.short + ", " + v.desc + ", connected, trunk"; } },
+    { id: "log", test: function (f, v) { return f.on === v.sw && new RegExp("%DTP-5-TRUNKPORTON: Port " + v.short + " has become dot1q trunk").test(devOut(f)); }, text: function (f, v) { return "The " + v.swName + "'s console: %DTP-5-TRUNKPORTON: Port " + v.short + " has become dot1q trunk"; } },
+    { id: "run", test: function (f, v) { return v.kind === "vlan" && f.on === v.sw && /Current configuration/.test(devOut(f)) && new RegExp("interface " + v.pname + "\\n(?: [^\\n]*\\n)*? switchport access vlan \\d+\\n").test(devOut(f)); }, text: function (f, v) { const m = devOut(f).match(new RegExp("interface " + v.pname + "\\n((?: [^\\n]*\\n)*?)!")), b = m ? m[1].trim().split("\n").map(function (l) { return l.trim(); }) : []; return "show running-config on the " + v.swName + ": interface " + v.pname + ": " + b.join(", ") + (b.some(function (l) { return /^switchport mode/.test(l); }) ? "" : " (no switchport mode line)"); } },
+    { id: "look", test: function (f) { return f.phys === "look" && f.dev === "intruder"; }, text: function (f, v) { return "The unknown laptop in the " + v.room + ": locked, its cable in the socket"; } }
+  ],
+  summary(v) {
+    const how = { auto: "The sign company had reopened " + v.short + " for a screen at the counter with the switch's box settings, left to negotiate (dynamic auto), and saved it.", desirable: "The sign company had set " + v.short + " to ask for a trunk itself (dynamic desirable) for a screen at the counter, and saved it.", vlan: "The camera company had given " + v.short + " the cameras' VLAN for a third camera and left it to negotiate (dynamic auto), and saved it: an access VLAN set doesn't make an access port." }[v.kind];
+    return { cause: how + " A laptop that speaks the trunking protocol was plugged into its socket: the port became a trunk, and the laptop sat in every VLAN it carried. VLAN hopping, by switch spoofing.", fix: "Put " + v.short + " back as the records keep a spare: an access port, in the parking VLAN, shut. Saved, and checked that only the records' trunks are trunking." };
+  }
+};
+
+export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07, SB08, SB09, SB10, SB11, SB12, SB13, SB14, SB15];
 export const BUSINESS_COMING = [];

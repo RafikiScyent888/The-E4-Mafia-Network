@@ -82,7 +82,8 @@ export const BUSINESS_LAYOUT = {
   cinj2: { x: 265, y: 600, px: 740, py: 455, room: "back" },   /* on the plan, its name clear of the back room's wall and of the back PC's name (9 November 2026) */
   cam2: { x: 110, y: 600, px: 720, py: 562, room: "back" },   /* on the plan, on the wall outside the back door */
   mphone: { px: 720, py: 215, room: "office" },
-  printer2: { px: 520, py: 200, room: "counter" },   /* SB-14's label printer: on the plan only (it isn't in the records), at the counter */
+  printer2: { px: 520, py: 200, room: "counter" },
+  intruder: { px: 520, py: 200, room: "counter" },   /* SB-15's unknown laptop: on the plan only, on the customers' side of the counter (the label printer's spot; the waiting area, the back room and the department's room have no space clear of their runs) */   /* SB-14's label printer: on the plan only (it isn't in the records), at the counter */
   /* SB-J10's department: its two PCs in the new room off the back room, on the plan below it (beside the strip outside the back
      door), the first up at the right under the door and the second lower and to the left, so neither one's run passes the
      other's tile or name; on the diagram, a column of their own left of the back switch (the diagram widens to the left for
@@ -243,6 +244,17 @@ export function addDepartment(sim) {
    asking for an address (the ticket sets it the way it was really set up). From a stream of its own, so every business before it
    comes out exactly as it always has */
 export const LABEL_PORT = "7";
+/* what SB-15 finds: an unknown laptop, plugged into a socket whose switch port was reopened and left to negotiate trunking. It
+   asks to trunk (DTP) as attack tools do, so where the port lets it, it sits in every VLAN the port carries. Not in the records
+   and not on the diagram; on the floor plan where it is. From a stream of its own, so every business before it comes out exactly
+   as it always has. at: { sw, port, room, len } */
+export function addIntruder(sim, at) {
+  const net = sim.net, r = rng(net.seed ^ 0x15d7), m = mac(r);
+  net.devices.intruder = { id: "intruder", kind: "intruder", label: "Unknown laptop", sub: "not on the diagram", on: true, undocumented: true, dtp: at.dtp || "dynamic desirable",
+    ifaces: [{ name: "Ethernet", type: "eth", port: "ETH", mac: m, cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }] };
+  net.cables.push({ id: "c-" + at.sw + "-intruder", kind: "cat6", a: { dev: at.sw, port: at.port, seated: true }, b: { dev: "intruder", port: "ETH", seated: true }, cond: "good", length: at.len });
+  net.rooms.intruder = at.room; sim.arp.intruder = {};
+}
 export function addLabelPrinter(sim) {
   const net = sim.net, r = rng(net.seed ^ 0x14b2), m = mac(r);
   net.devices.printer2 = { id: "printer2", kind: "printer", label: "Label printer", sub: "not on the diagram", on: true, undocumented: true,

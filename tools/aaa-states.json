@@ -1151,6 +1151,27 @@
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-11'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const V=P.vlans, m=l=>c.act({t:'cmd',dev:'mgr',line:l}); ['ssh '+P.user+'@'+V.staff.gw,P.userPw,'enable',P.rtSecret,'configure terminal','no ip dhcp excluded-address '+v.line,'end','copy running-config startup-config','','exit'].forEach(m); c.act({t:'cmd',dev:v.devs[0],line:'ipconfig /renew'}); c.guess('right'); c.act({t:'cmd',dev:v.devs[0],line:'ping '+v.printer}); document.getElementById('board').scrollIntoView();"
  },
  {
+  "name": "business tickets: SB-12 the router over SSH: the list on the subinterface, show access-lists",
+  "page": "index.html",
+  "ticket": "SB-12",
+  "seed": 2,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-12'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.vlans.staff.gw,P.userPw,'enable',P.rtSecret,'show interfaces '+v.sub,'show access-lists'].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-12 the visitor's phone connected with no internet, Mason's third rung",
+  "page": "index.html",
+  "ticket": "SB-12",
+  "seed": 1,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-12'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=guest]').click(); const w=c.T.opts.filter(o=>!o.right).map(o=>o.id); w.slice(0,4).forEach(x=>c.guess(x)); c.resetBoard(); c.guess(w[4]); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-12 solved, the summary",
+  "page": "index.html",
+  "ticket": "SB-12",
+  "seed": 3,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-12'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const V=P.vlans, m=l=>c.act({t:'cmd',dev:'mgr',line:l}); ['ssh '+P.user+'@'+V.staff.gw,P.userPw,'enable',P.rtSecret,'configure terminal','interface '+v.sub,'no ip access-group '+v.list+' in','end','copy running-config startup-config','','exit'].forEach(m); c.guess('right'); c.act({t:'print'}); document.getElementById('board').scrollIntoView();"
+ },
+ {
   "name": "business: SB-J1 first check, the work order, the limits and the box",
   "page": "build.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J1',true,4242); c.check(); document.getElementById('bm').scrollIntoView();"

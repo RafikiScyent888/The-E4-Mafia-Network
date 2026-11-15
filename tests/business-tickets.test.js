@@ -223,6 +223,7 @@ const WRONG = {
       const d = v.devs[0], a = T.sim.addr(v.kind === "staff" ? "pc" : "dpc1"), net = v.kind === "staff" ? v.plan.vlans.staff : v.plan.vlans.dept;
       L.push([{ t: "client", dev: d, values: { mode: "static", ip: net.gw.replace(/\d+$/, (x) => String(+x + (v.kind === "staff" ? 4 : 3))), mask: a.mask, gw: net.gw, dns: v.plan.dns } }]);   /* an address typed in on the PC */
     }
+    L.push(onRt(T, fix11(T).concat(v.before.map((x) => "no ip dhcp excluded-address " + x.replace("-", " ")))).concat(again11(T)));   /* the fix, and every exclusion the router had taken out as well: it works, and what it kept back can be lent */
     return L;
   },
   "SB-10": (T) => {

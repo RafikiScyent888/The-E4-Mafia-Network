@@ -286,3 +286,28 @@ test("the provider's gateway on the fixed block answers pings, from the router a
   ["configure terminal", "no ip route 0.0.0.0 0.0.0.0 " + F.gw, "ip route 0.0.0.0 0.0.0.0 GigabitEthernet0/0", "end"].forEach((l) => C.exec(S, l));
   assert.equal(exec(sim, "mgr", "ping 8.8.8.8").facts.replies, 0); assert.equal(exec(sim, "mgr", "ping " + F.gw).facts.replies, 4, "the gateway still answers on its own network");
 });
+
+test("the router's ARP table (show ip arp, show arp): its own addresses, each device it hears, and an address two devices answer flips between them (SB-14)", async () => {
+  const { BUSINESS_JOBS } = await import("../js/build/business.js"), { exec } = await import("../js/net/cmd.js"), { addLabelPrinter } = await import("../js/net/business.js");
+  const J = BUSINESS_JOBS.find((d) => d.id === "SB-J10"), b = J.start(4242), sim = b.sim, p = b.v.plan, P = p.vlans.printers;
+  for (const a of J.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line, a.win); else sim.apply(a); }
+  const S = R.session ? null : null; void S;
+  const show = (line) => { const T = C.session(sim.d.rtr.sw, { via: "console", live: sim.rtLive("rtr") }); T.mode = "priv"; T.pending = null; T.fresh = false; const r = C.exec(T, line); return [].concat(r.out || []).join("\n"); };
+  const dot = (m) => C.dotMac(m), row = (o, ip) => (o.match(new RegExp("^Internet\\s+" + ip.replace(/\./g, "\\.") + "\\s+(\\S+)\\s+(\\S+)\\s+ARPA\\s+(\\S+)", "m")) || []).slice(1);
+  const before = JSON.stringify(sim.net), o = show("show ip arp");
+  assert.match(o, /^Protocol\s+Address\s+Age \(min\)\s+Hardware Addr\s+Type\s+Interface$/m);
+  assert.deepEqual(row(o, P.gw).slice(0, 2), ["-", C.dotMac(sim.d.rtr.sw.mac)], "its own address on the printers' subinterface, no age");
+  assert.equal(row(o, p.printerIp)[1], dot(sim.d.printer.ifaces[0].mac), "the printer, by its hardware address");
+  assert.ok(/GigabitEthernet0\/1\.\d+/.test(row(o, p.printerIp)[2]), "on the printers' subinterface");
+  assert.equal(row(o, sim.addr("pc").ip)[1], dot(sim.d.pc.ifaces[0].mac), "a staff PC too");
+  assert.equal(show("show arp"), o, "show arp is the same table");
+  assert.equal(JSON.stringify(sim.net), before, "a look at the table changes nothing");
+  /* a second device on the printer's address: the table holds whoever answered the router last */
+  addLabelPrinter(sim);
+  const W = C.session(sim.d.msw.sw, { via: "console" }); W.mode = "priv"; W.pending = null; W.fresh = false;
+  ["configure terminal", "interface gi0/7", "switchport access vlan " + P.id, "no shutdown", "end"].forEach((l) => C.exec(W, l));
+  sim.apply({ t: "client", dev: "printer2", values: { mode: "static", ip: p.printerIp, mask: p.vmask, gw: P.gw } });
+  const seen = [0, 1, 2, 3].map(() => { sim.apply({ t: "print" }); return row(show("show ip arp"), p.printerIp)[1]; });
+  assert.deepEqual(new Set(seen), new Set([dot(sim.d.printer.ifaces[0].mac), dot(sim.d.printer2.ifaces[0].mac)]), "both hardware addresses, in turn (" + seen + ")");
+  assert.notEqual(seen[0], seen[1]); assert.equal(seen[0], seen[2]);
+});

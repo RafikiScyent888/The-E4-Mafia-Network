@@ -773,6 +773,40 @@ Object.assign(PLAN, {
       fix: async (p, v) => { await rtConf(p, v, fixLines(v)); if (v.kind === "guest-out") await radio(p); },
       proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "guest-out") await radio(p); else { const d1 = await T(p, () => window.__e4.T.sim.addr("dpc1").ip); await dev(p, "pc"); await tab(p, "Command Prompt"); await type(p, "ping " + d1); } }
     };
+  })(),
+  "SB-14": (() => {
+    const pages = async (p, n) => { await dev(p, "pc"); await tab(p, "Printers"); const seen = []; for (let k = 0; k < n; k++) { await p.click('.pane button:text-is("Print a test page")'); await p.waitForTimeout(40); seen.push(await p.$eval(".pane .res", (x) => x.textContent)); } return seen; };
+    /* the printer's address and the printers' network, off the card */
+    const card = async (p) => { const pr = await rec(p, "The printer"), vl = await rec(p, "Printers' VLAN"); const ip = (pr.match(/^(\d+\.\d+\.\d+\.\d+)/) || [])[1], m = vl.match(/· (\d+\.\d+\.\d+)\.0\/24 · gateway (\S+)/); return { ip: ip, pre: m ? m[1] + "." : "?", gw: m ? m[2] : "?" }; };
+    const panel = async (p, values) => { await dev(p, "printer2"); await p.check('.devform input[name="mode"][value="' + values.mode + '"]'); if (values.mode === "static") { await p.fill('.devform input[name="ip"]', values.ip); await p.fill('.devform input[name="mask"]', "255.255.255.0"); await p.fill('.devform input[name="gw"]', values.gw); } await p.click('.devform button:text-is("Save")'); await p.waitForTimeout(40); };
+    const arpOf = async (p, ip) => { await type(p, "show ip arp"); return ((await term(p)).split("show ip arp").pop().match(new RegExp("^Internet\\s+" + ip.replace(/\./g, "\\.") + "\\s+\\S+\\s+(\\S+)", "m")) || [])[1]; };
+    return {
+      look: async (p, v) => {
+        /* the label printer isn't in the records: on the floor plan, at the counter, not on the diagram; both drawings clear in both fonts */
+        check(!(await p.$('#net [data-d="printer2"]')), "SB-14: the label printer isn't on the logical diagram (it isn't in the records)");
+        const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "SB-14's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+        await p.click("#vPhy"); await p.waitForTimeout(60);
+        const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "SB-14's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+        const CT = (await import("../js/net/business.js")).BUSINESS_ROOM_BOX.counter;
+        const at = await p.$eval('#plan [data-d="printer2"] rect.tile', (r) => { const b = r.getBBox(), m = r.getCTM(), s = r.ownerSVGElement.getCTM(); const x = b.x + b.width / 2, y = b.y + b.height / 2; const q = s.inverse().multiply(m); return [q.a * x + q.c * y + q.e, q.b * x + q.d * y + q.f]; }).catch(() => [0, 0]);
+        check(at[0] > CT[0] && at[0] < CT[2] && at[1] > CT[1] && at[1] < CT[3], "SB-14's floor plan: the label printer is drawn at the counter (" + at.map(Math.round) + ")");
+        await planBothFonts(p, "SB-14"); await dysClear(p, "SB-14"); await p.click("#vLog"); await p.waitForTimeout(40);
+        const c = await card(p); check(c.ip === v.printer, "SB-14: the card gives the printer's address (" + c.ip + ")");
+        const two = await pages(p, 2); check(/nothing printed/.test(two[0]) && /: it printed/.test(two[1]), "SB-14: one test page vanishes, the next prints (" + two.join(" | ") + ")");
+        await rtLogin(p, v); const m1 = await arpOf(p, c.ip || "?");
+        await pages(p, 1); await dev(p, "mgr"); await tab(p, "Command Prompt"); const m2 = await arpOf(p, c.ip || "?");
+        check(!!m1 && !!m2 && m1 !== m2, "SB-14: show ip arp on the router gives the printer's address a different hardware address after each page (" + m1 + ", " + m2 + ")");
+        await type(p, "show ip dhcp binding"); const b = (await term(p)).split("show ip dhcp binding").pop(), row = (b.match(new RegExp("^" + (c.ip || "?").replace(/\./g, "\\.") + "\\s.*$", "m")) || [""])[0];
+        check(v.kind === "pool" ? /Automatic$/.test(row) : v.kind === "reserved" ? /Manual$/.test(row) : row === "", "SB-14 " + v.kind + ": show ip dhcp binding (" + (row || "no lease for the printer's address") + ")");
+        await type(p, "exit");
+        await dev(p, "printer2"); const lpTxt = await p.$eval(".pane", (n) => n.textContent); check(lpTxt.indexOf(c.ip) >= 0 || (await p.$eval('.devform input[name="ip"]', (n) => n.value)) === c.ip, "SB-14: the label printer's control panel holds the printer's address");
+        const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(["nopage", "page", "arp1", "arp2", "lpanel"].every((k) => ev.indexOf(k) >= 0), "SB-14: the notebook has the pages, both hardware addresses and the label printer's panel (" + ev + ")");
+      },
+      wrong: async (p, v) => { const c = await card(p); if (v.kind === "pool") await panel(p, { mode: "static", ip: c.pre + "40", gw: c.gw }); else if (v.kind === "reserved") { await rtConf(p, v, ["ip dhcp excluded-address " + c.ip]); await panel(p, { mode: "dhcp" }); } else await panel(p, { mode: "dhcp" }); },   /* by hand inside what the pool lends; kept back from a pool a reservation ignores; asking where nothing lends */
+      afterWrong: async (p) => { const v = await T(p, () => window.__e4.T.v), m = await p.$eval("#board", (n) => n.textContent); check(!(await T(p, () => window.__e4.T.fixed)) && (v.kind === "pool" ? /fixed address is one the router can lend/.test(m) : /label printer has no address/.test(m)), "SB-14 " + v.kind + ": pages print and it isn't the fix: Mason says why"); },
+      fix: async (p, v) => { const c = await card(p); if (v.kind === "static") await panel(p, { mode: "static", ip: c.pre + "30", gw: c.gw }); else { await rtConf(p, v, [v.kind === "pool" ? "ip dhcp excluded-address " + c.ip : "no ip dhcp pool LABEL-PRINTER"]); await panel(p, { mode: "dhcp" }); } },
+      proof: async (p) => { await pages(p, 2); }
+    };
   })()
 });
 

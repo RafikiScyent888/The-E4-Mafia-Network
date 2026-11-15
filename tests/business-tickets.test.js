@@ -59,6 +59,9 @@ const fix11 = (T) => T.v.kind === "guest" ? ["ip dhcp pool " + T.v.pool, "lease 
 /* SB-12: the list put back as the router had it (or the printers' new list taken off); tested from what lost its way */
 const fix12 = (T) => { const v = T.v, V = v.plan.vlans; return v.kind === "printers" ? ["interface " + v.sub, "no ip access-group " + v.list + " in"] : ["ip access-list extended " + v.list, v.kind === "guest" ? "permit ip " + V.guest.net + " 0.0.0.255 any" : "permit ip any any"]; };
 const again12 = (T) => T.v.kind === "guest" ? radioOn : [];
+/* SB-13: the list back where and which way the router had it */
+const fix13 = (T) => { const v = T.v, L = v.list; return v.kind === "guest-out" ? ["interface " + v.gs, "no ip access-group " + L + " out", "ip access-group " + L + " in"] : v.kind === "dept-in" ? ["interface " + v.ds, "no ip access-group " + L + " in", "ip access-group " + L + " out"] : ["interface " + v.ss, "no ip access-group " + L + " out", "interface " + v.ds, "ip access-group " + L + " out"]; };
+const again13 = (T) => T.v.kind === "guest-out" ? radioOn : [];
 const again4 = (T) => T.v.devs.flatMap((id) => id === "guest" ? [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }] : [{ t: "cmd", dev: id, line: "ipconfig /renew" }]);
 
 const FIX = {
@@ -73,7 +76,8 @@ const FIX = {
   "SB-09": (T) => ends9(T).flatMap((sw) => onSw(T, sw, [port8(sw), "switchport mode trunk"])).concat(again9()),
   "SB-10": (T) => onRt(T, subs10(T)).concat(again10(T)),
   "SB-11": (T) => onRt(T, fix11(T)).concat(again11(T)),
-  "SB-12": (T) => onRt(T, fix12(T)).concat(again12(T))
+  "SB-12": (T) => onRt(T, fix12(T)).concat(again12(T)),
+  "SB-13": (T) => onRt(T, fix13(T)).concat(again13(T))
 };
 const PROOF = {
   "SB-01": (T) => [pc("ping " + T.v.printer)],
@@ -87,7 +91,8 @@ const PROOF = {
   "SB-09": (T) => [{ t: "cmd", dev: "bpc", line: "ping " + T.v.printer }],
   "SB-10": (T) => T.v.kind === "printers" ? [{ t: "print" }] : T.v.kind === "guest" ? radioOn : [{ t: "cmd", dev: "dpc1", line: "ping " + T.v.printer }],
   "SB-11": (T) => T.v.kind === "guest" ? radioOn : [{ t: "cmd", dev: T.v.devs[0], line: "ping " + T.v.printer }],
-  "SB-12": (T) => T.v.kind === "guest" ? radioOn : T.v.kind === "dept" ? [{ t: "cmd", dev: "dpc1", line: "ping " + T.v.printer }] : [{ t: "print" }]
+  "SB-12": (T) => T.v.kind === "guest" ? radioOn : T.v.kind === "dept" ? [{ t: "cmd", dev: "dpc1", line: "ping " + T.v.printer }] : [{ t: "print" }],
+  "SB-13": (T) => T.v.kind === "guest-out" ? radioOn : [pc("ping " + T.sim.addr("dpc1").ip)]
 };
 const UNSAVED = {
   "SB-01": (T) => conf(T, ["interface gi0/1", "switchport access vlan " + staff(T).id]).concat([pc("ipconfig /renew")]),
@@ -101,7 +106,8 @@ const UNSAVED = {
   "SB-09": (T) => ends9(T).flatMap((sw) => onSw(T, sw, [port8(sw), "switchport mode trunk"], false)).concat(again9()),
   "SB-10": (T) => onRt(T, subs10(T), false).concat(again10(T)),
   "SB-11": (T) => onRt(T, fix11(T), false).concat(again11(T)),
-  "SB-12": (T) => onRt(T, fix12(T), false).concat(again12(T))
+  "SB-12": (T) => onRt(T, fix12(T), false).concat(again12(T)),
+  "SB-13": (T) => onRt(T, fix13(T), false).concat(again13(T))
 };
 /* tempting fixes that treat a symptom, or the wrong part: none may fix it */
 const WRONG = {
@@ -182,6 +188,17 @@ const WRONG = {
       e.flatMap((sw) => onSw(T, sw, [port8(sw), "switchport trunk allowed vlan all"])).concat(again9()),   /* the allowed list, on a port that isn't a trunk */
       e.flatMap((sw) => onSw(T, sw, [port8(sw), "shutdown", "no shutdown"])).concat(again9())];
   },
+  "SB-13": (T) => {
+    const v = T.v, Lst = v.list, L = [again13(T), [{ t: "power", dev: "rtr" }].concat(again13(T))];
+    if (v.kind === "guest-out") {
+      L.push(onRt(T, ["interface " + v.gs, "no ip access-group " + Lst + " out"]).concat(again13(T)));   /* taken off altogether: guests online, and nothing keeps them off the staff */
+      L.push(onRt(T, ["interface " + v.gs, "ip access-group " + Lst + " in"]).concat(again13(T)));   /* in as well, still out too: the replies still stopped */
+    } else {
+      L.push(onRt(T, ["interface " + v.ss, "ip access-group " + Lst + " in"].concat(v.kind === "dept-staff" ? ["no ip access-group " + Lst + " out"] : [])));   /* in on the staff's subinterface: the staff kept out, the guests not */
+      L.push(onRt(T, (v.kind === "dept-in" ? ["interface " + v.ds] : ["interface " + v.ds]).concat(["ip access-group " + Lst + " out"])));   /* out on the department's again, the wrong one left where it is */
+    }
+    return L;
+  },
   "SB-12": (T) => {
     const v = T.v, V = v.plan.vlans, L = [again12(T), [{ t: "power", dev: "rtr" }].concat(again12(T))];
     if (v.kind === "printers") {
@@ -224,6 +241,15 @@ const WRONG = {
   }
 };
 const SYMPTOM = {
+  "SB-13": (T) => {
+    const v = T.v, V = v.plan.vlans, p = v.plan;
+    const o = out(T, [mgr("ssh " + p.user + "@" + V.staff.gw), mgr(p.userPw), mgr("enable"), mgr(p.rtSecret), mgr("show access-lists"), mgr("show interfaces " + v.gs), mgr("show interfaces " + v.ds), mgr("show interfaces " + v.ss)]); E.act(T, mgr("exit"));
+    assert.match(o, new RegExp("IP access list " + v.list + "\\n"), "the list is still there");
+    if (v.kind === "guest-out") { assert.match(o, new RegExp("Outgoing access list is " + v.list)); assert.doesNotMatch(o, new RegExp("Inbound\\s+access list is " + v.list));
+      const ph = E.act(T, { t: "radio", dev: "guest", on: false }) && E.act(T, { t: "radio", dev: "guest", on: true }).facts; assert.ok(ph.ip && !ph.apipa && !ph.internet, "the phone has an address and no internet"); }
+    else { assert.doesNotMatch(o, new RegExp(v.ds.replace(/[./]/g, "\\$&") + " is [^]*?Outgoing access list is " + v.list + "[^]*?" + v.ss.replace(/[./]/g, "\\$&") + " is"), "not facing out of the department's");
+      assert.ok(E.act(T, pc("ping " + T.sim.addr("dpc1").ip)).facts.replies > 0, "the counter's PC reaches the department"); assert.ok(E.act(T, pc("ping 8.8.8.8")).facts.replies > 0, "and everything works"); }
+  },
   "SB-12": (T) => {
     const v = T.v, V = v.plan.vlans, p = v.plan;
     const o = out(T, [mgr("ssh " + p.user + "@" + V.staff.gw), mgr(p.userPw), mgr("enable"), mgr(p.rtSecret), mgr("show interfaces " + v.sub), mgr("show access-lists")]); E.act(T, mgr("exit"));

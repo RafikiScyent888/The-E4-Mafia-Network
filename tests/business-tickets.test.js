@@ -94,6 +94,9 @@ const PROOF = {
   "SB-12": (T) => T.v.kind === "guest" ? radioOn : T.v.kind === "dept" ? [{ t: "cmd", dev: "dpc1", line: "ping " + T.v.printer }] : [{ t: "print" }],
   "SB-13": (T) => T.v.kind === "guest-out" ? radioOn : [pc("ping " + T.sim.addr("dpc1").ip)]
 };
+/* the guests' Wi-Fi moved at the access point onto its own network (the VLAN left blank): the visitor's phone works, among the
+   business's own devices. On SB-12 a plant that let guests reach the printer went uncaught, and Mason's word was wrong on eight variants */
+const moveWifi = (T) => { const w = T.sim.d.ap.ssids.find((x) => x.ssid === T.v.plan.guestSsid); return [{ t: "apnet", dev: "ap", net: { ssid: w.ssid, sec: w.sec, psk: w.psk, vlan: "" } }]; };
 /* a proof from a device the fault never touched proves nothing (SB-10's swap: the staff always reached the printer; its plant went uncaught) */
 const NOPROOF = { "SB-10": (T) => T.v.kind === "swap" ? [pc("ping " + T.v.printer), mgr("ping " + T.v.printer)] : [] };
 const UNSAVED = {
@@ -437,6 +440,17 @@ for (const def of BUSINESS_TICKETS) {
       assert.equal(T.fixed, true, def.id + " seed " + s + " real fix");
       for (const a of PROOF[def.id](T)) E.act(T, a);
       assert.equal(T.proven, true, def.id + " seed " + s + " proof"); assert.equal(T.solved, true);
+    }
+  });
+  test(def.id + ": the guests' Wi-Fi moved onto the business's own network isn't the fix, alone or with it, and Mason says where the phone is", () => {
+    for (const s of seedsOf(def, 6)) {
+      let T = E.open(def, s); for (const a of moveWifi(T).concat(radioOn, PROOF[def.id](T))) E.act(T, a);
+      assert.equal(T.fixed, false, def.id + " seed " + s + " (" + T.v.kind + "): the Wi-Fi moved alone");
+      if (T.partial) assert.match(T.partial, /not on the guests' network/, def.id + " seed " + s + " (" + T.v.kind + "): Mason says where the phone is (" + T.partial + ")");
+      T = E.open(def, s); if (!PROOF[def.id](T).some((a) => a.dev === "guest")) continue;   /* proved by the phone: the fix, with it moved first, then asked again */
+      E.guess(T, "right"); for (const a of moveWifi(T).concat(FIX[def.id](T), radioOn, PROOF[def.id](T))) E.act(T, a);
+      assert.equal(T.fixed, false, def.id + " seed " + s + " (" + T.v.kind + "): the fix with the guests moved"); assert.equal(T.proven, false);
+      assert.match(T.partial || "", /not on the guests' network/, def.id + " seed " + s + " (" + T.v.kind + "): Mason says where the phone is (" + T.partial + ")");
     }
   });
   test(def.id + ": a proof run before the fix does not count, the internet proves nothing, and nor does a ping to itself or a tracert to its own router", () => {

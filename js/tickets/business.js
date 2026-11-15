@@ -40,6 +40,15 @@ const cap = function (s) { return s.charAt(0).toUpperCase() + s.slice(1); };
 const name = function (sim, id) { return String(sim.d[id].label).replace(/^[A-Z](?=[a-z])/, function (m) { return m.toLowerCase(); }); };
 const inNet = function (ip, net, len) { if (!ip) return false; const m = len >= 32 ? 0xffffffff : (0xffffffff << (32 - len)) >>> 0; return ((ip2n(ip) & m) >>> 0) === ((ip2n(net) & m) >>> 0); };
 const staffOf = function (v) { return v.plan.vlans.staff; };
+/* the visitor's phone on a network that isn't the guests': the guests' Wi-Fi moved at the access point (a VLAN blank puts it on the
+   access point's own), or the phone joined another. It works, among the business's own devices, and no ticket counts it; Mason says
+   so before the ticket's own word, which was about something else ("it hasn't saved it" when the fault was still there) */
+const GUEST_MOVED = "The visitor's phone works, but not on the guests' network: the Wi-Fi it joined now puts it on one meant for the business's own devices. Put the guests back on their own network, then find why it wasn't working there.";
+const guestMoved = function (sim, v) {
+  const G = v && v.plan && v.plan.vlans && v.plan.vlans.guest, ph = sim.d.guest, ap = sim.d.ap; if (!G || !ph || !ap) return false;
+  const j = ph.ifaces[0] && ph.ifaces[0].saved, w = j && (ap.ssids || []).find(function (x) { return x.ssid === j.ssid; });
+  return !!w && String(w.vlan) !== String(G.id) && online(sim, "guest");
+};
 const reachesPrinter = function (sim, id, ip) { const r = sim.route(id, ip); return !r.fail && (!!r.local || !!r.routed) && !!r.owner && r.owner.indexOf("printer") >= 0; };   /* on its own network, or across the router (the printers have their own VLAN since SB-J8) */
 
 /* the business's records, as the business keeps them: what a technician is given to log in to its gear, and its VLAN plan */
@@ -586,7 +595,7 @@ const SB07 = {
   fixHints(v) { return ["Find the line in the list NAT uses that should match that VLAN's network, or find that there isn't one.", "Make the list match that network as the records give it, network and wildcard, and take out a line that matches nothing of the business's.", "Save it, then test from a device in that VLAN" + (v.kind === "guest" ? ": the visitor's phone joins again." : ".")]; },
   exhibits(sim, v) { const ok = function (id) { return id === "guest" ? online(sim, "guest") : online(sim, id); }; return natList(sim).join("|") !== v.before.join("|") && !ok(v.dev) && ["pc", "dpc1", "guest"].filter(function (id) { return id !== v.dev; }).every(ok) && (v.kind === "guest" || reachesPrinter(sim, v.dev, v.printer)); },
   listRight(sim, v, saved) { const L = natList(sim, saved).slice().sort().join("|"); return L === v.before.slice().sort().join("|"); },
-  fixed(sim, v) { return SB07.listRight(sim, v) && SB07.listRight(sim, v, true) && ["pc", "mgr", "dpc1", "guest"].every(function (id) { return online(sim, id); }); },
+  fixed(sim, v) { const g = sim.addr("guest"), G = v.plan.vlans.guest; return SB07.listRight(sim, v) && SB07.listRight(sim, v, true) && ["pc", "mgr", "dpc1"].every(function (id) { return online(sim, id); }) && !!g && g.kind === "dhcp" && inNet(g.ip, G.net, 24) && online(sim, "guest"); },   /* the phone online on the guests' own network: with the guests' Wi-Fi moved onto the business's own, it's online too (found 15 November 2026) */
   partial(v, sim) {
     const L = natList(sim);
     if (v.before.every(function (k) { return L.indexOf(k) >= 0; }) && L.length > v.before.length) return "It works, but the list still has a line that matches nothing of the business's. The records have it matching each network once; the next technician will wonder what it's for.";
@@ -1115,4 +1124,5 @@ const SB13 = {
 };
 
 export const BUSINESS_TICKETS = [SB01, SB02, SB03, SB04, SB05, SB06, SB07, SB08, SB09, SB10, SB11, SB12, SB13];
+BUSINESS_TICKETS.forEach(function (d) { if (!d.partial) return; const own = d.partial; d.partial = function (v, sim) { return guestMoved(sim, v) ? GUEST_MOVED : own(v, sim); }; });
 export const BUSINESS_COMING = [];

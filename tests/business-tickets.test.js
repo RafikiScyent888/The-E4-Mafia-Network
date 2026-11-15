@@ -94,6 +94,8 @@ const PROOF = {
   "SB-12": (T) => T.v.kind === "guest" ? radioOn : T.v.kind === "dept" ? [{ t: "cmd", dev: "dpc1", line: "ping " + T.v.printer }] : [{ t: "print" }],
   "SB-13": (T) => T.v.kind === "guest-out" ? radioOn : [pc("ping " + T.sim.addr("dpc1").ip)]
 };
+/* a proof from a device the fault never touched proves nothing (SB-10's swap: the staff always reached the printer; its plant went uncaught) */
+const NOPROOF = { "SB-10": (T) => T.v.kind === "swap" ? [pc("ping " + T.v.printer), mgr("ping " + T.v.printer)] : [] };
 const UNSAVED = {
   "SB-01": (T) => conf(T, ["interface gi0/1", "switchport access vlan " + staff(T).id]).concat([pc("ipconfig /renew")]),
   "SB-02": (T) => onSw(T, T.v.sw, back(T), false).concat(again(T)),
@@ -445,6 +447,7 @@ for (const def of BUSINESS_TICKETS) {
       const byFix = T.proven;
       E.act(T, pc("ping 127.0.0.1")); E.act(T, pc("ping -n 6 " + T.sim.addr("pc").ip)); E.act(T, pc("tracert " + T.sim.addr("pc").gw));   /* a tracert that ends at the PC's own router proves nothing past it (SB-05's plant) */
       E.act(T, { t: "cmd", dev: "bpc", line: "ping 127.0.0.1" }); E.act(T, { t: "cmd", dev: "bpc", line: "ping " + T.sim.addr("bpc").ip });
+      for (const a of (NOPROOF[def.id] ? NOPROOF[def.id](T) : [])) E.act(T, a);
       assert.equal(T.proven, byFix, "pinging itself proves nothing");
       for (const a of PROOF[def.id](T)) E.act(T, a); assert.equal(T.proven, true);
     }

@@ -1109,6 +1109,27 @@
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-01'); document.querySelector('[data-site=bakery]').dispatchEvent(new MouseEvent('click',{bubbles:true})); document.getElementById('card').scrollIntoView();"
  },
  {
+  "name": "business tickets: SB-10 the router over SSH: show ip interface brief, the mistagged subinterface",
+  "page": "index.html",
+  "ticket": "SB-10",
+  "seed": 2,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-10'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.vlans.staff.gw,P.userPw,'enable',P.rtSecret,'show ip interface brief','show interfaces '+v.sub].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-10 a department PC on a guests' address, Mason's third rung",
+  "page": "index.html",
+  "ticket": "SB-10",
+  "seed": 9,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-10'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=dpc1]').click(); tab('Command Prompt'); ['ipconfig'].forEach(k); const w=c.T.opts.filter(o=>!o.right).map(o=>o.id); w.slice(0,4).forEach(x=>c.guess(x)); c.resetBoard(); c.guess(w[4]); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-10 solved, the summary",
+  "page": "index.html",
+  "ticket": "SB-10",
+  "seed": 9,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-10'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const B=v.before, V=P.vlans, m=l=>c.act({t:'cmd',dev:'mgr',line:l}); ['ssh '+P.user+'@'+V.staff.gw,P.userPw,'enable',P.rtSecret,'configure terminal','interface '+v.gs,'no encapsulation dot1Q','interface '+v.ds,'encapsulation dot1Q '+V.dept.id,'ip address '+B[v.ds].ip+' '+B[v.ds].mask,'interface '+v.gs,'encapsulation dot1Q '+V.guest.id,'ip address '+B[v.gs].ip+' '+B[v.gs].mask,'end','copy running-config startup-config','','exit'].forEach(m); ['dpc1','dpc2'].forEach(d=>c.act({t:'cmd',dev:d,line:'ipconfig /renew'})); c.act({t:'radio',dev:'guest',on:false}); c.act({t:'radio',dev:'guest',on:true}); c.guess('right'); c.act({t:'cmd',dev:'dpc1',line:'ping '+v.printer}); document.getElementById('board').scrollIntoView();"
+ },
+ {
   "name": "business: SB-J1 first check, the work order, the limits and the box",
   "page": "build.html",
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('SB-J1',true,4242); c.check(); document.getElementById('bm').scrollIntoView();"

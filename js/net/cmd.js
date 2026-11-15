@@ -105,7 +105,7 @@ function consoleTarget(sim, id) {
 }
 /* what a switch's own ping reaches: anything that answers (Windows computers don't, by default) */
 function reachFrom(sim, sw) {
-  return function (ip) { const r = sim.route(sw, ip); if (r.fail) return false; if (r.local) { const k = sim.d[r.owner[0]].kind; return !(k === "pc" || k === "laptop"); } return !!(r.internet || r.modem); };
+  return function (ip) { const r = sim.route(sw, ip); if (r.fail) return false; if (r.local || r.routed) { const k = sim.d[r.owner[0]].kind; return !(k === "pc" || k === "laptop"); } return !!(r.internet || r.modem); };
 }
 /* a TFTP write from a switch: it lands only on a computer it can reach with a TFTP server running (your laptop's).
    The file goes in the server's folder (a file of the same name is replaced) and its log says who sent it */
@@ -383,7 +383,7 @@ function attempt(sim, id, ip, rt, i, R, phase) {
     if ((k === "pc" || k === "laptop") && !sim.d[who].echo) return { line: "Request timed out.", got: false, counted: false, who: who };   /* Windows Firewall, as on any network */
     if (lostAt(i, loss, phase)) return { line: "Request timed out.", got: false, counted: false };
     const t = 1 + base + Math.floor(R() * 3);
-    return { line: "Reply from " + ip + ": bytes=32 time" + (t < 1 ? "<1ms" : "=" + t + "ms") + " TTL=" + (sim.ttlOf(who) - 1), got: true, counted: true, t: t, who: who };
+    return { line: "Reply from " + ip + ": bytes=32 time" + (t < 1 ? "<1ms" : "=" + t + "ms") + " TTL=" + (sim.ttlOf(who) - (rt.routers || 1)), got: true, counted: true, t: t, who: who };
   }
   if (lostAt(i, loss, phase)) return { line: "Request timed out.", got: false, counted: false };
   const t = (rt.modem ? 2 : 12) + base + Math.floor(R() * 9) + (loss > 0.05 ? Math.floor(R() * 220) : 0);

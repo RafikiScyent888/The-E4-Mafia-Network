@@ -14,6 +14,8 @@
    hashes of its secrets kept as hashes; the switch's SSH keys are never in a
    file, so a switch built from one has none until they're made again. */
 
+import { routeTable, longest, routeLines } from "./l3.js";
+
 const COPPER = 24, SFP = 4;
 export const PORT_NAMES = Array.from({ length: COPPER + SFP }, function (_, i) { return "GigabitEthernet0/" + (i + 1); });
 const short = function (n) { return n.replace("GigabitEthernet", "Gi"); };
@@ -27,6 +29,7 @@ export function newSwitch(o = {}) {
     users: {}, domain: null, rsa: 0, keyGen: 0, banner: null, vlan1: { ip: null, mask: null, shutdown: true }, gateway: null, ports: ports,
     vlans: { "1": { name: "default" } }, svis: {}, snoop: { on: false, vlans: [] }, dai: { vlans: [] },
     links: o.links || {}, mac: o.mac || "00e0.4c██.████", serial: "██████████", startup: null, uptime: o.uptime || "2 minutes" };
+  if (o.l3) Object.assign(sw, { os: "l3switch", model: "MSW-3900X", routing: false, routes: [] });   /* the campus's layer 3 switch: it routes once "ip routing" is on (Level 4) */
   return sw;
 }
 /* a port's VLAN settings from the box: it negotiates trunking with the far end (DTP, dynamic auto: it trunks only if the
@@ -151,6 +154,7 @@ export function operMode(p, far) {
    inactive); a trunk every allowed VLAN that exists, tagged, and its native VLAN untagged */
 export function carries(sw, n, far) {
   fix(sw);
+  if (sw.ports[n].routed) return { mode: "routed", untagged: null, tagged: [] };   /* "no switchport": a routed port, on no VLAN (a layer 3 switch) */
   const p = sw.ports[n], mode = operMode(p, far === undefined ? (sw.links[n] && sw.links[n].dtp) || null : far), has = function (v) { return !!sw.vlans[v]; };
   if (mode === "access") return { mode: mode, untagged: has(p.access) ? p.access : null, tagged: [] };
   const ok = function (v) { return p.allowed === "all" || p.allowed.indexOf(v) >= 0; };
@@ -186,7 +190,7 @@ function mismatchCounters(p, l) {
 const SHOW = [
   ["running-config", "Current operating configuration", function (S) { return osOf(S.sw).config(S.sw); }],
   ["startup-config", "Contents of startup-config", function (S) { return S.sw.startup ? osOf(S.sw).config(Object.assign({}, S.sw, S.sw.startup), true) : ["startup-config is not present"]; }],
-  ["version", "System hardware and software status", function (S) { const sw = S.sw; return ["MSW-2800G Network Operating System, Version 4.2.1", "", sw.hostname + " uptime is " + sw.uptime, "", "Model number: MSW-2800G (24 x 10/100/1000, 4 x SFP)", "Base MAC address: " + sw.mac, "System serial number: " + sw.serial, "", "System returned to ROM by " + (sw.restart || "power-on"), "", "Configuration register: 0x2102"]; }],
+  ["version", "System hardware and software status", function (S) { const sw = S.sw; return [osOf(sw).image, "", sw.hostname + " uptime is " + sw.uptime, "", "Model number: " + (sw.model === "MSW-3900X" ? "MSW-3900X (24 x 10/100/1000, 4 x SFP, layer 3)" : "MSW-2800G (24 x 10/100/1000, 4 x SFP)"), "Base MAC address: " + sw.mac, "System serial number: " + sw.serial, "", "System returned to ROM by " + (sw.restart || "power-on"), "", "Configuration register: 0x2102"]; }],
   ["ip", "IP information", [["interface", "IP interface status and configuration", [["brief", "Brief summary of IP status and configuration", function (S) { return ipBrief(S.sw); }]]],
     ["dhcp", "Show items in the DHCP database", [["snooping", "DHCP snooping", function (S, a) { if (a[0] && /^b/i.test(a[0])) return snoopBindings(S.sw); if (a[0]) return ["% Invalid input detected at '^' marker."]; return snoopSummary(S.sw); }, { sub: [["binding", "DHCP snooping binding table"]] }]]],
     ["arp", "IP ARP table", [["inspection", "Show ARP Inspection", function (S, a) { if (a[0] && /^i/i.test(a[0])) return daiInterfaces(S.sw); if (a[0] && !/^v/i.test(a[0])) return ["% Invalid input detected at '^' marker."]; return daiSummary(S.sw); }, { sub: [["interfaces", "Arp Inspection Interface Status"], ["vlan", "Arp Inspection VLAN"]] }]]]]],
@@ -450,7 +454,7 @@ function typed(a) {
   if (a.length > 1 && a[0] === "0") return a[1];
   return a[a.length - 1];
 }
-function setPort(S, k, v) { if (S.ifs.some(isSvi) && ["access", "native", "allowed", "nonegotiate", "mode", "dtrust", "atrust"].indexOf(k) >= 0) return ["% Invalid input detected at '^' marker.", "  (switchport settings are for the switch's ports, not its own interface on a VLAN)"]; S.ifs.forEach(function (n) { if (!isSvi(n)) S.sw.ports[n][k] = Array.isArray(v) ? v.slice() : v; }); return []; }
+function setPort(S, k, v) { if (["access", "native", "allowed", "nonegotiate", "mode"].indexOf(k) >= 0 && S.ifs.some(function (n) { return !isSvi(n) && S.sw.ports[n].routed; })) return ["% Invalid input detected at '^' marker.", "  (a routed port: \"switchport\" makes it a switch port again first)"]; if (S.ifs.some(isSvi) && ["access", "native", "allowed", "nonegotiate", "mode", "dtrust", "atrust"].indexOf(k) >= 0) return ["% Invalid input detected at '^' marker.", "  (switchport settings are for the switch's ports, not its own interface on a VLAN)"]; S.ifs.forEach(function (n) { if (!isSvi(n)) S.sw.ports[n][k] = Array.isArray(v) ? v.slice() : v; }); return []; }
 /* port security's settings on each port in the session's list (not on the switch's own interfaces) */
 function psSet(S, f) { if (S.ifs.some(isSvi)) return ["% Invalid input detected at '^' marker.", "  (port security is for the switch's ports, not its own interface on a VLAN)"]; S.ifs.forEach(function (n) { f(psOf(S.sw.ports[n]), n); }); return []; }
 /* the trunking mode: a dynamic mode and nonegotiate can't go together */
@@ -584,12 +588,14 @@ function runningConfig(sw, startup) {
   Object.keys(sw.users).forEach(function (u) { L.push("username " + u + " secret " + pw(sw.users[u], "secret")); });
   if (sw.enableSecret || sw.enablePassword || Object.keys(sw.users).length) L.push("!");
   if (sw.domain) L.push("ip domain-name " + sw.domain, "!");
+  if (sw.routing) L.push("ip routing", "!");
   if (sw.snoop && sw.snoop.vlans.length) L.push("ip dhcp snooping vlan " + vlanText(sw.snoop.vlans));
   if (sw.snoop && sw.snoop.on) L.push("ip dhcp snooping");
   if (sw.dai && sw.dai.vlans.length) L.push("ip arp inspection vlan " + vlanText(sw.dai.vlans));
   if ((sw.snoop && (sw.snoop.on || sw.snoop.vlans.length)) || (sw.dai && sw.dai.vlans.length)) L.push("!");
   Object.keys(sw.vlans || {}).map(Number).sort(function (a, b) { return a - b; }).forEach(function (v) { if (v === 1) return; L.push("vlan " + v); if (sw.vlans[v].name !== "VLAN" + String(v).padStart(4, "0")) L.push(" name " + sw.vlans[v].name); L.push("!"); });
-  PORT_NAMES.forEach(function (n) { const p = Object.assign({}, PORT_VLAN, sw.ports[n]); L.push("interface " + n); if (p.desc) L.push(" description " + p.desc);
+  PORT_NAMES.forEach(function (n) { const raw = sw.ports[n], p = Object.assign({}, PORT_VLAN, raw, raw.routed ? Object.assign({}, PORT_VLAN, { ps: null, atrust: false, dtrust: false }) : {}); L.push("interface " + n); if (p.desc) L.push(" description " + p.desc);
+    if (raw.routed) L.push(" no switchport", raw.ip ? " ip address " + raw.ip + " " + raw.mask : " no ip address");
     if (p.access !== 1) L.push(" switchport access vlan " + p.access);
     if (p.native !== 1) L.push(" switchport trunk native vlan " + p.native);
     if (p.allowed !== "all") L.push(" switchport trunk allowed vlan " + vlanText(p.allowed));
@@ -600,6 +606,8 @@ function runningConfig(sw, startup) {
     if (p.speed !== "auto") L.push(" speed " + p.speed); if (p.duplex !== "auto") L.push(" duplex " + p.duplex); if (p.mdix === false) L.push(" no mdix auto"); if (p.shutdown) L.push(" shutdown"); L.push("!"); });
   L.push("interface Vlan1"); if (sw.vlan1.desc) L.push(" description " + sw.vlan1.desc); L.push(sw.vlan1.ip ? " ip address " + sw.vlan1.ip + " " + sw.vlan1.mask : " no ip address"); if (sw.vlan1.shutdown) L.push(" shutdown"); L.push("!");
   Object.keys(sw.svis || {}).map(Number).sort(function (a, b) { return a - b; }).forEach(function (v) { const s = sw.svis[v]; L.push("interface Vlan" + v); if (s.desc) L.push(" description " + s.desc); L.push(s.ip ? " ip address " + s.ip + " " + s.mask : " no ip address"); if (s.shutdown) L.push(" shutdown"); L.push("!"); });
+  (sw.routes || []).forEach(function (r) { L.push("ip route " + r.net + " " + r.mask + " " + (r.nh || r.iface) + (r.ad && r.ad !== 1 ? " " + r.ad : "")); });
+  if ((sw.routes || []).length) L.push("!");
   if (sw.gateway) L.push("ip default-gateway " + sw.gateway, "!");
   if (sw.banner != null) L.push("banner motd ^C" + sw.banner + "^C", "!");   /* shown with ^C as its delimiter, whatever was typed */
   L.push("line con 0"); if (sw.con.timeout) L.push(" exec-timeout " + sw.con.timeout[0] + " " + sw.con.timeout[1]); if (sw.con.password) L.push(" password " + pw(sw.con.password)); if (sw.con.login) L.push(sw.con.login === "local" ? " login local" : " login");
@@ -614,7 +622,7 @@ function ipBrief(sw) {
   const v = status(sw, "Vlan1");
   L.push(pad("Vlan1", 23) + pad(sw.vlan1.ip || "unassigned", 16) + "YES " + pad(sw.vlan1.ip ? "manual" : "unset", 7) + pad(v[0], 22) + (sw.vlan1.shutdown ? "down" : "up"));
   Object.keys(sw.svis || {}).map(Number).sort(function (a, b) { return a - b; }).forEach(function (k) { const s = sw.svis[k], st = status(sw, "Vlan" + k); L.push(pad("Vlan" + k, 23) + pad(s.ip || "unassigned", 16) + "YES " + pad(s.ip ? "manual" : "unset", 7) + pad(st[0], 22) + st[1]); });
-  PORT_NAMES.forEach(function (n) { const s = status(sw, n); L.push(pad(n, 23) + pad("unassigned", 16) + "YES " + pad("unset", 7) + pad(s[0], 22) + s[1]); });
+  PORT_NAMES.forEach(function (n) { const s = status(sw, n), p = sw.ports[n], a = p.routed && p.ip; L.push(pad(n, 23) + pad(a ? p.ip : "unassigned", 16) + "YES " + pad(a ? "manual" : "unset", 7) + pad(s[0], 22) + s[1]); });
   return L;
 }
 /* the fingerprint of the switch's RSA host key, as an SSH client shows it: a new one each time keys are made */
@@ -952,3 +960,73 @@ registerOS("switch", { bootUp: function (sw, n) { if (isSvi(n)) sviOf(sw, n).shu
 /* what another device with this command line (the business router, rtcli.js) builds its own from */
 export const CORE = { CONFIG: CONFIG, EXEC_USER: EXEC_USER, EXEC_PRIV: EXEC_PRIV, SHOW: SHOW, LINE: LINE, typed: typed, pwText: pwText, hashish: hashish, clone: clone, ip4: ip4, isMask: isMask,
   save: save, changed: changed, logout: logout, setTransport: setTransport, applyText: applyText, snapshot: snapshot };
+
+/* ------------------------------------------------------------ the layer 3 switch (Level 4, the campus) */
+/* The MSW-3900X: the managed switch's command line and more. "ip routing" turns its VLAN interfaces into gateways and routes
+   between them; "no switchport" makes a port a routed port, on no VLAN, with an address of its own; static routes by next hop
+   or by interface; show ip route. A switch that isn't layer 3 has none of these, as on the real thing (its tree is unchanged). */
+/* its own interfaces that can route: every VLAN interface, and every routed port, each with its address and whether it's up */
+export function l3Ifs(sw) {
+  fix(sw); const out = [{ name: "Vlan1", ip: sw.vlan1.ip, mask: sw.vlan1.mask, up: !sw.vlan1.shutdown }];
+  Object.keys(sw.svis).map(Number).sort(function (a, b) { return a - b; }).forEach(function (v) { const s = sw.svis[v]; out.push({ name: "Vlan" + v, ip: s.ip, mask: s.mask, up: status(sw, "Vlan" + v)[1] === "up" }); });
+  PORT_NAMES.forEach(function (n) { const p = sw.ports[n]; if (p.routed) out.push({ name: n, ip: p.ip || null, mask: p.mask || null, up: status(sw, n)[1] === "up" }); });
+  return out;
+}
+/* its routing table (learned: routes a routing protocol worked out, given by the simulation) and the way to an address */
+export function l3Table(sw, learned) { return routeTable(l3Ifs(sw), sw.routes || [], learned || []); }
+export function l3Route(sw, dst, learned) { return sw.routing ? longest(l3Table(sw, learned), dst) : null; }
+const at = function (list, w) { return list.findIndex(function (e) { return e[0] === w; }); };
+/* a copy of a command list with the entry at path changed by f: each list on the way is copied, the rest is shared */
+function alter(list, path, f) {
+  const i = at(list, path[0]); if (i < 0) throw new Error("no command " + path.join(" "));
+  const out = list.slice(), e = out[i].slice(); out[i] = e;
+  if (path.length === 1) f(e); else e[2] = alter(e[2], path.slice(1), f);
+  return out;
+}
+const addTo = function (list, path, adds) { return alter(list, path, function (e) { e[2] = e[2].concat(adds); }); };
+const bare = function (list, path, fn) { return alter(list, path, function (e) { e[3] = Object.assign({}, e[3] || {}, { bare: fn }); }); };
+const wrap = function (list, path, fn) { return alter(list, path, function (e) { const was = e[2]; e[2] = function (S, a, raw) { return fn(S, a, raw, was); }; }); };
+const L3_INVALID = ["% Invalid input detected at '^' marker."];
+/* ip route <network> <mask> <next hop | interface> [distance] */
+function l3RouteCmd(S, a, undo) {
+  if (a.length < (undo ? 2 : 3)) return ["% Incomplete command."];
+  if (!ip4(a[0]) || !isMask(a[1])) return L3_INVALID;
+  const len = a[1].split(".").map(function (p) { return (+p).toString(2); }).join("").replace(/0/g, "").length, n = a[0].split(".").reduce(function (x, p) { return x * 256 + +p; }, 0);
+  if (n % Math.pow(2, 32 - len) !== 0) return ["%Inconsistent address and mask"];
+  let to = null, used = 0;
+  if (a[2]) { if (ip4(a[2])) { to = { nh: a[2] }; used = 1; } else { const f = ifName(a, 2); if (!f || f.err) return f && f.err === "incomplete" ? ["% Incomplete command."] : L3_INVALID; to = { iface: f.name }; used = f.used; } }
+  const rest = a.slice(2 + used), ad = rest[0] ? +rest[0] : null;
+  if (rest.length > 1 || (rest[0] && !(/^\d+$/.test(rest[0]) && ad >= 1 && ad <= 255))) return L3_INVALID;
+  const same = function (r) { return r.net === a[0] && r.mask === a[1] && (!to || (to.nh ? r.nh === to.nh : r.iface === to.iface)); };
+  S.sw.routes = (S.sw.routes || []).filter(function (r) { return !same(r); });
+  if (!undo) S.sw.routes.push(Object.assign({ net: a[0], mask: a[1] }, to, ad && ad !== 1 ? { ad: ad } : {}));
+  return [];
+}
+const physical = function (S) { return S.ifs.filter(function (n) { return !isSvi(n); }); };
+const L3_SHOW = addTo(SHOW, ["ip"], [["route", "IP routing table", function (S) { return routeLines(l3Table(S.sw, (S.live && S.live("learned")) || []), S.sw.routing, S.sw.gateway); }]]);
+const showIn = function (list, show) { return alter(list, ["show"], function (e) { e[2] = show; }); };
+const L3_USER = showIn(EXEC_USER, L3_SHOW.filter(function (c) { return ["version", "clock", "history", "users", "ip", "interfaces"].indexOf(c[0]) >= 0; }));
+const L3_PRIV = showIn(EXEC_PRIV, L3_SHOW);
+let L3_CONFIG = addTo(CONFIG, ["ip"], [
+  ["routing", "Enable IP routing", function (S) { S.sw.routing = true; return []; }],
+  ["route", "Establish static routes", function (S, a) { return l3RouteCmd(S, a, false); }, { sub: [["A.B.C.D", "Destination prefix"]] }]]);
+L3_CONFIG = addTo(L3_CONFIG, ["no", "ip"], [
+  ["routing", "Enable IP routing", function (S) { S.sw.routing = false; return []; }],
+  ["route", "Establish static routes", function (S, a) { return l3RouteCmd(S, a, true); }]]);
+/* "switchport" on its own makes a routed port a switch port again; "no switchport" makes a switch port routed */
+let L3_IFACE = bare(IFACE, ["switchport"], function (S) { physical(S).forEach(function (n) { const p = S.sw.ports[n]; p.routed = false; delete p.ip; delete p.mask; }); return S.ifs.some(isSvi) ? L3_INVALID : []; });
+L3_IFACE = bare(L3_IFACE, ["no", "switchport"], function (S) { if (S.ifs.some(isSvi)) return L3_INVALID; physical(S).forEach(function (n) { S.sw.ports[n].routed = true; }); return []; });
+/* an address on a routed port; on a switch port, the reason it can't take one */
+L3_IFACE = wrap(L3_IFACE, ["ip", "address"], function (S, a, raw, was) {
+  if (S.ifs.some(isSvi)) return was(S, a, raw);
+  if (S.ifs.some(function (n) { return !S.sw.ports[n].routed; })) return ["% Invalid input detected at '^' marker.", "  (a switch port is layer 2: \"no switchport\" makes it a routed port first)"];
+  if (a.length < 2) return ["% Incomplete command."]; if (!ip4(a[0]) || !isMask(a[1])) return L3_INVALID;
+  S.ifs.forEach(function (n) { S.sw.ports[n].ip = a[0]; S.sw.ports[n].mask = a[1]; }); return [];
+});
+L3_IFACE = wrap(L3_IFACE, ["no", "ip", "address"], function (S, a, raw, was) {
+  if (S.ifs.some(isSvi)) return was(S, a, raw);
+  S.ifs.forEach(function (n) { delete S.sw.ports[n].ip; delete S.sw.ports[n].mask; }); return [];
+});
+const L3_TREE = Object.assign({}, TREE, { user: L3_USER, priv: L3_PRIV, config: L3_CONFIG, if: L3_IFACE, ifrange: L3_IFACE });
+registerOS("l3switch", { bootUp: function (sw, n) { if (isSvi(n)) sviOf(sw, n).shutdown = false; else sw.ports[n].shutdown = false; }, tree: L3_TREE, prompts: { ifrange: "(config-if-range)#", vlan: "(config-vlan)#" },
+  keys: CONFIG_KEYS.concat(["routing", "routes"]), fresh: function () { return newSwitch({ l3: true }); }, config: runningConfig, image: "MSW-3900X Network Operating System, Version 4.2.1" });

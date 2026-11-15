@@ -3411,6 +3411,25 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
   virtual gateway, MTU. Port security and switch VLAN interfaces exist already.
 - **3D models:** a Layer 3 switch with fibre uplink slots, SFP transceivers, LC patch cords: the owner was asked for photographs
   on 15 November 2026 (as for SB-14's label printer). The engine and command line are built first; the models when they come.
+- **Groundwork, built 15 November 2026 on `save/level4-campus`** (worktree `/home/user/e4-l4`; nothing of Level 4 is live or
+  linked; `later: true` in `levels.js` until a stage is ready):
+  - **The layer 3 switch, MSW-3900X** (`newSwitch({ l3: true })`, its own command line registered as `l3switch`, so the office's
+    and the business's switches are unchanged, tested): `ip routing`; `no switchport` makes a routed port (on no VLAN, its own
+    address; switchport settings refused on it; `switchport` makes it a switch port again); static routes by next hop (only
+    while it's on a connected network) or by interface, with a distance; `show ip route` in the router's format with each
+    route's distance and metric (routing off: the switch's default gateway and an empty redirect cache, as the real thing says);
+    the lines in the running configuration and back in from a file; `show ip interface brief` with routed ports' addresses.
+    The table and longest match are in `js/net/l3.js` (pure); `l3Ifs`, `l3Table`, `l3Route` in `swcli.js`.
+  - **The simulation** (`sim.js`): a routed port is a node of its own on layer 2 (`l3Node`) and answers ARP there
+    (`routedAddrs`); a host's gateway on a switch that routes sends its packet on `routeL3`: the longest match at each switch,
+    on to the next hop's switch while the route says so, until the destination's own network; each switch crossed takes one off
+    the TTL (`routers`; ping's reply shows it); no route says so (Destination net unreachable from that switch); a next hop that
+    never answers, a loop, or no way back (the destination's route to the sender is checked too) each get no reply. The switch's
+    own ping goes by its table (`routeFromL3`). A switch that routes takes a reply by its own table (`canReply`). OSPF's learned
+    routes will come in through `learned(id)` and the session's `live("learned")`.
+  - **Checks:** `tests/campus-l3.test.js` (6) and `tests/campus-sim.test.js` (6); `python3 tools/plants-campus-node.py` (in a
+    throwaway copy): 10 plants, all caught (one hit only one of the two `ip routing` guards at first and was re-aimed at both).
+    The existing suites run unchanged against it (home, office, business command line, simulation and page: 200 of 200).
 
 ## Objectives
 

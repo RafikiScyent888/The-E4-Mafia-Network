@@ -530,6 +530,34 @@ Object.assign(PLAN, {
     };
   })(),
   /* SB-04: a DHCP pool handing out the wrong gateway; the router over SSH from the manager's PC, its logins off the card */
+  "SB-04": (() => {
+    const radio = async (p) => { await dev(p, "guest"); await tab(p, "Wi-Fi"); await p.click('.pane button:text-is("Turn Wi-Fi off")'); await p.waitForTimeout(40); await p.click('.pane button:text-is("Turn Wi-Fi on")'); await p.waitForTimeout(40); };
+    const again = async (p, v) => { for (const id of v.devs) { if (id === "guest") await radio(p); else { await dev(p, id); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); } } };
+    return {
+      look: async (p, v) => {
+        if (v.kind === "guest") { await dev(p, "guest"); await tab(p, "Wi-Fi"); const w = await p.$eval(".pane", (n) => n.textContent); check(/Connected to/.test(w) && /No internet/.test(w), "SB-04 guest: the visitor's phone is connected, with no internet"); }
+        else {
+          await dev(p, v.devs[0]); await tab(p, "Command Prompt"); await type(p, "ipconfig");
+          check(new RegExp("Default Gateway[ .]*: " + v.wrong.replace(/\./g, "\\.")).test(await term(p)), "SB-04 " + v.kind + ": ipconfig on a PC that restarted gives the wrong gateway, " + v.wrong);
+          await type(p, "ping " + v.gw); check(/Received = [1-4]/.test((await term(p)).split("ping " + v.gw).pop()), "SB-04: the router's own address on its VLAN answers");
+          await type(p, "ping " + v.printer); const pr = (await term(p)).split("ping " + v.printer).pop(); check(!/Reply from [\d.]+: bytes/.test(pr) && /Destination host unreachable|transmit failed/.test(pr), "SB-04: nothing past its own network does (Windows counts its own 'Destination host unreachable' as received)");
+        }
+        await rtLogin(p, v); await type(p, "show running-config");
+        check(new RegExp("ip dhcp pool " + v.pool + "\\n[^!]*default-router " + v.wrong.replace(/\./g, "\\.")).test(await term(p)), "SB-04: show running-config on the router: the " + v.pool + " pool's default router is " + v.wrong);
+        await type(p, "exit");
+        const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(ev.indexOf("pool") >= 0 && ev.indexOf(v.kind === "guest" ? "phone" : "ipc") >= 0, "SB-04: the notebook has what the devices were handed and the pool that handed it (" + ev + ")");
+      },
+      wrong: async (p, v) => { await rtConf(p, v, ["ip dhcp pool " + v.pool, "default-router " + v.gw], false); await again(p, v); },
+      afterWrong: async (p) => { check(/hasn't saved it/.test(await p.$eval("#board", (n) => n.textContent)), "SB-04: the pool put right but not saved: Mason says so"); },
+      fix: async (p, v) => {   /* the VLAN's gateway read off the card's VLAN plan, as a student would */
+        const rows = await p.$$eval("#officeRecs dt", (l) => l.map((x) => [x.textContent, x.nextElementSibling.textContent])), std = ["Staff VLAN", "Guests' VLAN", "Cameras' VLAN", "Printers' VLAN", "Native VLAN", "Parking VLAN", "VLAN 1"];
+        const r = v.kind === "staff" ? rows.find((x) => x[0] === "Staff VLAN") : v.kind === "guest" ? rows.find((x) => x[0] === "Guests' VLAN") : rows.find((x) => / VLAN$/.test(x[0]) && std.indexOf(x[0]) < 0);
+        const gw = r ? r[1].split("gateway ").pop() : null; check(gw === v.gw, "SB-04 " + v.kind + ": the card's VLAN plan gives the VLAN's gateway (" + gw + ")");
+        await rtConf(p, v, ["ip dhcp pool " + v.pool, "default-router " + gw]); await again(p, v); },
+      proof: async (p) => { const v = await T(p, () => window.__e4.T.v); if (v.kind === "guest") { await dev(p, "mgr"); await dev(p, "guest"); await tab(p, "Wi-Fi"); } else { await dev(p, v.devs[0]); await tab(p, "Command Prompt"); await type(p, "ping " + v.printer); } }
+    };
+  })(),
+  /* SB-05: the router's default route wrong; the provider's gateway off the card */
 });
 
 for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY || k === process.env.ONLY || (process.env.ONLY === "tickets-office" && /^SO-/.test(k)) || (process.env.ONLY === "tickets-business" && /^SB-/.test(k)))) for (const seed of seedsFor(id)) {

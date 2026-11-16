@@ -5,7 +5,8 @@
    Every change goes through apply(), so a ticket can be replayed exactly
    (progress is saved as the list of actions). */
 import { rng, hash, ip2n, n2ip, sameSubnet, isIp, isApipa, isPublic, isPrivate, isLoopback, broadcast, network, maskBits } from "./util.js";
-import { reload as reloadSwitch, duplexEnds, carries, ownAddrs, psRunOf, errDisabled, dotMac, l3Ifs, l3Route, chanState, portUp, PORT_NAMES as SW_PORTS } from "./swcli.js";
+import { reload as reloadSwitch, duplexEnds, carries, ownAddrs, psRunOf, errDisabled, dotMac, l3Ifs, l3Route, l3Table, chanState, portUp, ospfPassive, PORT_NAMES as SW_PORTS } from "./swcli.js";
+import { solve as ospfSolve, wildMatch as ospfMatch, ifCost as ospfCost } from "./ospf.js";
 import { solve as stpSolve, costOf as stpCost } from "./stp.js";
 import * as RT from "./rtcli.js";
 
@@ -864,6 +865,11 @@ export class Sim {
       if (k === "stp") { const all = self.stpAll(); return all[v] ? { result: all[v].result, ports: all[v].ports.filter(function (q) { return q.sw === id; }), me: id } : null; }
       if (k === "stpvlans") return Object.keys(self.stpAll()).map(Number).filter(function (w) { return self.d[id].sw.vlans[w]; });
       if (k === "learned") return self.learned(id);
+      if (k === "ospf") {
+        const R = self.ospfAll(), me = R.routers[id]; if (!me) return null;
+        const nb = R.nbrs[id] || [];
+        return { rid: me.rid, nbrs: nb, ifs: me.ifs.map(function (f) { const on = nb.filter(function (q) { return q.iface === f.name; }); return { name: f.name, ip: f.ip, mask: f.mask, area: f.area, cost: f.cost, passive: f.passive, role: R.roles[id + " " + f.name] || null, nbrs: on.length, full: on.filter(function (q) { return /^FULL/.test(q.state); }).length }; }) };
+      }
       return null;
     };
   }
@@ -880,8 +886,33 @@ export class Sim {
     const x = this.d[id]; if (!x.sw || x.sw.os !== "l3switch" || !Object.keys(x.sw.ports).some(function (n) { return x.sw.ports[n].routed; })) return [];
     return l3Ifs(this.l3View(id)).filter(function (f) { return f.up && f.ip && !/^Vlan/.test(f.name); }).map(function (f) { return { ip: f.ip, mask: f.mask, node: this.l3Node(id, f.name), iface: f.name }; }, this);
   }
-  /* routes a routing protocol worked out for it (OSPF comes later): none yet */
-  learned(id) { return []; }
+  /* routes OSPF worked out for it (each switch that routes, with "router ospf") */
+  learned(id) { const x = this.d[id]; if (!x || !x.sw || !x.sw.ospf) return []; const R = this.ospfAll(); return (R.routes[id] || []).map(function (r) { return Object.assign({ ad: 110 }, r); }); }
+  /* ------------------------------------------------------------ OSPF (Level 4, the campus: ospf.js) */
+  /* every switch's OSPF interfaces (up, an address, in a network statement), each on its segment (its layer 2 broadcast domain),
+     and what the protocol settles on; kept until a switch or a cable changes */
+  ospfAll() {
+    const ids = Object.keys(this.d).filter(function (id) { const x = this.d[id]; return x.kind === "mswitch" && x.sw.os === "l3switch" && x.sw.ospf && x.sw.routing && this.on(id); }, this);
+    const sig = JSON.stringify(Object.keys(this.d).filter(function (id) { return this.d[id].kind === "mswitch"; }, this).map(function (id) { const w = this.d[id].sw; return [id, this.on(id), w.ports, w.svis, w.ospf, w.routes, w.routing, w.vlans, w.pcs, w.stp, w.vlan1]; }, this)) + JSON.stringify(this.net.cables);
+    if (this._ospf && this._ospf.sig === sig) return this._ospf.res;
+    const routers = {}, segs = {};
+    const segOf = function (node) { if (segs[node]) return segs[node]; const D = [...this.domain(node)].sort(), k = D[0]; D.forEach(function (n) { segs[n] = k; }); return k; }.bind(this);
+    ids.forEach(function (id) {
+      const sw = this.d[id].sw, O = sw.ospf, view = this.l3View(id), up = l3Ifs(view).filter(function (f) { return f.up && f.ip; });
+      const ifs = [];
+      up.forEach(function (f) {
+        const st = O.nets.find(function (x) { return ospfMatch(f.ip, x.net, x.wild); }); if (!st) return;
+        const rec = /^Vlan/.test(f.name) ? (f.name === "Vlan1" ? sw.vlan1 : sw.svis[f.name.slice(4)]) : sw.ports[f.name];
+        const mbps = /^Vlan/.test(f.name) ? 1000 : (rec.speed && rec.speed !== "auto" ? +rec.speed : 1000);
+        ifs.push({ name: f.name, ip: f.ip, mask: f.mask, area: st.area, cost: rec.ospfCost || ospfCost(mbps, O.refBw), passive: ospfPassive(O, f.name), mtu: rec.mtu || 1500, pri: rec.ospfPri, seg: segOf(this.l3Node(id, f.name)) });
+      }, this);
+      const rid = O.rid || up.map(function (f) { return f.ip; }).sort(function (a, b) { return ip2n(b) - ip2n(a); })[0] || "0.0.0.0";
+      const def = !!O.originate && l3Table(view, []).some(function (t) { return t.code === "S" && t.net === "0.0.0.0" && t.mask === "0.0.0.0"; });
+      routers[id] = { rid: rid, ifs: ifs, originate: def };
+    }, this);
+    const res = ospfSolve(routers); res.routers = routers;
+    this._ospf = { sig: sig, res: res }; return res;
+  }
   /* a packet from a device through layer 3 switches: in at its gateway, the longest match there, out; on to the next hop's
      switch while the route says so, until it reaches the destination's own network, where whoever owns the address answers.
      Each switch it crosses takes one off the TTL. The reply has to find its own way back: the destination's route to the

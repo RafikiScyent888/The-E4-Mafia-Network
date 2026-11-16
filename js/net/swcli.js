@@ -644,7 +644,7 @@ function runningConfig(sw, startup) {
     if (q.access !== 1) L.push(" switchport access vlan " + q.access); if (q.native !== 1) L.push(" switchport trunk native vlan " + q.native); if (q.allowed !== "all") L.push(" switchport trunk allowed vlan " + vlanText(q.allowed));
     if (q.mode !== "dynamic auto") L.push(" switchport mode " + q.mode); if (q.nonegotiate) L.push(" switchport nonegotiate"); if (q.shutdown) L.push(" shutdown"); L.push("!"); });
   PORT_NAMES.forEach(function (n) { const raw = sw.ports[n], p = Object.assign({}, PORT_VLAN, raw, raw.routed ? Object.assign({}, PORT_VLAN, { ps: null, atrust: false, dtrust: false }) : {}); L.push("interface " + n); if (p.desc) L.push(" description " + p.desc);
-    if (raw.routed) L.push(" no switchport", raw.ip ? " ip address " + raw.ip + " " + raw.mask : " no ip address");
+    if (raw.routed) { L.push(" no switchport", raw.ip ? " ip address " + raw.ip + " " + raw.mask : " no ip address"); if (raw.mtu) L.push(" ip mtu " + raw.mtu); if (raw.ospfCost) L.push(" ip ospf cost " + raw.ospfCost); if (raw.ospfPri != null) L.push(" ip ospf priority " + raw.ospfPri); }
     if (p.access !== 1) L.push(" switchport access vlan " + p.access);
     if (p.native !== 1) L.push(" switchport trunk native vlan " + p.native);
     if (p.allowed !== "all") L.push(" switchport trunk allowed vlan " + vlanText(p.allowed));
@@ -656,7 +656,10 @@ function runningConfig(sw, startup) {
     if (raw.stp) { if (raw.stp.portfast) L.push(" spanning-tree portfast"); if (raw.stp.bpduguard) L.push(" spanning-tree bpduguard enable"); if (raw.stp.cost) L.push(" spanning-tree cost " + raw.stp.cost); }
     if (p.speed !== "auto") L.push(" speed " + p.speed); if (p.duplex !== "auto") L.push(" duplex " + p.duplex); if (p.mdix === false) L.push(" no mdix auto"); if (p.shutdown) L.push(" shutdown"); L.push("!"); });
   L.push("interface Vlan1"); if (sw.vlan1.desc) L.push(" description " + sw.vlan1.desc); L.push(sw.vlan1.ip ? " ip address " + sw.vlan1.ip + " " + sw.vlan1.mask : " no ip address"); if (sw.vlan1.shutdown) L.push(" shutdown"); L.push("!");
-  Object.keys(sw.svis || {}).map(Number).sort(function (a, b) { return a - b; }).forEach(function (v) { const s = sw.svis[v]; L.push("interface Vlan" + v); if (s.desc) L.push(" description " + s.desc); L.push(s.ip ? " ip address " + s.ip + " " + s.mask : " no ip address"); if (s.shutdown) L.push(" shutdown"); L.push("!"); });
+  Object.keys(sw.svis || {}).map(Number).sort(function (a, b) { return a - b; }).forEach(function (v) { const s = sw.svis[v]; L.push("interface Vlan" + v); if (s.desc) L.push(" description " + s.desc); L.push(s.ip ? " ip address " + s.ip + " " + s.mask : " no ip address"); if (s.mtu) L.push(" ip mtu " + s.mtu); if (s.ospfCost) L.push(" ip ospf cost " + s.ospfCost); if (s.ospfPri != null) L.push(" ip ospf priority " + s.ospfPri); if (s.shutdown) L.push(" shutdown"); L.push("!"); });
+  if (sw.ospf) { const O = sw.ospf; L.push("router ospf " + O.pid); if (O.rid) L.push(" router-id " + O.rid); if (O.refBw && O.refBw !== 100) L.push(" auto-cost reference-bandwidth " + O.refBw);
+    if (O.passiveDefault) { L.push(" passive-interface default"); (O.active || []).forEach(function (n) { L.push(" no passive-interface " + n); }); } else O.passive.forEach(function (n) { L.push(" passive-interface " + n); });
+    O.nets.forEach(function (x) { L.push(" network " + x.net + " " + x.wild + " area " + x.area); }); if (O.originate) L.push(" default-information originate"); L.push("!"); }
   (sw.routes || []).forEach(function (r) { L.push("ip route " + r.net + " " + r.mask + " " + (r.nh || r.iface) + (r.ad && r.ad !== 1 ? " " + r.ad : "")); });
   if ((sw.routes || []).length) L.push("!");
   if (sw.gateway) L.push("ip default-gateway " + sw.gateway, "!");
@@ -1110,13 +1113,70 @@ function l3RouteCmd(S, a, undo) {
   return [];
 }
 const physical = function (S) { return S.ifs.filter(function (n) { return !isSvi(n); }); };
-const L3_SHOW = addTo(SHOW, ["ip"], [["route", "IP routing table", function (S) { return routeLines(l3Table(S.sw, (S.live && S.live("learned")) || []), S.sw.routing, S.sw.gateway); }]]);
+/* ------------------------------------------------------------ OSPF on the layer 3 switch (one area at the campus) */
+/* the process's settings (made by "router ospf"), and an interface's own: its cost, priority and IP MTU (a VLAN interface's
+   or a routed port's record) */
+function ospfOf(sw) { return sw.ospf; }
+const ifRec = function (sw, n) { return isSvi(n) ? sviOf(sw, n) : sw.ports[n]; };
+const OSPF_INVALID = ["% Invalid input detected at '^' marker."];
+const wildOk = function (w) { if (!ip4(w)) return false; const b = w.split(".").map(function (p) { return (+p).toString(2).padStart(8, "0"); }).join(""); return /^0*1*$/.test(b); };
+function ifSet(S, f) { if (S.ifs.some(function (n) { return !isSvi(n) && !S.sw.ports[n].routed; })) return ["% Invalid input detected at '^' marker.", "  (a switch port is layer 2: OSPF runs on a routed port or a VLAN interface)"]; S.ifs.forEach(function (n) { f(ifRec(S.sw, n)); }); return []; }
+const L3_ROUTER = [
+  ["network", "Enable routing on an IP network", function (S, a) {
+    if (a.length < 4) return ["% Incomplete command."]; if (!ip4(a[0]) || !wildOk(a[1]) || !/^a/i.test(a[2]) || !/^\d+$/.test(a[3])) return OSPF_INVALID;
+    const O = ospfOf(S.sw); if (!O.nets.some(function (x) { return x.net === a[0] && x.wild === a[1] && x.area === +a[3]; })) O.nets.push({ net: a[0], wild: a[1], area: +a[3] }); return [];
+  }, { sub: [["A.B.C.D", "Network number"]] }],
+  ["router-id", "router-id for this OSPF process", function (S, a) { if (!a.length) return ["% Incomplete command."]; if (!ip4(a[0])) return OSPF_INVALID; ospfOf(S.sw).rid = a[0]; return []; }],
+  ["passive-interface", "Suppress routing updates on an interface", function (S, a) {
+    if (!a.length) return ["% Incomplete command."]; const O = ospfOf(S.sw);
+    if (/^d/i.test(a[0])) { O.passiveDefault = true; O.active = []; return []; }
+    const f = ifName(a, 0); if (!f || f.err) return OSPF_INVALID;
+    if (O.passiveDefault) O.active = (O.active || []).filter(function (x) { return x !== f.name; }); else if (O.passive.indexOf(f.name) < 0) O.passive.push(f.name); return [];
+  }],
+  ["default-information", "Control distribution of default information", [["originate", "Distribute a default route", function (S) { ospfOf(S.sw).originate = true; return []; }]]],
+  ["auto-cost", "Calculate OSPF interface cost according to bandwidth", [["reference-bandwidth", "Use reference bandwidth method to assign OSPF cost", function (S, a) {
+    if (!a.length) return ["% Incomplete command."]; if (!/^\d+$/.test(a[0]) || +a[0] < 1 || +a[0] > 4294967) return OSPF_INVALID; ospfOf(S.sw).refBw = +a[0];
+    return ["% OSPF: Reference bandwidth is changed.", "        Please ensure reference bandwidth is consistent across all routers."];
+  }]]],
+  ["no", "Negate a command or set its defaults", [
+    ["network", "Enable routing on an IP network", function (S, a) { const O = ospfOf(S.sw); O.nets = O.nets.filter(function (x) { return !(x.net === a[0] && x.wild === a[1]); }); return []; }],
+    ["router-id", "router-id for this OSPF process", function (S) { delete ospfOf(S.sw).rid; return []; }],
+    ["passive-interface", "Suppress routing updates on an interface", function (S, a) {
+      const O = ospfOf(S.sw); if (/^d/i.test(a[0] || "")) { O.passiveDefault = false; O.active = []; return []; }
+      const f = ifName(a, 0); if (!f || f.err) return OSPF_INVALID;
+      if (O.passiveDefault) { O.active = O.active || []; if (O.active.indexOf(f.name) < 0) O.active.push(f.name); } else O.passive = O.passive.filter(function (x) { return x !== f.name; }); return [];
+    }],
+    ["default-information", "Control distribution of default information", [["originate", "Distribute a default route", function (S) { delete ospfOf(S.sw).originate; return []; }]]],
+    ["auto-cost", "Calculate OSPF interface cost according to bandwidth", [["reference-bandwidth", "Use reference bandwidth method to assign OSPF cost", function (S) { ospfOf(S.sw).refBw = 100; return []; }]]]]],
+  ["do", "To run exec commands in config mode", function (S, a, raw) { const was = S.mode; S.mode = "priv"; const r = run(S, raw.replace(/^\s*do\s+/i, "")); S.mode = was; return r.lines; }],
+  ["end", "Exit from configure mode", function (S) { S.mode = "priv"; return []; }],
+  ["exit", "Exit from routing protocol configuration mode", function (S) { S.mode = "config"; return []; }]
+];
+/* is an interface passive: named, or everything is passive but it */
+export function ospfPassive(O, n) { return O.passiveDefault ? (O.active || []).indexOf(n) < 0 : O.passive.indexOf(n) >= 0; }
+/* show ip ospf neighbor / interface brief, show ip protocols: what the network has settled (live("ospf")) */
+function ospfShow(S, what) {
+  const O = ospfOf(S.sw); if (!O) return what === "protocols" ? [] : [];
+  const L = (S.live && S.live("ospf")) || { nbrs: [], ifs: [], rid: O.rid || "0.0.0.0" }, pad = function (x, n) { return (String(x) + " ".repeat(n)).slice(0, n); };
+  if (what === "neighbor") return ["", "Neighbor ID     Pri   State           Dead Time   Address         Interface"].concat(L.nbrs.map(function (q) { return pad(q.rid, 16) + pad(q.pri, 6) + pad(q.state, 16) + pad("00:00:3" + (q.rid.length % 10), 12) + pad(q.ip, 16) + q.iface; }));
+  if (what === "brief") return ["Interface    PID   Area            IP Address/Mask    Cost  State Nbrs F/C"].concat(L.ifs.map(function (f) { const len = f.mask.split(".").map(function (p) { return (+p).toString(2); }).join("").replace(/0/g, "").length; return pad(short(f.name).replace(/^Vlan/, "Vl"), 13) + pad(O.pid, 6) + pad(f.area, 16) + pad(f.ip + "/" + len, 19) + pad(f.cost, 6) + pad(f.passive ? "DOWN" : f.role === "BDR" ? "BDR" : f.role === "DROTHER" ? "DROTH" : "DR", 6) + f.full + "/" + f.nbrs; }));
+  return ["Routing Protocol is \"ospf " + O.pid + "\"", "  Router ID " + L.rid, "  Number of areas in this router is 1. 1 normal 0 stub 0 nssa", "  Maximum path: 4", "  Routing for Networks:"].concat(O.nets.map(function (x) { return "    " + x.net + " " + x.wild + " area " + x.area; }),
+    O.passiveDefault ? ["  Passive Interface(s):", "    (every interface but " + ((O.active || []).map(short).join(", ") || "none") + ")"] : O.passive.length ? ["  Passive Interface(s):"].concat(O.passive.map(function (n) { return "    " + n; })) : [], ["  Distance: (default is 110)"]);
+}
+const L3_OSPF_SHOW = [["ospf", "OSPF information", [["neighbor", "Neighbor list", function (S) { return ospfShow(S, "neighbor"); }], ["interface", "Interface information", [["brief", "Brief summary of interfaces", function (S) { return ospfShow(S, "brief"); }]]]]], ["protocols", "IP routing protocol process parameters and statistics", function (S) { return ospfShow(S, "protocols"); }]];
+const L3_SHOW = addTo(SHOW, ["ip"], [["route", "IP routing table", function (S, a) { const T = l3Table(S.sw, (S.live && S.live("learned")) || []); if (a[0] && !/^o/i.test(a[0])) return OSPF_INVALID; return routeLines(a[0] ? T.filter(function (t) { return t.code === "O"; }) : T, S.sw.routing, S.sw.gateway); }, { sub: [["ospf", "Open Shortest Path First (OSPF)"]] }]].concat(L3_OSPF_SHOW));
 const showIn = function (list, show) { return alter(list, ["show"], function (e) { e[2] = show; }); };
 const L3_USER = showIn(EXEC_USER, L3_SHOW.filter(function (c) { return ["version", "clock", "history", "users", "ip", "interfaces"].indexOf(c[0]) >= 0; }));
 const L3_PRIV = showIn(EXEC_PRIV, L3_SHOW);
 let L3_CONFIG = addTo(CONFIG, ["ip"], [
   ["routing", "Enable IP routing", function (S) { S.sw.routing = true; return []; }],
   ["route", "Establish static routes", function (S, a) { return l3RouteCmd(S, a, false); }, { sub: [["A.B.C.D", "Destination prefix"]] }]]);
+L3_CONFIG = L3_CONFIG.concat([["router", "Enable a routing process", [["ospf", "Open Shortest Path First (OSPF)", function (S, a) {
+  if (!a.length) return ["% Incomplete command."]; if (!/^\d+$/.test(a[0]) || +a[0] < 1 || +a[0] > 65535) return OSPF_INVALID;
+  if (S.sw.ospf && S.sw.ospf.pid !== +a[0]) return ["% Only one OSPF process on this switch: OSPF " + S.sw.ospf.pid + " is already running"];
+  S.sw.ospf = S.sw.ospf || { pid: +a[0], nets: [], passive: [], refBw: 100 }; S.mode = "router"; return [];
+}, { sub: [["<1-65535>", "Process ID"]] }]]]]);
+L3_CONFIG = addTo(L3_CONFIG, ["no"], [["router", "Enable a routing process", [["ospf", "Open Shortest Path First (OSPF)", function (S, a) { if (S.sw.ospf && (!a[0] || +a[0] === S.sw.ospf.pid)) delete S.sw.ospf; return []; }]]]]);
 L3_CONFIG = addTo(L3_CONFIG, ["no", "ip"], [
   ["routing", "Enable IP routing", function (S) { S.sw.routing = false; return []; }],
   ["route", "Establish static routes", function (S, a) { return l3RouteCmd(S, a, true); }]]);
@@ -1130,10 +1190,16 @@ L3_IFACE = wrap(L3_IFACE, ["ip", "address"], function (S, a, raw, was) {
   if (a.length < 2) return ["% Incomplete command."]; if (!ip4(a[0]) || !isMask(a[1])) return L3_INVALID;
   S.ifs.forEach(function (n) { S.sw.ports[n].ip = a[0]; S.sw.ports[n].mask = a[1]; }); return [];
 });
+L3_IFACE = addTo(L3_IFACE, ["ip"], [["ospf", "OSPF interface commands", [
+  ["cost", "Interface cost", function (S, a) { if (!a.length) return ["% Incomplete command."]; if (!/^\d+$/.test(a[0]) || +a[0] < 1 || +a[0] > 65535) return OSPF_INVALID; return ifSet(S, function (r) { r.ospfCost = +a[0]; }); }],
+  ["priority", "Router priority", function (S, a) { if (!a.length) return ["% Incomplete command."]; if (!/^\d+$/.test(a[0]) || +a[0] > 255) return OSPF_INVALID; return ifSet(S, function (r) { r.ospfPri = +a[0]; }); }]]],
+  ["mtu", "Set IP Maximum Transmission Unit", function (S, a) { if (!a.length) return ["% Incomplete command."]; if (!/^\d+$/.test(a[0]) || +a[0] < 68 || +a[0] > 9198) return ["% Invalid input detected at '^' marker.", "  (68 to 9198 bytes)"]; return ifSet(S, function (r) { r.mtu = +a[0]; }); }]]);
+L3_IFACE = addTo(L3_IFACE, ["no", "ip"], [["ospf", "OSPF interface commands", [["cost", "Interface cost", function (S) { return ifSet(S, function (r) { delete r.ospfCost; }); }], ["priority", "Router priority", function (S) { return ifSet(S, function (r) { delete r.ospfPri; }); }]]],
+  ["mtu", "Set IP Maximum Transmission Unit", function (S) { return ifSet(S, function (r) { delete r.mtu; }); }]]);
 L3_IFACE = wrap(L3_IFACE, ["no", "ip", "address"], function (S, a, raw, was) {
   if (S.ifs.some(isSvi)) return was(S, a, raw);
   S.ifs.forEach(function (n) { delete S.sw.ports[n].ip; delete S.sw.ports[n].mask; }); return [];
 });
-const L3_TREE = Object.assign({}, TREE, { user: L3_USER, priv: L3_PRIV, config: L3_CONFIG, if: L3_IFACE, ifrange: L3_IFACE });
-registerOS("l3switch", { bootUp: function (sw, n) { if (isSvi(n)) sviOf(sw, n).shutdown = false; else sw.ports[n].shutdown = false; }, tree: L3_TREE, prompts: { ifrange: "(config-if-range)#", vlan: "(config-vlan)#" },
-  keys: CONFIG_KEYS.concat(["routing", "routes"]), fresh: function () { return newSwitch({ l3: true }); }, config: runningConfig, image: "MSW-3900X Network Operating System, Version 4.2.1" });
+const L3_TREE = Object.assign({}, TREE, { user: L3_USER, priv: L3_PRIV, config: L3_CONFIG, if: L3_IFACE, ifrange: L3_IFACE, router: L3_ROUTER });
+registerOS("l3switch", { bootUp: function (sw, n) { if (isSvi(n)) sviOf(sw, n).shutdown = false; else sw.ports[n].shutdown = false; }, tree: L3_TREE, prompts: { ifrange: "(config-if-range)#", vlan: "(config-vlan)#", router: "(config-router)#" },
+  keys: CONFIG_KEYS.concat(["routing", "routes", "ospf"]), fresh: function () { return newSwitch({ l3: true }); }, config: runningConfig, image: "MSW-3900X Network Operating System, Version 4.2.1" });

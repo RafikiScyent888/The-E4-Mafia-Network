@@ -46,12 +46,12 @@ export function routeLines(T, routing, gateway) {
   /* routing off, the switch is a host: its default gateway and nothing else, as the real thing says it */
   if (!routing) return ["Default gateway is " + (gateway || "not set"), "", pad("Host", 19) + pad("Gateway", 18) + pad("Last Use", 12) + pad("Total Uses", 12) + "Interface", "ICMP redirect cache is empty"];
   const gw = T.find(function (t) { return t.code !== "L" && isDefault(t); });
-  const L = ["Codes: L - local, C - connected, S - static, O - OSPF, * - candidate default", "",
+  const L = ["Codes: L - local, C - connected, S - static, O - OSPF, E2 - OSPF external type 2, * - candidate default", "",
     gw ? "Gateway of last resort is " + (gw.nh || "0.0.0.0") + " to network 0.0.0.0" : "Gateway of last resort is not set", ""];
   T.slice().sort(function (a, b) { return n4(a.net) - n4(b.net) || bits(a.mask) - bits(b.mask); }).forEach(function (t) {
     const len = "/" + bits(t.mask);
     if (t.code === "C" || t.code === "L") { L.push(t.code + "        " + t.net + len + " is directly connected, " + t.iface); return; }
-    const code = t.code + (isDefault(t) ? "*" : "");
+    const code = t.code + (isDefault(t) ? "*" : "") + (t.ext || "");
     L.push(pad(code, 9) + t.net + len + " [" + t.ad + "/" + (t.metric || 0) + "] via " + (t.nh || t.iface) + (t.nh && t.iface ? ", " + t.iface : ""));
   });
   return L;

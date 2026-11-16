@@ -2,7 +2,7 @@
 # Run it in a throwaway copy of the checkout, never in the real one:   python3 tools/plants-campus-node.py [name ...]
 import subprocess, shutil, sys, os
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-TESTS = ["tests/campus-l3.test.js", "tests/campus-sim.test.js", "tests/campus-lag.test.js", "tests/campus-stp.test.js"]
+TESTS = ["tests/campus-l3.test.js", "tests/campus-sim.test.js", "tests/campus-lag.test.js", "tests/campus-stp.test.js", "tests/campus-ospf.test.js"]
 PLANTS = [
  ("a routed port still carries its VLANs", "js/net/swcli.js", '  if (sw.ports[n].routed) return { mode: "routed", untagged: null, tagged: [] };', ''),
  ("switchport settings accepted on a routed port", "js/net/swcli.js", 'S.ifs.some(function (n) { return !isSvi(n) && S.sw.ports[n].routed; })) return ["% Invalid input', 'false) return ["% Invalid input'),
@@ -32,6 +32,17 @@ PLANTS = [
  ("STP: never a loop, so nothing ever blocks", "js/net/sim.js", '      if (ends / 2 >= nodes) return true;', ''),
  ("STP: the designated port the far end's when it shouldn't be", "js/net/stp.js", "    out.roles[key] = mine ? { role: \"Desg\", sts: \"FWD\" } : { role: \"Altn\", sts: \"BLK\" };", "    out.roles[key] = !mine ? { role: \"Desg\", sts: \"FWD\" } : { role: \"Altn\", sts: \"BLK\" };"),
  ("STP: a bundle costs the same as one port", "js/net/stp.js", '  if (members && members > 1) return members >= 3 ? 2 : 3;', ''),
+ ("OSPF: a different area still neighbours", "js/net/ospf.js", 'return a.id !== b.id && a.f.area === b.f.area && a.f.mask', 'return a.id !== b.id && a.f.mask'),
+ ("OSPF: an MTU mismatch still goes FULL", "js/net/ospf.js", ': (m.f.mtu || 1500) !== (o.f.mtu || 1500) ? "EXSTART" : "FULL";', ': "FULL";'),
+ ("OSPF: a passive interface still sends hellos", "js/net/ospf.js", '  ids.forEach(function (id) { routers[id].ifs.forEach(function (f) { if (f.passive || !f.seg) return;', '  ids.forEach(function (id) { routers[id].ifs.forEach(function (f) { if (!f.seg) return;'),
+ ("OSPF: a passive network not advertised", "js/net/ospf.js", "        const key = netOf(f.ip, f.mask) + \"/\" + f.mask; if (mine.indexOf(key) >= 0) return;", "        const key = netOf(f.ip, f.mask) + \"/\" + f.mask; if (mine.indexOf(key) >= 0 || f.passive) return;"),
+ ("OSPF: the same router ID still neighbours", "js/net/ospf.js", ' && routers[a.id].rid !== routers[b.id].rid; };', '; };'),
+ ("OSPF: the lowest router ID made DR", "js/net/ospf.js", '|| ridCmp(routers[b.id].rid, routers[a.id].rid); });', '|| ridCmp(routers[a.id].rid, routers[b.id].rid); });'),
+ ("OSPF: the far network's own cost left out", "js/net/ospf.js", '        const m = dist[x] + (f.cost || 1);', '        const m = dist[x];'),
+ ("OSPF: a default originated with none to give", "js/net/sim.js", 'const def = !!O.originate && l3Table(view, []).some(', 'const def = !!O.originate || l3Table(view, []).some('),
+ ("OSPF: what it learns never used", "js/net/sim.js", "  learned(id) { const x = this.d[id]; if (!x || !x.sw || !x.sw.ospf) return [];", "  learned(id) { return [];"),
+ ("OSPF: the reference bandwidth ignored", "js/net/sim.js", 'cost: rec.ospfCost || ospfCost(mbps, O.refBw),', 'cost: rec.ospfCost || ospfCost(mbps, 100),'),
+ ("OSPF: an external type 2's metric grows on the way", "js/net/ospf.js", 'nh: first[x].nh, iface: first[x].iface, metric: 1 };', 'nh: first[x].nh, iface: first[x].iface, metric: dist[x] + 1 };'),
  ("LACP: a suspended member's line protocol shown up", "js/net/swcli.js", '  if (p.chan && chanState(sw, n) === "s") return ["up", "down"];   /* suspended from its port-channel */', ''),
 ]
 only = sys.argv[1:]

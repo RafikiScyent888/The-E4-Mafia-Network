@@ -3451,11 +3451,23 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
     (`bpduGuard`): a port with it on that hears another switch is err-disabled until it's shut and opened. The settings are made
     only when used (`sw.stp`, `p.stp`), so saved switches read as before. A switch's console on the page gets `swLive` (its
     tree, and the routes a protocol will learn). `tests/campus-stp.test.js` (7).
-  - **Checks:** `tests/campus-l3.test.js` (6), `tests/campus-sim.test.js` (6), `tests/campus-lag.test.js` (7), `tests/campus-stp.test.js` (7); `python3 tools/plants-campus-node.py` (in a
-    throwaway copy): 28 plants, all caught. Two missed at first: one hit only one of the two `ip routing` guards (re-aimed at
+  - **OSPF in one area** (`js/net/ospf.js`, pure; the layer 3 switch only): `router ospf <pid>` (one process; its own mode,
+    `(config-router)#`), `network <addr> <wildcard> area <n>`, `router-id`, `passive-interface <if> | default` (and `no` for
+    the exceptions), `default-information originate` (only with a default route of its own), `auto-cost reference-bandwidth`
+    (with the real warning to keep it the same everywhere); on a routed port or VLAN interface `ip ospf cost`, `ip ospf
+    priority`, `ip mtu`. Neighbours on each segment (a layer 2 broadcast domain) need the same area, subnet and mask, neither
+    passive, different router IDs; a different MTU leaves them in EXSTART. The DR is the highest priority, then router ID (set
+    by hand, or the highest interface address: on a switch with a provider port, that one); two that are neither stop at 2WAY.
+    Routes: the lowest total cost (each interface out on the way, then the far router's own into the network; the reference
+    bandwidth 100 by default, so a gigabit costs 1); a passive network still advertised; a default originated arrives as
+    `O*E2` with metric 1. The simulation (`ospfAll`, cached like the spanning tree) feeds them to the table through `learned`
+    at distance 110, so routing across switches (`routeL3`) uses them. `show ip ospf neighbor`, `show ip ospf interface brief`,
+    `show ip protocols`, `show ip route [ospf]`. `tests/campus-ospf.test.js` (7).
+  - **Checks:** `tests/campus-l3.test.js` (6), `tests/campus-sim.test.js` (6), `tests/campus-lag.test.js` (7), `tests/campus-stp.test.js` (7), `tests/campus-ospf.test.js` (7); `python3 tools/plants-campus-node.py` (in a
+    throwaway copy): 39 plants, all caught. Two missed at first: one hit only one of the two `ip routing` guards (re-aimed at
     both), and "a suspended member still carries frames" passed because the test's suspended member was an access port that
     couldn't carry the VLAN anyway (the test now suspends a trunk that still carries it). The existing suites run unchanged
-    against it (home, office, business command line, simulation and page, with the campus's: 226 of 226). The business's
+    against it (home, office, business command line, simulation and page, with the campus's: 233 of 233). The business's
     ticket tests ran within noise of the tickets branch on a loaded machine (time them again on an idle one before going live).
 
 ## Objectives

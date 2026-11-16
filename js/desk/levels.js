@@ -24,8 +24,9 @@ export const LEVELS = [
      live 18 October 2026, so it no longer carries planned (a level still being built does) */
   { n: 2, id: "office", name: "Small office", the: "the small office", tickets: OFFICE_TICKETS.map(function (t) { return t.id; }), jobs: OFFICE_JOBS.map(function (d) { return d.id; }) },
   /* 10 work orders and 15 tickets, as planned 19 October 2026 (the owner: "Yes to the level 3 plans"), going live stage by stage:
-     the work orders all live by 9 November 2026, the tickets one at a time after them, smallest first */
-  { n: 3, id: "business", name: "Small business", the: "the small business", tickets: BUSINESS_TICKETS.map(function (t) { return t.id; }), jobs: BUSINESS_JOBS.map(function (d) { return d.id; }), planned: 25, coming: "more tickets on the way" },
+     the work orders all live by 9 November 2026, the tickets one at a time after them, smallest first, the last (SB-15) live
+     16 November 2026, so it no longer carries planned */
+  { n: 3, id: "business", name: "Small business", the: "the small business", tickets: BUSINESS_TICKETS.map(function (t) { return t.id; }), jobs: BUSINESS_JOBS.map(function (d) { return d.id; }) },
   { n: 4, id: "campus", name: "Campus", the: "the campus", tickets: [], jobs: [], later: true },
   { n: 5, id: "enterprise", name: "Enterprise", the: "the enterprise level", tickets: [], jobs: [], later: true }
 ];

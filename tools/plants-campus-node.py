@@ -2,7 +2,7 @@
 # Run it in a throwaway copy of the checkout, never in the real one:   python3 tools/plants-campus-node.py [name ...]
 import subprocess, shutil, sys, os
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-TESTS = ["tests/campus-l3.test.js", "tests/campus-sim.test.js", "tests/campus-lag.test.js", "tests/campus-stp.test.js", "tests/campus-ospf.test.js", "tests/campus-hsrp.test.js", "tests/campus-site.test.js", "tests/campus-jobs.test.js"]
+TESTS = ["tests/campus-l3.test.js", "tests/campus-sim.test.js", "tests/campus-lag.test.js", "tests/campus-stp.test.js", "tests/campus-ospf.test.js", "tests/campus-hsrp.test.js", "tests/campus-site.test.js", "tests/campus-jobs.test.js", "tests/campus-edge.test.js"]
 PLANTS = [
  ("a routed port still carries its VLANs", "js/net/swcli.js", '  if (sw.ports[n].routed) return { mode: "routed", untagged: null, tagged: [] };', ''),
  ("switchport settings accepted on a routed port", "js/net/swcli.js", 'S.ifs.some(function (n) { return !isSvi(n) && S.sw.ports[n].routed; })) return ["% Invalid input', 'false) return ["% Invalid input'),
@@ -92,6 +92,18 @@ PLANTS = [
  ("CP-J3: it starts from nothing done", "js/build/campus.js", '    for (const a of CJ2.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }', '    for (const a of []) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }'),
  ("CP-J3: a hint names the native VLAN", "js/build/campus.js", 'rung1: function () { return "show interfaces trunk on both distribution switches', 'rung1: function (v) { return v.plan.vlans.native.id + " show interfaces trunk on both distribution switches'),
  ("LACP: an allowed list typed on the port-channel never reaches its own record", "js/net/swcli.js", "    if (S.po && !bad.length) { const pc = pcOf(S.sw, S.po), cur = pc.allowed", "    if (false) { const pc = pcOf(S.sw, S.po), cur = pc.allowed"),
+ ("EDGE: a router as a layer 3 switch's next hop stops the walk", "js/net/sim.js", '        if (this.d[n].kind === "brouter") {   /* on into a business router', '        if (false) {   /* on into a business router'),
+ ("EDGE: the way back never checked for a source routed in", "js/net/sim.js", 'const wayBack = function () { if (!far || oneWay) return true;', 'const wayBack = function () { if (true) return true;'),
+ ("EDGE: the router never routes on through a layer 3 switch (its own traffic)", "js/net/sim.js", '    if (rt.nh && this.routes3(owners[0])) {   /* on to a layer 3 switch: it carries on by its own table; the reply comes back in through this interface\'s list */', '    if (false) {   /* on to a layer 3 switch: it carries on by its own table; the reply comes back in through this interface\'s list */'),
+ ("EDGE: the router never routes on through a layer 3 switch (passing traffic)", "js/net/sim.js", '    if (rt.nh && this.routes3(owners[0])) {   /* on to a layer 3 switch: it carries on by its own table */', '    if (false) {   /* on to a layer 3 switch: it carries on by its own table */'),
+ ("EDGE: no guard on a loop between a switch and a router (both guards)", [("js/net/sim.js", "    if ((depth || 0) > 8) return Object.assign({ fail: \"no-reply\", hops: hops, why: \"loop\", routers: 16 }, base);", ""), ("js/net/sim.js", "    if ((depth || 0) > 8) return { fail: \"no-reply\", addr: a, hops: [a.gw], why: \"loop\", routers: 16 };", "")]),
+ ("RELAY: never relayed", "js/net/sim.js", '    out.push.apply(out, this.relays(dom));', ''),
+ ("RELAY: the offer's way back to the relay never checked", "js/net/sim.js", "          if (back.fail || !(back.local || back.routed) || !(back.owner || []).some(function (o) { return o === sid; })) return;", ""),
+ ("RELAY: the pool by the router's own interface, not the relay's address", "js/net/sim.js", "a = rl ? rl.giaddr : RT.addrOf(R, n, this.rtLive(rid)), P = a && RT.poolFor(R, a.ip, a.mask);", "a = rl ? { ip: rl.helper, mask: \"255.255.255.252\" } : RT.addrOf(R, n, this.rtLive(rid)), P = a && RT.poolFor(R, a.ip, a.mask);"),
+ ("RELAY: the lease names the relay as its server", "js/net/sim.js", "a = rl ? { ip: rl.helper } : RT.addrOf(r.sw, n, this.rtLive(rid)), P = o.pool;", "a = rl ? rl.giaddr : RT.addrOf(r.sw, n, this.rtLive(rid)), P = o.pool;"),
+ ("RELAY: a helper address taken on a switch port", "js/net/swcli.js", 'function helperSet(S, f) { if (S.ifs.some(function (n) { return !isSvi(n) && !S.sw.ports[n].routed; })) return', 'function helperSet(S, f) { if (false) return'),
+ ("RELAY: no ip helper-address takes nothing away", "js/net/swcli.js", 'return helperSet(S, function (r) { if (a.length && r.helpers) r.helpers = r.helpers.filter(function (h) { return h !== a[0]; }); if (!a.length || (r.helpers && !r.helpers.length)) delete r.helpers; }); }]]);', 'return helperSet(S, function (r) { }); }]]);'),
+ ("RELAY: a helper left out of the running configuration", "js/net/swcli.js", '(s.helpers || []).forEach(function (h) { L.push(" ip helper-address " + h); }); if (s.mtu)', 'if (s.mtu)'),
 ]
 only = sys.argv[1:]
 bad = 0

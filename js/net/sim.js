@@ -429,7 +429,7 @@ export class Sim {
   anySnoop() { for (const id in this.d) { const x = this.d[id]; if (x.kind === "mswitch" && x.sw.snoop && x.sw.snoop.on) return true; } return false; }
   anyDai() { for (const id in this.d) { const x = this.d[id]; if (x.kind === "mswitch" && x.sw.dai && x.sw.dai.vlans.length) return true; } return false; }
   /* a DHCP server's node by its key: a router's LAN side ("router"), its guest network ("router:guest"), a business router's interface ("rtr@...") */
-  srvNode(key) { if (key.indexOf("@") > 0) { const [rid, n] = key.split("@"); return this.rtNode(rid, n); } return key === "router:guest" ? "router:guest" : key + ":lan"; }
+  srvNode(key) { if (key.indexOf("@") > 0) { const rl = this.relayOf(key); if (rl) return rl.node; const [rid, n] = key.split("@"); return this.rtNode(rid, n); } return key === "router:guest" ? "router:guest" : key + ":lan"; }
   /* DHCP snooping: a server's answers are dropped at the first switch that snoops their VLAN and doesn't trust the port they
      come in by. Where, or null */
   snoopBlock(serverNode, clientNode) {
@@ -585,9 +585,41 @@ export class Sim {
       const discover = { proto: "udp", src: "0.0.0.0", dst: "255.255.255.255", sport: 68, port: 67 };
       RT.allIfs(R).forEach(function (n) { const a = RT.addrOf(R, n, live), f = n.indexOf(".") > 0 ? R.subs[n] : R.ifs[n]; if (a && RT.rtStatus(R, n)[1] === "up" && dom.has(this.rtNode(rid, n)) && RT.poolFor(R, a.ip, a.mask) && (!f.aclIn || RT.aclVerdict(R, f.aclIn, discover).permit)) out.push(rid + "@" + n); }, this);
     }
+    out.push.apply(out, this.relays(dom));
     if (raw || !this.anySnoop()) return out;
     const me = this.homeNode(id);
     return out.filter(function (k) { return !this.snoopBlock(this.srvNode(k), me); }, this);   /* an answer coming in by a port a snooping switch doesn't trust never reaches the client */
+  }
+  /* DHCP relay (ip helper-address): a layer 3 switch routing, with an interface up on the client's broadcast domain that has helpers,
+     sends the request on to each helper as a unicast from its own way out, the relaying interface's address (giaddr) in it. A business
+     router at a helper's address answers from its pool for giaddr's network, if the request reaches it and its answer can be routed
+     back to giaddr. Keys "rtr@relay|switch|interface|helper". Worked out, never stored */
+  relays(dom) {
+    const out = [];
+    for (const sid in this.d) {
+      if (!this.routes3(sid)) continue;
+      const V = this.l3View(sid), sw = this.d[sid].sw;
+      l3Ifs(V).forEach(function (f) {
+        const m = /^Vlan(\d+)$/.exec(f.name), rec = m ? (+m[1] === 1 ? sw.vlan1 : sw.svis[m[1]]) : sw.ports[f.name];
+        if (!f.up || !f.ip || !rec || !rec.helpers || !dom.has(this.l3Node(sid, f.name))) return;
+        rec.helpers.forEach(function (h) {
+          const there = this.routeFromL3(sid, h, { proto: "udp", port: 67, sport: 67 }), rid = there && !there.fail && (there.local || there.routed) && there.owner ? there.owner.find(function (o) { return this.d[o].kind === "brouter"; }, this) : null;
+          if (!rid || !this.on(rid)) return;
+          const R = this.rtView(rid), live = this.rtLive(rid), at = RT.allIfs(R).find(function (n) { const x = RT.addrOf(R, n, live); return x && x.ip === h && RT.rtStatus(R, n)[1] === "up"; });
+          if (!at || !RT.poolFor(R, f.ip, f.mask)) return;
+          const back = this.routeFromRouter(rid, f.ip, { proto: "udp", port: 67, sport: 67 });
+          if (back.fail || !(back.local || back.routed) || !(back.owner || []).some(function (o) { return o === sid; })) return;
+          out.push(rid + "@relay|" + sid + "|" + f.name + "|" + h);
+        }, this);
+      }, this);
+    }
+    return out;
+  }
+  /* a relayed key's parts: the router, the relaying switch and interface (with its address now), the helper address */
+  relayOf(key) {
+    const [rid, rest] = key.split("@"); if (!rest || rest.indexOf("relay|") !== 0) return null;
+    const [, sid, ifn, h] = rest.split("|"), f = l3Ifs(this.l3View(sid)).find(function (k) { return k.name === ifn; });
+    return { rid: rid, sid: sid, ifn: ifn, helper: h, giaddr: f ? { ip: f.ip, mask: f.mask } : null, node: this.l3Node(sid, ifn) };
   }
   /* the servers a client's request reaches whose answers a snooping switch drops: where (for the checks' causes) */
   snoopDrops(id) {
@@ -598,9 +630,9 @@ export class Sim {
      else the lowest free one. Like the real server it checks an address isn't answering first: one in use by a device set by
      hand (an address nobody excluded) goes on its conflict list and is skipped */
   rtOffer(key, mac) {
-    const [rid, n] = key.split("@"), x = this.d[rid], R = x.sw, a = RT.addrOf(R, n, this.rtLive(rid)), P = RT.poolFor(R, a.ip, a.mask); if (!P) return null;
+    const rl = this.relayOf(key), [rid, n] = key.split("@"), x = this.d[rid], R = x.sw, a = rl ? rl.giaddr : RT.addrOf(R, n, this.rtLive(rid)), P = a && RT.poolFor(R, a.ip, a.mask); if (!P) return null;   /* relayed: the pool for the relaying interface's network */
     x.leases = x.leases || []; x.conflicts = x.conflicts || [];
-    const taken = new Set(x.leases.filter(function (l) { return l.mac !== mac; }).map(function (l) { return l.ip; })), dom = this.domain(this.rtNode(rid, n));
+    const taken = new Set(x.leases.filter(function (l) { return l.mac !== mac; }).map(function (l) { return l.ip; })), dom = this.domain(rl ? rl.node : this.rtNode(rid, n));
     /* a manual binding for this client (a reservation, matched on the client identifier it sends): its address and nothing else,
        unless something else already answers at it */
     const M = RT.manualFor(R, RT.clientIdOf(mac), a.ip, a.mask);
@@ -666,7 +698,7 @@ export class Sim {
   }
   /* a lease from the business router: what its pool says (its mask, its default router, its DNS servers), right or wrong */
   rtLease(key, x, f, o) {
-    const [rid, n] = key.split("@"), r = this.d[rid], a = RT.addrOf(r.sw, n, this.rtLive(rid)), P = o.pool;
+    const rl = this.relayOf(key), [rid, n] = key.split("@"), r = this.d[rid], a = rl ? { ip: rl.helper } : RT.addrOf(r.sw, n, this.rtLive(rid)), P = o.pool;   /* relayed: the server is the helper address */
     r.leases = r.leases.filter(function (l) { return l.mac !== f.mac; });
     r.leases.push({ mac: f.mac, ip: o.ip, pool: P.name, name: x.label, host: x.host || x.label.replace(/\s+/g, "-").toUpperCase(), manual: !!P.manual });
     f.lease = { ip: o.ip, mask: P.mask, gw: P.router[0] || null, dns: P.dns.slice(), server: a.ip, obtained: this.n, hours: P.lease === "infinite" ? 0 : P.lease[0] * 24 + (P.lease[1] || 0), domain: P.domain || null };
@@ -977,9 +1009,10 @@ export class Sim {
      Each switch it crosses takes one off the TTL. The reply has to find its own way back: the destination's route to the
      sender must work too (oneWay: this is that check, so it doesn't check again). A next hop that never answers, a network
      no switch has a route to, a loop, each stops it for its own reason. Worked out, never stored: a check changes nothing */
-  routeL3(id, a, dst, gwId, dom, proto, oneWay) {
+  routeL3(id, a, dst, gwId, dom, proto, oneWay, depth) {
     const base = { via: gwId, addr: a }, hops = [a.gw], seen = [];
     let cur = gwId, routers = 0;
+    if ((depth || 0) > 8) return Object.assign({ fail: "no-reply", hops: hops, why: "loop", routers: 16 }, base);   /* handed back and forth between switches and a router until the TTL runs out */
     while (routers < 16) {
       if (seen.indexOf(cur) >= 0) return Object.assign({ fail: "no-reply", hops: hops.slice(), why: "loop", routers: routers }, base);   /* round in a circle until the TTL runs out */
       seen.push(cur); routers++;
@@ -995,6 +1028,10 @@ export class Sim {
       if (!owners.length) return Object.assign({ fail: "no-reply", hops: hops.slice(), why: rt.nh ? "next-hop" : "arp", at: cur, routers: routers }, base);   /* its ARP for the next hop, or the destination, goes unanswered */
       if (rt.nh) {
         const n = owners[0];
+        if (this.d[n].kind === "brouter") {   /* on into a business router (the campus's edge): it carries on from its interface on this network */
+          const br = this.routeBR(id, { ip: a.ip, mask: a.mask, gw: rt.nh, kind: a.kind }, dst, n, odom, proto, oneWay, (depth || 0) + 1);
+          return Object.assign({}, br, { via: gwId, addr: a, hops: hops.concat(br.hops || []), routers: routers + (br.routers || 1) });
+        }
         if (!this.routes3(n)) return Object.assign({ fail: "beyond", hops: hops.concat([rt.nh]), routers: routers }, base);   /* a next hop that doesn't route it on */
         hops.push(rt.nh); cur = n; continue;
       }
@@ -1014,7 +1051,7 @@ export class Sim {
     const odom = this.domain(this.l3Node(rid, rt.iface)), next = rt.nh || dst;
     const owners = this.owners(next, odom).filter(function (o) { return o !== rid; });
     if (!owners.length) return { fail: "no-reply", addr: a, why: "arp" };
-    if (rt.nh) { const n = owners[0]; if (!this.routes3(n)) return { fail: "beyond", addr: a, hops: [rt.nh] }; const r = this.routeL3(rid, a, dst, n, odom, proto, oneWay); return Object.assign({}, r, { routers: (r.routers || 0) }); }
+    if (rt.nh) { const n = owners[0]; if (this.d[n].kind === "brouter") { const br = this.routeBR(rid, a, dst, n, odom, proto, oneWay, 1); return Object.assign({}, br, { hops: [rt.nh].concat((br.hops || []).slice(1)) }); } if (!this.routes3(n)) return { fail: "beyond", addr: a, hops: [rt.nh] }; const r = this.routeL3(rid, a, dst, n, odom, proto, oneWay); return Object.assign({}, r, { routers: (r.routers || 0) }); }
     const back = owners.filter(function (o) { return this.canReply(o, a.ip, odom); }, this);
     return back.length ? { local: true, owner: back, addr: a, next: dst } : { fail: "no-reply", owner: owners, addr: a };
   }
@@ -1097,16 +1134,20 @@ export class Sim {
      in on that interface; routed by the longest match; out through the access list out on the way-out interface; NAT to the
      provider. The reply has to come back the same way, through the same lists the other way round (access lists remember
      nothing). acls: each list line a packet matched, for the hit counts when the traffic is really sent */
-  routeBR(id, a, dst, rid, dom, proto) {
+  routeBR(id, a, dst, rid, dom, proto, oneWay, depth) {
     const R = this.rtView(rid), live = this.rtLive(rid), P = proto || { proto: "icmp" }, acls = [];
     const inIf = this.rtIfFor(rid, a.gw, dom, R); if (!inIf) return { fail: "gateway-unreachable", addr: a, next: a.gw };
+    if ((depth || 0) > 8) return { fail: "no-reply", addr: a, hops: [a.gw], why: "loop", routers: 16 };
+    /* a source routed in from another router (a layer 3 switch in front of it): the reply needs a route back there too */
+    const ia = RT.addrOf(R, inIf, live), far = !!(ia && !sameSubnet(a.ip, ia.ip, ia.mask)), self = this;
+    const wayBack = function () { if (!far || oneWay) return true; const r = self.routeFromRouter(rid, a.ip, Object.assign({}, P, { src: dst, dst: a.ip, port: P.sport, sport: P.port }), (depth || 0) + 1); return !r.fail && !!(r.local || r.routed); };
     const pass = function (n, dir, pk) { const f = RT.allIfs(R).indexOf(n) >= 0 ? (n.indexOf(".") > 0 ? R.subs[n] : R.ifs[n]) : null, L = f && (dir === "in" ? f.aclIn : f.aclOut); if (!L) return true; const v = RT.aclVerdict(R, L, pk); if (!v.missing) acls.push([L, v.line]); return v.permit; };
     const req = Object.assign({}, P, { src: a.ip, dst: dst }), rep = Object.assign({}, P, { src: dst, dst: a.ip, port: P.sport, sport: P.port });
     const gwIp = a.gw, base = { via: rid, addr: a, inIf: inIf, acls: acls };
     if (!pass(inIf, "in", req)) return Object.assign({ fail: "blocked", hops: [], acl: { iface: inIf, dir: "in" } }, base);   /* checked as it comes in, before anything else: even tracert's first probe gets no answer */
     /* to one of the router's own addresses */
     const own = RT.allIfs(R).find(function (n) { const x = RT.addrOf(R, n, live); return x && x.ip === dst && RT.rtStatus(R, n)[1] === "up"; });
-    if (own) return pass(inIf, "out", rep) ? Object.assign({ local: true, owner: [rid], next: dst, hops: [dst], routed: own !== inIf }, base) : Object.assign({ fail: "no-reply", hops: [gwIp] }, base);
+    if (own) return pass(inIf, "out", rep) && wayBack() ? Object.assign({ local: true, owner: [rid], next: dst, hops: [dst], routed: own !== inIf }, base) : Object.assign({ fail: "no-reply", hops: [gwIp], why: far ? "no way back" : undefined }, base);
     const rt = RT.lookup(R, dst, live);
     if (!rt) return Object.assign({ fail: "net-unreachable", hops: [gwIp], why: "no-route" }, base);
     const outIf = rt.iface, w = this.rtWan(rid, R);
@@ -1119,12 +1160,18 @@ export class Sim {
       const rule = R.nat.find(function (x) { return x.iface === outIf && RT.aclVerdict(R, x.list, { proto: "ip", src: a.ip, dst: dst }).permit && R.acls[x.list]; });
       if (isPrivate(a.ip) && !(fin === "inside" && fout === "outside" && rule && rule.overload)) return Object.assign({ fail: "no-nat", hops: [gwIp], why: !rule ? "no rule" : fin !== "inside" ? "inside" : fout !== "outside" ? "outside" : "overload" }, base);   /* a private source the provider won't route: no reply ever comes */
       if (!pass(outIf, "in", Object.assign({}, rep, { dst: w.addr })) || !pass(inIf, "out", rep)) return Object.assign({ fail: "no-reply", hops: [gwIp] }, base);
+      if (!wayBack()) return Object.assign({ fail: "no-reply", hops: [gwIp, w.gw], why: "no way back" }, base);   /* translated back, then nowhere to send it */
       return Object.assign({ internet: true, nat: { inside: a.ip, global: w.addr }, hops: dst === w.gw ? [gwIp, w.gw] : [gwIp, w.gw, this.net.isp.core, dst] }, base);
     }
     /* out onto another of the business's own networks */
     const odom = this.domain(this.rtNode(rid, outIf)), next = rt.nh || dst, oa = RT.addrOf(R, outIf, live);
     let blk = null; const owners = this.owners(next, odom).filter(function (o) { if (o === rid) return false; const b = oa && this.arpBlocked(this.rtNode(rid, outIf), this.macOf(rid), oa.ip, o, next, odom); if (b) blk = blk || b; return !b; }, this);
     if (!owners.length) return Object.assign({ fail: "no-reply", hops: [gwIp], why: "arp", dai: blk }, base);   /* the router's ARP for it goes unanswered (or a switch inspecting ARP drops it): Request timed out */
+    if (rt.nh && this.routes3(owners[0])) {   /* on to a layer 3 switch: it carries on by its own table */
+      if (!pass(outIf, "in", rep) || !pass(inIf, "out", rep)) return Object.assign({ fail: "no-reply", hops: [gwIp], why: "reply blocked" }, base);
+      const r = this.routeL3(id, { ip: a.ip, mask: a.mask, gw: rt.nh, kind: a.kind }, dst, owners[0], odom, proto, oneWay, (depth || 0) + 1);
+      return Object.assign({}, r, { via: rid, addr: a, inIf: inIf, acls: acls, hops: [gwIp].concat(r.hops || []), routers: (r.routers || 0) + 1 });
+    }
     if (rt.nh) return Object.assign({ fail: "beyond", hops: [gwIp, rt.nh] }, base);
     const back = owners.filter(function (o) { return this.canReply(o, a.ip, odom); }, this);
     if (!back.length) return Object.assign({ fail: "no-reply", hops: [gwIp], why: "their gateway" }, base);   /* the router answers tracert's first probe; nothing after it */
@@ -1134,7 +1181,7 @@ export class Sim {
 
   /* a packet the router sends itself (its ping, a TFTP copy): out by its own routing table, from the way-out interface's
      address. The reply comes in through that interface's access list in (what the router sends isn't checked going out) */
-  routeFromRouter(rid, dst, proto) {
+  routeFromRouter(rid, dst, proto, depth) {
     if (!this.on(rid)) return { fail: "no-link" };
     const R = this.rtView(rid), live = this.rtLive(rid), acls = [];
     const own = RT.allIfs(R).find(function (n) { const a = RT.addrOf(R, n, live); return a && a.ip === dst && RT.rtStatus(R, n)[1] === "up"; });
@@ -1152,6 +1199,11 @@ export class Sim {
     const odom = this.domain(this.rtNode(rid, outIf)), next = rt.nh || dst;
     let blk = null; const owners = this.owners(next, odom).filter(function (o) { if (o === rid) return false; const b = src && this.arpBlocked(this.rtNode(rid, outIf), this.macOf(rid), src, o, next, odom); if (b) blk = blk || b; return !b; }, this);
     if (!owners.length) return { fail: "host-unreachable", src: src, next: next, dai: blk };
+    if (rt.nh && this.routes3(owners[0])) {   /* on to a layer 3 switch: it carries on by its own table; the reply comes back in through this interface's list */
+      const r = this.routeL3(rid, { ip: src, mask: oa.mask, gw: rt.nh, kind: "static" }, dst, owners[0], odom, proto, true, (depth || 0) + 1);
+      if (r.fail) return Object.assign({ src: src }, r);
+      return inOk(outIf, rep) ? Object.assign({}, r, { src: src, outIf: outIf, acls: acls }) : { fail: "no-reply", src: src, acls: acls };
+    }
     if (rt.nh) return { fail: "beyond", src: src, hops: [rt.nh] };
     const back = owners.filter(function (o) { return this.canReply(o, src, odom); }, this);
     if (!back.length || !inOk(outIf, rep)) return { fail: "no-reply", src: src, acls: acls };

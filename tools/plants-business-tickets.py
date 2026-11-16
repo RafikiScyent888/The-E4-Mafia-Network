@@ -15,7 +15,8 @@ PAGE = [
  ("the map's small business site lists no tickets", "js/desk/left.js", ' || (s.id === "bakery" && isOpen(3))) {', ") {"),
  ("Mason never says SB-01's fix isn't saved", "js/tickets/business.js", "    if (!(st && st.access === S.id)) return \"It works right now, but the switch hasn't saved it:", "    if (false) return \"It works right now, but the switch hasn't saved it:"),
  ("Level 3 counts 1 tickets", "js/desk/levelsui.js", '" ticket" + (c.ntickets === 1 ? "" : "s")', '" tickets"'),
- ("Level 3 still says its work orders are on the way", "js/desk/levels.js", 'coming: "more tickets on the way" },', 'coming: "more work orders and its tickets on the way" },'),
+ ("Level 3 still says more tickets are on the way, all 15 built", "js/desk/levels.js", 'jobs: BUSINESS_JOBS.map(function (d) { return d.id; }) },', 'jobs: BUSINESS_JOBS.map(function (d) { return d.id; }), coming: "more tickets on the way" },'),
+ ("Level 3 still waiting for a 26th piece, so it can never be finished", "js/desk/levels.js", 'jobs: BUSINESS_JOBS.map(function (d) { return d.id; }) },', 'jobs: BUSINESS_JOBS.map(function (d) { return d.id; }), planned: 26 },'),
  ("the counter PC's port moved to the wrong port", "js/tickets/business.js", '["configure terminal", "interface gi0/1", "switchport access vlan " + V, "end"];', '["configure terminal", "interface gi0/2", "switchport access vlan " + V, "end"];'),
  ("a switch command over SSH never reaches the notebook", "js/tickets/business.js", 'const devOut = function (f) { return (f.cmd === "serial" || f.cmd === "ssh" || f.cmd === "telnet") && typeof f.out === "string" ? f.out : ""; };', 'const devOut = function (f) { return ""; };'),
 ]
@@ -117,6 +118,17 @@ NODE += [("SB-14: the pool left lending the printer's address counts", 'js/ticke
  ("SB-14: put right unsaved counts", 'js/tickets/business.js', ' && !lends(R, v.printer) && !lends(R.startup, v.printer)\n      && SB14.labelOk(sim, v) && SB14.labelOk(sim, v, true) && dhcpOf(sim) === dhcpOf(sim, true) &&', ' && !lends(R, v.printer)\n      && SB14.labelOk(sim, v) &&'),
  ("SB-14: a page that prints with the clash still there proves it", 'js/tickets/business.js', 'proves(f, sim, v) { return f.print === "ok" && !!f.port && JSON.stringify(ownersAt(sim, f.port)) === JSON.stringify(["printer"]); },', 'proves(f, sim, v) { return f.print === "ok"; },'),
  ("SB-14: a hint names the pool's command", 'js/tickets/business.js', '"The printer\'s address has to be one nothing can lend: keep it out of what the pool hands out,', '"The printer\'s address has to be one nothing can lend: an ip dhcp excluded-address for it,')]
+PAGE += [
+ ("SB-15: the unknown laptop left off the floor plan", 'js/desk/draw.js', ', intruder: "Unknown laptop" };', ' };'),
+ ("SB-15: the unknown laptop has no device button", 'js/desk/app.js', '"printer2", "intruder", "msw"', '"printer2", "msw"'),
+ ("SB-15: the switch learns the laptop in one VLAN only", 'js/net/sim.js', "        if (cr.mode === \"trunk\") L[n].macs = [cr.untagged]", "        if (false) L[n].macs = [cr.untagged]"),
+ ("SB-15: a laptop that asks to trunk never gets one", 'js/net/sim.js', 'if (x && x.dtp) return { mode: x.dtp, nonegotiate: false };   /* a device', 'if (false) return { mode: x.dtp, nonegotiate: false };   /* a device')]
+NODE += [("SB-15: put right unsaved counts", 'js/tickets/business.js', '  fixed(sim, v) { return sparePort(SB15.portOf(sim, v), v) && sparePort(SB15.portOf(sim, v, true), v) &&', '  fixed(sim, v) { return sparePort(SB15.portOf(sim, v), v) &&'),
+ ("SB-15: a spare shut but left to negotiate counts", 'js/tickets/business.js', 'const sparePort = function (q, v) { return !!q && q.mode === "access" && q.access === v.plan.vlans.parking.id && !!q.shutdown; };', 'const sparePort = function (q, v) { return !!q && !!q.shutdown; };'),
+ ("SB-15: a spare left open counts", 'js/tickets/business.js', 'const sparePort = function (q, v) { return !!q && q.mode === "access" && q.access === v.plan.vlans.parking.id && !!q.shutdown; };', 'const sparePort = function (q, v) { return !!q && q.mode === "access"; };'),
+ ("SB-15: the switches' own trunks broken on the way counts", 'js/tickets/business.js', ' && SB15.trunksRight(sim, v) && online(sim, "pc") && online(sim, "mgr") && reachesPrinter(sim, "pc", v.printer); },', ' && online(sim, "pc") && online(sim, "mgr") && reachesPrinter(sim, "pc", v.printer); },'),
+ ("SB-15: a hint names the mode command", 'js/tickets/business.js', '"Put that port back the way the records keep a spare: an access port, parked, shut.', '"Put that port back the way the records keep a spare: switchport mode access, parked, shut.'),
+ ("SB-15: any show interfaces trunk proves it", 'js/tickets/business.js', 'proves(f, sim, v) { return f.on === v.sw && /Port\\s+Mode\\s+Encapsulation\\s+Status/.test(devOut(f)) && !new RegExp("^" + v.short + "\\\\s", "m").test(devOut(f)); },', 'proves(f, sim, v) { return f.on === v.sw && /Port\\s+Mode\\s+Encapsulation\\s+Status/.test(devOut(f)); },')]
 AAA = [
  ("the cabinet's label left without its plate on the desk's floor plan", "js/desk/app.js", 'if (phy) plates($("plan"), ".rl, .ns, .cabl", "#f4f6fb");', 'if (phy) plates($("plan"), ".rl, .ns", "#f4f6fb");', "SB-01 the floor plan"),
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "SB-01 the ticket card"),

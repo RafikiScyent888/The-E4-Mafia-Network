@@ -807,6 +807,34 @@ Object.assign(PLAN, {
       fix: async (p, v) => { const c = await card(p); if (v.kind === "static") await panel(p, { mode: "static", ip: c.pre + "30", gw: c.gw }); else { await rtConf(p, v, [v.kind === "pool" ? "ip dhcp excluded-address " + c.ip : "no ip dhcp pool LABEL-PRINTER"]); await panel(p, { mode: "dhcp" }); } },
       proof: async (p) => { await pages(p, 2); }
     };
+  })(),
+  "SB-15": (() => {
+    const look = async (p, v, lines) => { await bizLogin(p, v); for (const l of lines) await type(p, l); const o = await term(p); await type(p, "exit"); return o; };
+    const parking = async (p) => (((await rec(p, "Parking VLAN")).match(/^(\d+)/) || [])[1]);
+    return {
+      look: async (p, v) => {
+        check(!(await p.$('#net [data-d="intruder"]')), "SB-15: the unknown laptop isn't on the logical diagram (it isn't in the records)");
+        const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "SB-15's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+        await p.click("#vPhy"); await p.waitForTimeout(60);
+        const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "SB-15's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+        const CT = (await import("../js/net/business.js")).BUSINESS_ROOM_BOX.counter;
+        const at = await p.$eval('#plan [data-d="intruder"] rect.tile', (r) => { const b = r.getBBox(), m = r.getCTM(), s = r.ownerSVGElement.getCTM(); const x = b.x + b.width / 2, y = b.y + b.height / 2; const q = s.inverse().multiply(m); return [q.a * x + q.c * y + q.e, q.b * x + q.d * y + q.f]; }).catch(() => [0, 0]);
+        check(at[0] > CT[0] && at[0] < CT[2] && at[1] > CT[1] && at[1] < CT[3], "SB-15's floor plan: the unknown laptop is drawn at the counter (" + at.map(Math.round) + ")");
+        await planBothFonts(p, "SB-15"); await dysClear(p, "SB-15"); await p.click("#vLog"); await p.waitForTimeout(40);
+        const o = await look(p, v, ["show interfaces trunk", "show interfaces " + v.short.toLowerCase() + " switchport", "show mac address-table"].concat(v.kind === "vlan" ? ["show running-config"] : []));
+        check(new RegExp("^" + v.short + "\\s+(auto|desirable)\\s+802\\.1q\\s+trunking", "m").test(o), "SB-15 " + v.kind + ": show interfaces trunk lists " + v.short + " trunking beside the records' trunks");
+        check(/Administrative Mode: dynamic (auto|desirable)\nOperational Mode: trunk/.test(o), "SB-15: the port's switchport settings: left to negotiate, running as a trunk");
+        const mac = (v.lmac.replace(/[^0-9a-f]/gi, "").toLowerCase().match(/.{4}/g) || []).join(".");
+        check((o.match(new RegExp(mac.replace(/\./g, "\\.") + "\\s+DYNAMIC\\s+" + v.short + "\\b", "g")) || []).length >= 4, "SB-15: show mac address-table has the laptop's hardware address in every VLAN on its port");
+        await dev(p, "intruder"); await tab(p, "Physical"); await p.click('.cabs button:text-is("Look at the plug")');
+        check(/locked/i.test(await p.$eval(".pane", (n) => n.textContent)), "SB-15: the laptop's Physical tab: locked, its owner gone");
+        const ev = await T(p, () => window.__e4.T.evidence.map((e) => e.id)); check(["trunk", "swport", "macs", "look"].concat(v.kind === "vlan" ? ["run"] : []).every((k) => ev.indexOf(k) >= 0), "SB-15: the notebook has the trunk, the port's settings, the laptop in every VLAN and its cable (" + ev + ")");
+      },
+      wrong: async (p, v) => { await bizConf(p, v, ["interface " + v.short.toLowerCase(), "shutdown"]); },   /* shut, still left to negotiate */
+      afterWrong: async (p) => { check(/still left to negotiate/.test(await p.$eval("#board", (n) => n.textContent)), "SB-15: the port shut and still left to negotiate: Mason says so"); },
+      fix: async (p, v) => { const k = await parking(p); check(k === String(v.plan.vlans.parking.id), "SB-15: the card gives the parking VLAN"); await bizConf(p, v, ["interface " + v.short.toLowerCase(), "switchport mode access", "switchport access vlan " + (k || "?"), "shutdown"]); },
+      proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await look(p, v, ["show interfaces trunk"]); }
+    };
   })()
 });
 
@@ -901,13 +929,13 @@ if (!process.env.ONLY || process.env.ONLY === "tickets-business") {
     try {
       const q = await p.$$eval('#queue [data-t^="SB-"]', (l) => l.map((b) => b.dataset.t + ":" + (b.getAttribute("aria-disabled") === "true" ? "off" : "on")));
       check(q.join(",") === BUSINESS_TICKETS.map((d) => d.id + ":on").join(","), "business tickets: the level 3 queue lists the business tickets built (" + q.join(",") + ")");
-      check(/^Tier 3 · Small business · tickets/.test(await p.$eval("#queue li.tier", (n) => n.textContent)) && /More tickets on the way/.test(await p.$eval("#queue", (n) => n.textContent)), "business tickets: the queue's heading says Tier 3 · Small business, and more tickets are on the way");
+      check(/^Tier 3 · Small business · tickets/.test(await p.$eval("#queue li.tier", (n) => n.textContent)) && !/on the way|built later/i.test(await p.$eval("#queue", (n) => n.textContent)), "business tickets: the queue's heading says Tier 3 · Small business, and nothing more is coming");
       check(/business network/.test(await p.$eval("#tk .from", (n) => n.textContent)) && /Tier 3 · Small business/.test(await p.$eval("#labtitle", (n) => n.textContent)), "business tickets: the card says business network, the title Tier 3 · Small business");
       check(/^The business's records$/.test(await p.$eval("#officeRecs h4", (n) => n.textContent).catch(() => "")), "business tickets: the card carries the business's records");
       const devs = await p.$$eval("#devtabs button", (l) => l.map((b) => b.dataset.d));
       check(["pc", "mgr", "msw", "bsw", "rtr", "tech", "printer", "ap"].every((d) => devs.indexOf(d) >= 0) && devs.indexOf("router") < 0 && devs.indexOf("hire") < 0, "business tickets: the business's devices have buttons, its own and no others (" + devs.join(" ") + ")");
       const nT = BUSINESS_TICKETS.length, L3 = await p.$eval('#left [data-level="3"]', (n) => n.textContent);
-      check(L3 === "Level 3 · Small business0 of " + nT + " ticket" + (nT === 1 ? "" : "s") + ", 0 of 10 work orders done · more tickets on the way", "business tickets: Level 3 counts its tickets (one ticket, or tickets) and work orders (" + L3 + ")");
+      check(L3 === "Level 3 · Small business0 of " + nT + " ticket" + (nT === 1 ? "" : "s") + ", 0 of 10 work orders done", "business tickets: Level 3 counts its tickets (one ticket, or tickets) and work orders, and says nothing more is coming (" + L3 + ")");
       await p.goto(base + "lab-bench.html"); await p.waitForTimeout(350);
       const shelf = await p.$eval("#left", (n) => n.textContent);
       check(/Small business(?! · locked)/.test(shelf) && !!(await p.$('#left [data-t="SB-01"]')), "business tickets: the troubleshooting shelf lists SB-01 under Small business");
@@ -1555,6 +1583,36 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
   }
 }
 
+/* the small business complete (16 November 2026: its 10 work orders and 15 tickets all built, SB-15 the last): with every ticket
+   solved and every work order but the last done, finishing the last one finishes Level 3; the campus is still being built */
+if (!process.env.ONLY || process.env.ONLY === "business" || process.env.ONLY === "tickets-business") {
+  const { LEVELS } = await import("../js/desk/levels.js");
+  const net = { t: {}, solved: Object.fromEntries(LEVELS[0].tickets.concat(LEVELS[1].tickets, LEVELS[2].tickets).map((id) => [id, 1])) };
+  const lastJob = LEVELS[2].jobs[LEVELS[2].jobs.length - 1];
+  const built = { j: {}, done: Object.fromEntries(LEVELS[0].jobs.concat(LEVELS[1].jobs, LEVELS[2].jobs.slice(0, -1)).map((id) => [id, 1])) };
+  const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
+  await ctx.addInitScript(([n, b]) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify(n)); localStorage.setItem("e4-build-v1", JSON.stringify(b)); sessionStorage.setItem("seeded", "1"); } }, [net, built]);
+  const p = await ctx.newPage(); p.setDefaultTimeout(5000); p.on("pageerror", (e) => errs.push("business finished: " + e.message));
+  const tag = "levels, the small business finished: ";
+  try {
+    await p.goto(base + "index.html"); await p.waitForTimeout(350);
+    const before = await p.$eval('#left [data-level="3"]', (n) => n.textContent);
+    check(before === "Level 3 · Small business15 of 15 tickets, 9 of 10 work orders done", tag + "before the last work order, Level 3 counts 15 of 15 tickets and 9 of 10 work orders, and says nothing more is coming (" + before + ")");
+    await p.click('#left [data-level="3"]'); await p.waitForTimeout(60);
+    check(!/on the way|built later/i.test(await p.$eval("#queue", (n) => n.textContent)), tag + "the desk's queue for the small business says nothing more is coming");
+    await p.goto(base + "build.html"); await p.waitForTimeout(350);
+    await p.evaluate((id) => { const c = window.__e4b; c.openJob(id, true, 2026); const J = c.T; J.def.solve(J.v, J.sim).forEach((a) => c.act(a)); }, lastJob);
+    await p.click("#doCheck"); await p.waitForTimeout(150);   /* the real button: it's what counts a job done */
+    const box = await p.$eval("#check", (n) => n.textContent);
+    check(/Level 3 finished/.test(box) && /Campus is still being built/.test(box) && !/on the way|so far/.test(box), tag + lastJob + "'s done box says Level 3 is finished and the campus is still being built (" + box.slice(box.indexOf("Level 3"), box.indexOf("Level 3") + 70) + ")");
+    await p.goto(base + "index.html"); await p.waitForTimeout(350);
+    const L3 = await p.$eval('#left [data-level="3"]', (n) => n.textContent), L4 = await p.$eval('#left [data-level="4"]', (n) => n.textContent);
+    check(/Finished: 15 of 15 tickets, 10 of 10 work orders/.test(L3), tag + "Level 3 says finished, 15 of 15 tickets and 10 of 10 work orders (" + L3 + ")");
+    check(/built later/.test(L4), tag + "Level 4 says it's built later (" + L4 + ")");
+  } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+  await ctx.close();
+}
+
 /* the small office complete (18 October 2026: its 10 work orders and 15 tickets all built): with every ticket solved and every work
    order but the last done, finishing the last one finishes the level and opens the small business (19 October 2026) */
 if (!process.env.ONLY || process.env.ONLY === "office") {
@@ -1578,7 +1636,7 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
     await p.goto(base + "index.html"); await p.waitForTimeout(350);
     const L2 = await p.$eval('#left [data-level="2"]', (n) => n.textContent), L3 = await p.$eval('#left [data-level="3"]', (n) => n.textContent);
     check(/Finished: 15 of 15 tickets, 10 of 10 work orders/.test(L2), tag + "Level 2 says finished, 15 of 15 tickets and 10 of 10 work orders (" + L2 + ")");
-    check(L3 === "Level 3 · Small business0 of " + BUSINESS_TICKETS.length + " ticket" + (BUSINESS_TICKETS.length === 1 ? "" : "s") + ", 0 of 10 work orders done · more tickets on the way" && !(await p.$eval('#left [data-level="3"]', (n) => n.parentNode.classList.contains("locked"))), tag + "Level 3 is open, counts its work orders, and says more is on the way (" + L3 + ")");
+    check(L3 === "Level 3 · Small business0 of " + BUSINESS_TICKETS.length + " ticket" + (BUSINESS_TICKETS.length === 1 ? "" : "s") + ", 0 of 10 work orders done" && !(await p.$eval('#left [data-level="3"]', (n) => n.parentNode.classList.contains("locked"))), tag + "Level 3 is open, counts its work orders, and says nothing more is coming (" + L3 + ")");
     await p.click('#left [data-level="2"]'); await p.waitForTimeout(60);
     check(!/on the way|built later/i.test(await p.$eval("#queue", (n) => n.textContent)), tag + "the desk's queue for the small office says nothing more is coming");
   } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }

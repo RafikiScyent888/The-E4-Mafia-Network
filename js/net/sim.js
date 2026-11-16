@@ -208,7 +208,8 @@ export class Sim {
     return null;
   }
   /* what a managed switch's port says about trunking to the far end (DTP); null from anything else */
-  dtpOf(end) { const x = end && this.d[end.dev]; if (!x || x.kind !== "mswitch") return null; const p = x.sw.ports[swPort(end.port)]; return p && !p.routed ? { mode: p.mode || "dynamic auto", nonegotiate: !!p.nonegotiate } : null; }   /* a routed port never negotiates trunking */
+  dtpOf(end) { const x = end && this.d[end.dev]; if (x && x.dtp) return { mode: x.dtp, nonegotiate: false };   /* a device that negotiates a trunk itself (SB-15's laptop) */
+    if (!x || x.kind !== "mswitch") return null; const p = x.sw.ports[swPort(end.port)]; return p && !p.routed ? { mode: p.mode || "dynamic auto", nonegotiate: !!p.nonegotiate } : null; }   /* a routed port never negotiates (Level 4) */
   /* the far end's port-channel settings, if it's a switch port in one (LACP's partner, Level 4) */
   chanOf(end) { const x = end && this.d[end.dev]; if (!x || x.kind !== "mswitch") return null; const p = x.sw.ports[swPort(end.port)]; return p && p.chan ? { group: p.chan.group, mode: p.chan.mode } : null; }
   /* what each of a managed switch's ports sees at the far end of its cable, worked out without changing anything
@@ -230,6 +231,10 @@ export class Sim {
       const m = (fd.kind === "router" || fd.kind === "rogue" ? fd.mac : fd.ifaces ? fd.ifaces[0].mac : "02-00-5e-" + (hash(far.dev) >>> 0).toString(16).padStart(8, "0").slice(0, 6).replace(/(..)(..)(..)/, "$1-$2-$3")).replace(/-/g, "");
       L["GigabitEthernet0/" + me.port] = { lldp: this.cableUp(c0) ? this.lldpOf(this.viaInjectorEnd(c0, id) || far) : null, dtp: this.dtpOf(far), chan: this.chanOf(far), farDev: far.dev, mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n };
       if (fd.maxMbps) L["GigabitEthernet0/" + me.port].max = Math.min(L["GigabitEthernet0/" + me.port].max, fd.maxMbps);
+      if (fd.dtp && this.cableUp(c0)) {   /* a device trunking with the port (SB-15): its frames come in on every VLAN the port carries, so the switch learns it in each */
+        const n = "GigabitEthernet0/" + me.port, cr = carries(x.sw, n, { mode: fd.dtp, nonegotiate: false }), mac = L[n].mac;
+        if (cr.mode === "trunk") L[n].macs = [cr.untagged].concat(cr.tagged).filter(function (v) { return v != null; }).map(function (v) { return { vlan: v, mac: mac }; });
+      }
     }
     return L;
   }
@@ -391,7 +396,7 @@ export class Sim {
       if (x && x.kind === "mswitch") {
         if (x.sw.ports[swPort(end.port)] && x.sw.ports[swPort(end.port)].routed) return { u: this.l3Node(end.dev, swPort(end.port)), t: {} };   /* a layer 3 switch's routed port: untagged, to the port itself */
         if (x.sw.ports[swPort(end.port)] && x.sw.ports[swPort(end.port)].chan && chanState(Object.assign({}, x.sw, { links: this.switchLinks(end.dev) }), swPort(end.port)) === "s") return { u: null, t: {} };   /* suspended from its port-channel: it carries nothing */
-        const fx = this.d[far.dev], fp = fx && fx.kind === "mswitch" ? fx.sw.ports[swPort(far.port)] : null, cr = carries(x.sw, swPort(end.port), fp && !fp.routed ? { mode: fp.mode, nonegotiate: fp.nonegotiate } : null), t = {};
+        const fx = this.d[far.dev], fp = fx && fx.kind === "mswitch" ? fx.sw.ports[swPort(far.port)] : fx && fx.dtp ? { mode: fx.dtp, nonegotiate: false } : null, cr = carries(x.sw, swPort(end.port), fp && !fp.routed ? { mode: fp.mode, nonegotiate: fp.nonegotiate } : null), t = {};   /* the far end a switch port, or a device that negotiates a trunk itself (SB-15) */
         const blk = this.stpBlockedOn(end.dev, swPort(end.port)) || [];   /* spanning tree: an alternate port forwards nothing in its VLANs */
         cr.tagged.forEach(function (v) { if (blk.indexOf(v) < 0) t[v] = this.vnode(end.dev, v); }, this);
         return { u: cr.untagged != null && blk.indexOf(cr.untagged) < 0 ? this.vnode(end.dev, cr.untagged) : null, t: t };
@@ -402,6 +407,12 @@ export class Sim {
         let u = this.rtNode(end.dev, ph); const t = {};
         Object.keys(r.subs).forEach(function (n) { const f = r.subs[n]; if (n.split(".")[0] !== ph || !f.vlan || f.shutdown) return; if (f.native) u = this.rtNode(end.dev, n); else t[f.vlan] = this.rtNode(end.dev, n); }, this);
         return { u: u, t: t };
+      }
+      if (x && x.dtp) {   /* a device that negotiates a trunk (SB-15): where the switch's port trunks with it, it's in every VLAN the port carries */
+        const fx = this.d[far.dev], t = {}; if (!fx || fx.kind !== "mswitch") return { u: this.nodeOf(end.dev, end.port), t: t };
+        const cr = carries(fx.sw, swPort(far.port), { mode: x.dtp, nonegotiate: false });
+        if (cr.mode === "trunk") cr.tagged.forEach(function (v) { t[v] = end.dev + ":v" + v; });
+        return { u: this.nodeOf(end.dev, end.port), t: t };
       }
       return { u: this.nodeOf(end.dev, end.port), t: {} };
     }.bind(this);

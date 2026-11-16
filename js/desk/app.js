@@ -25,7 +25,7 @@ const LIST = HOME_TICKETS.map(item).concat(HOME_COMING.map(function (c) { return
   OFFICE_TICKETS.map(item), OFFICE_COMING.map(function (c) { return Object.assign({ built: false }, c); }),
   BUSINESS_TICKETS.map(item), BUSINESS_COMING.map(function (c) { return Object.assign({ built: false }, c); }));   /* every level's tickets; the queue shows the chosen level's */
 const DEVICES = ["pc", "switch", "msw", "pp", "mgr", "mjack", "ojack", "meet", "bsw", "mpc", "router", "modem", "printer", "tech", "injector", "camera", "tv", "mesh", "laptop", "phone", "guest"];   /* an undocumented box gets no button: find it on the floor plan */
-const BIZ_DEVICES = ["pc", "mgr", "bpc", "dpc1", "dpc2", "printer", "printer2", "msw", "bsw", "rtr", "modem", "cab", "ap", "injector", "cinj1", "cam1", "cinj2", "cam2", "guest", "mphone", "tech"];   /* the business's, in the order the work orders brought them */
+const BIZ_DEVICES = ["pc", "mgr", "bpc", "dpc1", "dpc2", "printer", "printer2", "intruder", "msw", "bsw", "rtr", "modem", "cab", "ap", "injector", "cinj1", "cam1", "cinj2", "cam2", "guest", "mphone", "tech"];   /* the business's, in the order the work orders brought them */
 const $ = function (id) { return document.getElementById(id); };
 let replateMap = null;
 

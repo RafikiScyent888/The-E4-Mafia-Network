@@ -68,6 +68,10 @@ const lp14 = { t: "client", dev: "printer2", values: { mode: "dhcp" } };   /* sa
 const fix14 = (T) => T.v.kind === "pool" ? ["ip dhcp excluded-address " + T.v.printer] : ["no ip dhcp pool LABEL-PRINTER"];
 const pool14 = (T) => { const P = T.v.plan.vlans.printers; return ["ip dhcp excluded-address " + pre14(T) + "1 " + pre14(T) + "29", "ip dhcp pool PRINTERS", "network " + P.net + " 255.255.255.0", "default-router " + P.gw, "exit"]; };
 const hand14 = (T, host) => ({ t: "client", dev: "printer2", values: { mode: "static", ip: pre14(T) + host, mask: "255.255.255.0", gw: T.v.plan.vlans.printers.gw } });
+/* SB-15: the laptop's port back as the records keep a spare; a look at the switch's trunks, on whichever switch it's on */
+const port15 = (T) => "interface " + T.v.short.toLowerCase();
+const spare15 = (T) => [port15(T), "switchport mode access", "switchport access vlan " + T.v.plan.vlans.parking.id, "shutdown"];
+const look15 = (T, lines) => { const p = T.v.plan; return T.v.sw === "bsw" ? ["", p.swConsole, "enable", p.swSecret].concat(lines, ["disable", "exit"]).map(tech) : ssh(T).concat(lines.map(mgr), [mgr("exit")]); };
 const again4 = (T) => T.v.devs.flatMap((id) => id === "guest" ? [{ t: "radio", dev: "guest", on: false }, { t: "radio", dev: "guest", on: true }] : [{ t: "cmd", dev: id, line: "ipconfig /renew" }]);
 
 const FIX = {
@@ -84,7 +88,8 @@ const FIX = {
   "SB-11": (T) => onRt(T, fix11(T)).concat(again11(T)),
   "SB-12": (T) => onRt(T, fix12(T)).concat(again12(T)),
   "SB-13": (T) => onRt(T, fix13(T)).concat(again13(T)),
-  "SB-14": (T) => T.v.kind === "static" ? [hand14(T, 30)] : onRt(T, fix14(T)).concat([lp14])
+  "SB-14": (T) => T.v.kind === "static" ? [hand14(T, 30)] : onRt(T, fix14(T)).concat([lp14]),
+  "SB-15": (T) => onSw(T, T.v.sw, spare15(T))
 };
 const PROOF = {
   "SB-01": (T) => [pc("ping " + T.v.printer)],
@@ -100,7 +105,8 @@ const PROOF = {
   "SB-11": (T) => T.v.kind === "guest" ? radioOn : [{ t: "cmd", dev: T.v.devs[0], line: "ping " + T.v.printer }],
   "SB-12": (T) => T.v.kind === "guest" ? radioOn : T.v.kind === "dept" ? [{ t: "cmd", dev: "dpc1", line: "ping " + T.v.printer }] : [{ t: "print" }],
   "SB-13": (T) => T.v.kind === "guest-out" ? radioOn : [pc("ping " + T.sim.addr("dpc1").ip)],
-  "SB-14": () => [{ t: "print" }, { t: "print" }]
+  "SB-14": () => [{ t: "print" }, { t: "print" }],
+  "SB-15": (T) => look15(T, ["show interfaces trunk"])
 };
 /* the guests' Wi-Fi moved at the access point onto its own network (the VLAN left blank): the visitor's phone works, among the
    business's own devices. On SB-12 a plant that let guests reach the printer went uncaught, and Mason's word was wrong on eight variants */
@@ -124,7 +130,8 @@ const UNSAVED = {
   "SB-11": (T) => onRt(T, fix11(T), false).concat(again11(T)),
   "SB-12": (T) => onRt(T, fix12(T), false).concat(again12(T)),
   "SB-13": (T) => onRt(T, fix13(T), false).concat(again13(T)),
-  "SB-14": (T) => T.v.kind === "static" ? onRt(T, pool14(T), false).concat([{ t: "client", dev: "printer2", values: { mode: "dhcp" } }]) : onRt(T, fix14(T), false).concat([lp14])   /* the label printer given a proper pool to lend from, not saved */
+  "SB-14": (T) => T.v.kind === "static" ? onRt(T, pool14(T), false).concat([{ t: "client", dev: "printer2", values: { mode: "dhcp" } }]) : onRt(T, fix14(T), false).concat([lp14]),   /* the label printer given a proper pool to lend from, not saved */
+  "SB-15": (T) => onSw(T, T.v.sw, spare15(T), false)
 };
 /* tempting fixes that treat a symptom, or the wrong part: none may fix it */
 const WRONG = {
@@ -283,7 +290,31 @@ WRONG["SB-14"] = (T) => {
   }
   return L;
 };
+WRONG["SB-15"] = (T) => {
+  const v = T.v, P = v.plan.vlans.parking.id;
+  return [[{ t: "unplug", cable: "c-" + v.sw + "-intruder", end: "b" }],   /* the laptop unplugged: nothing trunks today, and the port still negotiates, open */
+    [{ t: "power", dev: v.sw }],   /* the switch restarted: what it saved is the port left to negotiate */
+    onSw(T, v.sw, [port15(T), "shutdown"]),   /* shut, still left to negotiate */
+    onSw(T, v.sw, [port15(T), "switchport mode access"]),   /* set as access, open in VLAN 1 */
+    onSw(T, v.sw, [port15(T), "switchport mode access", "switchport access vlan " + P]),   /* parked, still open */
+    onSw(T, v.sw, [port15(T), "switchport nonegotiate"]),   /* refused on a port left to negotiate */
+    onSw(T, v.sw, [port15(T), "switchport port-security"]),   /* port security: it limits addresses, and never stops a trunk */
+    onSw(T, v.sw, [port15(T), "switchport mode access", "switchport access vlan " + P, "shutdown"]).concat(onSw(T, v.sw, [v.sw === "msw" ? "interface gi0/23" : "interface gi0/24", "switchport mode access"]))];   /* the spare right, and the trunk between the switches broken on the way */
+};
 const SYMPTOM = {
+  "SB-15": (T) => {
+    const v = T.v, d = (v.lmac.replace(/[^0-9a-f]/gi, "").toLowerCase().match(/.{4}/g) || []).join(".");
+    const o = out(T, look15(T, ["show interfaces trunk", "show interfaces " + v.short.toLowerCase() + " switchport", "show mac address-table", "show interfaces status"]));
+    assert.match(o, new RegExp("^" + v.short + "\\s+" + (v.kind === "desirable" ? "desirable" : "auto") + "\\s+802\\.1q\\s+trunking", "m"), "the laptop's port is trunking");
+    assert.match(o, new RegExp("Administrative Mode: dynamic " + (v.kind === "desirable" ? "desirable" : "auto") + "\\nOperational Mode: trunk"));
+    assert.ok((o.match(new RegExp(d.replace(/\./g, "\\.") + "\\s+DYNAMIC\\s+" + v.short + "\\b", "g")) || []).length >= 4, "the laptop's hardware address in every VLAN on its port");
+    assert.match(o, new RegExp("^" + v.short + "\\s+" + v.desc + "\\s+connected\\s+trunk\\b", "m"));
+    if (v.kind === "vlan") { const rc = out(T, look15(T, ["show running-config"])), blk = (rc.split("interface " + v.pname + "\n")[1] || "").split("!")[0];
+      assert.match(blk, new RegExp("switchport access vlan " + v.plan.vlans.cameras.id + "\\n"), "an access VLAN set"); assert.doesNotMatch(blk, /switchport mode/, "and no mode line: it's the box's, left to negotiate");
+      assert.ok(T.evidence.some((e) => e.id === "run"), "the notebook has the port's configuration"); }
+    assert.ok(E.act(T, pc("ping " + v.printer)).facts.replies > 0, "everything else works");
+    assert.ok(!T.sim.addr("intruder") || T.sim.addr("intruder").kind === "apipa", "the laptop holds no lease: it needs none");
+  },
   "SB-14": (T) => {
     const v = T.v, p = v.plan, P = p.vlans.printers, ip = v.printer.replace(/\./g, "\\.");
     const rt = [mgr("ssh " + p.user + "@" + p.vlans.staff.gw), mgr(p.userPw), mgr("enable"), mgr(p.rtSecret)];
@@ -466,6 +497,19 @@ const SYMPTOM = {
     }
   }
 };
+
+/* SB-15: the port as the records keep a spare, however it's typed, the laptop unplugged or not */
+test("SB-15: other right ways pass: the laptop unplugged as well, the port told not to negotiate too, its description taken off", () => {
+  const def = BUSINESS_TICKETS.find((d) => d.id === "SB-15");
+  if (!def) return;
+  const ways = [(T) => [{ t: "unplug", cable: "c-" + T.v.sw + "-intruder", end: "b" }].concat(onSw(T, T.v.sw, spare15(T))),
+    (T) => onSw(T, T.v.sw, spare15(T).concat(["switchport nonegotiate", "no description"]))];
+  for (const s of seedsOf(def, 6)) for (const w of ways) {
+    const T = E.open(def, s); E.guess(T, "right"); for (const a of w(T)) E.act(T, a);
+    assert.equal(T.fixed, true, "SB-15 seed " + s + " " + T.v.kind);
+    for (const a of PROOF["SB-15"](T)) E.act(T, a); assert.equal(T.solved, true);
+  }
+});
 
 /* SB-14: any way that leaves the label printer an address of its own and the printer's address lent by nothing counts */
 test("SB-14: other right ways pass: the pool's kept-back range widened, the pool gone and the label printer set by hand, the reservation moved, a proper pool to lend from", () => {

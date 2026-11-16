@@ -1257,7 +1257,7 @@
   "after": "document.querySelector('#left [data-level=\"3\"]').click()"
  },
  {
-  "name": "levels: build, the small business's work orders (more on the way)",
+  "name": "levels: build, the small business's work orders (all built)",
   "page": "build.html",
   "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS[0].tickets.concat(L.LEVELS[1].tickets).map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS[0].jobs.concat(L.LEVELS[1].jobs).map(id=>[id,1]))})); window.__e4b.openJob('SB-J1',true,4242);})()"
  },
@@ -1616,5 +1616,26 @@
   "ticket": "SB-14",
   "seed": 1,
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-14'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const m=l=>c.act({t:'cmd',dev:'mgr',line:l}); ['ssh '+P.user+'@'+P.vlans.staff.gw,P.userPw,'enable',P.rtSecret,'configure terminal','ip dhcp excluded-address '+v.printer,'end','copy running-config startup-config','','exit'].forEach(m); c.act({t:'client',dev:'printer2',values:{mode:'dhcp'}}); c.guess('right'); c.act({t:'print'}); c.act({t:'print'}); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-15 the closet switch over SSH: an extra trunk, the laptop in every VLAN",
+  "page": "index.html",
+  "ticket": "SB-15",
+  "seed": 2,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-15'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.swIp,P.userPw,'enable',P.swSecret,'show interfaces trunk','show mac address-table'].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-15 the unknown laptop's Physical tab on the floor plan, Mason's third rung",
+  "page": "index.html",
+  "ticket": "SB-15",
+  "seed": 10,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-15'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.getElementById('vPhy').click(); document.querySelector('#devtabs [data-d=intruder]').click(); tab('Physical'); const w=c.T.opts.filter(o=>!o.right).map(o=>o.id); w.slice(0,4).forEach(x=>c.guess(x)); c.resetBoard(); c.guess(w[4]); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "business tickets: SB-15 solved, the summary",
+  "page": "index.html",
+  "ticket": "SB-15",
+  "seed": 1,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-15'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const m=l=>c.act({t:'cmd',dev:'mgr',line:l}); ['ssh '+P.user+'@'+P.swIp,P.userPw,'enable',P.swSecret,'configure terminal','interface '+v.short.toLowerCase(),'switchport mode access','switchport access vlan '+P.vlans.parking.id,'shutdown','end','copy running-config startup-config','','show interfaces trunk','exit'].forEach(m); c.guess('right'); ['ssh '+P.user+'@'+P.swIp,P.userPw,'enable',P.swSecret,'show interfaces trunk','exit'].forEach(m); document.getElementById('board').scrollIntoView();"
  }
 ]

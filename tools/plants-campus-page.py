@@ -1,0 +1,30 @@
+# Page plants for Level 4 (the campus) on the page: each defect, put into the page, must make the campus drive fail.
+# Run it in a throwaway copy of the checkout, never in the real one:   python3 tools/plants-campus-page.py [name ...]
+# Each runs `ONLY=campus JOB=<job> node tools/drive.mjs` (CP-J1 by default; the Physical tabs are checked under CP-J2).
+import subprocess, shutil, sys, os
+os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+PLANTS = [
+ ("Level 4 open before the small business is finished", "CP-J1", "js/desk/levels.js", "  if (n <= 1) return true;", "  if (n <= 1 || n === 4) return true;"),
+ ("the campus's devices without buttons", "CP-J1", "js/build/app.js", '"mphone", "edge", "core1", "core2", "dist1", "dist2", "acc1", "acc2", "acc3", "sd1", "hd1", "pr1", "bn1", "bn2", "fin", "pr3", "tech"];', '"mphone", "tech"];'),
+ ("the 1F access switch back across the data room (its runs under other devices)", "CP-J1", "js/net/campus.js", 'acc1: { x: 210, y: 390, lab: "left", px: 460, py: 280, room: "data" },', 'acc1: { x: 210, y: 390, lab: "left", px: 120, py: 280, room: "data" },'),
+ ("the provider beside the modem again (CABLE IN on a tile)", "CP-J1", "js/net/campus.js", "isp: { x: 10, y: 40 },", "isp: { x: 90, y: 40 },"),
+ ("the logical diagram's foot cut short", "CP-J1", "js/desk/draw.js", 'campus(sim) ? "-44 -26 1150 710"', 'campus(sim) ? "-44 -26 1150 650"'),
+ ("the campus's work orders left out of build mode", "CP-J1", "js/build/app.js", "const ALL = JOBS.concat(OFFICE_JOBS, BUSINESS_JOBS, CAMPUS_JOBS);", "const ALL = JOBS.concat(OFFICE_JOBS, BUSINESS_JOBS);"),
+ ("the MSW-3900X's borrowed model passed off as its own", "CP-J2", "js/net/physical.js", '  if (model === "msw" && x.sw && x.sw.os === "l3switch") says.unshift(', '  if (false) says.unshift('),
+ ("a campus desk PC without its Physical tab", "CP-J2", "js/net/physical.js", 'bpc: "pc", sd1: "pc", hd1: "pc",', 'bpc: "pc", hd1: "pc",'),
+]
+only = sys.argv[1:]
+bad = 0
+for name, job, f, a, b in PLANTS:
+    if only and not any(o in name for o in only): continue
+    src = open(f).read(); assert src.count(a) == 1, (name, f, src.count(a))
+    shutil.copy(f, f + ".plant-bak"); open(f, "w").write(src.replace(a, b))
+    try:
+        r = subprocess.run(["node", "tools/drive.mjs"], env=dict(os.environ, ONLY="campus", JOB=job), capture_output=True, text=True, timeout=3000)
+        out = r.stdout.strip().splitlines()
+        fails = [l for l in out if l.startswith("campus")] or [l for l in out if "rror" in l]
+        print(("CAUGHT" if r.returncode else "MISSED") + " · " + name + " · " + str(len(fails)) + " failing" + ("" if not fails else ": " + fails[0][:170]), flush=True)
+        if not r.returncode: bad = 1
+    finally:
+        shutil.move(f + ".plant-bak", f)
+sys.exit(bad)

@@ -2317,6 +2317,12 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
       check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
       if (job === "CP-J1") { const o = await ssh(p, plan, plan.sw.acc2.ip, ["show port-security"]); check(/Gi0\/1[\s\S]*Shutdown/.test(o) && /Gi0\/2/.test(o) && !/Gi0\/2[34]\b/.test(o.slice(o.lastIndexOf("show port-security"))), tag + "show port-security on the 2F switch: its desk ports secured, shutdown on a violation, the uplinks not"); }
       if (job === "CP-J2") { const o = await ssh(p, plan, plan.sw.dist1.ip, ["show spanning-tree vlan " + plan.vlans.svc.id]); check(/This bridge is the root/.test(o.slice(o.lastIndexOf("show spanning-tree"))), tag + "show spanning-tree on distribution switch 1: This bridge is the root"); }
+      if (job === "CP-J2" && seed === 11) {   /* the Physical tabs: the MSW-3900X says its model is borrowed; a desk PC has its own */
+        await dev(p, "dist1"); await tab(p, "Physical"); await p.waitForTimeout(400);
+        check(/Drawn with the MSW-2800G's model until photographs of the MSW-3900X come/.test(await p.$eval(".win-body", (n) => n.textContent)), tag + "distribution switch 1's Physical tab says it's drawn with the MSW-2800G's model until the MSW-3900X's photographs come");
+        await dev(p, "sd1"); await tab(p, "Physical"); await p.waitForTimeout(400);
+        check(/What you can see on it[\s\S]*LAN: cable plugged in/.test(await p.$eval(".win-body", (n) => n.textContent)), tag + "the service desk PC has its Physical tab, its model and words");
+      }
       if (job === "CP-J3") { const o = await ssh(p, plan, plan.sw.dist2.ip, ["show etherchannel summary"]); const s2 = o.slice(o.lastIndexOf("show etherchannel")); check(/Po1\(SU\)/.test(s2) && /Gi0\/21\(P\)/.test(s2) && /Gi0\/22\(P\)/.test(s2), tag + "show etherchannel summary on distribution switch 2: Po1(SU), both ports (P)"); }
       if (job === "CP-J4") {
         const b = plan.vlans.svc.net.split(".")[1];

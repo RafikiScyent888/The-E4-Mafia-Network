@@ -3671,7 +3671,26 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
     their own line for their own cause, other right ways, no help naming a password, an address or a VLAN number, each starting
     from the one before done); `tests/campus-edge.test.js` (8: the cut-over by hand on 8 campuses). Plants
     (`python3 tools/plants-campus-node.py`, in a throwaway copy): CP-J1 12, CP-J2 11, CP-J3 14, all caught (5 missed at first,
-    each a test gap closed or a plant re-aimed at both of two guards); the relay and routing handoff 12, and CP-J4's, running.
+    each a test gap closed or a plant re-aimed at both of two guards); the relay and routing handoff 12, all caught; CP-J4's 15 (run on 4 campuses, `SEEDS=4 TESTS=tests/campus-jobs.test.js`).
+- **Stage 1 on the page (CP-J1 to CP-J4), built 16 November 2026:**
+  - `levels.js`: Level 4 has its work orders, `planned: 25`, and says more work orders and its tickets are on the way. Level 3
+    finished opens it; the desk links its work orders into Build.
+  - The build page lists them, gives every campus device a button (`ORDER`), and says rooms by the campus's names.
+  - `draw.js`: the campus is a site of its own (`SITES.campus`, `campusRooms`, `campusNames`; positions in `CAMPUS_LAYOUT`,
+    rooms in `CAMPUS_ROOM_BOX`). The logical diagram in tiers, wider than the others (`-44 -26 1150 710`): the provider, the modem
+    and the edge router; the core (boxed until CP-J5); the distribution pair; an access switch per floor, its name beside it; the
+    desks staggered on two rows under their floor's switch, so their names never meet. Icons by what a device is on the campus
+    (`iconOf`; a new `l3switch` icon). The floor plan in three bands, one a floor (1F the data room, three rows of devices 85 apart,
+    and the service desk; 2F and 3F each a closet and a room), its runs routed round the devices as the business's are; the 1F
+    access switch sits by the service desk's wall, so its runs don't cross the data room. Switches show their management address.
+  - Every campus PC and printer has a Physical tab (`MODEL_OF`, `STILL`). **The MSW-3900X is drawn with the MSW-2800G's model**
+    until its photographs come, and its words say so first (the ports and lights are in the same places, so what they show is this
+    switch's): never passed off as its own.
+  - Checks: `ONLY=campus node tools/drive.mjs` (the lock, each work order through the page on three campuses, the Physical tabs, both
+    drawings in both fonts, every work order's floor plan at its start and done on six campuses); the campus contrast states
+    (`ONLY=campus node tools/aaa.mjs tools/aaa-states.json`); `python3 tools/plants-campus-page.py` (8 page plants, in a throwaway
+    copy). CP-J1's drive passed (39 checks) after the drawings were re-laid: "CABLE IN" on a tile (the provider too near the modem),
+    three addresses off the logical diagram's foot, the 1F access switch's runs under the distribution switch's tile.
 
 ## Objectives
 

@@ -165,6 +165,7 @@ function serial(sim, id, raw) {
   const dup = sim.d[tgt].kind === "mswitch" && dupAddr(sim, tgt); if (dup && st.dup !== dup) { st.dup = dup; r.out = r.out.concat([dup]); }   /* once a session, as the console log shows it */
   const sl = sfpLog(sim, tgt), sk = sl.join("|"); if (sl.length && st.sfp !== sk) { st.sfp = sk; r.out = r.out.concat(sl); }
   const nl = sim.d[tgt].kind === "mswitch" ? nativeLog(sim, tgt) : [], nk = nl.join("|"); if (nl.length && st.nat !== nk) { st.nat = nk; r.out = r.out.concat(nl); }   /* once a session, as the console log shows it */
+  const tl = sim.d[tgt].kind === "mswitch" ? trunkLog(sim, tgt) : [], tk = tl.join("|"); if (tl.length && st.dtp !== tk) { st.dtp = tk; r.out = r.out.concat(tl); }   /* a port that became a trunk with a device that asked (SB-15): once a session */
   return { out: lines(r.out), facts: { cmd: "serial", dev: id, on: tgt, connected: true, mode: st.S.mode, line: raw.trim(), out: r.out.join("\n"), asked: !!r.secret }, secret: !!r.secret, cli: true, keep: r.keep };   /* asked: the switch is asking for a password next */
 }
 function remote(sim, id, raw, k) {
@@ -207,6 +208,16 @@ function nativeLog(sim, sw) {
     const p = x.sw.ports["GigabitEthernet0/" + me.port], q = fd.sw.ports["GigabitEthernet0/" + far.port];
     if (!p || !q || p.mode !== "trunk" || q.mode !== "trunk" || p.shutdown || q.shutdown || p.native === q.native) continue;
     L.push("%LLDP-4-NATIVE_VLAN_MISMATCH: Native VLAN mismatch discovered on GigabitEthernet0/" + me.port + " (" + p.native + "), with " + fd.sw.hostname + " GigabitEthernet0/" + far.port + " (" + q.native + ").");
+  }
+  return L;
+}
+/* a port that negotiated itself into a trunk with whatever is plugged into it (DTP, SB-15): the switch logs it on the console, as
+   the real thing does. Only a device that asks to trunk does this: two switches' trunks are set as trunks */
+function trunkLog(sim, sw) {
+  const x = sim.d[sw], L = [], links = sim.switchLinks(sw);
+  for (const n of Object.keys(links)) {
+    const l = links[n], p = x.sw.ports[n]; if (!p || !l.dtp || p.mode === "trunk" || p.mode === "access" || p.shutdown) continue;
+    if (SW.operMode(p, l.dtp) === "trunk") L.push("%DTP-5-TRUNKPORTON: Port " + n.replace("GigabitEthernet", "Gi") + " has become dot1q trunk");
   }
   return L;
 }

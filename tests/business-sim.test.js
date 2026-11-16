@@ -311,3 +311,29 @@ test("the router's ARP table (show ip arp, show arp): its own addresses, each de
   assert.deepEqual(new Set(seen), new Set([dot(sim.d.printer.ifaces[0].mac), dot(sim.d.printer2.ifaces[0].mac)]), "both hardware addresses, in turn (" + seen + ")");
   assert.notEqual(seen[0], seen[1]); assert.equal(seen[0], seen[2]);
 });
+
+test("a device that asks to trunk (DTP) makes a port left to negotiate a trunk and sits in every VLAN it carries; an access port never trunks; a computer never asks (SB-15)", async () => {
+  const { BUSINESS_JOBS } = await import("../js/build/business.js"), { exec } = await import("../js/net/cmd.js"), { addIntruder } = await import("../js/net/business.js");
+  const J = BUSINESS_JOBS.find((d) => d.id === "SB-J10"), b = J.start(4242), sim = b.sim, p = b.v.plan;
+  for (const a of J.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line, a.win); else sim.apply(a); }
+  const W = C.session(sim.d.msw.sw, { via: "console" }); W.mode = "priv"; W.pending = null; W.fresh = false;
+  const sw = (lines) => lines.forEach((l) => C.exec(W, l));
+  const trunk = () => C.operMode(sim.d.msw.sw.ports["GigabitEthernet0/9"], sim.dtpOf({ dev: "intruder", port: "ETH" }));
+  sw(["configure terminal", "interface gi0/9", "no switchport access vlan", "no switchport mode", "no shutdown", "end"]);
+  addIntruder(sim, { sw: "msw", port: "9", room: "counter", len: 16, dtp: "dynamic desirable" });
+  assert.equal(trunk(), "trunk", "dynamic auto meets a device that asks: a trunk");
+  const L = sim.switchLinks("msw")["GigabitEthernet0/9"], vl = L.macs.map((m) => m.vlan);
+  for (const v of [p.vlans.staff.id, p.vlans.cameras.id, p.vlans.dept.id, p.vlans.guest.id]) assert.ok(vl.indexOf(v) >= 0, "learned in VLAN " + v);
+  assert.ok([...sim.domain(sim.vnode("msw", p.vlans.cameras.id))].indexOf("intruder:v" + p.vlans.cameras.id) >= 0, "in the cameras' VLAN itself");
+  /* an access port: never a trunk, the laptop in that one VLAN only */
+  sw(["configure terminal", "interface gi0/9", "switchport mode access", "switchport access vlan " + p.vlans.parking.id, "end"]);
+  assert.equal(trunk(), "access"); assert.ok(!sim.switchLinks("msw")["GigabitEthernet0/9"].macs, "no VLANs beyond its own");
+  assert.ok([...sim.domain(sim.vnode("msw", p.vlans.cameras.id))].indexOf("intruder:v" + p.vlans.cameras.id) < 0, "out of the cameras' VLAN");
+  /* a computer never asks: a port left to negotiate stays access with it */
+  sw(["configure terminal", "interface gi0/9", "no switchport mode", "end"]);
+  delete sim.d.intruder.dtp;
+  assert.equal(trunk(), "access", "a computer on dynamic auto: access");
+  /* set to ask itself (dynamic desirable), even a device that only answers trunks */
+  sim.d.intruder.dtp = "dynamic auto"; sw(["configure terminal", "interface gi0/9", "switchport mode dynamic desirable", "end"]);
+  assert.equal(trunk(), "trunk", "dynamic desirable meets dynamic auto: a trunk");
+});

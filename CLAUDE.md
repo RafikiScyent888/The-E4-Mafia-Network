@@ -5,7 +5,7 @@ Read this first in any session touching this repo. The global rules in
 here and win over anything below.
 
 **Live site:** https://rafikiscyent888.github.io/The-E4-Mafia-Network/
-**Status (9 November 2026): Level 3 (the small business) goes live stage by stage: stage 1 (the business, its router and switch on the page, work orders SB-J1 and SB-J2), stage 2 (SB-J3, guest Wi-Fi on a ceiling access point: the access point's page through a business PC's web browser, the visitor's phone, the ring in 3D), stage 3 (SB-J4, the back of house on its own switch over a trunk with its allowed list and native VLAN), stage 4 (SB-J5, two dome cameras on PoE injectors on a VLAN of their own, each one's fixed address set on its own page, port forwards tested from the manager's phone on mobile data) stage 5 (SB-J6, hardening after a card-payment check: SSH only, no readable passwords, guarded ports, DHCP snooping and ARP inspection, the closet cabinet locked, live 2 November 2026) stage 6 (SB-J7, the provider's fixed address: the block in CIDR only, the mask worked out by hand, the default route added by hand, the cameras opened at the new address from the manager's phone, live 8 November 2026) stage 7 (SB-J8, the printers' VLAN: the printer moved onto a network of its own, its fixed address on its panel, every PC's printer port changed, the guests' list given a line in the right place, live 9 November 2026), stage 8 (SB-J9, the router rebuilt from its backup: a replacement router racked, its backup copied in over TFTP from your laptop, keys made again, live 9 November 2026) and stage 9 (SB-J10, a new department end to end: a room of its own, its VLAN, its block in CIDR worked out by hand, its pool, a reservation for the manager's PC, an access list letting only the manager in, live 9 November 2026 with the business floor plan fixed: every run routed round the devices, a bigger closet, nothing on a wall) are live, every work order built. **Its tickets go live one at a time, smallest first: the business Ticket Desk opened with SB-01 (the wrong VLAN on a port), live 9 November 2026; SB-02 (a VLAN deleted after the weekend) live 9 November 2026; SB-03 (a VLAN left off a trunk) live 10 November 2026; SB-04 (a DHCP pool handing out the wrong gateway) live 15 November 2026; SB-05 (the router's default route wrong) live 15 November 2026; SB-06 (NAT's inside and outside the wrong way round) live 15 November 2026; SB-07 (a VLAN left out of NAT) live 15 November 2026; SB-08 (a native VLAN mismatch on the back trunk) live 15 November 2026; SB-09 (the trunk between the switches never forms) live 15 November 2026; SB-10 (a router subinterface tagged for the wrong VLAN) live 15 November 2026; SB-11 (a pool with nothing left to lend) live 15 November 2026; SB-12 (an access list that blocks far more than it should) live 15 November 2026; SB-13 (an access list applied the wrong way) live 15 November 2026; SB-14 (the printer's address handed out) live 15 November 2026;** see "Level 3: the business Ticket Desk and SB-01" and the notes for each ticket below. The level opens once the small office is finished, with `planned: 25` until all its work orders and tickets exist. See "Level 3, the small business" below.**
+**Status (9 November 2026): Level 3 (the small business) goes live stage by stage: stage 1 (the business, its router and switch on the page, work orders SB-J1 and SB-J2), stage 2 (SB-J3, guest Wi-Fi on a ceiling access point: the access point's page through a business PC's web browser, the visitor's phone, the ring in 3D), stage 3 (SB-J4, the back of house on its own switch over a trunk with its allowed list and native VLAN), stage 4 (SB-J5, two dome cameras on PoE injectors on a VLAN of their own, each one's fixed address set on its own page, port forwards tested from the manager's phone on mobile data) stage 5 (SB-J6, hardening after a card-payment check: SSH only, no readable passwords, guarded ports, DHCP snooping and ARP inspection, the closet cabinet locked, live 2 November 2026) stage 6 (SB-J7, the provider's fixed address: the block in CIDR only, the mask worked out by hand, the default route added by hand, the cameras opened at the new address from the manager's phone, live 8 November 2026) stage 7 (SB-J8, the printers' VLAN: the printer moved onto a network of its own, its fixed address on its panel, every PC's printer port changed, the guests' list given a line in the right place, live 9 November 2026), stage 8 (SB-J9, the router rebuilt from its backup: a replacement router racked, its backup copied in over TFTP from your laptop, keys made again, live 9 November 2026) and stage 9 (SB-J10, a new department end to end: a room of its own, its VLAN, its block in CIDR worked out by hand, its pool, a reservation for the manager's PC, an access list letting only the manager in, live 9 November 2026 with the business floor plan fixed: every run routed round the devices, a bigger closet, nothing on a wall) are live, every work order built. **Its tickets go live one at a time, smallest first: the business Ticket Desk opened with SB-01 (the wrong VLAN on a port), live 9 November 2026; SB-02 (a VLAN deleted after the weekend) live 9 November 2026; SB-03 (a VLAN left off a trunk) live 10 November 2026; SB-04 (a DHCP pool handing out the wrong gateway) live 15 November 2026; SB-05 (the router's default route wrong) live 15 November 2026; SB-06 (NAT's inside and outside the wrong way round) live 15 November 2026; SB-07 (a VLAN left out of NAT) live 15 November 2026; SB-08 (a native VLAN mismatch on the back trunk) live 15 November 2026; SB-09 (the trunk between the switches never forms) live 15 November 2026; SB-10 (a router subinterface tagged for the wrong VLAN) live 15 November 2026; SB-11 (a pool with nothing left to lend) live 15 November 2026; SB-12 (an access list that blocks far more than it should) live 15 November 2026; SB-13 (an access list applied the wrong way) live 15 November 2026; SB-14 (the printer's address handed out) live 15 November 2026; SB-15 (VLAN hopping) live 16 November 2026;** see "Level 3: the business Ticket Desk and SB-01" and the notes for each ticket below. The level opens once the small office is finished, with `planned: 25` until all its work orders and tickets exist. See "Level 3, the small business" below.**
 **After E4 (the owner, 28 October 2026): proof of hands-on skill built into the labs** (technician's reports, resume lines, level certificates with a verify page on the hub, an Add to LinkedIn button, interview cards; two tiers, "Completed" and "Instructor verified"). The plan and its open questions are in the owner's doc "Hands-on proof from the labs: plan" (https://claude.ai/artifact/SpwGhuG7e4gNufyTvhJhRk). The owner: finish E4 first, build this after, and have everything finished and updated before presenting it to anyone.
 **Status (19 October 2026): Level 2 (the small office) is complete and live: the level lock, work orders SO-J1 to SO-J10, tickets SO-01 to SO-15 with the office's records on each, the managed switch, the closet rack and patch panel, SFP modules and fibre, the IPAM sheet (in build mode and on the Ticket Desk), your laptop's TFTP server. See "Level 2, stage 1", "Level 2, SO-J3", "Level 2, SO-J4", "Level 2, SO-J5", "Level 2, tickets SO-01 to 05", "Level 2, tickets SO-06, SO-07 and SO-09", "Level 2, ticket SO-08", "Level 2, ticket SO-10", "Level 2: the office's records on office tickets; tickets SO-11 to SO-15" and "Level 2: work orders SO-J6 to SO-J10, the small office complete" below.**
 **Earlier status (11 October 2026): the real site, builds 1 to 4 and build mode, is live: fifteen home tickets, the live 3D models in every Physical tab, and the instructor tools (PIN), build mode J1 to J10 and free build**, linked
@@ -93,7 +93,7 @@ at runtime.
 The owner, 10 November 2026: "create a save point here." Where everything stands:
 
 - **Live on `main`:** the business Ticket Desk with SB-01 (9 November, 72f420e), SB-02 (9 November, c151323), SB-03
-  (10 November, a344844), SB-04 (15 November), SB-05 (15 November, d5503e7), SB-06 (15 November), SB-07 (15 November), SB-08 (15 November), SB-09 (15 November), SB-10 (15 November), SB-11 (15 November), SB-12 (15 November), SB-13 (15 November), SB-14 (15 November). Each went up from a tree staged off `main` with the later tickets cut out
+  (10 November, a344844), SB-04 (15 November), SB-05 (15 November, d5503e7), SB-06 (15 November), SB-07 (15 November), SB-08 (15 November), SB-09 (15 November), SB-10 (15 November), SB-11 (15 November), SB-12 (15 November), SB-13 (15 November), SB-14 (15 November), SB-15 (16 November). Each went up from a tree staged off `main` with the later tickets cut out
   (`python3 tools/wip/stage.py N DEST`), then `tools/wip/golive.sh DEST "message"` (makes the live worktree, branch
   `save/level3-sb01` at `/home/user/e4-sb01`, exactly that tree, and commits; push with `git push origin HEAD:main` and
   `HEAD:save/level3-sb01`), then `main` merged back into this branch keeping this branch's full files and `main`'s CLAUDE.md.
@@ -122,9 +122,10 @@ The owner, 10 November 2026: "create a save point here." Where everything stands
 - **SB-14 went live 15 November 2026,** after every check passed on its staged tree (499 tests, the full drive 6,287
   checks, the models 202, 42 contrast states, plants as in its notes). The label printer still has no 3D model: the
   owner was asked for photographs on 15 November.
-- **SB-15 next:** `save/level3-sb15` merged into this branch (one conflict, at the ticket list, resolved as SB-14's was). On a
-  scratch merge staged the same way, its own tests pass (9 of 9) and its full drive and contrast states are running; then the
-  models check, its plants and unit tests.
+- **SB-15 went live 16 November 2026,** after every check passed on its staged tree (509 tests, the full drive 6,451
+  checks, the models 202, 45 contrast states, plants as in its notes). All fifteen Level 3 tickets are live.
+- **Next, in the owner's order:** Level 4 (Campus), then Level 5 (Enterprise); each new piece has its objectives shown
+  and its details talked out before it's built.
 - **The container was rebuilt on 15 November 2026:** the worktrees were made again from the pushed branches, and the browser
   is now Chromium 1243 (`/opt/pw-browsers/chromium`): run the drive, AAA and models tools with `CHROME=/opt/pw-browsers/chromium`.
 - **SB-14 and SB-15 are built** on `save/level3-sb14` and `save/level3-sb15` (worktrees `/home/user/e4-sb14`, `/home/user/e4-sb15`;
@@ -3401,6 +3402,66 @@ building everything in order of increasing in size").
   - **Totals before going live:** `npm test` 499 of 499; the full drive 6,287 checks; the models 202; the 42 contrast
     states; the plants as above. Site files changing: `js/tickets/business.js`, `js/net/sim.js`, `js/net/rtcli.js`,
     `js/net/business.js`, `js/net/pages.js`, `js/net/physical.js`, `js/desk/draw.js`, `js/desk/app.js`, `js/desk/window.js`.
+
+### Level 3: SB-15, VLAN hopping (built 15 November 2026, on `save/level3-sb15`)
+
+Fifteenth of the 15, live on its own after its own checks (16 November 2026).
+
+The owner's title for it: "VLAN hopping". Built last of the fifteen because it needs a new device, a laptop that negotiates a
+trunk (the owner: "Keep building everything in order of increasing in size").
+- **SB-15, "One device seen on every network at once".** VLAN hopping by switch spoofing. A closet switch spare (gi0/9) was
+  reopened for something that never came, and left so it negotiates trunking (DTP). A laptop nobody owns, which asks to trunk as
+  attack tools do, is plugged into its socket on the customers' side of the counter: the port became a trunk, and the laptop
+  sits in every VLAN it carries. The card processor's monitoring emailed: one device seen on the staff, cameras' and the
+  department's networks at once. Three ways:
+  - **auto:** the sign company set the socket up for a screen (that turned out to need Wi-Fi) with the switch's box settings:
+    no access VLAN, left to negotiate (dynamic auto). The laptop asks; the port answers.
+  - **desirable:** the sign company's technician set the port to ask for a trunk itself (dynamic desirable) "so the screen's
+    box can carry its own network". Even a device that only answers trunks.
+  - **vlan:** the camera company gave the port the cameras' VLAN for a third camera still on order, and left the mode at the
+    box's: an access VLAN set doesn't make an access port. `show running-config` has `switchport access vlan` and no
+    `switchport mode` line.
+  - **The laptop is in none of the records and not on the diagram.** It's on the floor plan at the counter (the label
+    printer's spot from SB-14: the waiting area, the back room and the department's room have no space clear of their runs),
+    with a device button and a Physical tab: the program's laptop model, locked, its owner gone.
+  - The board: the right answer and five near misses (double tagging on a native VLAN in use, port security off, an access
+    list gone so the VLANs route, the guest Wi-Fi letting visitors in, the router's pools leasing it an address on every
+    network), each with the evidence that rules it out. Evidence: `show interfaces trunk` (gi0/9 trunking, auto or desirable,
+    beside the records' trunks), `show interfaces gi0/9 switchport` (Administrative Mode dynamic, Operational Mode trunk),
+    `show mac address-table` (the laptop's one hardware address in every VLAN on gi0/9), `show interfaces status` (connected,
+    trunk), `show running-config` (the camera variant), the laptop's cable, and on the closet switch's console
+    `%DTP-5-TRUNKPORTON: Port Gi0/9 has become dot1q trunk`.
+  - **Fixed** when gi0/9 is as the records keep a spare (an access port, in the parking VLAN, shut), running and saved; the
+    switches' own trunks as they were; everyone still online and printing. Unplugging the laptop isn't needed (and alone
+    isn't the fix). Mason says why when it isn't: the laptop unplugged and the port still negotiating; shut but still left to
+    negotiate; set as access but open or not parked; the switches' own trunks broken on the way; not saved. `switchport
+    nonegotiate` and port security are refused on a port left to negotiate, as on the real thing. **Proof:** `show interfaces
+    trunk` on the switch, gi0/9 no longer among them.
+- **Shared code going live with it:**
+  - **A device can negotiate a trunk** (`dtp` on a device; `dtpOf`, `linkEdges` and `switchLinks` in `js/net/sim.js`): where
+    a port left to negotiate trunks with it, it's in every VLAN the port carries, and the switch learns its hardware address in
+    each. A computer never asks: a port left to negotiate stays access with one. A test in `tests/business-sim.test.js` (4
+    plants caught).
+  - **The switch's console logs a port that negotiated itself into a trunk** (`trunkLog` in `js/net/cmd.js`), once a session.
+  - The counter's PC and printer move up for any ticket's device at the counter (SB-14's `lp`, now for either).
+- **Checks** (on the staged tree, SB-01 to SB-15, the branch merged into `save/level3-tickets`):
+  - `tests/business-tickets.test.js` (30 businesses, every variant): the fault in the switch's own output (`show interfaces
+    trunk`, `show interfaces gi0/9 switchport`, `show mac address-table`, the console's `%DTP-5-TRUNKPORTON`), the board, the
+    real fix and its proof, 8 tempting wrong fixes, unsaved, other right ways (the laptop unplugged too; nonegotiate and the
+    description taken off as well), the ladder, replay, no hint naming the fix's command; the guests' Wi-Fi moved onto the
+    business's own network; `tests/business-sim.test.js`: a device that negotiates a trunk.
+  - `node tools/drive.mjs` in full (shared code goes live with it), on the newer browser: 6,451 checks.
+  - `node tools/models.mjs` (the laptop's Physical tab among the models): 202 checks.
+  - AAA: SB-15's 3 states (the closet switch's trunks and address table over SSH, the laptop's Physical tab on the floor
+    plan with Mason's third rung, solved) with the business tickets' others: 45 states, 147,712 text runs, all passing.
+  - `DRIVE_ONLY=SB-15 python3 tools/plants-business-tickets.py SB-15` (in a throwaway copy): 11 plants (5 page, 6 Node), all
+    caught: SB-15 left off the desk, the unknown laptop left off the floor plan, its device button gone, the switch learning it
+    in one VLAN only, a laptop that asks to trunk never getting one (the fault then shows on no business, and the drive stops),
+    put right unsaved, a spare shut but left to negotiate, a spare left open, the switches' own trunks broken on the way, a hint
+    naming the mode command, any show interfaces trunk counted as proof.
+  - **Totals before going live:** `npm test` 509 of 509; the full drive 6,451 checks; the models 202; the 45
+    contrast states; the plants as above. Site files changing: `js/tickets/business.js`, `js/net/sim.js`, `js/net/cmd.js`,
+    `js/net/business.js`, `js/net/pages.js`, `js/net/physical.js`, `js/desk/draw.js`, `js/desk/app.js`.
 
 **Checks:** `npm test` (Node: every client job on 150 houses: the work
 to do at the start for the real reason, the scripted solution passing,

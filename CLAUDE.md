@@ -3427,9 +3427,20 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
     never answers, a loop, or no way back (the destination's route to the sender is checked too) each get no reply. The switch's
     own ping goes by its table (`routeFromL3`). A switch that routes takes a reply by its own table (`canReply`). OSPF's learned
     routes will come in through `learned(id)` and the session's `live("learned")`.
-  - **Checks:** `tests/campus-l3.test.js` (6) and `tests/campus-sim.test.js` (6); `python3 tools/plants-campus-node.py` (in a
-    throwaway copy): 10 plants, all caught (one hit only one of the two `ip routing` guards at first and was re-aimed at both).
-    The existing suites run unchanged against it (home, office, business command line, simulation and page: 200 of 200).
+  - **Link aggregation (LACP)**, on both switch models (access switches bundle their uplinks too): `channel-group <1-48> mode
+    active|passive|on` (no proprietary modes), which makes the port-channel the first time ("Creating a port-channel interface
+    Port-channel 1"); `interface port-channel N` reaches every member, and its switchport settings are its own as well
+    (`sw.pcs`, made only when used, so a switch without one saves and reads exactly as before); `show etherchannel summary` (Po
+    SU/SD; each member P bundled, I stand-alone, s suspended, D down); `show interfaces port-channel N` (its bandwidth the
+    bundled members' speeds added up). Each member works its state out from the far end (`chanOf`, `farDev` on each switch
+    link): active with active or passive bundles, passive with passive never does, on bundles without asking (its far end,
+    if LACP, stands alone), a member whose VLAN settings aren't the port-channel's or whose far end is another switch is
+    suspended: line protocol down, and it carries nothing (`linkEdges`). `tests/campus-lag.test.js` (7).
+  - **Checks:** `tests/campus-l3.test.js` (6), `tests/campus-sim.test.js` (6), `tests/campus-lag.test.js` (7); `python3 tools/plants-campus-node.py` (in a
+    throwaway copy): 18 plants, all caught. Two missed at first: one hit only one of the two `ip routing` guards (re-aimed at
+    both), and "a suspended member still carries frames" passed because the test's suspended member was an access port that
+    couldn't carry the VLAN anyway (the test now suspends a trunk that still carries it). The existing suites run unchanged
+    against it (home, office, business command line, simulation and page, with the campus's: 219 of 219).
 
 ## Objectives
 

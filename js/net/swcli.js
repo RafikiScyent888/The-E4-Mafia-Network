@@ -35,6 +35,25 @@ export function newSwitch(o = {}) {
 /* a port's VLAN settings from the box: it negotiates trunking with the far end (DTP, dynamic auto: it trunks only if the
    far end asks), an access port in VLAN 1 otherwise; as a trunk, native VLAN 1 and every VLAN allowed */
 const PORT_VLAN = { mode: "dynamic auto", access: 1, native: 1, allowed: "all", nonegotiate: false };
+/* ------------------------------------------------------------ link aggregation (LACP), Level 4 */
+/* a port-channel's own record, made the first time it's named or a port joins it, with the first member's VLAN settings */
+function pcOf(sw, g, from) { sw.pcs = sw.pcs || {}; if (!sw.pcs[g]) { const f = from || {}; sw.pcs[g] = { mode: f.mode || PORT_VLAN.mode, access: f.access || 1, native: f.native || 1, allowed: Array.isArray(f.allowed) ? f.allowed.slice() : (f.allowed || "all"), nonegotiate: !!f.nonegotiate }; } return sw.pcs[g]; }
+export function membersOf(sw, g) { return PORT_NAMES.filter(function (n) { return sw.ports[n].chan && sw.ports[n].chan.group === g; }); }
+const L2KEYS = ["mode", "access", "native", "allowed", "nonegotiate"];
+/* a member port's state, as show etherchannel summary marks it: D down; s suspended (its VLAN settings not the port-channel's,
+   or its far end another switch than the bundle's); I stand-alone (LACP with nobody answering: the far end passive too, on, or
+   not in a channel); P bundled. "on" bundles without asking anyone, as the real thing does */
+export function chanState(sw, n) {
+  const p = sw.ports[n]; if (!p || !p.chan) return null;
+  const l = sw.links[n]; if (p.shutdown || errDisabled(sw, n) || !l || linkFails(p, l)) return "D";
+  const pc = (sw.pcs || {})[p.chan.group] || {}, v = function (o, k) { return JSON.stringify(o[k] === undefined ? PORT_VLAN[k] : o[k]); };
+  if (pc.shutdown || L2KEYS.some(function (k) { return v(p, k) !== v(pc, k); })) return "s";
+  const first = membersOf(sw, p.chan.group).find(function (m) { const k = sw.links[m]; return k && !sw.ports[m].shutdown && !linkFails(sw.ports[m], k); });
+  if (first && first !== n && sw.links[first].farDev && l.farDev !== sw.links[first].farDev) return "s";
+  if (p.chan.mode === "on") return "P";
+  const far = l.chan; if (!far || far.mode === "on" || (p.chan.mode === "passive" && far.mode === "passive")) return "I";
+  return "P";
+}
 /* a switch saved before VLANs came (the small office's progress in a student's browser) gets them as from the box,
    in what's saved too, so it doesn't read as changed */
 function fix(sw) {
@@ -59,7 +78,7 @@ export function errDisabled(sw, n) { return !!(sw.psRun && sw.psRun[n] && sw.psR
 export function psOf(p) { return p.ps || (p.ps = { on: false, max: 1, viol: "shutdown", sticky: false, macs: [] }); }
 /* a MAC address as the switch writes it: aaaa.bbbb.cccc */
 export function dotMac(m) { const h = String(m || "").replace(/[^0-9a-f]/gi, "").toLowerCase(); return h.length === 12 ? h.slice(0, 4) + "." + h.slice(4, 8) + "." + h.slice(8) : null; }
-const CONFIG_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "vlan1", "gateway", "ports", "banner", "vlans", "svis", "snoop", "dai"];   /* keyGen: which set of RSA keys it holds (each crypto key generate makes a new one) */
+const CONFIG_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "vlan1", "gateway", "ports", "banner", "vlans", "svis", "snoop", "dai", "pcs"];   /* keyGen: which set of RSA keys it holds (each crypto key generate makes a new one) */
 /* each kind of device with this command line (this switch; the business router, rtcli.js) registers what's its own: its
    command tree, its prompts, what its configuration is made of, a factory-fresh one, and how its configuration reads */
 const OS = {};
@@ -85,6 +104,8 @@ function ifName(tokens, i) {
     if (!num || !/^0\/\d+$/.test(num)) return { err: "incomplete", used: used };
     const n = "GigabitEthernet" + num; return PORT_NAMES.indexOf(n) >= 0 ? { name: n, used: used } : { err: "invalid", used: used };
   }
+  m = /^(po|por|port|port-|port-c|port-ch|port-cha|port-chan|port-chann|port-channe|port-channel)(\d+)?$/.exec(t);
+  if (m) { let num = m[2]; if (!num) { num = tokens[i + 1]; used = 2; } if (!num) return { err: "incomplete", used: used }; return /^\d+$/.test(num) && +num >= 1 && +num <= 48 ? { name: "Port-channel" + (+num), used: used, po: +num } : { err: "invalid", used: used }; }
   m = /^(v|vl|vla|vlan)(\d+)?$/.exec(t);
   if (m) { let num = m[2]; if (!num) { num = tokens[i + 1]; used = 2; } if (!num) return { err: "incomplete", used: used }; return vlanId(num) ? { name: "Vlan" + (+num), used: used, vlan: +num } : { err: "invalid", used: used }; }
   return null;
@@ -138,6 +159,7 @@ function status(sw, n) {
   if (errDisabled(sw, n)) return ["down", "down"];   /* shut down by port security until someone shuts it and opens it again */
   if (!l) return ["down", "down"];
   if (linkFails(p, l)) return ["down", "down"];
+  if (p.chan && chanState(sw, n) === "s") return ["up", "down"];   /* suspended from its port-channel */
   return ["up", "up"];
 }
 /* trunking, worked out with the far end as the real thing negotiates it (DTP). far: what the far end's port says about
@@ -188,6 +210,7 @@ function mismatchCounters(p, l) {
 }
 
 const SHOW = [
+  ["etherchannel", "EtherChannel information", [["summary", "One-line summary per channel-group", function (S) { return chanSummary(S.sw); }]]],
   ["running-config", "Current operating configuration", function (S) { return osOf(S.sw).config(S.sw); }],
   ["startup-config", "Contents of startup-config", function (S) { return S.sw.startup ? osOf(S.sw).config(Object.assign({}, S.sw, S.sw.startup), true) : ["startup-config is not present"]; }],
   ["version", "System hardware and software status", function (S) { const sw = S.sw; return [osOf(sw).image, "", sw.hostname + " uptime is " + sw.uptime, "", "Model number: " + (sw.model === "MSW-3900X" ? "MSW-3900X (24 x 10/100/1000, 4 x SFP, layer 3)" : "MSW-2800G (24 x 10/100/1000, 4 x SFP)"), "Base MAC address: " + sw.mac, "System serial number: " + sw.serial, "", "System returned to ROM by " + (sw.restart || "power-on"), "", "Configuration register: 0x2102"]; }],
@@ -202,6 +225,7 @@ const SHOW = [
     if (/^tra/i.test(args[0])) return transceivers(S.sw);
     const f = ifName(args, 0); if (!f || f.err) return ["% Invalid input detected at '^' marker."];
     if (isSvi(f.name)) return sviOf(S.sw, f.name) ? vlanDetail(S.sw, f.name) : ["% Invalid input detected at '^' marker."];
+    if (f.po) return (S.sw.pcs || {})[f.po] ? pcDetail(S.sw, f.po) : ["% Invalid input detected at '^' marker."];
     if (args[f.used] && /^sw/i.test(args[f.used])) return switchportOf(S.sw, f.name);
     return ifDetail(S.sw, f.name);
   }, { sub: [["status", "Show interface line status"], ["trunk", "Show interface trunk information"], ["transceiver", "Show the SFP modules' readings (DOM)"], ["GigabitEthernet", "GigabitEthernet IEEE 802.3z (add switchport for its VLAN settings)"], ["Vlan", "The switch's own interface on a VLAN"]] }],
@@ -268,11 +292,12 @@ const CONFIG = [
   ]],
   ["interface", "Select an interface to configure", function (S, a) {
     if (!a.length) return ["% Incomplete command."];
-    if (/^r/i.test(a[0])) { const r = ifRange(a.slice(1)); if (!r) return ["% Invalid input detected at '^' marker."]; S.mode = "ifrange"; S.ifs = r; return []; }
+    if (/^r/i.test(a[0])) { const r = ifRange(a.slice(1)); if (!r) return ["% Invalid input detected at '^' marker."]; S.mode = "ifrange"; S.po = null; S.ifs = r; return []; }
     const f = ifName(a, 0); if (!f) return ["% Invalid input detected at '^' marker."]; if (f.err === "incomplete") return ["% Incomplete command."];
     if (f.err) return ["% Invalid input detected at '^' marker."];
     if (isSvi(f.name) && !sviOf(S.sw, f.name)) S.sw.svis[f.vlan] = { ip: null, mask: null, shutdown: false };   /* the switch's own interface on a VLAN is made by naming it */
-    S.mode = "if"; S.ifs = [f.name]; return [];
+    if (f.po) { pcOf(S.sw, f.po); S.mode = "if"; S.po = f.po; S.ifs = membersOf(S.sw, f.po); return []; }   /* a port-channel: what's typed reaches every member port */
+    S.mode = "if"; S.po = null; S.ifs = [f.name]; return [];
   }, { sub: [["GigabitEthernet", "GigabitEthernet IEEE 802.3z"], ["Vlan", "The switch's own interface on a VLAN"], ["range", "interface range command"]] }],
   ["vlan", "VLAN commands", function (S, a) {
     if (!a.length) return ["% Incomplete command."];
@@ -326,6 +351,15 @@ const CONFIG = [
   ["exit", "Exit from configure mode", function (S) { S.mode = "priv"; return []; }]
 ];
 const IFACE = [
+  ["channel-group", "Etherchannel/port bundling configuration", function (S, a) {
+    if (S.ifs.some(isSvi) || S.po) return ["% Invalid input detected at '^' marker."];
+    if (!a.length) return ["% Incomplete command."]; const g = +a[0]; if (!/^\d+$/.test(a[0]) || g < 1 || g > 48) return ["% Invalid input detected at '^' marker."];
+    if (!a[1] || !/^m/i.test(a[1])) return a[1] ? ["% Invalid input detected at '^' marker."] : ["% Incomplete command."];
+    const m = (a[2] || "").toLowerCase(), mode = ["active", "passive", "on"].find(function (k) { return a[2] && k.indexOf(m) === 0; });
+    if (!a[2]) return ["% Incomplete command."]; if (!mode) return ["% Invalid input detected at '^' marker."];
+    const out = (S.sw.pcs || {})[g] ? [] : ["Creating a port-channel interface Port-channel " + g];
+    pcOf(S.sw, g, S.sw.ports[S.ifs[0]]); S.ifs.forEach(function (n) { S.sw.ports[n].chan = { group: g, mode: mode }; }); return out;
+  }, { sub: [["<1-48>", "Channel group number"]] }],
   ["description", "Interface specific description", function (S, a, raw) { const d = raw.replace(/^\s*\S+\s*/, ""); if (!d) return ["% Incomplete command."]; S.ifs.forEach(function (n) { if (isSvi(n)) sviOf(S.sw, n).desc = d.slice(0, 240); else S.sw.ports[n].desc = d.slice(0, 240); }); return []; }],
   ["speed", "Configure speed operation.", [["10", "Force 10 Mbps operation", function (S) { return setPort(S, "speed", "10"); }], ["100", "Force 100 Mbps operation", function (S) { return setPort(S, "speed", "100"); }], ["1000", "Force 1000 Mbps operation", function (S) { return setPort(S, "speed", "1000"); }], ["auto", "Enable AUTO speed configuration", function (S) { return setPort(S, "speed", "auto"); }]]],
   ["duplex", "Configure duplex operation.", [["full", "Force full duplex operation", function (S) { return setPort(S, "duplex", "full"); }], ["half", "Force half-duplex operation", function (S) { return setPort(S, "duplex", "half"); }], ["auto", "Enable AUTO duplex configuration", function (S) { return setPort(S, "duplex", "auto"); }]]],
@@ -373,6 +407,7 @@ const IFACE = [
         return psSet(S, function (P) { P.on = true; });
       } }]]],
   ["no", "Negate a command or set its defaults", [
+    ["channel-group", "Etherchannel/port bundling configuration", function (S) { S.ifs.forEach(function (n) { if (!isSvi(n)) delete S.sw.ports[n].chan; }); return []; }],
     ["shutdown", "Shutdown the selected interface", function (S) { const out = []; S.ifs.forEach(function (n) { if (isSvi(n)) { sviOf(S.sw, n).shutdown = false; out.push("%LINK-3-UPDOWN: Interface " + n + ", changed state to up"); } else { S.sw.ports[n].shutdown = false; const st = status(S.sw, n); out.push("%LINK-3-UPDOWN: Interface " + n + ", changed state to " + (st[0] === "up" ? "up" : "down")); } }); return out; }],
     ["description", "Interface specific description", function (S) { S.ifs.forEach(function (n) { if (isSvi(n)) sviOf(S.sw, n).desc = ""; else S.sw.ports[n].desc = ""; }); return []; }],
     ["speed", "Configure speed operation.", function (S) { return setPort(S, "speed", "auto"); }],
@@ -454,7 +489,7 @@ function typed(a) {
   if (a.length > 1 && a[0] === "0") return a[1];
   return a[a.length - 1];
 }
-function setPort(S, k, v) { if (["access", "native", "allowed", "nonegotiate", "mode"].indexOf(k) >= 0 && S.ifs.some(function (n) { return !isSvi(n) && S.sw.ports[n].routed; })) return ["% Invalid input detected at '^' marker.", "  (a routed port: \"switchport\" makes it a switch port again first)"]; if (S.ifs.some(isSvi) && ["access", "native", "allowed", "nonegotiate", "mode", "dtrust", "atrust"].indexOf(k) >= 0) return ["% Invalid input detected at '^' marker.", "  (switchport settings are for the switch's ports, not its own interface on a VLAN)"]; S.ifs.forEach(function (n) { if (!isSvi(n)) S.sw.ports[n][k] = Array.isArray(v) ? v.slice() : v; }); return []; }
+function setPort(S, k, v) { if (["access", "native", "allowed", "nonegotiate", "mode"].indexOf(k) >= 0 && S.ifs.some(function (n) { return !isSvi(n) && S.sw.ports[n].routed; })) return ["% Invalid input detected at '^' marker.", "  (a routed port: \"switchport\" makes it a switch port again first)"]; if (S.ifs.some(isSvi) && ["access", "native", "allowed", "nonegotiate", "mode", "dtrust", "atrust"].indexOf(k) >= 0) return ["% Invalid input detected at '^' marker.", "  (switchport settings are for the switch's ports, not its own interface on a VLAN)"]; S.ifs.forEach(function (n) { if (!isSvi(n)) S.sw.ports[n][k] = Array.isArray(v) ? v.slice() : v; }); if (S.po && ["access", "native", "allowed", "nonegotiate", "mode"].indexOf(k) >= 0) pcOf(S.sw, S.po)[k] = Array.isArray(v) ? v.slice() : v; return []; }
 /* port security's settings on each port in the session's list (not on the switch's own interfaces) */
 function psSet(S, f) { if (S.ifs.some(isSvi)) return ["% Invalid input detected at '^' marker.", "  (port security is for the switch's ports, not its own interface on a VLAN)"]; S.ifs.forEach(function (n) { f(psOf(S.sw.ports[n]), n); }); return []; }
 /* the trunking mode: a dynamic mode and nonegotiate can't go together */
@@ -594,6 +629,9 @@ function runningConfig(sw, startup) {
   if (sw.dai && sw.dai.vlans.length) L.push("ip arp inspection vlan " + vlanText(sw.dai.vlans));
   if ((sw.snoop && (sw.snoop.on || sw.snoop.vlans.length)) || (sw.dai && sw.dai.vlans.length)) L.push("!");
   Object.keys(sw.vlans || {}).map(Number).sort(function (a, b) { return a - b; }).forEach(function (v) { if (v === 1) return; L.push("vlan " + v); if (sw.vlans[v].name !== "VLAN" + String(v).padStart(4, "0")) L.push(" name " + sw.vlans[v].name); L.push("!"); });
+  Object.keys(sw.pcs || {}).map(Number).sort(function (a, b) { return a - b; }).forEach(function (g) { const q = Object.assign({}, PORT_VLAN, sw.pcs[g]); L.push("interface Port-channel" + g);
+    if (q.access !== 1) L.push(" switchport access vlan " + q.access); if (q.native !== 1) L.push(" switchport trunk native vlan " + q.native); if (q.allowed !== "all") L.push(" switchport trunk allowed vlan " + vlanText(q.allowed));
+    if (q.mode !== "dynamic auto") L.push(" switchport mode " + q.mode); if (q.nonegotiate) L.push(" switchport nonegotiate"); if (q.shutdown) L.push(" shutdown"); L.push("!"); });
   PORT_NAMES.forEach(function (n) { const raw = sw.ports[n], p = Object.assign({}, PORT_VLAN, raw, raw.routed ? Object.assign({}, PORT_VLAN, { ps: null, atrust: false, dtrust: false }) : {}); L.push("interface " + n); if (p.desc) L.push(" description " + p.desc);
     if (raw.routed) L.push(" no switchport", raw.ip ? " ip address " + raw.ip + " " + raw.mask : " no ip address");
     if (p.access !== 1) L.push(" switchport access vlan " + p.access);
@@ -603,6 +641,7 @@ function runningConfig(sw, startup) {
     if (p.nonegotiate) L.push(" switchport nonegotiate");
     if (p.ps) { const P = p.ps; if (P.max !== 1) L.push(" switchport port-security maximum " + P.max); if (P.viol !== "shutdown") L.push(" switchport port-security violation " + P.viol); if (P.sticky) L.push(" switchport port-security mac-address sticky"); P.macs.forEach(function (m) { L.push(" switchport port-security mac-address " + (m.sticky ? "sticky " : "") + m.mac); }); if (P.on) L.push(" switchport port-security"); }
     if (p.atrust) L.push(" ip arp inspection trust"); if (p.dtrust) L.push(" ip dhcp snooping trust");
+    if (raw.chan) L.push(" channel-group " + raw.chan.group + " mode " + raw.chan.mode);
     if (p.speed !== "auto") L.push(" speed " + p.speed); if (p.duplex !== "auto") L.push(" duplex " + p.duplex); if (p.mdix === false) L.push(" no mdix auto"); if (p.shutdown) L.push(" shutdown"); L.push("!"); });
   L.push("interface Vlan1"); if (sw.vlan1.desc) L.push(" description " + sw.vlan1.desc); L.push(sw.vlan1.ip ? " ip address " + sw.vlan1.ip + " " + sw.vlan1.mask : " no ip address"); if (sw.vlan1.shutdown) L.push(" shutdown"); L.push("!");
   Object.keys(sw.svis || {}).map(Number).sort(function (a, b) { return a - b; }).forEach(function (v) { const s = sw.svis[v]; L.push("interface Vlan" + v); if (s.desc) L.push(" description " + s.desc); L.push(s.ip ? " ip address " + s.ip + " " + s.mask : " no ip address"); if (s.shutdown) L.push(" shutdown"); L.push("!"); });
@@ -624,6 +663,25 @@ function ipBrief(sw) {
   Object.keys(sw.svis || {}).map(Number).sort(function (a, b) { return a - b; }).forEach(function (k) { const s = sw.svis[k], st = status(sw, "Vlan" + k); L.push(pad("Vlan" + k, 23) + pad(s.ip || "unassigned", 16) + "YES " + pad(s.ip ? "manual" : "unset", 7) + pad(st[0], 22) + st[1]); });
   PORT_NAMES.forEach(function (n) { const s = status(sw, n), p = sw.ports[n], a = p.routed && p.ip; L.push(pad(n, 23) + pad(a ? p.ip : "unassigned", 16) + "YES " + pad(a ? "manual" : "unset", 7) + pad(s[0], 22) + s[1]); });
   return L;
+}
+/* show etherchannel summary: each port-channel, up in use (SU) with a member bundled, otherwise down (SD); each member flagged */
+function chanSummary(sw) {
+  const G = Object.keys(sw.pcs || {}).map(Number).sort(function (a, b) { return a - b; });
+  const L = ["Flags:  D - down        P - bundled in port-channel", "        I - stand-alone s - suspended", "        S - Layer2      U - in use", "",
+    "Number of channel-groups in use: " + G.length, "Number of aggregators:           " + G.length, "", "Group  Port-channel  Protocol    Ports", "------+-------------+-----------+-----------------------------------------------"];
+  G.forEach(function (g) {
+    const M = membersOf(sw, g), up = M.some(function (n) { return chanState(sw, n) === "P"; }), on = M.length && M.every(function (n) { return sw.ports[n].chan.mode === "on"; });
+    L.push((g + "      ").slice(0, 7) + ("Po" + g + "(S" + (up ? "U" : "D") + ")" + "              ").slice(0, 14) + (on ? "  -        " : "  LACP     ") + "  " + M.map(function (n) { return short(n) + "(" + chanState(sw, n) + ")"; }).join("   "));
+  });
+  return L;
+}
+/* show interfaces port-channel N: up while a member is bundled; its bandwidth the bundled members' speeds added up */
+function pcDetail(sw, g) {
+  const M = membersOf(sw, g), B = M.filter(function (n) { return chanState(sw, n) === "P"; }), up = B.length > 0;
+  const kbit = B.reduce(function (t, n) { const p = sw.ports[n], l = sw.links[n], sp = p.speed !== "auto" ? +p.speed : Math.min(+(l.max || 1000), l.speed && l.speed !== "auto" ? +l.speed : 1000); return t + sp * 1000; }, 0);
+  return ["Port-channel" + g + " is " + (up ? "up" : "down") + ", line protocol is " + (up ? "up (connected)" : "down (notconnect)"), "  Hardware is EtherChannel, address is " + sw.mac,
+    "  MTU 1500 bytes, BW " + (kbit || 1000000) + " Kbit/sec, DLY 10 usec", "  Full-duplex, " + (up ? (kbit / 1000) + "Mb/s" : "Auto-speed") + ", link type is auto, media type is unknown",
+    "  Members in this channel: " + (B.length ? B.map(short).join(" ") : "none bundled"), "  ARP type: ARPA, ARP Timeout 04:00:00"];
 }
 /* the fingerprint of the switch's RSA host key, as an SSH client shows it: a new one each time keys are made */
 export function hostKey(sw) {

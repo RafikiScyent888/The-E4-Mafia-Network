@@ -2,7 +2,7 @@
 # Run it in a throwaway copy of the checkout, never in the real one:   python3 tools/plants-campus-node.py [name ...]
 import subprocess, shutil, sys, os
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-TESTS = ["tests/campus-l3.test.js", "tests/campus-sim.test.js"]
+TESTS = ["tests/campus-l3.test.js", "tests/campus-sim.test.js", "tests/campus-lag.test.js"]
 PLANTS = [
  ("a routed port still carries its VLANs", "js/net/swcli.js", '  if (sw.ports[n].routed) return { mode: "routed", untagged: null, tagged: [] };', ''),
  ("switchport settings accepted on a routed port", "js/net/swcli.js", 'S.ifs.some(function (n) { return !isSvi(n) && S.sw.ports[n].routed; })) return ["% Invalid input', 'false) return ["% Invalid input'),
@@ -15,6 +15,14 @@ PLANTS = [
  ("the way back never checked", "js/net/sim.js", '      if (!oneWay) { const r = this.route(back[0], a.ip, proto, true); if (r.fail || !(r.local || r.routed)) return Object.assign({ fail: "no-reply", hops: hops.slice(), why: "no way back", owner: owners, routers: routers }, base); }', ''),
  ("a routing switch can't take a reply", "js/net/sim.js", '    if (this.routes3(id)) return !!l3Route(this.l3View(id), to, this.learned(id));   /* a switch that routes replies by its own table */', ''),
  ("the TTL one less however many switches", "js/net/cmd.js", '(sim.ttlOf(who) - (rt.routers || 1))', '(sim.ttlOf(who) - 1)'),
+ ("LACP: passive with passive bundles", "js/net/swcli.js", ' || (p.chan.mode === "passive" && far.mode === "passive")) return "I";', ') return "I";'),
+ ("LACP: on bundles only with on", "js/net/swcli.js", '  if (p.chan.mode === "on") return "P";', '  if (p.chan.mode === "on") return l.chan && l.chan.mode === "on" ? "P" : "I";'),
+ ("LACP: a suspended member still carries frames", "js/net/sim.js", '        if (x.sw.ports[swPort(end.port)] && x.sw.ports[swPort(end.port)].chan && chanState(Object.assign({}, x.sw, { links: this.switchLinks(end.dev) }), swPort(end.port)) === "s") return { u: null, t: {} };', ''),
+ ("LACP: a member's VLAN settings never compared", "js/net/swcli.js", '  if (pc.shutdown || L2KEYS.some(function (k) { return v(p, k) !== v(pc, k); })) return "s";', '  if (pc.shutdown) return "s";'),
+ ("LACP: a member to another switch bundles", "js/net/swcli.js", '  if (first && first !== n && sw.links[first].farDev && l.farDev !== sw.links[first].farDev) return "s";', ''),
+ ("LACP: the bandwidth counts every member, bundled or not", "js/net/swcli.js", 'const M = membersOf(sw, g), B = M.filter(function (n) { return chanState(sw, n) === "P"; }), up = B.length > 0;', 'const M = membersOf(sw, g), B = M, up = M.some(function (n) { return chanState(sw, n) === "P"; });'),
+ ("LACP: interface port-channel reaches no member", "js/net/swcli.js", 'S.mode = "if"; S.po = f.po; S.ifs = membersOf(S.sw, f.po); return []; }', 'S.mode = "if"; S.po = f.po; S.ifs = []; return []; }'),
+ ("LACP: a suspended member's line protocol shown up", "js/net/swcli.js", '  if (p.chan && chanState(sw, n) === "s") return ["up", "down"];   /* suspended from its port-channel */', ''),
 ]
 only = sys.argv[1:]
 bad = 0

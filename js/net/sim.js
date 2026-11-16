@@ -5,7 +5,7 @@
    Every change goes through apply(), so a ticket can be replayed exactly
    (progress is saved as the list of actions). */
 import { rng, hash, ip2n, n2ip, sameSubnet, isIp, isApipa, isPublic, isPrivate, isLoopback, broadcast, network, maskBits } from "./util.js";
-import { reload as reloadSwitch, duplexEnds, carries, ownAddrs, psRunOf, errDisabled, dotMac, l3Ifs, l3Route } from "./swcli.js";
+import { reload as reloadSwitch, duplexEnds, carries, ownAddrs, psRunOf, errDisabled, dotMac, l3Ifs, l3Route, chanState } from "./swcli.js";
 import * as RT from "./rtcli.js";
 
 /* each radio has its own hardware address: the 5 GHz one is the next number up */
@@ -206,7 +206,9 @@ export class Sim {
     return null;
   }
   /* what a managed switch's port says about trunking to the far end (DTP); null from anything else */
-  dtpOf(end) { const x = end && this.d[end.dev]; if (!x || x.kind !== "mswitch") return null; const p = x.sw.ports[swPort(end.port)]; return p ? { mode: p.mode || "dynamic auto", nonegotiate: !!p.nonegotiate } : null; }
+  dtpOf(end) { const x = end && this.d[end.dev]; if (!x || x.kind !== "mswitch") return null; const p = x.sw.ports[swPort(end.port)]; return p && !p.routed ? { mode: p.mode || "dynamic auto", nonegotiate: !!p.nonegotiate } : null; }   /* a routed port never negotiates trunking */
+  /* the far end's port-channel settings, if it's a switch port in one (LACP's partner, Level 4) */
+  chanOf(end) { const x = end && this.d[end.dev]; if (!x || x.kind !== "mswitch") return null; const p = x.sw.ports[swPort(end.port)]; return p && p.chan ? { group: p.chan.group, mode: p.chan.mode } : null; }
   /* what each of a managed switch's ports sees at the far end of its cable, worked out without changing anything
      (a check must never change the network: a saved job has to replay exactly) */
   switchLinks(id) {
@@ -216,7 +218,7 @@ export class Sim {
     Object.keys(x.sfp || {}).forEach(function (slot) {
       const M = SFP_MODULES[x.sfp[slot]], c = this.cableAt(id, slot); if (!M) return;
       const far = c ? (c.a.dev === id && c.a.port === slot ? c.b : c.a) : null, fd = far && this.d[far.dev], up = !!c && c.kind === "fibre" && this.fibreUp(c), mm = fd && fd.mac ? fd.mac.replace(/[^0-9a-f]/gi, "").toLowerCase() : "";
-      L[swPort(slot)] = { lldp: up ? this.lldpOf(far) : null, dtp: this.dtpOf(far), module: M.show, pid: M.pid, unsupported: M.rate !== 1000, sfpMismatch: !up, light: up, mac: up ? mm.slice(0, 4) + "." + mm.slice(4, 8) + "." + mm.slice(8, 12) : null, speed: "1000", duplex: "full", max: 1000, tick: this.n };
+      L[swPort(slot)] = { lldp: up ? this.lldpOf(far) : null, dtp: this.dtpOf(far), chan: this.chanOf(far), farDev: far ? far.dev : null, module: M.show, pid: M.pid, unsupported: M.rate !== 1000, sfpMismatch: !up, light: up, mac: up ? mm.slice(0, 4) + "." + mm.slice(4, 8) + "." + mm.slice(8, 12) : null, speed: "1000", duplex: "full", max: 1000, tick: this.n };
     }, this);
     for (const c0 of this.cablesOf(id)) {
       if (c0.kind !== "cat6") continue;
@@ -224,7 +226,7 @@ export class Sim {
       const me = c.a.dev === id ? c.a : c.b, far = c.a.dev === id ? c.b : c.a, fd = this.d[far.dev];
       if (!/^\d+$/.test(me.port) || !me.seated || !far.seated || fd.kind === "jack" || c.cond === "crushed" || (c.length || 0) > COPPER_MAX || !this.on(far.dev) || !this.pairsMeet(c)) continue;
       const m = (fd.kind === "router" || fd.kind === "rogue" ? fd.mac : fd.ifaces ? fd.ifaces[0].mac : "02-00-5e-" + (hash(far.dev) >>> 0).toString(16).padStart(8, "0").slice(0, 6).replace(/(..)(..)(..)/, "$1-$2-$3")).replace(/-/g, "");
-      L["GigabitEthernet0/" + me.port] = { lldp: this.cableUp(c0) ? this.lldpOf(this.viaInjectorEnd(c0, id) || far) : null, dtp: this.dtpOf(far), mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n };
+      L["GigabitEthernet0/" + me.port] = { lldp: this.cableUp(c0) ? this.lldpOf(this.viaInjectorEnd(c0, id) || far) : null, dtp: this.dtpOf(far), chan: this.chanOf(far), farDev: far.dev, mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n };
       if (fd.maxMbps) L["GigabitEthernet0/" + me.port].max = Math.min(L["GigabitEthernet0/" + me.port].max, fd.maxMbps);
     }
     return L;
@@ -385,6 +387,7 @@ export class Sim {
       const x = this.d[end.dev];
       if (x && x.kind === "mswitch") {
         if (x.sw.ports[swPort(end.port)] && x.sw.ports[swPort(end.port)].routed) return { u: this.l3Node(end.dev, swPort(end.port)), t: {} };   /* a layer 3 switch's routed port: untagged, to the port itself */
+        if (x.sw.ports[swPort(end.port)] && x.sw.ports[swPort(end.port)].chan && chanState(Object.assign({}, x.sw, { links: this.switchLinks(end.dev) }), swPort(end.port)) === "s") return { u: null, t: {} };   /* suspended from its port-channel: it carries nothing */
         const fx = this.d[far.dev], fp = fx && fx.kind === "mswitch" ? fx.sw.ports[swPort(far.port)] : null, cr = carries(x.sw, swPort(end.port), fp && !fp.routed ? { mode: fp.mode, nonegotiate: fp.nonegotiate } : null), t = {};
         cr.tagged.forEach(function (v) { t[v] = this.vnode(end.dev, v); }, this);
         return { u: cr.untagged != null ? this.vnode(end.dev, cr.untagged) : null, t: t };

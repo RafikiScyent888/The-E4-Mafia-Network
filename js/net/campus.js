@@ -31,16 +31,16 @@ export const CAMPUS_FLOORS = { data: 1, svc: 1, c2: 2, bench: 2, c3: 3, office: 
 export const CAMPUS_RUN = { data: { svc: 22, c2: 38, bench: 52, c3: 54, office: 68 }, svc: { c2: 50, bench: 60, c3: 66, office: 76 }, c2: { bench: 18, c3: 26, office: 40 }, bench: { c3: 40, office: 48 }, c3: { office: 16 } };
 /* the logical diagram (three tiers, the provider at the top) and the floor plan (three floors, one band each) */
 export const CAMPUS_LAYOUT = {
-  modem: { x: 60, y: 40, px: 70, py: 70, room: "data" }, edge: { x: 230, y: 40, px: 150, py: 70, room: "data" },
-  core1: { x: 300, y: 110, px: 230, py: 70, room: "data" }, core2: { x: 540, y: 110, px: 300, py: 70, room: "data" },
-  dist1: { x: 300, y: 190, px: 150, py: 150, room: "data" }, dist2: { x: 540, y: 190, px: 230, py: 150, room: "data" },
-  tech: { x: 70, y: 190, px: 300, py: 150, room: "data" },
-  acc1: { x: 150, y: 330, px: 70, py: 150, room: "data" }, acc2: { x: 420, y: 330, px: 80, py: 330, room: "c2" }, acc3: { x: 690, y: 330, px: 80, py: 530, room: "c3" },
-  sd1: { x: 70, y: 460, px: 470, py: 80, room: "svc" }, hd1: { x: 150, y: 460, px: 600, py: 80, room: "svc" }, pr1: { x: 230, y: 460, px: 730, py: 80, room: "svc" },
-  bn1: { x: 380, y: 460, px: 420, py: 330, room: "bench" }, bn2: { x: 460, y: 460, px: 600, py: 330, room: "bench" },
-  mgr: { x: 620, y: 460, px: 420, py: 530, room: "office" }, fin: { x: 700, y: 460, px: 600, py: 530, room: "office" }, pr3: { x: 780, y: 460, px: 760, py: 530, room: "office" }
+  isp: { x: 60, y: 40 }, modem: { x: 210, y: 40, px: 120, py: 110, room: "data" }, edge: { x: 380, y: 40, lab: "right", px: 290, py: 110, room: "data" },
+  core1: { x: 380, y: 150, lab: "left", px: 460, py: 110, room: "data" }, core2: { x: 740, y: 150, lab: "right", px: 460, py: 195, room: "data" },
+  dist1: { x: 380, y: 270, lab: "left", px: 290, py: 195, room: "data" }, dist2: { x: 740, y: 270, lab: "right", px: 290, py: 280, room: "data" },
+  tech: { x: 70, y: 270, px: 120, py: 280, room: "data" },
+  acc1: { x: 210, y: 390, lab: "left", px: 120, py: 195, room: "data" }, acc2: { x: 560, y: 390, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 890, y: 390, lab: "right", px: 115, py: 655, room: "c3" },
+  sd1: { x: 70, y: 510, px: 650, py: 120, room: "svc" }, hd1: { x: 200, y: 580, px: 880, py: 120, room: "svc" }, pr1: { x: 330, y: 510, px: 765, py: 250, room: "svc" },
+  bn1: { x: 500, y: 510, px: 480, py: 455, room: "bench" }, bn2: { x: 630, y: 580, px: 740, py: 455, room: "bench" },
+  mgr: { x: 760, y: 510, px: 440, py: 655, room: "office" }, fin: { x: 890, y: 580, px: 650, py: 655, room: "office" }, pr3: { x: 1020, y: 510, px: 860, py: 655, room: "office" }
 };
-export const CAMPUS_ROOM_BOX = { data: [30, 30, 360, 230], svc: [360, 30, 980, 230], c2: [30, 250, 200, 430], bench: [200, 250, 980, 430], c3: [30, 450, 200, 630], office: [200, 450, 980, 630] };
+export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 345], c2: [30, 365, 220, 545], bench: [220, 365, 980, 545], c3: [30, 565, 220, 745], office: [220, 565, 980, 745] };
 const swMac = function (hi, lo) { return "00e0.4c" + hi.toString(16).padStart(2, "0") + "." + lo.toString(16).padStart(4, "0"); };
 const run = function (sw, lines) { const S = session(sw); ["", "enable", "configure terminal"].concat(lines, ["end", "copy running-config startup-config", ""]).forEach(function (l) { exec(S, l); }); return sw; };
 
@@ -101,7 +101,7 @@ export function makeCampus(seed) {
       ifaces: [{ name: "Ethernet", type: "eth", port: "ETH", mac: mac(rng(seed ^ 0x7ec4)), desc: "Ethernet Connection (USB-C dock)", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }], tftp: { on: false, root: "C:\\TFTP-Root", files: [], log: [] } }
   };
   const cab = function (id, a, ap, b2, bp, len) { return { id: id, kind: "cat6", a: { dev: a, port: ap, seated: true }, b: { dev: b2, port: bp, seated: true }, cond: "good", length: len }; };
-  const rooms = {}; Object.keys(CAMPUS_LAYOUT).forEach(function (id) { rooms[id] = CAMPUS_LAYOUT[id].room; });
+  const rooms = {}; Object.keys(CAMPUS_LAYOUT).forEach(function (id) { if (CAMPUS_LAYOUT[id].room) rooms[id] = CAMPUS_LAYOUT[id].room; });   /* the provider (on the logical diagram only) has no room */
   const len = function (a, b2) { const A = rooms[a], B = rooms[b2]; return A === B ? 3 : (CAMPUS_RUN[A] && CAMPUS_RUN[A][B]) || (CAMPUS_RUN[B] && CAMPUS_RUN[B][A]) || 40; };
   const cables = [{ id: "c-coax", kind: "coax", a: { dev: "wall", port: "F", tight: true }, b: { dev: "modem", port: "CABLE IN", tight: true }, cond: "good" },
     cab("c-modem-edge", "modem", "ETH", "edge", "Gi0/0", 1), cab("c-edge-dist1", "edge", "Gi0/1", "dist1", plan.edgePort, 1),

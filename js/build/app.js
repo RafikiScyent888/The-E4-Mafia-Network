@@ -6,6 +6,7 @@
 import { JOBS, JOBS_COMING, NAME, IN } from "./jobs.js";
 import { OFFICE_JOBS } from "./office.js";
 import { BUSINESS_JOBS } from "./business.js";
+import { CAMPUS_JOBS } from "./campus.js";
 import * as B from "./engine.js";
 import { HELP } from "../net/cmd.js";
 import { portsOf, portName, FIXED_ROOM, runLength, COPPER_MAX } from "../net/sim.js";
@@ -20,16 +21,16 @@ import { ipamSheet as sheetForm } from "../desk/ipamui.js";
 import { cableMap } from "../desk/cablemapui.js";
 
 const KEY = "e4-build-v1";
-const ALL = JOBS.concat(OFFICE_JOBS, BUSINESS_JOBS);   /* every level's work orders */
+const ALL = JOBS.concat(OFFICE_JOBS, BUSINESS_JOBS, CAMPUS_JOBS);   /* every level's work orders */
 const DEFS = {}; ALL.forEach(function (d) { DEFS[d.id] = d; });
-const ORDER = ["modem", "router", "rtr", "switch", "pp", "msw", "bsw", "cab", "pc", "mgr", "bpc", "dpc1", "dpc2", "hire", "printer", "mpc", "ojack", "mjack", "tv", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "cinj1", "cam1", "cinj2", "cam2", "mphone", "tech"];
+const ORDER = ["modem", "router", "rtr", "switch", "pp", "msw", "bsw", "cab", "pc", "mgr", "bpc", "dpc1", "dpc2", "hire", "printer", "mpc", "ojack", "mjack", "tv", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "cinj1", "cam1", "cinj2", "cam2", "mphone", "edge", "core1", "core2", "dist1", "dist2", "acc1", "acc2", "acc3", "sd1", "hd1", "pr1", "bn1", "bn2", "fin", "pr3", "tech"];   /* the campus's after the business's */
 const ROOM_ORDER = ["living", "office", "kitchen", "garage", "upstairs", "landing", "porch"];
 /* the site's own rooms, names and fixed places: a house, the small office or the small business */
 const roomsOf = function (sim) { return sim.net.roomNames ? Object.keys(sim.net.roomNames) : ROOM_ORDER; };
 const roomName = function (sim, r) { return (sim.net.roomNames || ROOMS)[r]; };
 const fixedOf = function (sim) { return sim.net.fixed || FIXED_ROOM; };
 /* "the network closet", "the waiting room": a room mid-sentence. The business's rooms are its own (a clinic's reception, a café's kitchen) */
-const inRoom = function (sim, r) { return sim.net.site === "business" ? "the " + String(sim.net.roomNames[r]).replace(/^[A-Z](?=[a-z])/, function (m) { return m.toLowerCase(); }) : IN[r]; };
+const inRoom = function (sim, r) { return sim.net.site === "business" || sim.net.site === "campus" ? "the " + String(sim.net.roomNames[r]).replace(/^[A-Z](?=[a-z])/, function (m) { return m.toLowerCase(); }) : IN[r]; };
 /* "the router", "the managed switch", "your laptop": a device's name mid-sentence */
 const theName = function (sim, id) { if (id === "tech") return "your laptop"; return "the " + (sim.net.site ? sim.d[id].label.replace(/^[A-Z](?=[a-z])/, function (m) { return m.toLowerCase(); }) : NAME[id]); };
 const $ = function (id) { return document.getElementById(id); };

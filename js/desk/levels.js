@@ -17,6 +17,7 @@ import { OFFICE_JOBS } from "../build/office.js";
 import { OFFICE_TICKETS } from "../tickets/office.js";
 import { BUSINESS_JOBS } from "../build/business.js";
 import { BUSINESS_TICKETS } from "../tickets/business.js";
+import { CAMPUS_JOBS } from "../build/campus.js";
 
 export const LEVELS = [
   { n: 1, id: "home", name: "Home", the: "the home level", tickets: HOME_TICKETS.map(function (t) { return t.id; }), jobs: JOBS.filter(function (d) { return !d.free; }).map(function (d) { return d.id; }) },
@@ -27,7 +28,9 @@ export const LEVELS = [
      the work orders all live by 9 November 2026, the tickets one at a time after them, smallest first, the last (SB-15) live
      16 November 2026, so it no longer carries planned */
   { n: 3, id: "business", name: "Small business", the: "the small business", tickets: BUSINESS_TICKETS.map(function (t) { return t.id; }), jobs: BUSINESS_JOBS.map(function (d) { return d.id; }) },
-  { n: 4, id: "campus", name: "Campus", the: "the campus", tickets: [], jobs: [], later: true },
+  /* 10 work orders and 15 tickets, as planned 16 November 2026 (the owner: "Yes to the level 4 plans, build it out"), going live stage
+     by stage, smallest first */
+  { n: 4, id: "campus", name: "Campus", the: "the campus", tickets: [], jobs: CAMPUS_JOBS.map(function (d) { return d.id; }), planned: 25, coming: "more work orders and its tickets on the way" },
   { n: 5, id: "enterprise", name: "Enterprise", the: "the enterprise level", tickets: [], jobs: [], later: true }
 ];
 const TITLES = {}; HOME_TICKETS.concat(JOBS, OFFICE_JOBS, OFFICE_TICKETS, BUSINESS_JOBS, BUSINESS_TICKETS).forEach(function (d) { TITLES[d.id] = d.title; });

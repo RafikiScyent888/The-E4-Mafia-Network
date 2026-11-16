@@ -9,7 +9,7 @@ import { prompt } from "./cmd.js";
 import { POE, SFP_MODULES } from "./sim.js";
 
 /* the model each device is drawn with (the old router in HOME-10 is a home router too) */
-export const MODEL_OF = { modem: "modem", router: "router", rogue: "router", switch: "switch", pc: "pc", laptop: "laptop", intruder: "laptop", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", injector: "injector", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc", bpc: "pc" };   /* the office's meeting room (SO-04): an old 5-port switch in the same housing, and a desktop */
+export const MODEL_OF = { modem: "modem", router: "router", rogue: "router", switch: "switch", pc: "pc", laptop: "laptop", intruder: "laptop", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", injector: "injector", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc", bpc: "pc", sd1: "pc", hd1: "pc", bn1: "pc", bn2: "pc", fin: "pc", pr1: "printer", pr3: "printer" };   /* the campus's desks and printers too */   /* the office's meeting room (SO-04): an old 5-port switch in the same housing, and a desktop */
 
 /* each model's network ports: the name printed on the model, and the sim's port at that device */
 const PORTS = {
@@ -212,6 +212,9 @@ export function physicalState(sim, id) {
   if (model === "camera") { says.push("Printed beside its port: " + (x.draw > POE.af.pd ? "PoE+ 802.3at, up to " + x.draw + " W (heater on)" : "PoE 802.3af") + " (it takes its power down the cable). Its label gives the model and says the address is set by DHCP; the hardware address is covered."); if (!on) says.push("No power: the camera is dark."); else if (sim.poeShort(id)) says.push("Its status light blinks amber: running on limited power."); }
   if (model === "injector") says.push("Its label: " + (x.std === "passive" ? "SINGLE-PORT PASSIVE PoE INJECTOR, OUTPUT 24V ⎓ 1A" : x.std === "at" ? "SINGLE-PORT GIGABIT PoE+ INJECTOR, IEEE 802.3at, OUTPUT 54V ⎓ 0.56A (30W)" : "SINGLE-PORT GIGABIT PoE INJECTOR, IEEE 802.3af, OUTPUT 48V ⎓ 0.32A (15.4W)") + ".");
   if (model === "injectorDual") says.push("Its label: DUAL-PORT GIGABIT PoE+ INJECTOR, IEEE 802.3at. Total PoE power budget DC 54V ⎓ 1.1A (60W); port max DC 54V ⎓ 0.56A (30W). Each DATA IN carries on only to the DATA + POWER OUT with the same number.");
+  /* the campus's layer 3 switch (MSW-3900X): photographs of it haven't come yet (asked for 15 November 2026), so it's drawn with the
+     MSW-2800G's model, the ports and lights where this switch has them, and the words say so: never passed off as its own */
+  if (model === "msw" && x.sw && x.sw.os === "l3switch") says.unshift("Drawn with the MSW-2800G's model until photographs of the MSW-3900X come: its ports and lights are in the same places, so what they show is this switch's.");
   return { id: id, model: model, label: x.label, ports: ports, leds: leds, opts: opts, says: says };
 }
 

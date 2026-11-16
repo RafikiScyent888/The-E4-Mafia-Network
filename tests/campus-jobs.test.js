@@ -41,6 +41,19 @@ test("CP-J1: the tempting wrong ways each fail their own line for their own caus
     J = tryIt(def, s, drop(sol, (a) => a.line === "spanning-tree portfast")); assert.equal(cause(J, "edge"), "portfast");
     const saves = sol.map((a, i) => (a.line === "copy running-config startup-config" ? i : -1)).filter((i) => i >= 0);
     J = tryIt(def, s, sol.filter((a, i) => i !== saves[1] && i !== saves[1] + 1)); assert.equal(cause(J, "saved2"), "unsaved"); assert.ok(line(J, "saved1").ok && line(J, "saved3").ok);
+    /* a range that reaches the spares: opened, or moved out of the parking VLAN */
+    const after = (extra) => { const i = sol.findIndex((a) => a.line === "spanning-tree bpduguard enable"); return sol.slice(0, i + 1).concat(extra.map((l) => Object.assign({}, sol[i], { line: l })), sol.slice(i + 1)); };
+    J = tryIt(def, s, after(["interface range gi0/1 - 22", "no shutdown"])); assert.equal(cause(J, "spares"), "open", s + " spares opened");
+    J = tryIt(def, s, after(["interface range gi0/1 - 22", "switchport access vlan " + J.v.plan.vlans.svc.id])); assert.equal(cause(J, "spares"), "park", s + " spares moved out of parking");
+    J = tryIt(def, s, after(["interface range gi0/1 - 22", "switchport port-security maximum 2"])); assert.equal(cause(J, "ps"), "max", s + " two devices a port");
+    /* one port missed among the rest, behind a first port that's right: each found */
+    J = tryIt(def, s, after(["interface gi0/2", "switchport port-security maximum 2"])); assert.equal(cause(J, "ps"), "max", s + " one port taking two devices");
+    J = tryIt(def, s, after(["interface gi0/3", "switchport port-security violation restrict"])); assert.equal(cause(J, "ps"), "viol", s + " one port only counting a stranger");
+    const rng = sol.find((a) => /^interface range/.test(a.line)), part = sol.flatMap((a) => (a === rng ? [Object.assign({}, a, { line: "interface range gi0/1 - 2" })] : a.line === "spanning-tree bpduguard enable" && sol.indexOf(a) < sol.indexOf(rng) + 6 ? [a, ...["interface gi0/3", "switchport port-security", "spanning-tree portfast", "spanning-tree bpduguard enable"].map((l) => Object.assign({}, a, { line: l }))] : [a]));
+    J = tryIt(def, s, part); assert.equal(cause(J, "ps"), "sticky", s + " one port not told to stick");
+    /* the bench floor's range taken to every port: its PCs cut off while both printers still answer from the service desk */
+    const second = sol.filter((a) => /^interface range/.test(a.line))[1].line;
+    J = tryIt(def, s, swap(sol, second, "interface range gi0/1 - 24")); assert.equal(cause(J, "works"), "pc", s + " the bench floor cut off: " + cause(J, "works"));
   }
 });
 

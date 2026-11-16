@@ -1,8 +1,8 @@
-# Plants for Level 4's groundwork (the layer 3 switch): each defect, put into the code, must make the campus tests fail.
+# Plants for Level 4's groundwork (the layer 3 switch, spanning tree, LACP, OSPF, standby) and its work orders: each defect, put into the code, must make the campus tests fail.
 # Run it in a throwaway copy of the checkout, never in the real one:   python3 tools/plants-campus-node.py [name ...]
 import subprocess, shutil, sys, os
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-TESTS = ["tests/campus-l3.test.js", "tests/campus-sim.test.js", "tests/campus-lag.test.js", "tests/campus-stp.test.js", "tests/campus-ospf.test.js", "tests/campus-hsrp.test.js"]
+TESTS = ["tests/campus-l3.test.js", "tests/campus-sim.test.js", "tests/campus-lag.test.js", "tests/campus-stp.test.js", "tests/campus-ospf.test.js", "tests/campus-hsrp.test.js", "tests/campus-site.test.js", "tests/campus-jobs.test.js"]
 PLANTS = [
  ("a routed port still carries its VLANs", "js/net/swcli.js", '  if (sw.ports[n].routed) return { mode: "routed", untagged: null, tagged: [] };', ''),
  ("switchport settings accepted on a routed port", "js/net/swcli.js", 'S.ifs.some(function (n) { return !isSvi(n) && S.sw.ports[n].routed; })) return ["% Invalid input', 'false) return ["% Invalid input'),
@@ -54,6 +54,18 @@ PLANTS = [
    ("js/net/sim.js", "    const rank = function (p, q) { return q.pri - p.pri || ip2n(q.ip) - ip2n(p.ip); };\n    Object.keys(G).forEach(function (k) {", "    const rank = function (p, q) { return q.pri - p.pri || ip2n(p.ip) - ip2n(q.ip); };\n    Object.keys(G).forEach(function (k) {")]),
  ("HSRP: the election never runs after a change", "js/net/sim.js", "this.bpduGuard(); this.hsrpTick();", "this.bpduGuard();"),
  ("LACP: a suspended member's line protocol shown up", "js/net/swcli.js", '  if (p.chan && chanState(sw, n) === "s") return ["up", "down"];   /* suspended from its port-channel */', ''),
+ ("CP-J1: a port that learns but doesn't stick passes", "js/build/campus.js", ' || P.viol !== "shutdown" || !stuck(r).some(function (k) { return k.mac === mac(r); }); };', ' || P.viol !== "shutdown"; };'),
+ ("CP-J1: a stranger merely counted passes", "js/build/campus.js", ' || P.max > 1 || P.viol !== "shutdown" || ', ' || P.max > 1 || '),
+ ("CP-J1: two devices a port passes", "js/build/campus.js", 'errDisabled(sim.d[r.sw].sw, r.n) || P.max > 1 || ', 'errDisabled(sim.d[r.sw].sw, r.n) || '),
+ ("CP-J1: portfast never looked for", "js/build/campus.js", 'const r = desks(sim, v).find(function (x) { return !(x.p.stp && x.p.stp.portfast); });', 'const r = null;'),
+ ("CP-J1: BPDU guard never looked for", "js/build/campus.js", 'rows = desks(sim, v), r = rows.find(function (x) { return !(x.p.stp && x.p.stp.bpduguard); });', 'rows = desks(sim, v), r = null;'),
+ ("CP-J1: the uplinks never checked", "js/build/campus.js", '  return [C("shut", !!shut, "An uplink is shut down: "', '  return []; [C("shut", !!shut, "An uplink is shut down: "'),
+ ("CP-J1: the spares' VLAN never checked", "js/build/campus.js", 'park = S.find(function (r) { return r.p.access !== v.plan.vlans.parking.id; });', 'park = null;'),
+ ("CP-J1: an open spare passes", "js/build/campus.js", 'open = S.find(function (r) { return !r.p.shutdown; }),', 'open = null,'),
+ ("CP-J1: a floor cut off still counts as working", "js/build/campus.js", 'const off = CAMPUS_PCS.find(function (id) { return !sim.route(id, "8.8.8.8").internet; }),', 'const off = null,'),
+ ("CP-J1: an unsaved switch passes", "js/build/campus.js", 'return [C("unsaved", unsaved(sim.d[id].sw),', 'return [C("unsaved", false,'),
+ ("CP-J1: the walk-through saves only the first floor", "js/build/campus.js", '"spanning-tree portfast", "spanning-tree bpduguard enable", "end", "copy running-config startup-config", "", "exit"].forEach(t);', '"spanning-tree portfast", "spanning-tree bpduguard enable", "end"].concat(a[0] === "acc1" ? ["copy running-config startup-config", ""] : []).concat(["exit"]).forEach(t);'),
+ ("CP-J1: a hint names the enable secret", "js/build/campus.js", 'rung1: function () { return "show port-security on each access switch, then', 'rung1: function (v) { return v.plan.secret + " show port-security on each access switch, then'),
 ]
 only = sys.argv[1:]
 bad = 0

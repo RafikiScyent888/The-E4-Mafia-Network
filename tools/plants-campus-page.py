@@ -4,7 +4,7 @@
 import subprocess, shutil, sys, os
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 PLANTS = [
- ("Level 4 open before the small business is finished", "CP-J1", "js/desk/levels.js", "  if (n <= 1) return true;", "  if (n <= 1 || n === 4) return true;"),
+ ("Level 4 open before the small business is finished", "lock", "js/desk/levels.js", "  if (n <= 1) return true;", "  if (n <= 1 || n === 4) return true;"),
  ("the campus's devices without buttons", "CP-J1", "js/build/app.js", '"mphone", "edge", "core1", "core2", "dist1", "dist2", "acc1", "acc2", "acc3", "sd1", "hd1", "pr1", "bn1", "bn2", "fin", "pr3", "tech"];', '"mphone", "tech"];'),
  ("the 1F access switch back across the data room (its runs under other devices)", "CP-J1", "js/net/campus.js", 'acc1: { x: 210, y: 390, lab: "left", px: 460, py: 280, room: "data" },', 'acc1: { x: 210, y: 390, lab: "left", px: 120, py: 280, room: "data" },'),
  ("the provider beside the modem again (CABLE IN on a tile)", "CP-J1", "js/net/campus.js", "isp: { x: 10, y: 40 },", "isp: { x: 90, y: 40 },"),
@@ -12,6 +12,7 @@ PLANTS = [
  ("the campus's work orders left out of build mode", "CP-J1", "js/build/app.js", "const ALL = JOBS.concat(OFFICE_JOBS, BUSINESS_JOBS, CAMPUS_JOBS);", "const ALL = JOBS.concat(OFFICE_JOBS, BUSINESS_JOBS);"),
  ("the MSW-3900X's borrowed model passed off as its own", "CP-J2", "js/net/physical.js", '  if (model === "msw" && x.sw && x.sw.os === "l3switch") says.unshift(', '  if (false) says.unshift('),
  ("a campus desk PC without its Physical tab", "CP-J2", "js/net/physical.js", 'bpc: "pc", sd1: "pc", hd1: "pc",', 'bpc: "pc", hd1: "pc",'),
+ ("the bars' height measured only at load (a long title wrapped, the columns under it run off the screen)", "CP-J4", "js/build/app.js", 'if (window.ResizeObserver) new ResizeObserver(chromeH).observe(document.querySelector(".chrome"));', ''),
 ]
 only = sys.argv[1:]
 bad = 0

@@ -2267,7 +2267,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
     return { p, ctx };
   }
   const lv = (p, n) => p.$eval('#left [data-level="' + n + '"]', (b) => ({ text: b.textContent, locked: b.parentNode.classList.contains("locked"), dashed: getComputedStyle(b).borderStyle === "dashed", lock: !!b.querySelector('.lk[aria-hidden="true"]') }));
-  if (!process.env.JOB) {
+  if (!process.env.JOB || process.env.JOB === "lock") {   /* JOB=lock: the lock alone (the page plants' run) */
     {
       const { p, ctx } = await cpage("build.html", { net: solvedTo(2), build: { j: {}, done: doneTo(2) } }); const tag = "campus levels, the small business not finished: ";
       try {
@@ -2331,6 +2331,12 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
         await step(p, { t: "cmd", dev: "sd1", line: "ipconfig /release" }); await step(p, { t: "cmd", dev: "sd1", line: "ipconfig /renew" });
         check(re("10." + b + "." + plan.vlans.svc.id + ".").test(await term(p)) && (await BJ(p, () => window.__e4b.T.sim.addr("sd1").kind)) === "dhcp", tag + "the service desk PC gets its address again, relayed to the edge router's pool");
         await step(p, { t: "cmd", dev: "sd1", line: "ping 8.8.8.8" }); check(/Reply from 8\.8\.8\.8/.test(await term(p)), tag + "and pings out");
+      }
+      if (job === "CP-J4" && seed === 11) {   /* the bars over a long title, easier reading's font in: the sticky columns sit under them (16 November 2026: their height was measured only at load) */
+        await p.click("#dys"); await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(250);
+        const ch = await p.evaluate(() => [document.querySelector(".chrome").offsetHeight, parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--chromeH"))]);
+        check(Math.abs(ch[0] - ch[1]) < 1, tag + "with easier reading on, the bars' height and the columns' allowance for them agree (" + ch.join(" and ") + ")");
+        await p.click("#dys"); await p.waitForTimeout(100);
       }
       await p.click("#vLog"); await p.waitForTimeout(60);
       const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished campus's logical diagram: every port name and device name on it, clear of each other and every tile" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));

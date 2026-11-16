@@ -370,6 +370,7 @@ setupInstructor(ctx, {
   }
 });
 chromeH(); window.addEventListener("resize", chromeH);
+if (window.ResizeObserver) new ResizeObserver(chromeH).observe(document.querySelector(".chrome"));   /* the bars grow when a long title wraps or easier reading's font arrives: the sticky columns under them follow, or their foot runs off the screen */
 const asked = /^#job=([\w-]+)$/.exec(location.hash);   /* the Ticket Desk links a level's work orders here */
 openJob(asked && DEFS[asked[1]] ? asked[1] : S.current && DEFS[S.current] ? S.current : JOBS[0].id, false);
 if (location.hash === "#logical") setView(false);

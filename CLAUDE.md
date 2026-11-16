@@ -3411,6 +3411,24 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
   virtual gateway, MTU. Port security and switch VLAN interfaces exist already.
 - **3D models:** a Layer 3 switch with fibre uplink slots, SFP transceivers, LC patch cords: the owner was asked for photographs
   on 15 November 2026 (as for SB-14's label printer). The engine and command line are built first; the models when they come.
+- **The plan, approved 16 November 2026: "Yes to the level 4 plans, build it out".** The site: Rafiki's IT Services' own HQ,
+  three floors, three tiers (two layer 3 core switches; two layer 3 distribution switches bundled with LACP, the VLAN gateways
+  with standby and the spanning-tree root; an access switch per floor, wired to both distribution switches; 1F the service
+  desk and the data room, 2F the technicians' bench, 3F management; VLANs for the service desk, the bench, the office, servers,
+  printers and management; the internet router at the edge originating the default route into OSPF), and the Training Annex
+  on a collapsed core (one layer 3 switch as core and distribution, an access switch for the classroom) over single-mode fibre,
+  routed and in OSPF. **10 work orders**, smallest first: (1) lock down the access ports (port security, portfast, BPDU guard);
+  (2) gateways onto the distribution switch (VLAN interfaces and ip routing, the router-on-a-stick retired); (3) the
+  distribution pair bundled with LACP; (4) the spanning-tree root where it belongs (distribution 1 primary, 2 secondary); (5)
+  OSPF across the core, the default originated at the edge; (6) the virtual gateway (distribution 2 joins with standby); (7)
+  jumbo frames for the backup network (the backup server and its Linux command line); (8) the Training Annex on a collapsed
+  core; (9) DHCP relay (ip helper-address) to a central DHCP server; (10) a new floor end to end. **15 tickets**: the wrong
+  root bridge; BPDU guard err-disabling a port (a desk switch); port security err-disabling a port (a visitor's laptop); a
+  port-channel member suspended (half the bandwidth); LACP passive at both ends; OSPF stuck in EXSTART (MTU); an OSPF area
+  mismatch after a replacement; a passive interface on the uplink; the default route not originated; the standby virtual
+  address mistyped on one switch; no preempt after maintenance; jumbo frames on the server but not a switch; a stale static
+  route looping (TTL expired); a wrong mask on a routed link; mismatched transceivers on the inter-building fibre. 3D models
+  need the owner's photographs: a layer 3 switch with fibre slots, SFP transceivers, LC cords, a rack server.
 - **Groundwork, built 15 November 2026 on `save/level4-campus`** (worktree `/home/user/e4-l4`; nothing of Level 4 is live or
   linked; `later: true` in `levels.js` until a stage is ready):
   - **The layer 3 switch, MSW-3900X** (`newSwitch({ l3: true })`, its own command line registered as `l3switch`, so the office's

@@ -11,7 +11,7 @@
    - NAT: inside and outside interfaces, PAT (ip nat inside source list N interface X overload) and static NAT.
    What only the network knows (which links are up, the leases handed out, the translations made, the access lists'
    hit counts) the session asks for through its live callback, given by whoever opens it (cmd.js). */
-import { CORE, registerOS, pwOk, lldpTable } from "./swcli.js";
+import { CORE, registerOS, pwOk, lldpTable, ospfShow } from "./swcli.js";
 
 const { CONFIG, EXEC_USER, EXEC_PRIV, SHOW, LINE, typed, pwText, hashish, ip4, isMask } = CORE;
 /* its ten ports, as the model shows them: eight copper (0/0 to 0/7) and the two SFP slots printed WAN (0/8, 0/9) */
@@ -29,7 +29,7 @@ export function newRouter(o = {}) {
     ifs: ifs, subs: {}, routes: [], excluded: [], pools: {}, acls: {}, nat: [], statics: [], lldp: true,
     links: o.links || {}, mac: o.mac || "00e0.4d██.████", serial: "██████████", startup: null, uptime: o.uptime || "2 minutes" };
 }
-const RT_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "banner", "ifs", "subs", "routes", "excluded", "pools", "acls", "nat", "statics", "lldp"];
+const RT_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "banner", "ifs", "subs", "routes", "excluded", "pools", "acls", "nat", "statics", "lldp", "ospf"];   /* ospf: made only when used (Level 4), so a router saved before reads as it was */
 /* LLDP on: everywhere unless turned off (no lldp run), and on a port unless it's told not to send or listen there.
    A router saved before LLDP could be turned off has it on (undefined) */
 export function lldpSends(r, n) { const f = r.ifs[n]; return r.lldp !== false && !(f && f.lldpTx === false); }
@@ -98,6 +98,11 @@ export function routes(r, live) {
     if (s.iface) { if (rtStatus(r, s.iface)[1] === "up") T.push({ code: s.net === "0.0.0.0" && s.mask === "0.0.0.0" ? "S*" : "S", net: s.net, mask: s.mask, iface: s.iface }); return; }
     const via = T.find(function (t) { return t.code === "C" && wildMatch(s.nh, t.net, s4(Math.pow(2, 32) - 1 - n4(t.mask))); });
     if (via) T.push({ code: s.net === "0.0.0.0" && s.mask === "0.0.0.0" ? "S*" : "S", net: s.net, mask: s.mask, nh: s.nh, iface: via.iface });
+  });
+  /* what OSPF learned (Level 4), believed at distance 110: never over a connected network or a static route */
+  ((live && live("learned")) || []).forEach(function (o) {
+    if (T.some(function (t) { return t.code !== "L" && t.net === o.net && t.mask === o.mask; })) return;
+    T.push({ code: o.net === "0.0.0.0" && o.mask === "0.0.0.0" ? "O*" : "O", ext: o.ext || "", net: o.net, mask: o.mask, nh: o.nh, iface: o.iface, ad: 110, metric: o.metric || 0 });
   });
   return T;
 }
@@ -319,7 +324,11 @@ const RT_IFACE = [
   ["ip", "Interface Internet Protocol config commands", [
     ["address", "Set the IP address of an interface", function (S, a) { return rtAddress(S, a); }, { sub: [["A.B.C.D", "IP address"], ["dhcp", "IP Address negotiated via DHCP"]] }],
     ["nat", "NAT interface commands", [["inside", "Inside interface for address translation", function (S) { return setIfs(S, "nat", "inside"); }], ["outside", "Outside interface for address translation", function (S) { return setIfs(S, "nat", "outside"); }]]],
-    ["access-group", "Specify access control for packets", function (S, a) { return accessGroup(S, a, false); }, { sub: [["WORD", "Access list name or number, then in or out"]] }]]],
+    ["access-group", "Specify access control for packets", function (S, a) { return accessGroup(S, a, false); }, { sub: [["WORD", "Access list name or number, then in or out"]] }],
+    ["ospf", "OSPF interface commands", [
+      ["cost", "Interface cost", function (S, a) { if (!a.length) return inc; if (!/^\d+$/.test(a[0]) || +a[0] < 1 || +a[0] > 65535) return bad; return setIfs(S, "ospfCost", +a[0]); }],
+      ["priority", "Router priority", function (S, a) { if (!a.length) return inc; if (!/^\d+$/.test(a[0]) || +a[0] > 255) return bad; return setIfs(S, "ospfPri", +a[0]); }]]],
+    ["mtu", "Set IP Maximum Transmission Unit", function (S, a) { if (!a.length) return inc; if (!/^\d+$/.test(a[0]) || +a[0] < 68 || +a[0] > 1500) return ["% Invalid input detected at '^' marker.", "  (68 to 1500 bytes)"]; return setIfs(S, "mtu", +a[0]); }]]],
   ["encapsulation", "Set encapsulation type for an interface", [["dot1Q", "IEEE 802.1Q Virtual LAN", function (S, a) { return encap(S, ["dot1q"].concat(a)); }, { sub: [["<1-4094>", "IEEE 802.1Q VLAN ID, then native for the untagged VLAN"]] }]]],
   ["speed", "Configure speed operation.", [["10", "Force 10 Mbps operation", function (S) { return setIfs(S, "speed", "10"); }], ["100", "Force 100 Mbps operation", function (S) { return setIfs(S, "speed", "100"); }], ["1000", "Force 1000 Mbps operation", function (S) { return setIfs(S, "speed", "1000"); }], ["auto", "Enable AUTO speed configuration", function (S) { return setIfs(S, "speed", "auto"); }]]],
   ["duplex", "Configure duplex operation.", [["full", "Force full duplex operation", function (S) { return setIfs(S, "duplex", "full"); }], ["half", "Force half-duplex operation", function (S) { return setIfs(S, "duplex", "half"); }], ["auto", "Enable AUTO duplex configuration", function (S) { return setIfs(S, "duplex", "auto"); }]]],
@@ -332,7 +341,9 @@ const RT_IFACE = [
     ["ip", "Interface Internet Protocol config commands", [
       ["address", "Set the IP address of an interface", function (S) { S.ifs.forEach(function (n) { const f = ifOf(S.sw, n); f.ip = null; f.mask = null; f.dhcp = false; }); return []; }],
       ["nat", "NAT interface commands", [["inside", "Inside interface for address translation", function (S) { return setIfs(S, "nat", null); }], ["outside", "Outside interface for address translation", function (S) { return setIfs(S, "nat", null); }]]],
-      ["access-group", "Specify access control for packets", function (S, a) { return accessGroup(S, a, true); }]]],
+      ["access-group", "Specify access control for packets", function (S, a) { return accessGroup(S, a, true); }],
+      ["ospf", "OSPF interface commands", [["cost", "Interface cost", function (S) { return setIfs(S, "ospfCost", undefined); }], ["priority", "Router priority", function (S) { return setIfs(S, "ospfPri", undefined); }]]],
+      ["mtu", "Set IP Maximum Transmission Unit", function (S) { return setIfs(S, "mtu", undefined); }]]],
     ["encapsulation", "Set encapsulation type for an interface", [["dot1Q", "IEEE 802.1Q Virtual LAN", function (S) { S.ifs.forEach(function (n) { if (isSub(n)) { const f = S.sw.subs[n]; f.vlan = null; f.native = false; f.ip = null; f.mask = null; } }); return []; }]]],
     ["speed", "Configure speed operation.", function (S) { return setIfs(S, "speed", "auto"); }],
     ["duplex", "Configure duplex operation.", function (S) { return setIfs(S, "duplex", "auto"); }]]],
@@ -392,7 +403,47 @@ const RT_NACL = [
   ["exit", "Exit from access-list configuration mode", function (S) { S.mode = "config"; S.acl = null; return []; }]
 ];
 
+/* OSPF on the router (Level 4: the campus's edge router originates the default): one process, in the switches' shape, so the
+   simulation reads both the same way */
+const wildOk = function (w) { if (!ip4(w)) return false; const b = w.split(".").map(function (p) { return (+p).toString(2).padStart(8, "0"); }).join(""); return /^0*1*$/.test(b); };
+const rtOspfOf = function (r) { return r.ospf; };
+const RT_ROUTER = [
+  ["network", "Enable routing on an IP network", function (S, a) {
+    if (a.length < 4) return inc; if (!ip4(a[0]) || !wildOk(a[1]) || !/^a/i.test(a[2]) || !/^\d+$/.test(a[3])) return bad;
+    const O = rtOspfOf(S.sw); if (!O.nets.some(function (x) { return x.net === a[0] && x.wild === a[1] && x.area === +a[3]; })) O.nets.push({ net: a[0], wild: a[1], area: +a[3] }); return [];
+  }, { sub: [["A.B.C.D", "Network number, then its wildcard bits, then area and its number"]] }],
+  ["router-id", "router-id for this OSPF process", function (S, a) { if (!a.length) return inc; if (!ip4(a[0])) return bad; rtOspfOf(S.sw).rid = a[0]; return []; }],
+  ["passive-interface", "Suppress routing updates on an interface", function (S, a) {
+    if (!a.length) return inc; const O = rtOspfOf(S.sw);
+    if (/^d/i.test(a[0])) { O.passiveDefault = true; O.active = []; return []; }
+    const f = rtName(a, 0); if (!f || f.err) return bad;
+    if (O.passiveDefault) O.active = (O.active || []).filter(function (x) { return x !== f.name; }); else if (O.passive.indexOf(f.name) < 0) O.passive.push(f.name); return [];
+  }],
+  ["default-information", "Control distribution of default information", [["originate", "Distribute a default route", function (S) { rtOspfOf(S.sw).originate = true; return []; }]]],
+  ["auto-cost", "Calculate OSPF interface cost according to bandwidth", [["reference-bandwidth", "Use reference bandwidth method to assign OSPF cost", function (S, a) {
+    if (!a.length) return inc; if (!/^\d+$/.test(a[0]) || +a[0] < 1 || +a[0] > 4294967) return bad; rtOspfOf(S.sw).refBw = +a[0];
+    return ["% OSPF: Reference bandwidth is changed.", "        Please ensure reference bandwidth is consistent across all routers."];
+  }]]],
+  ["no", "Negate a command or set its defaults", [
+    ["network", "Enable routing on an IP network", function (S, a) { const O = rtOspfOf(S.sw); O.nets = O.nets.filter(function (x) { return !(x.net === a[0] && x.wild === a[1]); }); return []; }],
+    ["router-id", "router-id for this OSPF process", function (S) { delete rtOspfOf(S.sw).rid; return []; }],
+    ["passive-interface", "Suppress routing updates on an interface", function (S, a) {
+      const O = rtOspfOf(S.sw); if (/^d/i.test(a[0] || "")) { O.passiveDefault = false; O.active = []; return []; }
+      const f = rtName(a, 0); if (!f || f.err) return bad;
+      if (O.passiveDefault) { O.active = O.active || []; if (O.active.indexOf(f.name) < 0) O.active.push(f.name); } else O.passive = O.passive.filter(function (x) { return x !== f.name; }); return [];
+    }],
+    ["default-information", "Control distribution of default information", [["originate", "Distribute a default route", function (S) { delete rtOspfOf(S.sw).originate; return []; }]]],
+    ["auto-cost", "Calculate OSPF interface cost according to bandwidth", [["reference-bandwidth", "Use reference bandwidth method to assign OSPF cost", function (S) { rtOspfOf(S.sw).refBw = 100; return []; }]]]]],
+  ["do", "To run exec commands in config mode", null],
+  ["end", "Exit from configure mode", function (S) { S.mode = "priv"; return []; }],
+  ["exit", "Exit from routing protocol configuration mode", function (S) { S.mode = "config"; return []; }]
+];
 const RT_CONFIG = pick(CONFIG, ["hostname", "enable", "line", "username", "crypto", "service", "banner", "do", "end", "exit"]).concat([
+  ["router", "Enable a routing process", [["ospf", "Open Shortest Path First (OSPF)", function (S, a) {
+    if (!a.length) return inc; if (!/^\d+$/.test(a[0]) || +a[0] < 1 || +a[0] > 65535) return bad;
+    if (S.sw.ospf && S.sw.ospf.pid !== +a[0]) return ["% OSPF process " + S.sw.ospf.pid + " is already running: this router runs one"];
+    S.sw.ospf = S.sw.ospf || { pid: +a[0], nets: [], passive: [], refBw: 100 }; S.mode = "router"; return [];
+  }, { sub: [["<1-65535>", "Process ID"]] }]]],
   ["lldp", "Global LLDP configuration subcommands", [["run", "Enable LLDP", function (S) { S.sw.lldp = true; return []; }]]],
   ["interface", "Select an interface to configure", function (S, a) {
     if (!a.length) return inc;
@@ -417,6 +468,7 @@ const RT_CONFIG = pick(CONFIG, ["hostname", "enable", "line", "username", "crypt
     return aclLine(S, a[0], type, a.slice(1));
   }, { sub: [["<1-99>", "IP standard access list (sources)"], ["<100-199>", "IP extended access list (protocol, source, destination, port)"]] }],
   ["no", "Negate a command or set its defaults", pick(has(CONFIG, "no")[2], ["hostname", "enable", "username", "service", "banner"]).concat([
+    ["router", "Enable a routing process", [["ospf", "Open Shortest Path First (OSPF)", function (S) { delete S.sw.ospf; return []; }]]],
     ["lldp", "Global LLDP configuration subcommands", [["run", "Enable LLDP", function (S) { S.sw.lldp = false; return []; }]]],
     ["interface", "Select an interface to configure", function (S, a) { const f = rtName(a, 0); if (!f || f.err || f.sub == null) return ["% Invalid input detected at '^' marker.", "  (only a subinterface can be removed)"]; delete S.sw.subs[f.name]; return []; }],
     ["ip", "Global IP configuration subcommands", [
@@ -443,6 +495,7 @@ RT_IFACE.find(function (c) { return c[0] === "interface"; }).splice(2, 2, has(RT
 [RT_IFACE, RT_POOL, RT_NACL].forEach(function (t) { t.find(function (c) { return c[0] === "do"; })[2] = has(CONFIG, "do")[2]; });
 const RT_LINE = LINE.filter(function (c) { return c[0] !== "vlan"; });
 RT_IFACE.splice(0, 0, ["line", "Configure a terminal line", has(CONFIG, "line")[2]]);
+RT_ROUTER[RT_ROUTER.findIndex(function (c) { return c[0] === "do"; })] = has(RT_CONFIG, "do");
 RT_POOL.splice(0, 0, ["interface", "Select an interface to configure", has(RT_CONFIG, "interface")[2], has(RT_CONFIG, "interface")[3]]);
 const RT_LINE2 = RT_LINE.map(function (c) { return c[0] === "line" ? ["line", c[1], has(CONFIG, "line")[2]] : c; });
 RT_LINE2.splice(0, 0, ["interface", "Select an interface to configure", has(RT_CONFIG, "interface")[2], has(RT_CONFIG, "interface")[3]]);
@@ -454,13 +507,13 @@ function rtBrief(r, live) {
   return L;
 }
 function rtRoutes(r, live) {
-  const T = routes(r, live), gw = T.find(function (t) { return t.code === "S*"; });
-  const L = ["Codes: L - local, C - connected, S - static, * - candidate default", "", gw ? "Gateway of last resort is " + (gw.nh || "0.0.0.0") + " to network 0.0.0.0" : "Gateway of last resort is not set", ""];
+  const T = routes(r, live), gw = T.find(function (t) { return t.code === "S*"; }) || T.find(function (t) { return t.code === "O*"; });
+  const L = ["Codes: L - local, C - connected, S - static, O - OSPF, E2 - OSPF external type 2, * - candidate default", "", gw ? "Gateway of last resort is " + (gw.nh || "0.0.0.0") + " to network 0.0.0.0" : "Gateway of last resort is not set", ""];
   T.slice().sort(function (a, b) { return n4(a.net) - n4(b.net) || bits(a.mask) - bits(b.mask); }).forEach(function (t) {
     const len = "/" + bits(t.mask);
     if (t.code === "C") L.push("C        " + t.net + len + " is directly connected, " + t.iface);
     else if (t.code === "L") L.push("L        " + t.net + len + " is directly connected, " + t.iface);
-    else L.push(pad(t.code, 9) + t.net + len + " [1/0] via " + (t.nh || t.iface) + (t.nh && t.iface ? ", " + t.iface : ""));
+    else L.push(pad(t.code + (t.ext || ""), 9) + t.net + len + " [" + (t.ad || (t.dhcp ? 254 : 1)) + "/" + (t.metric || 0) + "] via " + (t.nh || t.iface) + (t.nh && t.iface ? ", " + t.iface : ""));
   });
   return L;
 }
@@ -536,11 +589,15 @@ function rtRunning(r, startup) {
     if (f.aclIn) L.push(" ip access-group " + f.aclIn + " in");
     if (f.aclOut) L.push(" ip access-group " + f.aclOut + " out");
     if (f.nat) L.push(" ip nat " + f.nat);
+    if (f.mtu) L.push(" ip mtu " + f.mtu); if (f.ospfCost) L.push(" ip ospf cost " + f.ospfCost); if (f.ospfPri != null) L.push(" ip ospf priority " + f.ospfPri);
     if (f.lldpTx === false) L.push(" no lldp transmit"); if (f.lldpRx === false) L.push(" no lldp receive");
     if (f.shutdown) L.push(" shutdown");
     if (!isSub(n)) { if (f.speed !== "auto") L.push(" speed " + f.speed); if (f.duplex !== "auto") L.push(" duplex " + f.duplex); }
     L.push("!");
   });
+  if (r.ospf) { const O = r.ospf; L.push("router ospf " + O.pid); if (O.rid) L.push(" router-id " + O.rid); if (O.refBw && O.refBw !== 100) L.push(" auto-cost reference-bandwidth " + O.refBw);
+    if (O.passiveDefault) { L.push(" passive-interface default"); (O.active || []).forEach(function (n) { L.push(" no passive-interface " + n); }); } else O.passive.forEach(function (n) { L.push(" passive-interface " + n); });
+    O.nets.forEach(function (x) { L.push(" network " + x.net + " " + x.wild + " area " + x.area); }); if (O.originate) L.push(" default-information originate"); L.push("!"); }
   r.nat.forEach(function (x) { L.push("ip nat inside source list " + x.list + " interface " + x.iface + (x.overload ? " overload" : "")); });
   r.statics.forEach(function (x) { L.push("ip nat inside source static " + (x.proto ? x.proto + " " : "") + x.local + (x.lport != null ? " " + x.lport : "") + (x.iface ? " interface " + x.iface : " " + x.global) + (x.gport != null ? " " + x.gport : "")); });
   r.routes.forEach(function (x) { L.push("ip route " + x.net + " " + x.mask + " " + (x.nh || x.iface)); });
@@ -573,6 +630,8 @@ const RT_SHOW = pick(SHOW, ["startup-config", "history", "clock", "users", "ssh"
     ["route", "IP routing table", function (S) { return rtRoutes(S.sw, S.live); }],
     ["dhcp", "Show items in the DHCP database", [["binding", "DHCP address bindings", function (S) { return rtBindings(S.sw, S.live); }], ["pool", "DHCP pools information", function (S) { return rtPools(S.sw, S.live); }]]],
     ["nat", "IP NAT information", [["translations", "Translation entries", function (S) { return rtNat(S.sw, S.live); }]]],
+    ["ospf", "OSPF information", [["neighbor", "Neighbor list", function (S) { return ospfShow(S, "neighbor"); }], ["interface", "Interface information", [["brief", "Brief summary of OSPF interfaces", function (S) { return ospfShow(S, "brief"); }]]]]],
+    ["protocols", "IP routing protocol process parameters and statistics", function (S) { return ospfShow(S, "protocols"); }],
     ["access-lists", "List IP access lists", function (S, a) { return rtAcls(S.sw, a[0], S.live); }]]],
   ["access-lists", "List access lists", function (S, a) { return rtAcls(S.sw, a[0], S.live); }],
   ["arp", "ARP table", function (S) { return rtArp(S.live); }],
@@ -588,8 +647,8 @@ const RT_CLEAR_IP = ["ip", "IP", [["nat", "Clear NAT", [["translation", "Clear d
 const RT_PRIV = EXEC_PRIV.map(function (c) { return c[0] === "show" ? ["show", c[1], RT_SHOW] : c[0] === "ping" ? ["ping", c[1], function (S, a) { return rtPing(S, a); }] : c[0] === "clear" ? ["clear", c[1], c[2].concat([RT_CLEAR_IP])] : c; });
 
 registerOS("router", {
-  tree: { user: RT_USER, priv: RT_PRIV, config: RT_CONFIG, if: RT_IFACE, line: RT_LINE2, dhcp: RT_POOL, nacl: RT_NACL, sacl: RT_NACL },
-  prompts: { if: "(config-if)#", dhcp: "(dhcp-config)#", nacl: "(config-ext-nacl)#", sacl: "(config-std-nacl)#" },
+  tree: { user: RT_USER, priv: RT_PRIV, config: RT_CONFIG, if: RT_IFACE, line: RT_LINE2, dhcp: RT_POOL, nacl: RT_NACL, sacl: RT_NACL, router: RT_ROUTER },
+  prompts: { if: "(config-if)#", dhcp: "(dhcp-config)#", nacl: "(config-ext-nacl)#", sacl: "(config-std-nacl)#", router: "(config-router)#" },
   keys: RT_KEYS, fresh: function () { return newRouter(); }, config: rtRunning, image: "BR-4200 Network Operating System, Version 4.2.1",
   bootUp: function (r, n) { const f = ifOf(r, n); if (f) f.shutdown = false; }
 });

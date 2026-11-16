@@ -916,13 +916,15 @@ export class Sim {
         }); });
         return out.sort(function (p, q2) { return p.iface < q2.iface ? -1 : p.iface > q2.iface ? 1 : p.grp - q2.grp; });
       }
-      if (k === "ospf") {
-        const R = self.ospfAll(), me = R.routers[id]; if (!me) return null;
-        const nb = R.nbrs[id] || [];
-        return { rid: me.rid, nbrs: nb, ifs: me.ifs.map(function (f) { const on = nb.filter(function (q) { return q.iface === f.name; }); return { name: f.name, ip: f.ip, mask: f.mask, area: f.area, cost: f.cost, passive: f.passive, role: R.roles[id + " " + f.name] || null, nbrs: on.length, full: on.filter(function (q) { return /^FULL/.test(q.state); }).length }; }) };
-      }
+      if (k === "ospf") return self.ospfLive(id);
       return null;
     };
+  }
+  /* what OSPF has settled, as a switch's or router's show commands print it */
+  ospfLive(id) {
+    const self = this, R = self.ospfAll(), me = R.routers[id]; if (!me) return null;
+    const nb = R.nbrs[id] || [];
+    return { rid: me.rid, nbrs: nb, ifs: me.ifs.map(function (f) { const on = nb.filter(function (q) { return q.iface === f.name; }); return { name: f.name, ip: f.ip, mask: f.mask, area: f.area, cost: f.cost, passive: f.passive, role: R.roles[id + " " + f.name] || null, nbrs: on.length, full: on.filter(function (q) { return /^FULL/.test(q.state); }).length }; }) };
   }
 
   /* ------------------------------------------------------------ the layer 3 switches (Level 4, the campus: swcli.js, l3.js) */
@@ -995,7 +997,8 @@ export class Sim {
      and what the protocol settles on; kept until a switch or a cable changes */
   ospfAll() {
     const ids = Object.keys(this.d).filter(function (id) { const x = this.d[id]; return x.kind === "mswitch" && x.sw.os === "l3switch" && x.sw.ospf && x.sw.routing && this.on(id); }, this);
-    const sig = JSON.stringify(Object.keys(this.d).filter(function (id) { return this.d[id].kind === "mswitch"; }, this).map(function (id) { const w = this.d[id].sw; return [id, this.on(id), w.ports, w.svis, w.ospf, w.routes, w.routing, w.vlans, w.pcs, w.stp, w.vlan1]; }, this)) + JSON.stringify(this.net.cables);
+    const brs = Object.keys(this.d).filter(function (id) { const x = this.d[id]; return x.kind === "brouter" && x.sw.ospf && this.on(id); }, this);   /* a business router running OSPF (the campus's edge router, Level 4) */
+    const sig = JSON.stringify(Object.keys(this.d).filter(function (id) { return this.d[id].kind === "mswitch"; }, this).map(function (id) { const w = this.d[id].sw; return [id, this.on(id), w.ports, w.svis, w.ospf, w.routes, w.routing, w.vlans, w.pcs, w.stp, w.vlan1]; }, this)) + JSON.stringify(brs.map(function (id) { const w = this.d[id].sw, wan = this.rtWan(id); return [id, w.ifs, w.subs, w.ospf, w.routes, wan && wan.lease]; }, this)) + JSON.stringify(this.net.cables);
     if (this._ospf && this._ospf.sig === sig) return this._ospf.res;
     const routers = {}, segs = {};
     const segOf = function (node) { if (segs[node]) return segs[node]; const D = [...this.domain(node)].sort(), k = D[0]; D.forEach(function (n) { segs[n] = k; }); return k; }.bind(this);
@@ -1010,6 +1013,18 @@ export class Sim {
       }, this);
       const rid = O.rid || up.map(function (f) { return f.ip; }).sort(function (a, b) { return ip2n(b) - ip2n(a); })[0] || "0.0.0.0";
       const def = !!O.originate && l3Table(view, []).some(function (t) { return t.code === "S" && t.net === "0.0.0.0" && t.mask === "0.0.0.0"; });
+      routers[id] = { rid: rid, ifs: ifs, originate: def };
+    }, this);
+    brs.forEach(function (id) {   /* the router: its interfaces up with an address, matched to its network statements; a default it has of its own (the provider's, by DHCP, or one typed) to originate */
+      const r = this.d[id].sw, O = r.ospf, R = this.rtView(id), live = this.rtLive(id), bare = function (k, n) { return k === "learned" ? null : live(k, n); }, ifs = [], up = [];
+      RT.allIfs(R).forEach(function (n) {
+        const a = RT.addrOf(R, n, bare); if (!a || RT.rtStatus(R, n)[1] !== "up") return; up.push(a.ip);
+        const st = O.nets.find(function (x) { return ospfMatch(a.ip, x.net, x.wild); }); if (!st) return;
+        const rec = n.indexOf(".") > 0 ? r.subs[n] : r.ifs[n], mbps = rec.speed && rec.speed !== "auto" ? +rec.speed : 1000;
+        ifs.push({ name: n, ip: a.ip, mask: a.mask, area: st.area, cost: rec.ospfCost || ospfCost(mbps, O.refBw), passive: ospfPassive(O, n), mtu: rec.mtu || 1500, pri: rec.ospfPri, seg: segOf(this.rtNode(id, n)) });
+      }, this);
+      const rid = O.rid || up.sort(function (a, b) { return ip2n(b) - ip2n(a); })[0] || "0.0.0.0";
+      const def = !!O.originate && RT.routes(R, bare).some(function (t) { return t.code === "S*"; });
       routers[id] = { rid: rid, ifs: ifs, originate: def };
     }, this);
     const res = ospfSolve(routers); res.routers = routers;
@@ -1106,6 +1121,8 @@ export class Sim {
       if (k === "clear-nat") { x.xlate = []; return null; }
       if (k === "clear-dhcp") { x.leases = []; return null; }
       if (k === "clear-hits") { x.hits = {}; return null; }
+      if (k === "learned") return self.learned(id);   /* what OSPF learned (Level 4) */
+      if (k === "ospf") return self.ospfLive(id);
       return null;
     };
   }

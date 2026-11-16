@@ -80,3 +80,15 @@ test("no channel-group takes a port out; a switch with no port-channel is exactl
   const fresh = C.newSwitch(); assert.ok(!("pcs" in JSON.parse(JSON.stringify(fresh))), "no port-channel record until one is made, so a saved switch reads as before");
   assert.doesNotMatch(show(new Sim(net()), "other", "show running-config"), /Port-channel|channel-group/);
 });
+
+test("settings typed on the port-channel reach its members and its own record: the allowed list added to or taken from keeps the bundle", () => {
+  const sim = built("active", "active");
+  for (const id of ["asw", "dsw"]) cli(sim, id, ["vlan 20", "interface port-channel 1", "switchport trunk allowed vlan 10", "switchport trunk allowed vlan add 20"]);
+  for (const id of ["asw", "dsw"]) for (const n of ["GigabitEthernet0/23", "GigabitEthernet0/24"]) { sim.syncSwitch(id); assert.equal(C.chanState(sim.d[id].sw, n), "P", id + " " + n + " bundled after add"); assert.deepEqual(sim.d[id].sw.ports[n].allowed, [10, 20]); }
+  assert.deepEqual(sim.d.asw.sw.pcs[1].allowed, [10, 20], "the port-channel's own record has the VLAN added");
+  for (const id of ["asw", "dsw"]) cli(sim, id, ["interface port-channel 1", "switchport trunk allowed vlan remove 20"]);
+  for (const id of ["asw", "dsw"]) for (const n of ["GigabitEthernet0/23", "GigabitEthernet0/24"]) { sim.syncSwitch(id); assert.equal(C.chanState(sim.d[id].sw, n), "P", id + " " + n + " bundled after remove"); }
+  assert.deepEqual(sim.d.dsw.sw.pcs[1].allowed, [10]); assert.ok(reach(sim), "VLAN 10 still across");
+  cli(sim, "asw", ["interface gi0/24", "switchport trunk allowed vlan add 20"]); sim.syncSwitch("asw");
+  assert.equal(C.chanState(sim.d.asw.sw, "GigabitEthernet0/24"), "s", "typed on one member alone: that member no longer matches, suspended");
+});

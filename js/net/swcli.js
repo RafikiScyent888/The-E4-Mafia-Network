@@ -512,7 +512,9 @@ function setMode(S, m) {
 function allowed(S, a) {
   if (!a.length) return ["% Incomplete command."];
   const w = a[0].toLowerCase(), all = []; for (let v = 1; v <= 4094; v++) all.push(v);
-  const each = function (f) { const bad = []; S.ifs.forEach(function (n) { if (isSvi(n)) return; const p = S.sw.ports[n], cur = p.allowed === "all" ? all.slice() : p.allowed.slice(), r = f(cur); if (r === null) bad.push(n); else p.allowed = r.length === 4094 ? "all" : r; }); return bad.length ? ["% Invalid input detected at '^' marker."] : []; };
+  const each = function (f) { const bad = []; S.ifs.forEach(function (n) { if (isSvi(n)) return; const p = S.sw.ports[n], cur = p.allowed === "all" ? all.slice() : p.allowed.slice(), r = f(cur); if (r === null) bad.push(n); else p.allowed = r.length === 4094 ? "all" : r; });
+    if (S.po && !bad.length) { const pc = pcOf(S.sw, S.po), cur = pc.allowed === "all" ? all.slice() : pc.allowed.slice(), r = f(cur); pc.allowed = r.length === 4094 ? "all" : r; }   /* typed on a port-channel: its own record too, as setPort does */
+    return bad.length ? ["% Invalid input detected at '^' marker."] : []; };
   if (w === "all") return setPort(S, "allowed", "all");
   if (w === "none") return setPort(S, "allowed", []);
   if (/^(add|remove|except)$/.test(w)) {

@@ -66,6 +66,18 @@ PLANTS = [
  ("CP-J1: an unsaved switch passes", "js/build/campus.js", 'return [C("unsaved", unsaved(sim.d[id].sw),', 'return [C("unsaved", false,'),
  ("CP-J1: the walk-through saves only the first floor", "js/build/campus.js", '"spanning-tree portfast", "spanning-tree bpduguard enable", "end", "copy running-config startup-config", "", "exit"].forEach(t);', '"spanning-tree portfast", "spanning-tree bpduguard enable", "end"].concat(a[0] === "acc1" ? ["copy running-config startup-config", ""] : []).concat(["exit"]).forEach(t);'),
  ("CP-J1: a hint names the enable secret", "js/build/campus.js", 'rung1: function () { return "show port-security on each access switch, then', 'rung1: function (v) { return v.plan.secret + " show port-security on each access switch, then'),
+ ("CP-J2: the 2F switch as root passes", "js/build/campus.js", 'const t = trees(sim, v).find(function (x) { return x.root !== "dist1"; }) || null, r = t && t.root;', 'const t = trees(sim, v).find(function (x) { return x.root !== "dist1" && x.root !== "acc2"; }) || null, r = t && t.root;'),
+ ("CP-J2: distribution switch 2 as root passes", "js/build/campus.js", 'const t = trees(sim, v).find(function (x) { return x.root !== "dist1"; }) || null, r = t && t.root;', 'const t = trees(sim, v).find(function (x) { return x.root !== "dist1" && x.root !== "dist2"; }) || null, r = t && t.root;'),
+ ("CP-J2: another access switch as root passes", "js/build/campus.js", 'const t = trees(sim, v).find(function (x) { return x.root !== "dist1"; }) || null, r = t && t.root;', 'const t = trees(sim, v).find(function (x) { return x.root === "acc2" || x.root === "dist2"; }) || null, r = t && t.root;'),
+ ("CP-J2: no secondary never named", "js/build/campus.js", '  return [C("left", t.prio("dist2") === 32768,', '  return [C("left", false,'),
+ ("CP-J2: a tie passes (both guards)", [("js/build/campus.js", ' || d2.prio <= d1.prio; };', ' || d2.prio < d1.prio; };'), ("js/build/campus.js", 'C("tie", t.B.dist2.prio === t.B.dist1.prio,', 'C("tie", false,')]),
+ ("CP-J2: an access switch beating the secondary passes (both guards)", [("js/build/campus.js", 'return t.prio("dist2") === 32768 || Object.keys(t.B).some(function (s) { return /^acc/.test(s) && cmpBid(t.B[s], d2) < 0; }) || ', 'return t.prio("dist2") === 32768 || '),
+   ("js/build/campus.js", ', acc = Object.keys(t.B).filter(function (s) { return /^acc/.test(s) && cmpBid(t.B[s], t.B.dist2) < 0; }).sort(function (a, b) { return cmpBid(t.B[a], t.B[b]); })[0];', ', acc = null;')]),
+ ("CP-J2: a switch that doesn't answer still counts as working", "js/build/campus.js", 'gone = ["dist1", "dist2", "acc1", "acc2", "acc3"].find(', 'gone = [].find('),
+ ("CP-J2: an access switch left unsaved passes", "js/build/campus.js", 'return [C("unsaved", !!id, (id ? "The " + name(sim, id) : "An access switch")', 'return [C("unsaved", false, (id ? "The " + name(sim, id) : "An access switch")'),
+ ("CP-J2: the walk-through sets no secondary", "js/build/campus.js", '    [["dist1", "primary"], ["dist2", "secondary"]].forEach(function (d) {', '    [["dist1", "primary"]].forEach(function (d) {'),
+ ("CP-J2: it starts from nothing done", "js/build/campus.js", '    for (const a of CJ1.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }', '    for (const a of []) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }'),
+ ("CP-J2: a hint names a VLAN number", "js/build/campus.js", 'rung1: function () { return "show spanning-tree on distribution switch 1, VLAN by VLAN', 'rung1: function (v) { return v.plan.vlans.mgmt.id + " show spanning-tree on distribution switch 1, VLAN by VLAN'),
 ]
 only = sys.argv[1:]
 bad = 0

@@ -31,11 +31,11 @@ export const CAMPUS_FLOORS = { data: 1, svc: 1, c2: 2, bench: 2, c3: 3, office: 
 export const CAMPUS_RUN = { data: { svc: 22, c2: 38, bench: 52, c3: 54, office: 68 }, svc: { c2: 50, bench: 60, c3: 66, office: 76 }, c2: { bench: 18, c3: 26, office: 40 }, bench: { c3: 40, office: 48 }, c3: { office: 16 } };
 /* the logical diagram (three tiers, the provider at the top) and the floor plan (three floors, one band each) */
 export const CAMPUS_LAYOUT = {
-  isp: { x: 60, y: 40 }, modem: { x: 210, y: 40, px: 120, py: 110, room: "data" }, edge: { x: 380, y: 40, lab: "right", px: 290, py: 110, room: "data" },
+  isp: { x: 10, y: 40 }, modem: { x: 210, y: 40, px: 120, py: 110, room: "data" }, edge: { x: 380, y: 40, lab: "right", px: 290, py: 110, room: "data" },
   core1: { x: 380, y: 150, lab: "left", px: 460, py: 110, room: "data" }, core2: { x: 740, y: 150, lab: "right", px: 460, py: 195, room: "data" },
   dist1: { x: 380, y: 270, lab: "left", px: 290, py: 195, room: "data" }, dist2: { x: 740, y: 270, lab: "right", px: 290, py: 280, room: "data" },
-  tech: { x: 70, y: 270, px: 120, py: 280, room: "data" },
-  acc1: { x: 210, y: 390, lab: "left", px: 120, py: 195, room: "data" }, acc2: { x: 560, y: 390, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 890, y: 390, lab: "right", px: 115, py: 655, room: "c3" },
+  tech: { x: 70, y: 270, px: 120, py: 195, room: "data" },
+  acc1: { x: 210, y: 390, lab: "left", px: 460, py: 280, room: "data" }, acc2: { x: 560, y: 390, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 890, y: 390, lab: "right", px: 115, py: 655, room: "c3" },
   sd1: { x: 70, y: 510, px: 650, py: 120, room: "svc" }, hd1: { x: 200, y: 580, px: 880, py: 120, room: "svc" }, pr1: { x: 330, y: 510, px: 765, py: 250, room: "svc" },
   bn1: { x: 500, y: 510, px: 480, py: 455, room: "bench" }, bn2: { x: 630, y: 580, px: 740, py: 455, room: "bench" },
   mgr: { x: 760, y: 510, px: 440, py: 655, room: "office" }, fin: { x: 890, y: 580, px: 650, py: 655, room: "office" }, pr3: { x: 1020, y: 510, px: 860, py: 655, room: "office" }

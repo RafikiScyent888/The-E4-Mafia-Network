@@ -1637,5 +1637,57 @@
   "ticket": "SB-15",
   "seed": 1,
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('SB-15'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const m=l=>c.act({t:'cmd',dev:'mgr',line:l}); ['ssh '+P.user+'@'+P.swIp,P.userPw,'enable',P.swSecret,'configure terminal','interface '+v.short.toLowerCase(),'switchport mode access','switchport access vlan '+P.vlans.parking.id,'shutdown','end','copy running-config startup-config','','show interfaces trunk','exit'].forEach(m); c.guess('right'); ['ssh '+P.user+'@'+P.swIp,P.userPw,'enable',P.swSecret,'show interfaces trunk','exit'].forEach(m); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus: CP-J1 start, the work order with the campus's records",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J1',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); c.check(); document.getElementById('bm').scrollIntoView();"
+ },
+ {
+  "name": "campus: CP-J1 failing, Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J1',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); for (let i=0;i<5;i++) c.check(); document.getElementById('check').scrollIntoView();"
+ },
+ {
+  "name": "campus: CP-J1 done, the floor plan, show port-security over SSH from the service desk",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J1',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+p.user+'@'+p.sw.acc1.ip,p.userPw,'enable',p.secret,'show port-security'].forEach(l=>k(l));"
+ },
+ {
+  "name": "campus: CP-J2 done, the logical diagram, show spanning-tree on distribution switch 1",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J2',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); document.getElementById('vLog').click(); document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+p.user+'@'+p.sw.dist1.ip,p.userPw,'enable',p.secret,'show spanning-tree vlan '+p.vlans.svc.id].forEach(l=>k(l));"
+ },
+ {
+  "name": "campus: CP-J3 done, show etherchannel summary, the floor plan",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J3',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+p.user+'@'+p.sw.dist2.ip,p.userPw,'enable',p.secret,'show etherchannel summary'].forEach(l=>k(l));"
+ },
+ {
+  "name": "campus: CP-J3 done, distribution switch 2's Lights",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J3',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); document.querySelector('#devtabs [data-d=dist2]').click(); tab('Lights');"
+ },
+ {
+  "name": "campus: CP-J4 part way, the console on the edge router, the floor plan",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J4',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const sol=J.def.solve(J.v,J.sim), at=sol.findIndex((a,i)=>a.t==='lay'&&i>0&&a.b.dev==='edge'); sol.slice(0,at+1).forEach(a=>c.act(a)); c.check(); document.querySelector('#devtabs [data-d=tech]').click(); tab('Serial terminal'); ['',p.console,'enable',p.secret,'show ip interface brief'].forEach(l=>k(l));"
+ },
+ {
+  "name": "campus: CP-J4 done, the logical diagram, tracert from the service desk",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J4',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); document.getElementById('vLog').click(); document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); k('tracert -d 8.8.8.8'); k('ipconfig /all');"
+ },
+ {
+  "name": "campus: distribution switch 1's Physical tab, drawn with the MSW-2800G's model until its photographs come",
+  "page": "build.html",
+  "wait": 2500,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J2',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=dist1]').click(); tab('Physical');"
+ },
+ {
+  "name": "levels: build, the campus's work orders (more on the way)",
+  "page": "build.html",
+  "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS.slice(0,3).flatMap(x=>x.tickets).map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS.slice(0,3).flatMap(x=>x.jobs).map(id=>[id,1]))})); window.__e4b.openJob('CP-J1',true,4242);})()",
+  "after": "document.querySelector('#left [data-level=\"4\"]').click();"
  }
 ]

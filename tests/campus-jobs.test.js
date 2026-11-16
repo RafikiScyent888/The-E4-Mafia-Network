@@ -139,9 +139,42 @@ test("CP-J3: other right ways pass: active with passive, a different group numbe
   }
 });
 
+test("CP-J4: the tempting wrong ways each fail their own line for their own cause", () => {
+  const def = byId["CP-J4"];
+  for (const s of seeds("CP-J4").slice(0, 5)) {
+    const v = B.open(def, s).v, p = v.plan, sol = def.solve(v), cause = (J, id) => { const r = line(J, id); return r.ok ? null : r.real.id; };
+    const b = p.vlans.svc.net.split(".")[1], T = { edge: "10." + b + ".255.1", dist: "10." + b + ".255.2", mask: "255.255.255.252" };
+    const is = (l) => (a) => a.line === l, sub = (acts, f) => acts.flatMap((a) => { const r = f(a); return r === undefined ? [a] : r.map((l) => Object.assign({}, a, { line: l })); });
+    let J = tryIt(def, s, drop(sol, is("ip routing"))); assert.equal(cause(J, "routing"), "off", s + " routing never turned on");
+    J = tryIt(def, s, drop(sol, is("no shutdown"))); assert.equal(cause(J, "svis"), "shut", s + " the VLAN interfaces left shut"); assert.equal(line(J, "works").ok, false);
+    J = tryIt(def, s, drop(sol, is("ip address " + p.vlans.mgmt.gw + " " + p.mask))); assert.equal(cause(J, "svis"), "addr", s + " the management VLAN's interface left on its own address"); assert.equal(cause(J, "works"), "switch", s + " the switches' default gateway gone");
+    J = tryIt(def, s, swap(sol, "ip address " + T.dist + " " + T.mask, "ip address " + T.dist + " 255.255.255.0")); assert.equal(cause(J, "link"), "daddr", s + " the link's mask on distribution switch 1");
+    J = tryIt(def, s, sub(sol, (a) => (/^no interface /.test(a.line) ? [a.line.slice(3), "shutdown", "exit"] : undefined))); assert.equal(cause(J, "ros"), "left", s + " the subinterfaces shut, not removed"); assert.ok(line(J, "works").ok);
+    J = tryIt(def, s, drop(sol, is("ip route 10." + b + ".0.0 255.255.0.0 " + T.dist))); assert.equal(cause(J, "routes"), "back", s + " no route back"); assert.equal(line(J, "works").ok, false);
+    J = tryIt(def, s, swap(sol, "ip route 10." + b + ".0.0 255.255.0.0 " + T.dist, "ip route " + p.vlans.svc.net + " 255.255.255.0 " + T.dist)); assert.equal(cause(J, "routes"), "narrow", s + " a route back for one VLAN");
+    J = tryIt(def, s, swap(sol, "ip route 0.0.0.0 0.0.0.0 " + T.edge, "ip route 0.0.0.0 0.0.0.0 10." + b + "." + p.vlans.servers.id + ".254")); assert.equal(cause(J, "routes"), "defnh", s + " the default route at the wrong next hop");
+    J = tryIt(def, s, drop(sol, is("ip helper-address " + T.edge))); assert.equal(cause(J, "dhcp"), "none", s + " nothing relayed"); assert.ok(line(J, "works").ok, s + " the PCs keep their leases for now");
+    J = tryIt(def, s, swap(sol, "ip helper-address " + T.edge, "ip helper-address " + p.vlans.servers.gw)); assert.equal(cause(J, "dhcp"), "wrong", s + " relayed where nobody answers");
+    J = tryIt(def, s, drop(sol, is("ip nat inside"))); assert.equal(cause(J, "nat"), "inside", s + " the link not NAT's inside"); assert.equal(line(J, "works").ok, false);
+    const saves = sol.map((a, i) => (a.line === "copy running-config startup-config" ? i : -1)).filter((i) => i >= 0);
+    J = tryIt(def, s, sol.filter((a, i) => i !== saves[0] && i !== saves[0] + 1)); assert.equal(cause(J, "saved2"), "unsaved", s + " the edge router unsaved");
+  }
+});
+
+test("CP-J4: other right ways pass: the VLAN interfaces brought up at once, a route back for each VLAN, every VLAN relayed", () => {
+  const def = byId["CP-J4"];
+  for (const s of seeds("CP-J4").slice(0, 3)) {
+    const v = B.open(def, s).v, p = v.plan, sol = def.solve(v), b = p.vlans.svc.net.split(".")[1], dist = "10." + b + ".255.2";
+    const used = ["svc", "bench", "office", "servers", "printers", "mgmt"].map((k) => p.vlans[k]);
+    const acts = sol.flatMap((a) => (a.line === "shutdown" ? [] : a.line === "ip route 10." + b + ".0.0 255.255.0.0 " + dist ? used.map((x) => Object.assign({}, a, { line: "ip route " + x.net + " " + p.mask + " " + dist })) : [a]))
+      .flatMap((a) => (a.line === "ip routing" ? [a].concat(["servers", "printers"].flatMap((k) => ["interface vlan " + p.vlans[k].id, "ip helper-address 10." + b + ".255.1", "exit"]).map((l) => Object.assign({}, a, { line: l }))) : [a]));
+    const J = tryIt(def, s, acts); const c = B.check(J); assert.ok(c.res.every((r) => r.ok), s + " " + c.res.filter((r) => !r.ok).map((r) => r.id + ": " + r.ev).join("; "));
+  }
+});
+
 test("no help names a password, an address or a VLAN number; Mason's ladder climbs on a failing line", () => {
   for (const def of CAMPUS_JOBS) for (const s of seeds(def.id).slice(0, 3)) {
-    const J = B.open(def, s), p = J.v.plan, secrets = [p.secret, p.console, p.userPw].concat(Object.values(p.sw).map((w) => w.ip).filter(Boolean));
+    const J = B.open(def, s), p = J.v.plan, b = p.vlans.svc.net.split(".")[1], secrets = [p.secret, p.console, p.userPw].concat(Object.values(p.sw).map((w) => w.ip).filter(Boolean), Object.values(p.vlans).flatMap((x) => [x.gw, x.net]).filter(Boolean), Object.values(p.printers), ["10." + b + ".255.", "10." + b + ".0.0"]);
     const words = [def.mason].concat(def.reqs.flatMap((q) => [q.rung1(J.v), q.rung2(J.v)])).join("\n");
     for (const x of secrets) assert.ok(words.indexOf(x) < 0, def.id + " help names " + x);
     for (const k of Object.keys(p.vlans)) assert.ok(!new RegExp("\\b" + p.vlans[k].id + "\\b").test(words), def.id + " help names VLAN " + p.vlans[k].id);

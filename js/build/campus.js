@@ -3,7 +3,8 @@
    the other levels: the first one really there is what the check saw, everything before it is ruled out by the network. */
 import { makeCampus } from "../net/campus.js";
 import { Sim } from "../net/sim.js";
-import { errDisabled, dotMac, unsaved, chanState, carries } from "../net/swcli.js";
+import { errDisabled, dotMac, unsaved, chanState, carries, l3Ifs, l3Route } from "../net/swcli.js";
+import * as RT from "../net/rtcli.js";
 import { exec } from "../net/cmd.js";
 import { bridgeId } from "../net/stp.js";
 
@@ -300,4 +301,154 @@ const CJ3 = {
   summary() { return ["The two links between the distribution switches are one port-channel, negotiated by LACP at both ends.", "Spanning tree sees one link, so neither cable is blocked: both carry, and if one fails the other carries on.", "The port-channel carries every VLAN in use, as the links did."]; }
 };
 
-export const CAMPUS_JOBS = [CJ1, CJ2, CJ3];
+/* ------------------------------------------------------------ CP-J4, the gateways onto distribution switch 1 */
+const DHCPV = [["svc", "sd1"], ["bench", "bn1"], ["office", "mgr"]];
+/* the link between the edge router and distribution switch 1, as the records give it: a /30 in the campus's block */
+const transit = function (p) { const b = p.vlans.svc.net.split(".")[1]; return { net: "10." + b + ".255.0", cidr: "10." + b + ".255.0/30", edge: "10." + b + ".255.1", dist: "10." + b + ".255.2", mask: "255.255.255.252", block: "10." + b + ".0.0", bmask: "255.255.0.0" }; };
+const svi = function (sim, k, p) { const sw = sim.d.dist1.sw, v = p.vlans[k].id; return sw.svis[v] || null; };
+const sviUp = function (sim, p, k) { return l3Ifs(sim.l3View("dist1")).some(function (f) { return f.name === "Vlan" + p.vlans[k].id && f.up; }); };
+function routingCauses(sim) {
+  const on = !!sim.d.dist1.sw.routing;
+  return [C("off", !on, "Distribution switch 1 doesn't route: ip routing is off, so its VLAN interfaces are only addresses, and nothing passes between them", "It routes.", "show ip route on distribution switch 1: Default gateway is ..., no routing table."),
+    C("table", on && !l3Ifs(sim.l3View("dist1")).some(function (f) { return f.up && f.ip && /^Vlan/.test(f.name) && f.name !== "Vlan" + sim.net.plan.vlans.mgmt.id; }), "It routes, but it has no VLAN interface up with an address except the management VLAN's", "Its VLAN interfaces are connected networks.", "show ip route on distribution switch 1: one connected network.")];
+}
+function sviCauses(sim, v) {
+  const p = v.plan, k = USED.find(function (x) { const r = svi(sim, x, p); return !r || r.ip !== p.vlans[x].gw || r.mask !== p.mask || r.shutdown || !sviUp(sim, p, x); }), r = k ? svi(sim, k, p) : null, V = k ? p.vlans[k] : null;
+  const at = V ? "show ip interface brief on distribution switch 1: Vlan" + V.id : "";
+  return [C("none", !!k && !r, "VLAN " + (V ? V.id + " (" + V.name + ")" : "") + " has no interface on distribution switch 1: nothing there is its gateway", "Every VLAN in use has its interface.", at + " missing."),
+    C("addr", !!r && r.ip !== V.gw, "VLAN " + (V ? V.id : "") + "'s interface on distribution switch 1 isn't at the gateway address its devices already use", "Each is at its VLAN's gateway address.", at + " " + (r && r.ip || "unassigned") + "."),
+    C("mask", !!r && r.ip === V.gw && r.mask !== p.mask, "VLAN " + (V ? V.id : "") + "'s interface has the wrong mask for its network", "Each has its network's mask.", r ? "show running-config on distribution switch 1: interface Vlan" + V.id + ", ip address " + r.ip + " " + r.mask + "." : ""),
+    C("shut", !!r && r.ip === V.gw && r.mask === p.mask && !!r.shutdown, "VLAN " + (V ? V.id : "") + "'s interface is shut down", "Each is up.", at + " administratively down."),
+    C("down", !!r && !r.shutdown && r.ip === V.gw && r.mask === p.mask && !sviUp(sim, p, k), "VLAN " + (V ? V.id : "") + "'s interface is down: no port on distribution switch 1 that's up carries the VLAN", "Each is up.", at + " up/down.")];
+}
+function rosCauses(sim, v) {
+  const p = v.plan, subs = Object.keys(sim.d.edge.sw.subs || {}).filter(function (n) { return n.split(".")[0] === p.edge.lan || n.split(".")[0] === p.edge.lan.replace("GigabitEthernet", "Gi"); });
+  const dup = USED.find(function (k) { return sim.owners(p.vlans[k].gw, sim.domain(sim.vnode("dist1", p.vlans[k].id))).length > 1; });
+  return [C("dup", !!dup, "Two devices answer for VLAN " + (dup ? p.vlans[dup].id : "") + "'s gateway address: the edge router's subinterface and distribution switch 1's interface, both on the VLAN", "Only distribution switch 1 answers for each gateway.", dup ? "arp -a on a PC in the VLAN, twice: the gateway's hardware address changes; %IP-4-DUPADDR on distribution switch 1's console." : ""),
+    C("left", subs.length > 0, "Router-on-a-stick isn't retired: the edge router still has " + subs.length + " subinterface" + (subs.length === 1 ? "" : "s") + " for the VLANs in its configuration", "The edge router has no subinterfaces left.", "show ip interface brief on the edge router: " + (subs[0] || "") + ".")];
+}
+function linkCauses(sim, v) {
+  const p = v.plan, t = transit(p), port = sim.d.dist1.sw.ports["GigabitEthernet0/24"], R = sim.rtView("edge"), live = sim.rtLive("edge"), ea = RT.addrOf(R, p.edge.lan, live), e = sim.d.edge.sw.ifs[p.edge.lan] || {};
+  const df = l3Ifs(sim.l3View("dist1")).find(function (f) { return f.name === "GigabitEthernet0/24"; });
+  return [C("trunk", !port.routed, "Distribution switch 1's port 24 is still a switch port (the old trunk to the edge router): it can't take an address", "It's a routed port.", "show running-config on distribution switch 1: interface GigabitEthernet0/24 has no \"no switchport\"."),
+    C("daddr", !!port.routed && (port.ip !== t.dist || port.mask !== t.mask), "Distribution switch 1's end of the link isn't the records' address and mask (the second usable address of the /30)", "Its end has the records' address.", "show ip interface brief on distribution switch 1: Gi0/24 " + (port.ip || "unassigned") + "; show running-config: its mask."),
+    C("eaddr", !ea || ea.ip !== t.edge || ea.mask !== t.mask, "The edge router's end of the link isn't the records' address and mask (the first usable address of the /30)", "Its end has the records' address.", "show ip interface brief on the edge router: " + p.edge.lan.replace("GigabitEthernet", "Gi") + " " + (ea ? ea.ip : "unassigned") + "."),
+    C("shut", !!port.shutdown || !!e.shutdown, "An end of the link is shut down", "Both ends are up.", "show ip interface brief: administratively down."),
+    C("down", !port.shutdown && !e.shutdown && !!df && !df.up, "The link is down", "It's up.", "show ip interface brief on distribution switch 1: Gi0/24 down.")];
+}
+function routeCauses(sim, v) {
+  const p = v.plan, t = transit(p), D = sim.d.dist1.sw.routing ? l3Route(sim.l3View("dist1"), "8.8.8.8", sim.learned("dist1")) : null, R = sim.rtView("edge"), live = sim.rtLive("edge");
+  const off = USED.filter(function (k) { const r = RT.lookup(R, p.vlans[k].gw, live); return !r || r.nh !== t.dist; }), miss = off[0], none = off.length === USED.length;
+  return [C("def", !D, "Distribution switch 1 has no default route: anything not on its own networks, the internet included, it has nowhere to send", "It has a default route.", "show ip route on distribution switch 1: Gateway of last resort is not set."),
+    C("defnh", !!D && D.nh !== t.edge, "Distribution switch 1's default route points somewhere other than the edge router's end of the link", "It points at the edge router.", D ? "show ip route on distribution switch 1: S* 0.0.0.0/0 via " + (D.nh || D.iface) + "." : ""),
+    C("back", none, "The edge router has no route back to the campus's networks: replies from the internet have nowhere to go", "It routes the campus's block to distribution switch 1.", "show ip route on the edge router: no route for " + (miss ? p.vlans[miss].net : "") + "."),
+    C("narrow", !!miss, "The edge router's route back doesn't cover every VLAN in use (" + (miss ? p.vlans[miss].net : "") + " goes elsewhere or nowhere)", "Every VLAN in use is routed to distribution switch 1.", miss ? "show ip route on the edge router: " + p.vlans[miss].net + " isn't via " + t.dist + "." : "")];
+}
+function natCauses(sim, v) {
+  const p = v.plan, rt = sim.d.edge.sw, subs = Object.keys(rt.subs || {}).filter(function (n) { return n.split(".")[0] === p.edge.lan; });
+  const inside = subs.length ? subs.every(function (n) { return rt.subs[n].nat === "inside"; }) : (rt.ifs[p.edge.lan] || {}).nat === "inside";
+  const rule = (rt.nat || []).find(function (x) { return x.overload && rt.acls[x.list]; }), covers = rule && RT.aclVerdict(rt, rule.list, { proto: "ip", src: p.vlans.svc.gw, dst: "8.8.8.8" }).permit;
+  return [C("inside", !inside, "The edge router's side facing the campus isn't NAT's inside: the campus's addresses go out untranslated, and the provider drops them", "Its campus side is NAT's inside.", "show ip nat translations on the edge router: nothing for the campus; show running-config: " + p.edge.lan + " has no ip nat inside."),
+    C("list", inside && !covers, "NAT's list doesn't cover the campus's addresses", "It covers them.", "show access-lists on the edge router.")];
+}
+function relayCauses(sim, v) {
+  const p = v.plan, t = transit(p), bad = DHCPV.find(function (x) { return !sim.dhcpServers(x[1]).length; }), k = bad && bad[0], r = k ? svi(sim, k, p) : null, h = r && r.helpers || [];
+  const at = k ? "ipconfig /renew on the " + name(sim, bad[1]) + ": no DHCP server answers." : "";
+  return [C("none", !!k && !h.length, "Nothing relays VLAN " + (k ? p.vlans[k].id : "") + "'s DHCP requests: a PC's broadcast for an address stops at its VLAN, and the pools are on the edge router", "Each VLAN's requests are relayed.", at + " show running-config on distribution switch 1: interface Vlan" + (k ? p.vlans[k].id : "") + " has no ip helper-address."),
+    C("wrong", !!k && h.length > 0 && h.indexOf(t.edge) < 0, "VLAN " + (k ? p.vlans[k].id : "") + "'s requests are relayed to an address where no DHCP server answers", "They go to the edge router.", at),
+    C("noway", !!k && h.indexOf(t.edge) >= 0, "VLAN " + (k ? p.vlans[k].id : "") + "'s requests reach the edge router, but its answer can't get back to distribution switch 1", "The answers get back.", at + " show ip dhcp binding on the edge router: nothing new.")];
+}
+const at1 = function (p, id) { return id === "dist1" ? p.vlans.mgmt.gw : p.sw[id].ip; };   /* from CP-J4 on, distribution switch 1 answers at the management VLAN's gateway */
+function reachCauses(sim, v) {
+  const p = v.plan, gone = ["dist1", "dist2", "acc1", "acc2", "acc3"].find(function (id) { const r = sim.route("sd1", at1(p, id)); return !r.routed && !r.local; });
+  const who = !gone ? "A switch" : /^dist/.test(gone) ? said(sim, gone).replace(/^d/, "D") : "The " + said(sim, gone);
+  return workCauses(sim, v).concat([C("switch", !!gone, who + " doesn't answer from the service desk", "Every switch answers.", gone ? "ping " + at1(p, gone) + " from the service desk PC: no reply." : "")]);
+}
+const savedEdge = function (sim) { const sw = sim.d.edge.sw; return [C("unsaved", unsaved(sw), "The edge router hasn't been saved: a power cut takes the changes away", "It's saved.", "show startup-config on the edge router: it's not what's running.")]; };
+
+const CJ4 = {
+  id: "CP-J4", level: "campus", title: "The gateways onto distribution switch 1: router-on-a-stick retired, the edge router left to the internet",
+  already: ["nat", "dhcp", "works", "saved1", "saved2"],
+  start(seed) {
+    const b = CJ3.start(seed), sim = b.sim;
+    for (const a of CJ3.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    sim.cli = {};
+    return { sim: sim, v: b.v };
+  },
+  brief() { return { quote: "Every packet between two of our floors goes down to the edge router and back up the same cable to distribution switch 1. The distribution switches can route: make distribution switch 1 every network's gateway, and leave the edge router doing what an edge router does, the internet. Nobody should notice, except that things are quicker. Do it before eight tomorrow.", from: "Rafiki, owner" }; },
+  mason: "Work from the console, not over the network you're moving: over SSH you're standing on the branch you're cutting. Get everything ready that won't break anything first, then cut over in the order that keeps the outage shortest.",
+  limits: function (v) {
+    const p = v.plan, t = transit(p);
+    return ["Distribution switch 1 (" + p.sw.dist1.host + ") becomes every VLAN's gateway: on each VLAN in use, its interface takes the gateway address the VLAN's devices already use (" + USED.map(function (k) { return p.vlans[k].id + " " + p.vlans[k].gw; }).join(", ") + "). The management VLAN's too: distribution switch 1 answers at " + p.vlans.mgmt.gw + " from now on.",
+      "The link between the edge router (" + p.edge.lan + ") and distribution switch 1 (port 24): " + t.cidr + ", the edge router on the first usable address, distribution switch 1 on the second.",
+      "Distribution switch 1 sends everything it has no route for to the edge router; the edge router sends the campus's block, " + t.block + "/16, back to distribution switch 1. The edge router keeps NAT and the DHCP pools: distribution switch 1 relays the " + DHCPV.map(function (x) { return p.vlans[x[0]].name; }).join(", ") + " VLANs' requests to it.",
+      "Router-on-a-stick is retired: the edge router's subinterfaces removed.",
+      "Your laptop's console cable reaches anything in the data room. Console password: " + p.console + ". Enable secret: " + p.secret + "."];
+  },
+  reqs: [
+    { id: "routing", text: "Distribution switch 1 routes", causes: routingCauses,
+      ok: function () { return "Distribution switch 1 routes: its VLAN interfaces are connected networks."; },
+      rung1: function () { return "show ip route on distribution switch 1."; },
+      rung2: function () { return "A layer 3 switch only routes once it's told to; until then its VLAN interfaces are just addresses for managing it."; } },
+    { id: "svis", text: "Every VLAN in use has its gateway on distribution switch 1, up", causes: sviCauses,
+      ok: function () { return "Every VLAN in use has its interface on distribution switch 1, at its gateway address, up."; },
+      rung1: function () { return "show ip interface brief on distribution switch 1, then each VLAN interface in show running-config."; },
+      rung2: function () { return "The devices keep the gateway they have: whatever answers at that address on their VLAN is their router."; } },
+    { id: "ros", text: "Router-on-a-stick is retired: only distribution switch 1 answers for the gateways", causes: rosCauses,
+      ok: function () { return "The edge router has no subinterfaces left; only distribution switch 1 answers for the gateways."; },
+      rung1: function () { return "show ip interface brief on the edge router; arp -a on a PC, twice."; },
+      rung2: function () { return "Two devices answering for one address take turns: whichever answers last is the one the PC uses."; } },
+    { id: "link", text: "The edge router and distribution switch 1 are joined by a routed link, as the records give it", causes: linkCauses,
+      ok: function () { return "Distribution switch 1's port 24 is routed, both ends on the records' /30, up."; },
+      rung1: function () { return "show ip interface brief on both, and port 24's lines in distribution switch 1's running configuration."; },
+      rung2: function () { return "A block's first address is its network and its last its broadcast: the usable ones lie between. An address goes on a routed port, never on a switch port."; } },
+    { id: "routes", text: "Routes both ways: distribution switch 1's default to the edge router, the edge router's way back to the campus", causes: routeCauses,
+      ok: function () { return "Distribution switch 1 sends the rest to the edge router; the edge router sends the campus's block back."; },
+      rung1: function () { return "show ip route on both: the gateway of last resort on one, the route for the campus on the other."; },
+      rung2: function () { return "Every router needs a route there and every router on the way back needs a route back: a packet that arrives and can't be answered is lost all the same."; } },
+    { id: "nat", text: "The edge router still translates the campus's traffic to the internet", causes: natCauses,
+      ok: function () { return "The edge router's campus side is NAT's inside, and its list covers the campus."; },
+      rung1: function () { return "show ip nat translations and show running-config on the edge router."; },
+      rung2: function () { return "NAT translates only what comes in on an inside interface and goes out on an outside one."; } },
+    { id: "dhcp", text: "A PC that asks for an address again still gets one, in every VLAN with a pool", causes: relayCauses,
+      ok: function () { return "Each VLAN's requests are relayed to the edge router, and its answers get back."; },
+      rung1: function () { return "ipconfig /release then /renew on a PC in each VLAN; the VLAN interfaces' lines on distribution switch 1."; },
+      rung2: function () { return "A request for an address is a broadcast: it never crosses a router unless the router relays it, and the relay's address tells the server which pool."; } },
+    { id: "works", text: "Everyone still works: every PC online, both printers and every switch answering", causes: reachCauses,
+      ok: function () { return "Every PC is online; both printers and every switch answer."; },
+      rung1: function () { return "ping 8.8.8.8 from each PC; the printers and the switches from the service desk."; },
+      rung2: function () { return "Each switch sends anything off its own network to its default gateway: whatever answers there now."; } },
+    { id: "saved1", text: "Distribution switch 1 is saved", causes: savedCauses("dist1", "distribution switch 1"), ok: function () { return "It's saved."; }, rung1: function () { return "show startup-config against show running-config."; }, rung2: function () { return "Only what's saved survives a power cut."; } },
+    { id: "saved2", text: "The edge router is saved", causes: savedEdge, ok: function () { return "It's saved."; }, rung1: function () { return "show startup-config against show running-config."; }, rung2: function () { return "Only what's saved survives a power cut."; } }
+  ],
+  solve(v, sim) {
+    const p = v.plan, t = transit(p), out = [], c = function (l) { out.push({ t: "cmd", dev: "tech", line: l, cli: true }); }, n = sim ? sim.net.extra.runs || 0 : 0;
+    const login = function () { [""].concat([p.console, "enable", p.secret, "configure terminal"]).forEach(c); };
+    /* ready first, breaking nothing: routing on, the new interfaces made but left shut, the default route */
+    out.push({ t: "lay", a: { dev: "tech", port: "USB-C" }, b: { dev: "dist1", port: "CONSOLE" } }); login();
+    c("ip routing");
+    USED.filter(function (k) { return k !== "mgmt"; }).forEach(function (k) { c("interface vlan " + p.vlans[k].id); c("ip address " + p.vlans[k].gw + " " + p.mask); if (DHCPV.some(function (x) { return x[0] === k; })) c("ip helper-address " + t.edge); c("shutdown"); c("exit"); });
+    c("ip route 0.0.0.0 0.0.0.0 " + t.edge); c("end");
+    /* the edge router: router-on-a-stick out, the link and the way back in (the outage starts) */
+    out.push({ t: "pull", cable: "c-console-" + (n + 1) }, { t: "lay", a: { dev: "tech", port: "USB-C" }, b: { dev: "edge", port: "CONSOLE" } }); login();
+    USED.forEach(function (k) { c("no interface " + p.edge.lan + "." + p.vlans[k].id); });
+    c("interface " + p.edge.lan); c("ip address " + t.edge + " " + t.mask); c("ip nat inside"); c("exit"); c("ip route " + t.block + " " + t.bmask + " " + t.dist); c("end"); c("copy running-config startup-config"); c("");
+    /* back to distribution switch 1: the link routed, the gateways up (the outage ends) */
+    out.push({ t: "pull", cable: "c-console-" + (n + 2) }, { t: "lay", a: { dev: "tech", port: "USB-C" }, b: { dev: "dist1", port: "CONSOLE" } }); login();
+    c("interface gi0/24"); c("no switchport"); c("ip address " + t.dist + " " + t.mask); c("exit");
+    c("interface vlan " + p.vlans.mgmt.id); c("ip address " + p.vlans.mgmt.gw + " " + p.mask); c("exit");
+    USED.filter(function (k) { return k !== "mgmt"; }).forEach(function (k) { c("interface vlan " + p.vlans[k].id); c("no shutdown"); c("exit"); });
+    c("end"); c("copy running-config startup-config"); c("");
+    out.push({ t: "pull", cable: "c-console-" + (n + 3) });
+    return out;
+  },
+  answer(v) {
+    const p = v.plan, t = transit(p);
+    return ["Console into distribution switch 1: ip routing; each VLAN's interface at its gateway address, the pooled VLANs with ip helper-address " + t.edge + ", left shut; ip route 0.0.0.0 0.0.0.0 " + t.edge + ".",
+      "Console into the edge router: no interface " + p.edge.lan + ".<each VLAN>; interface " + p.edge.lan + ": ip address " + t.edge + " " + t.mask + ", ip nat inside; ip route " + t.block + " " + t.bmask + " " + t.dist + "; save.",
+      "Back on distribution switch 1: interface gi0/24, no switchport, ip address " + t.dist + " " + t.mask + "; the management VLAN's interface to " + p.vlans.mgmt.gw + "; no shutdown on each VLAN interface; save."];
+  },
+  summary() { return ["Distribution switch 1 routes between the VLANs: each VLAN's gateway is its own interface there.", "The edge router is joined to it by a routed /30 and does the internet: NAT, and the DHCP pools, which distribution switch 1 relays to.", "Traffic between floors no longer goes down to the edge router and back up."]; }
+};
+
+export const CAMPUS_JOBS = [CJ1, CJ2, CJ3, CJ4];

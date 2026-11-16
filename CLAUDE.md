@@ -3496,6 +3496,44 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
     couldn't carry the VLAN anyway (the test now suspends a trunk that still carries it). The existing suites run unchanged
     against it (home, office, business command line, simulation and page, with the campus's: 239 of 239). The business's
     ticket tests ran within noise of the tickets branch on a loaded machine (time them again on an idle one before going live).
+- **The campus and its first work orders, built 16 November 2026 on `save/level4-campus`** (not on any page yet):
+  - **The order, re-sized by the owner's rule for the rest of E4** ("Keep building everything in order of increasing in size"):
+    the spanning-tree root and the LACP bundle are smaller than moving the gateways, so they come first. The work orders are
+    numbered in the order they go live: **CP-J1** lock down the access ports, **CP-J2** the spanning-tree root, **CP-J3** LACP
+    between the distribution switches, **CP-J4** the gateways onto distribution switch 1. Tell the owner the order changed and
+    why when they go live; the titles are theirs.
+  - **The campus template** (`js/net/campus.js`, `makeCampus(seed)`): Rafiki's HQ as the technician finds it: the edge router
+    (BR-4200) running router-on-a-stick, a subinterface and DHCP pool per VLAN, NAT; two MSW-3900X distribution switches,
+    routing off, joined by two trunks; an access switch per floor uplinked to both; the 2F access switch the root of every VLAN
+    (left at the defaults, it has the lowest address); the core switches in their boxes; every switch named, locked, SSH only, on
+    the management VLAN, saved. The seed decides the addresses (10.b.V.0/24, the VLAN's number its third octet), the VLAN
+    numbers and the passwords. `tests/campus-site.test.js`.
+  - **CP-J1** (port security, sticky, one device, shutdown; portfast and BPDU guard on every desk port; the uplinks untouched,
+    the spares still parked): over SSH from the service desk PC. **CP-J2**: distribution switch 1 the root of every VLAN in use,
+    distribution switch 2 the secondary (causes: the 2F switch still root, another access switch root after the 2F one was
+    pushed down, distribution switch 2 root; for the backup: left at the default, an access switch beating it, a tie, below the
+    primary). **CP-J3**: the two links one port-channel by LACP (causes: two separate trunks with one blocked, one end bundled,
+    one link left out, passive with passive, on with LACP, a member suspended, a member down, forced on at both ends), still
+    carrying every VLAN in use. **CP-J4**: distribution switch 1 every VLAN's gateway (its VLAN interfaces take the .1 the devices
+    already use, the management VLAN's too: it answers there from now on), its port 24 routed on a /30 to the edge router (the
+    mask worked out by hand), a default route one way and the campus's /16 the other, NAT kept on the edge router, DHCP relayed to
+    the edge router's pools (work order 9 moves the pools to a central server), the subinterfaces removed. Worked from the
+    console (Mason: over SSH you're standing on the branch you're cutting): ready first with the new interfaces shut, then the
+    edge router, then back to switch 1 to cut over. Each work order starts from the one before it done (a test holds them to it).
+  - **The simulation gained** (it touches `routeBR` and `routeFromRouter`, which the live business runs on, so the full drive is
+    needed before any of it goes live):
+    a layer 3 switch's next hop can be a business router, which carries the packet on (`routeBR` from `routeL3`); the router routes
+    on through a layer 3 switch, its own traffic and passing traffic; a source routed in from another router needs a route back
+    (`wayBack`); a loop between them stops (a depth guard). **DHCP relay:** `ip helper-address` on a VLAN interface or routed port
+    (`relays`, `relayOf`; keys `rtr@relay|switch|interface|helper`): the router answers from its pool for the relaying interface's
+    network, if the request gets there and the offer gets back; the lease names the helper as its server. Fixed: `switchport trunk
+    allowed vlan add/remove` typed on a port-channel changed its members but not its own record (the members suspended for
+    nothing).
+  - **Checks:** `tests/campus-jobs.test.js` (each work order: the start, the walk-through, the tempting wrong ways each failing
+    their own line for their own cause, other right ways, no help naming a password, an address or a VLAN number, each starting
+    from the one before done); `tests/campus-edge.test.js` (8: the cut-over by hand on 8 campuses). Plants
+    (`python3 tools/plants-campus-node.py`, in a throwaway copy): CP-J1 12, CP-J2 11, CP-J3 14, all caught (5 missed at first,
+    each a test gap closed or a plant re-aimed at both of two guards); the relay and routing handoff 12, and CP-J4's, running.
 
 ## Objectives
 

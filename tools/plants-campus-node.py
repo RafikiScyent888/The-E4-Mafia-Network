@@ -3,6 +3,7 @@
 import subprocess, shutil, sys, os
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 TESTS = ["tests/campus-l3.test.js", "tests/campus-sim.test.js", "tests/campus-lag.test.js", "tests/campus-stp.test.js", "tests/campus-ospf.test.js", "tests/campus-hsrp.test.js", "tests/campus-site.test.js", "tests/campus-jobs.test.js", "tests/campus-edge.test.js"]
+if os.environ.get("TESTS"): TESTS = os.environ["TESTS"].split()   # TESTS="tests/campus-edge.test.js": a narrower run (SEEDS=4 shortens the work orders' tests too)
 PLANTS = [
  ("a routed port still carries its VLANs", "js/net/swcli.js", '  if (sw.ports[n].routed) return { mode: "routed", untagged: null, tagged: [] };', ''),
  ("switchport settings accepted on a routed port", "js/net/swcli.js", 'S.ifs.some(function (n) { return !isSvi(n) && S.sw.ports[n].routed; })) return ["% Invalid input', 'false) return ["% Invalid input'),
@@ -104,6 +105,21 @@ PLANTS = [
  ("RELAY: a helper address taken on a switch port", "js/net/swcli.js", 'function helperSet(S, f) { if (S.ifs.some(function (n) { return !isSvi(n) && !S.sw.ports[n].routed; })) return', 'function helperSet(S, f) { if (false) return'),
  ("RELAY: no ip helper-address takes nothing away", "js/net/swcli.js", 'return helperSet(S, function (r) { if (a.length && r.helpers) r.helpers = r.helpers.filter(function (h) { return h !== a[0]; }); if (!a.length || (r.helpers && !r.helpers.length)) delete r.helpers; }); }]]);', 'return helperSet(S, function (r) { }); }]]);'),
  ("RELAY: a helper left out of the running configuration", "js/net/swcli.js", '(s.helpers || []).forEach(function (h) { L.push(" ip helper-address " + h); }); if (s.mtu)', 'if (s.mtu)'),
+ ("CP-J4: routing off passes", "js/build/campus.js", '  return [C("off", !on, "Distribution switch 1 doesn\'t route:', '  return [C("off", false, "Distribution switch 1 doesn\'t route:'),
+ ("CP-J4: a VLAN interface left shut passes", "js/build/campus.js", '    C("shut", !!r && r.ip === V.gw && r.mask === p.mask && !!r.shutdown,', '    C("shut", false,'),
+ ("CP-J4: a VLAN interface at the wrong address passes", "js/build/campus.js", '    C("addr", !!r && r.ip !== V.gw,', '    C("addr", false,'),
+ ("CP-J4: the subinterfaces left in passes", "js/build/campus.js", '    C("left", subs.length > 0, "Router-on-a-stick isn\'t retired:', '    C("left", false, "Router-on-a-stick isn\'t retired:'),
+ ("CP-J4: the link's address on switch 1 never compared", "js/build/campus.js", '    C("daddr", !!port.routed && (port.ip !== t.dist || port.mask !== t.mask),', '    C("daddr", false,'),
+ ("CP-J4: no route back named as too narrow", "js/build/campus.js", '    C("back", none, "The edge router has no route back', '    C("back", false, "The edge router has no route back'),
+ ("CP-J4: a route back for one VLAN passes", "js/build/campus.js", '    C("narrow", !!miss, "The edge router\'s route back', '    C("narrow", false, "The edge router\'s route back'),
+ ("CP-J4: a default route at the wrong next hop passes", "js/build/campus.js", '    C("defnh", !!D && D.nh !== t.edge,', '    C("defnh", false,'),
+ ("CP-J4: the link not NAT's inside passes", "js/build/campus.js", '  return [C("inside", !inside, "The edge router\'s side facing the campus', '  return [C("inside", false, "The edge router\'s side facing the campus'),
+ ("CP-J4: nothing relayed passes", "js/build/campus.js", '  return [C("none", !!k && !h.length, "Nothing relays VLAN', '  return [C("none", false, "Nothing relays VLAN'),
+ ("CP-J4: relayed where nobody answers passes", "js/build/campus.js", '    C("wrong", !!k && h.length > 0 && h.indexOf(t.edge) < 0,', '    C("wrong", false,'),
+ ("CP-J4: the edge router unsaved passes", "js/build/campus.js", 'return [C("unsaved", unsaved(sw), "The edge router hasn\'t been saved:', 'return [C("unsaved", false, "The edge router hasn\'t been saved:'),
+ ("CP-J4: the walk-through never brings the VLAN interfaces up", "js/build/campus.js", '    USED.filter(function (k) { return k !== "mgmt"; }).forEach(function (k) { c("interface vlan " + p.vlans[k].id); c("no shutdown"); c("exit"); });', ''),
+ ("CP-J4: it starts from nothing done", "js/build/campus.js", '    for (const a of CJ3.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }', '    for (const a of []) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }'),
+ ("CP-J4: a hint names the link's address", "js/build/campus.js", 'rung1: function () { return "show ip route on both: the gateway of last resort', 'rung1: function (v) { return transit(v.plan).edge + " show ip route on both: the gateway of last resort'),
 ]
 only = sys.argv[1:]
 bad = 0

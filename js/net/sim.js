@@ -559,7 +559,7 @@ export class Sim {
       const x = this.d[id];
       if (x.kind === "router" || x.kind === "rogue") { if ((dom.has(id + ":lan") && this.on(id) && x.lan.ip === ip) || (id === "router" && this.guestOn() && dom.has("router:guest") && x.guest.lan.ip === ip)) out.push(id); continue; }
       if (x.kind === "brouter") { if (this.on(id) && this.rtIfFor(id, ip, dom)) out.push(id); continue; }
-      if (x.kind === "mswitch") { if (this.on(id)) { if (this.mgmtAddrs(id).some(function (o) { return o.ip === ip && dom.has(this.vnode(id, o.vlan)); }, this) || this.routedAddrs(id).some(function (o) { return o.ip === ip && dom.has(o.node); })) out.push(id); } continue; }
+      if (x.kind === "mswitch") { if (this.on(id)) { if (this.mgmtAddrs(id).some(function (o) { return o.ip === ip && dom.has(this.vnode(id, o.vlan)); }, this) || this.routedAddrs(id).some(function (o) { return o.ip === ip && dom.has(o.node); }) || this.hsrpVips(id).some(function (o) { return o.vip === ip && dom.has(o.node); })) out.push(id); } continue; }
       if (!x.ifaces) continue;
       if (!dom.has(x.kind === "bap" ? this.bapNode(id, null) : id)) continue;   /* a business access point's own address is on its untagged side */
       const a = this.addr(id); if (a && a.ip === ip) out.push(id);
@@ -685,7 +685,7 @@ export class Sim {
   }
   /* after something changes physically, clients whose link came up ask again */
   relink(before) {
-    this.snoopTidy(); this.portSecurity(); this.bpduGuard();
+    this.snoopTidy(); this.portSecurity(); this.bpduGuard(); this.hsrpTick();
     /* a DHCP pool still being typed (a console in its dhcp-config mode): a device asks now and then, not on every line, so it doesn't
        catch the pool half made (its network typed, its default-router not yet: a lease with no gateway) */
     const cli = this.cli || {}, poolOpen = Object.keys(cli).some(function (k) { const st = cli[k]; return !!(st && st.S && st.S.mode === "dhcp"); });
@@ -865,6 +865,14 @@ export class Sim {
       if (k === "stp") { const all = self.stpAll(); return all[v] ? { result: all[v].result, ports: all[v].ports.filter(function (q) { return q.sw === id; }), me: id } : null; }
       if (k === "stpvlans") return Object.keys(self.stpAll()).map(Number).filter(function (w) { return self.d[id].sw.vlans[w]; });
       if (k === "learned") return self.learned(id);
+      if (k === "hsrp") {
+        const S = self.hsrpState(), out = [];
+        Object.keys(S).forEach(function (key) { const q = S[key]; q.members.filter(function (m) { return m.id === id; }).forEach(function (m) {
+          const state = !m.up ? "Init" : q.active && q.active.id === id && q.active.iface === m.iface ? "Active" : q.standby && q.standby.id === id ? "Standby" : "Listen";
+          out.push({ iface: m.iface, grp: m.grp, pri: m.pri, preempt: m.preempt, state: state, active: q.active ? (q.active.id === id ? "local" : q.active.ip) : "unknown", standby: q.standby ? (q.standby.id === id ? "local" : q.standby.ip) : "unknown", vip: q.vip || m.vip });
+        }); });
+        return out.sort(function (p, q2) { return p.iface < q2.iface ? -1 : p.iface > q2.iface ? 1 : p.grp - q2.grp; });
+      }
       if (k === "ospf") {
         const R = self.ospfAll(), me = R.routers[id]; if (!me) return null;
         const nb = R.nbrs[id] || [];
@@ -888,6 +896,57 @@ export class Sim {
   }
   /* routes OSPF worked out for it (each switch that routes, with "router ospf") */
   learned(id) { const x = this.d[id]; if (!x || !x.sw || !x.sw.ospf) return []; const R = this.ospfAll(); return (R.routes[id] || []).map(function (r) { return Object.assign({ ad: 110 }, r); }); }
+  /* ------------------------------------------------------------ first-hop redundancy: standby (Level 4) */
+  /* each standby group on each segment: its members (switch, interface, real address, virtual address, priority, preempt, up),
+     kept until a switch or a cable changes. Only a layer 3 switch has any */
+  hsrpGroups() {
+    const ids = Object.keys(this.d).filter(function (id) { const x = this.d[id]; return x.kind === "mswitch" && x.sw.os === "l3switch" && this.on(id); }, this);
+    const any = ids.some(function (id) { const w = this.d[id].sw; return Object.keys(w.svis || {}).some(function (k) { return w.svis[k].standby; }) || (w.vlan1 && w.vlan1.standby) || Object.keys(w.ports).some(function (k) { return w.ports[k].standby; }); }, this);
+    if (!any) return {};
+    const sig = JSON.stringify(Object.keys(this.d).filter(function (id) { return this.d[id].kind === "mswitch"; }, this).map(function (id) { const w = this.d[id].sw; return [id, this.on(id), w.ports, w.svis, w.vlan1, w.vlans, w.pcs, w.stp]; }, this)) + JSON.stringify(this.net.cables);
+    if (this._hsrp && this._hsrp.sig === sig) return this._hsrp.G;
+    const G = {}, segs = {};
+    const segOf = function (node) { if (segs[node]) return segs[node]; const D = [...this.domain(node)].sort(), k = D[0]; D.forEach(function (n) { segs[n] = k; }); return k; }.bind(this);
+    ids.forEach(function (id) {
+      const w = this.d[id].sw;
+      l3Ifs(this.l3View(id)).forEach(function (f) {
+        const rec = /^Vlan/.test(f.name) ? (f.name === "Vlan1" ? w.vlan1 : w.svis[f.name.slice(4)]) : w.ports[f.name]; if (!rec || !rec.standby) return;
+        const seg = f.up ? segOf(this.l3Node(id, f.name)) : this.l3Node(id, f.name);
+        Object.keys(rec.standby).forEach(function (g) { const c = rec.standby[g], k = seg + "|" + g; (G[k] = G[k] || []).push({ id: id, iface: f.name, ip: f.ip, vip: c.ip || null, pri: c.pri == null ? 100 : c.pri, preempt: !!c.preempt, up: !!(f.up && f.ip), grp: +g, node: this.l3Node(id, f.name) }); }, this);
+      }, this);
+    }, this);
+    this._hsrp = { sig: sig, G: G }; return G;
+  }
+  /* the election after each change: the active router stays active while it's up, unless one with a higher priority and preempt
+     set comes along; when it goes, the best of the rest (highest priority, then highest address) takes over */
+  hsrpTick() {
+    const G = this.hsrpGroups(), keys = Object.keys(G); if (!keys.length && !(this.net.extra && this.net.extra.hsrp)) return;
+    this.net.extra = this.net.extra || {}; const A = this.net.extra.hsrp = this.net.extra.hsrp || {};
+    const rank = function (p, q) { return q.pri - p.pri || ip2n(q.ip) - ip2n(p.ip); };
+    keys.forEach(function (k) {
+      const el = G[k].filter(function (m) { return m.up; }).sort(rank); if (!el.length) { delete A[k]; return; }
+      const cur = el.find(function (m) { return m.id === A[k]; }), best = el[0];
+      if (!cur) A[k] = best.id; else if (best.id !== cur.id && best.preempt && best.pri > cur.pri) A[k] = best.id;
+    });
+    Object.keys(A).forEach(function (k) { if (!G[k]) delete A[k]; });
+  }
+  /* each group's state: who's active and who's standby, the virtual address the active one answers for */
+  hsrpState() {
+    const G = this.hsrpGroups(), A = (this.net.extra && this.net.extra.hsrp) || {}, out = {};
+    const rank = function (p, q) { return q.pri - p.pri || ip2n(q.ip) - ip2n(p.ip); };
+    Object.keys(G).forEach(function (k) {
+      const el = G[k].filter(function (m) { return m.up; }).sort(rank), act = el.find(function (m) { return m.id === A[k]; }) || null;
+      const sby = el.filter(function (m) { return !act || m.id !== act.id; })[0] || null;
+      out[k] = { members: G[k], active: act, standby: sby, vip: act ? act.vip || (el.find(function (m) { return m.vip; }) || {}).vip : null };
+    });
+    return out;
+  }
+  /* the virtual addresses a switch answers ARP for now (it's the active router in that group), each with its node */
+  hsrpVips(id) {
+    const x = this.d[id]; if (!x.sw || x.sw.os !== "l3switch") return [];
+    const S = this.hsrpState(), out = []; Object.keys(S).forEach(function (k) { const q = S[k]; if (q.active && q.active.id === id && q.vip) out.push({ vip: q.vip, node: q.active.node }); }); return out;
+  }
+
   /* ------------------------------------------------------------ OSPF (Level 4, the campus: ospf.js) */
   /* every switch's OSPF interfaces (up, an address, in a network statement), each on its segment (its layer 2 broadcast domain),
      and what the protocol settles on; kept until a switch or a cable changes */

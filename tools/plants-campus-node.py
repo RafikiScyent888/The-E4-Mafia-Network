@@ -2,7 +2,7 @@
 # Run it in a throwaway copy of the checkout, never in the real one:   python3 tools/plants-campus-node.py [name ...]
 import subprocess, shutil, sys, os
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-TESTS = ["tests/campus-l3.test.js", "tests/campus-sim.test.js", "tests/campus-lag.test.js", "tests/campus-stp.test.js", "tests/campus-ospf.test.js"]
+TESTS = ["tests/campus-l3.test.js", "tests/campus-sim.test.js", "tests/campus-lag.test.js", "tests/campus-stp.test.js", "tests/campus-ospf.test.js", "tests/campus-hsrp.test.js"]
 PLANTS = [
  ("a routed port still carries its VLANs", "js/net/swcli.js", '  if (sw.ports[n].routed) return { mode: "routed", untagged: null, tagged: [] };', ''),
  ("switchport settings accepted on a routed port", "js/net/swcli.js", 'S.ifs.some(function (n) { return !isSvi(n) && S.sw.ports[n].routed; })) return ["% Invalid input', 'false) return ["% Invalid input'),
@@ -43,6 +43,16 @@ PLANTS = [
  ("OSPF: what it learns never used", "js/net/sim.js", "  learned(id) { const x = this.d[id]; if (!x || !x.sw || !x.sw.ospf) return [];", "  learned(id) { return [];"),
  ("OSPF: the reference bandwidth ignored", "js/net/sim.js", 'cost: rec.ospfCost || ospfCost(mbps, O.refBw),', 'cost: rec.ospfCost || ospfCost(mbps, 100),'),
  ("OSPF: an external type 2's metric grows on the way", "js/net/ospf.js", 'nh: first[x].nh, iface: first[x].iface, metric: 1 };', 'nh: first[x].nh, iface: first[x].iface, metric: dist[x] + 1 };'),
+ ("HSRP: the lowest priority made active (the election's rank and the state's)", [("js/net/sim.js", "    const rank = function (p, q) { return q.pri - p.pri || ip2n(q.ip) - ip2n(p.ip); };\n    keys.forEach(function (k) {", "    const rank = function (p, q) { return p.pri - q.pri || ip2n(q.ip) - ip2n(p.ip); };\n    keys.forEach(function (k) {"),
+   ("js/net/sim.js", "    const rank = function (p, q) { return q.pri - p.pri || ip2n(q.ip) - ip2n(p.ip); };\n    Object.keys(G).forEach(function (k) {", "    const rank = function (p, q) { return p.pri - q.pri || ip2n(q.ip) - ip2n(p.ip); };\n    Object.keys(G).forEach(function (k) {")]),
+ ("HSRP: an interface up with no address can stay active", "js/net/sim.js", "      const el = G[k].filter(function (m) { return m.up; }).sort(rank); if (!el.length) { delete A[k]; return; }", "      const el = G[k].slice().sort(rank); if (!el.length) { delete A[k]; return; }"),
+ ("HSRP: a higher priority takes over without preempt", "js/net/sim.js", "else if (best.id !== cur.id && best.preempt && best.pri > cur.pri) A[k] = best.id;", "else if (best.id !== cur.id && best.pri > cur.pri) A[k] = best.id;"),
+ ("HSRP: preempt never takes over", "js/net/sim.js", "else if (best.id !== cur.id && best.preempt && best.pri > cur.pri) A[k] = best.id;", ""),
+ ("HSRP: every member answers for the virtual address", "js/net/sim.js", "if (q.active && q.active.id === id && q.vip) out.push({ vip: q.vip, node: q.active.node });", "q.members.forEach(function (m) { if (m.id === id && q.vip) out.push({ vip: q.vip, node: m.node }); });"),
+ ("HSRP: a virtual address outside the subnet taken", "js/net/swcli.js", '    if (bad) return ["% Address " + a[2] + " in group " + g + " not within subnet on interface " + bad];', ''),
+ ("HSRP: the lower address wins a tie (the election's rank and the state's)", [("js/net/sim.js", "    const rank = function (p, q) { return q.pri - p.pri || ip2n(q.ip) - ip2n(p.ip); };\n    keys.forEach(function (k) {", "    const rank = function (p, q) { return q.pri - p.pri || ip2n(p.ip) - ip2n(q.ip); };\n    keys.forEach(function (k) {"),
+   ("js/net/sim.js", "    const rank = function (p, q) { return q.pri - p.pri || ip2n(q.ip) - ip2n(p.ip); };\n    Object.keys(G).forEach(function (k) {", "    const rank = function (p, q) { return q.pri - p.pri || ip2n(p.ip) - ip2n(q.ip); };\n    Object.keys(G).forEach(function (k) {")]),
+ ("HSRP: the election never runs after a change", "js/net/sim.js", "this.bpduGuard(); this.hsrpTick();", "this.bpduGuard();"),
  ("LACP: a suspended member's line protocol shown up", "js/net/swcli.js", '  if (p.chan && chanState(sw, n) === "s") return ["up", "down"];   /* suspended from its port-channel */', ''),
 ]
 only = sys.argv[1:]

@@ -3463,11 +3463,20 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
     `O*E2` with metric 1. The simulation (`ospfAll`, cached like the spanning tree) feeds them to the table through `learned`
     at distance 110, so routing across switches (`routeL3`) uses them. `show ip ospf neighbor`, `show ip ospf interface brief`,
     `show ip protocols`, `show ip route [ospf]`. `tests/campus-ospf.test.js` (7).
-  - **Checks:** `tests/campus-l3.test.js` (6), `tests/campus-sim.test.js` (6), `tests/campus-lag.test.js` (7), `tests/campus-stp.test.js` (7), `tests/campus-ospf.test.js` (7); `python3 tools/plants-campus-node.py` (in a
-    throwaway copy): 39 plants, all caught. Two missed at first: one hit only one of the two `ip routing` guards (re-aimed at
+  - **First-hop redundancy: standby** (the layer 3 switch only): on a VLAN interface or routed port `standby <0-255> ip <virtual>`
+    (refused outside the interface's subnet, as the real thing does), `priority`, `preempt`, and `no` for each. Per group on a
+    segment, the election (`hsrpTick`, after each change in `relink`, its result kept in `net.extra.hsrp` so a saved network
+    replays it): the active router stays active while it's up with an address, unless one with a higher priority and preempt
+    set comes along; when it goes, the best of the rest (highest priority, then highest address) takes over. Only the active
+    router answers ARP for the virtual address (`hsrpVips` in `owners`), so the hosts' gateway follows it. `show standby
+    [brief]` (each group's state: Active, Standby, Listen, Init; who's active and standby; the virtual address).
+    `tests/campus-hsrp.test.js` (6).
+  - **Checks:** `tests/campus-l3.test.js` (6), `tests/campus-sim.test.js` (6), `tests/campus-lag.test.js` (7), `tests/campus-stp.test.js` (7), `tests/campus-ospf.test.js` (7), `tests/campus-hsrp.test.js` (6); `python3 tools/plants-campus-node.py` (in a
+    throwaway copy): 47 plants, all caught (one standby plant missed twice: a switch that's off isn't a member and an interface
+    that's down is on a segment of its own, so only an interface up with no address reaches that guard; the test now has it). Two missed at first: one hit only one of the two `ip routing` guards (re-aimed at
     both), and "a suspended member still carries frames" passed because the test's suspended member was an access port that
     couldn't carry the VLAN anyway (the test now suspends a trunk that still carries it). The existing suites run unchanged
-    against it (home, office, business command line, simulation and page, with the campus's: 233 of 233). The business's
+    against it (home, office, business command line, simulation and page, with the campus's: 239 of 239). The business's
     ticket tests ran within noise of the tickets branch on a loaded machine (time them again on an idle one before going live).
 
 ## Objectives

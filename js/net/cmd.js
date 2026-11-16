@@ -310,16 +310,16 @@ function dir(sim, id, args) {
 function adapterName(f) { return f.type === "wifi" ? "Wireless LAN adapter " + f.name : "Ethernet adapter " + f.name; }
 
 function ipconfig(sim, id, args) {
-  const x = sim.d[id], f = x.ifaces[0], a = sim.addr(id), sub = (args[0] || "").toLowerCase();
-  const facts = { cmd: "ipconfig", sub: sub || "", dev: id, media: a ? "connected" : "disconnected", ip: a && a.ip, apipa: !!(a && a.kind === "apipa"), gw: a && a.gw, dns: a ? a.dns.slice() : [], kind: a && a.kind };
+  const x = sim.d[id], f = x.ifaces[0], a = sim.addr(id), sub = (args[0] || "").toLowerCase(), link = sim.hasLink(id);   /* the media is the link: an adapter released has no address but is still plugged in */
+  const facts = { cmd: "ipconfig", sub: sub || "", dev: id, media: link ? "connected" : "disconnected", ip: a && a.ip, apipa: !!(a && a.kind === "apipa"), gw: a && a.gw, dns: a ? a.dns.slice() : [], kind: a && a.kind };
   const lines = ["", "Windows IP Configuration", "", ""];
   let pre = [];
   if (sub === "/release") {
-    if (!a) { pre.push("No operation can be performed on " + f.name + " while it has its media disconnected."); }
+    if (!link) { pre.push("No operation can be performed on " + f.name + " while it has its media disconnected."); }
     else if (f.cfg.mode === "static") { pre.push("The operation failed as no adapter is in the state permissible for this operation."); }
     else { sim.release(id); facts.released = true; }
   } else if (sub === "/renew") {
-    if (!a) { pre.push("No operation can be performed on " + f.name + " while it has its media disconnected."); facts.result = "media"; }
+    if (!link) { pre.push("No operation can be performed on " + f.name + " while it has its media disconnected."); facts.result = "media"; }
     else if (f.cfg.mode === "static") { pre.push("The operation failed as no adapter is in the state permissible for this operation."); facts.result = "static"; }
     else {
       const r = sim.dhcp(id, "renew"); facts.result = r.result;
@@ -332,7 +332,7 @@ function ipconfig(sim, id, args) {
     return { out: "\nUSAGE:\n    ipconfig [/all | /release | /renew | /flushdns]\n\nwhere\n    /all       Display full configuration information.\n    /release   Release the IPv4 address for the adapter.\n    /renew     Renew the IPv4 address for the adapter.\n    /flushdns  Purges the DNS Resolver cache.\n", facts: facts };
   }
   const now = sim.addr(id);
-  Object.assign(facts, { media: now ? "connected" : "disconnected", ip: now && now.ip, mask: now && now.mask, apipa: !!(now && now.kind === "apipa"), gw: now && now.gw, dns: now ? now.dns.slice() : [], kind: now && now.kind });
+  Object.assign(facts, { media: sim.hasLink(id) ? "connected" : "disconnected", ip: now && now.ip, mask: now && now.mask, apipa: !!(now && now.kind === "apipa"), gw: now && now.gw, dns: now ? now.dns.slice() : [], kind: now && now.kind });
   if (pre.length) lines.splice(3, 0, ...pre, "");   /* messages come between the title and the adapters, as Windows prints them */
   const all = sub === "/all";
   if (all) {
@@ -340,7 +340,7 @@ function ipconfig(sim, id, args) {
     lines.push(row("Host Name", x.host || "PC"), row("Primary Dns Suffix", ""), row("Node Type", "Hybrid"), row("IP Routing Enabled", "No"), row("WINS Proxy Enabled", "No"), "");
   }
   lines.push(adapterName(f) + ":", "");
-  if (!now) {
+  if (!now && !sim.hasLink(id)) {
     lines.push(row("Media State", "Media disconnected"), row("Connection-specific DNS Suffix", ""));
     if (all) lines.push(row("Description", f.desc || "Network Adapter"), row("Physical Address", f.mac.toUpperCase()), row("DHCP Enabled", f.cfg.mode === "dhcp" ? "Yes" : "No"), row("Autoconfiguration Enabled", "Yes"));
     return { out: lines.join("\n") + "\n", facts: facts };
@@ -348,7 +348,7 @@ function ipconfig(sim, id, args) {
   lines.push(row("Connection-specific DNS Suffix", ""));
   if (all) lines.push(row("Description", f.desc || "Network Adapter"), row("Physical Address", f.mac.toUpperCase()), row("DHCP Enabled", f.cfg.mode === "dhcp" ? "Yes" : "No"), row("Autoconfiguration Enabled", "Yes"));
   lines.push(row("Link-local IPv6 Address", v6(f.mac) + (all ? "(Preferred) " : "")));
-  if (facts.released) {
+  if (facts.released || !now) {   /* released (now, or earlier): plugged in, no IPv4 address until it asks again */
     lines.push(row("Default Gateway", ""));
     return { out: lines.join("\n") + "\n", facts: facts };
   }

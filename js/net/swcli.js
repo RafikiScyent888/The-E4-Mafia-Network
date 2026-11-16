@@ -78,7 +78,7 @@ export function errDisabled(sw, n) { return !!(sw.psRun && sw.psRun[n] && sw.psR
 export function psOf(p) { return p.ps || (p.ps = { on: false, max: 1, viol: "shutdown", sticky: false, macs: [] }); }
 /* a MAC address as the switch writes it: aaaa.bbbb.cccc */
 export function dotMac(m) { const h = String(m || "").replace(/[^0-9a-f]/gi, "").toLowerCase(); return h.length === 12 ? h.slice(0, 4) + "." + h.slice(4, 8) + "." + h.slice(8) : null; }
-const CONFIG_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "vlan1", "gateway", "ports", "banner", "vlans", "svis", "snoop", "dai", "pcs"];   /* keyGen: which set of RSA keys it holds (each crypto key generate makes a new one) */
+const CONFIG_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "vlan1", "gateway", "ports", "banner", "vlans", "svis", "snoop", "dai", "pcs", "stp"];   /* keyGen: which set of RSA keys it holds (each crypto key generate makes a new one) */
 /* each kind of device with this command line (this switch; the business router, rtcli.js) registers what's its own: its
    command tree, its prompts, what its configuration is made of, a factory-fresh one, and how its configuration reads */
 const OS = {};
@@ -210,6 +210,7 @@ function mismatchCounters(p, l) {
 }
 
 const SHOW = [
+  ["spanning-tree", "Spanning tree topology", function (S, a) { return stpShow(S, a); }, { sub: [["vlan", "VLAN Switch Spanning Trees"]] }],
   ["etherchannel", "EtherChannel information", [["summary", "One-line summary per channel-group", function (S) { return chanSummary(S.sw); }]]],
   ["running-config", "Current operating configuration", function (S) { return osOf(S.sw).config(S.sw); }],
   ["startup-config", "Contents of startup-config", function (S) { return S.sw.startup ? osOf(S.sw).config(Object.assign({}, S.sw, S.sw.startup), true) : ["startup-config is not present"]; }],
@@ -325,6 +326,9 @@ const CONFIG = [
     S.pending = { kind: "modulus" }; return ["The name for the keys will be: " + S.sw.hostname + "." + S.sw.domain, "Choose the size of the key modulus in the range of 360 to 4096 for your", "  General Purpose Keys. Choosing a key modulus greater than 512 may take", "  a few minutes.", "", "How many bits in the modulus [512]: "];
   }]]]]]]],
   ["service", "Modify use of network based services", [["password-encryption", "Encrypt system passwords", function (S) { S.sw.encrypt = true; return []; }]]],
+  ["spanning-tree", "Spanning Tree Subsystem", [
+    ["mode", "Spanning tree operating mode", [["rapid-pvst", "Per-Vlan rapid spanning tree mode", function (S) { stpOf(S.sw).mode = "rapid-pvst"; return []; }], ["pvst", "Per-Vlan spanning tree mode", function (S) { stpOf(S.sw).mode = "pvst"; return []; }]]],
+    ["vlan", "VLAN Switch Spanning Tree", function (S, a) { return stpVlanCmd(S, a, false); }, { sub: [["WORD", "vlan range, example: 1,3-5,7,9-11"]] }]]],
   ["banner", "Define a login banner", [["motd", "Set Message of the Day banner", function (S, a, raw) { return bannerStart(S, raw); }]]],
   ["do", "To run exec commands in config mode", function (S, a, raw) { const was = S.mode; S.mode = "priv"; const r = run(S, raw.replace(/^\s*do\s+/i, "")); S.mode = was; return r.lines; }],
   ["no", "Negate a command or set its defaults", [
@@ -335,6 +339,7 @@ const CONFIG = [
         { bare: function (S) { S.sw.snoop.on = false; return []; } }]]],
       ["arp", "IP ARP global configuration", [["inspection", "Arp Inspection configuration", [["vlan", "Enable/Disable ARP Inspection on vlans", function (S, a) { const L = vlanList(a.join("")); if (!L) return a.length ? ["% Invalid input detected at '^' marker."] : ["% Incomplete command."]; S.sw.dai.vlans = S.sw.dai.vlans.filter(function (v) { return L.indexOf(v) < 0; }); return []; }]]]]]]],
     ["username", "Establish User Name Authentication", function (S, a) { delete S.sw.users[a[0]]; return []; }],
+    ["spanning-tree", "Spanning Tree Subsystem", [["vlan", "VLAN Switch Spanning Tree", function (S, a) { return stpVlanCmd(S, a, true); }], ["mode", "Spanning tree operating mode", function (S) { if (S.sw.stp) S.sw.stp.mode = "rapid-pvst"; return []; }]]],
     ["vlan", "VLAN commands", function (S, a) {
       const L = vlanList(a.join("")); if (!L) return a.length ? ["% Invalid input detected at '^' marker."] : ["% Incomplete command."];
       if (L.indexOf(1) >= 0) return ["%Default VLAN 1 may not be deleted."];
@@ -351,6 +356,10 @@ const CONFIG = [
   ["exit", "Exit from configure mode", function (S) { S.mode = "priv"; return []; }]
 ];
 const IFACE = [
+  ["spanning-tree", "Spanning Tree Subsystem", [
+    ["portfast", "Portfast on the interface", function (S) { return stpPort(S, function (q) { q.portfast = true; }, ["%Warning: portfast should only be enabled on ports connected to a single", " host. Connecting hubs, concentrators, switches, bridges, etc... to this", " interface  when portfast is enabled, can cause temporary bridging loops.", " Use with CAUTION"]); }],
+    ["bpduguard", "Don't accept BPDUs on this interface", [["enable", "Enable BPDU guard for this interface", function (S) { return stpPort(S, function (q) { q.bpduguard = true; }); }], ["disable", "Disable BPDU guard for this interface", function (S) { return stpPort(S, function (q) { delete q.bpduguard; }); }]]],
+    ["cost", "Change an interface's spanning tree port path cost", function (S, a) { if (!a.length) return ["% Incomplete command."]; if (!/^\d+$/.test(a[0]) || +a[0] < 1 || +a[0] > 200000000) return ["% Invalid input detected at '^' marker."]; return stpPort(S, function (q) { q.cost = +a[0]; }); }]]],
   ["channel-group", "Etherchannel/port bundling configuration", function (S, a) {
     if (S.ifs.some(isSvi) || S.po) return ["% Invalid input detected at '^' marker."];
     if (!a.length) return ["% Incomplete command."]; const g = +a[0]; if (!/^\d+$/.test(a[0]) || g < 1 || g > 48) return ["% Invalid input detected at '^' marker."];
@@ -408,6 +417,7 @@ const IFACE = [
       } }]]],
   ["no", "Negate a command or set its defaults", [
     ["channel-group", "Etherchannel/port bundling configuration", function (S) { S.ifs.forEach(function (n) { if (!isSvi(n)) delete S.sw.ports[n].chan; }); return []; }],
+    ["spanning-tree", "Spanning Tree Subsystem", [["portfast", "Portfast on the interface", function (S) { return stpPort(S, function (q) { delete q.portfast; }); }], ["bpduguard", "Don't accept BPDUs on this interface", function (S) { return stpPort(S, function (q) { delete q.bpduguard; }); }], ["cost", "Change an interface's spanning tree port path cost", function (S) { return stpPort(S, function (q) { delete q.cost; }); }]]],
     ["shutdown", "Shutdown the selected interface", function (S) { const out = []; S.ifs.forEach(function (n) { if (isSvi(n)) { sviOf(S.sw, n).shutdown = false; out.push("%LINK-3-UPDOWN: Interface " + n + ", changed state to up"); } else { S.sw.ports[n].shutdown = false; const st = status(S.sw, n); out.push("%LINK-3-UPDOWN: Interface " + n + ", changed state to " + (st[0] === "up" ? "up" : "down")); } }); return out; }],
     ["description", "Interface specific description", function (S) { S.ifs.forEach(function (n) { if (isSvi(n)) sviOf(S.sw, n).desc = ""; else S.sw.ports[n].desc = ""; }); return []; }],
     ["speed", "Configure speed operation.", function (S) { return setPort(S, "speed", "auto"); }],
@@ -624,6 +634,7 @@ function runningConfig(sw, startup) {
   if (sw.enableSecret || sw.enablePassword || Object.keys(sw.users).length) L.push("!");
   if (sw.domain) L.push("ip domain-name " + sw.domain, "!");
   if (sw.routing) L.push("ip routing", "!");
+  if (sw.stp) { if (sw.stp.mode === "pvst") L.push("spanning-tree mode pvst"); Object.keys(sw.stp.prio || {}).map(Number).sort(function (a, b) { return a - b; }).forEach(function (v) { L.push("spanning-tree vlan " + v + " priority " + sw.stp.prio[v]); }); if (sw.stp.mode === "pvst" || Object.keys(sw.stp.prio || {}).length) L.push("!"); }
   if (sw.snoop && sw.snoop.vlans.length) L.push("ip dhcp snooping vlan " + vlanText(sw.snoop.vlans));
   if (sw.snoop && sw.snoop.on) L.push("ip dhcp snooping");
   if (sw.dai && sw.dai.vlans.length) L.push("ip arp inspection vlan " + vlanText(sw.dai.vlans));
@@ -642,6 +653,7 @@ function runningConfig(sw, startup) {
     if (p.ps) { const P = p.ps; if (P.max !== 1) L.push(" switchport port-security maximum " + P.max); if (P.viol !== "shutdown") L.push(" switchport port-security violation " + P.viol); if (P.sticky) L.push(" switchport port-security mac-address sticky"); P.macs.forEach(function (m) { L.push(" switchport port-security mac-address " + (m.sticky ? "sticky " : "") + m.mac); }); if (P.on) L.push(" switchport port-security"); }
     if (p.atrust) L.push(" ip arp inspection trust"); if (p.dtrust) L.push(" ip dhcp snooping trust");
     if (raw.chan) L.push(" channel-group " + raw.chan.group + " mode " + raw.chan.mode);
+    if (raw.stp) { if (raw.stp.portfast) L.push(" spanning-tree portfast"); if (raw.stp.bpduguard) L.push(" spanning-tree bpduguard enable"); if (raw.stp.cost) L.push(" spanning-tree cost " + raw.stp.cost); }
     if (p.speed !== "auto") L.push(" speed " + p.speed); if (p.duplex !== "auto") L.push(" duplex " + p.duplex); if (p.mdix === false) L.push(" no mdix auto"); if (p.shutdown) L.push(" shutdown"); L.push("!"); });
   L.push("interface Vlan1"); if (sw.vlan1.desc) L.push(" description " + sw.vlan1.desc); L.push(sw.vlan1.ip ? " ip address " + sw.vlan1.ip + " " + sw.vlan1.mask : " no ip address"); if (sw.vlan1.shutdown) L.push(" shutdown"); L.push("!");
   Object.keys(sw.svis || {}).map(Number).sort(function (a, b) { return a - b; }).forEach(function (v) { const s = sw.svis[v]; L.push("interface Vlan" + v); if (s.desc) L.push(" description " + s.desc); L.push(s.ip ? " ip address " + s.ip + " " + s.mask : " no ip address"); if (s.shutdown) L.push(" shutdown"); L.push("!"); });
@@ -663,6 +675,43 @@ function ipBrief(sw) {
   Object.keys(sw.svis || {}).map(Number).sort(function (a, b) { return a - b; }).forEach(function (k) { const s = sw.svis[k], st = status(sw, "Vlan" + k); L.push(pad("Vlan" + k, 23) + pad(s.ip || "unassigned", 16) + "YES " + pad(s.ip ? "manual" : "unset", 7) + pad(st[0], 22) + st[1]); });
   PORT_NAMES.forEach(function (n) { const s = status(sw, n), p = sw.ports[n], a = p.routed && p.ip; L.push(pad(n, 23) + pad(a ? p.ip : "unassigned", 16) + "YES " + pad(a ? "manual" : "unset", 7) + pad(s[0], 22) + s[1]); });
   return L;
+}
+/* ------------------------------------------------------------ spanning tree, Level 4 (the topology is the simulation's: stp.js) */
+function stpOf(sw) { return sw.stp || (sw.stp = { mode: "rapid-pvst", prio: {} }); }
+function stpPort(S, f, warn) { if (S.ifs.some(isSvi)) return ["% Invalid input detected at '^' marker."]; S.ifs.forEach(function (n) { const p = S.sw.ports[n]; p.stp = p.stp || {}; f(p.stp); if (!Object.keys(p.stp).length) delete p.stp; }); return warn || []; }
+/* spanning-tree vlan <list> priority <0-61440, in 4096s> | root primary | root secondary (primary goes under the root it finds
+   now, as the real thing does: 24576, or 4096 under the root if that's lower) */
+function stpVlanCmd(S, a, undo) {
+  const L = vlanList(a[0] || ""); if (!L) return a.length ? ["% Invalid input detected at '^' marker."] : ["% Incomplete command."];
+  const P = stpOf(S.sw).prio;
+  if (undo) { L.forEach(function (v) { delete P[v]; }); return []; }
+  if (/^p/i.test(a[1] || "")) { const n = +a[2]; if (!a[2]) return ["% Incomplete command."]; if (!/^\d+$/.test(a[2]) || n > 61440) return ["% Invalid input detected at '^' marker."]; if (n % 4096) return ["% Bridge Priority must be in increments of 4096.", "% Allowed values are:", "  0     4096  8192  12288 16384 20480 24576 28672", "  32768 36864 40960 45056 49152 53248 57344 61440"]; L.forEach(function (v) { P[v] = n; }); return []; }
+  if (/^r/i.test(a[1] || "")) {
+    if (/^p/i.test(a[2] || "")) { L.forEach(function (v) { const T = S.live && S.live("stp", v), B = T && T.result.bridges[T.me], rp = B ? B.rootBid.prio - v : 32768; P[v] = !B || B.root === T.me || rp > 24576 ? 24576 : Math.max(0, rp - 4096); }); return []; }
+    if (/^s/i.test(a[2] || "")) { L.forEach(function (v) { P[v] = 28672; }); return []; }
+    return a[2] ? ["% Invalid input detected at '^' marker."] : ["% Incomplete command."];
+  }
+  return a[1] ? ["% Invalid input detected at '^' marker."] : ["% Incomplete command."];
+}
+/* show spanning-tree [vlan N]: per VLAN, the root, this bridge, and each port's role, state, cost and number */
+function stpShow(S, a) {
+  if (!S.live) return ["No spanning tree instance exists."];
+  let V = S.live("stpvlans") || [];
+  if (a.length) { if (!/^v/i.test(a[0])) return ["% Invalid input detected at '^' marker."]; const L = vlanList(a[1] || ""); if (!L) return a[1] ? ["% Invalid input detected at '^' marker."] : ["% Incomplete command."]; V = V.filter(function (v) { return L.indexOf(v) >= 0; }); if (!V.length) return ["Spanning tree instance(s) for vlan " + a[1] + " does not exist."]; }
+  const pad = function (x, n) { return (String(x) + " ".repeat(n)).slice(0, n); }, out = [], proto = S.sw.stp && S.sw.stp.mode === "pvst" ? "ieee" : "rstp";
+  V.forEach(function (v) {
+    const T = S.live("stp", v); if (!T || !T.result.bridges[T.me]) return;
+    const me = T.result.bridges[T.me], mine = T.ports.slice().sort(function (p, q) { return p.num - q.num; }).filter(function (q) { return T.result.roles[q.sw + " " + q.lp]; });
+    if (!mine.length) return;
+    const rp = mine.find(function (q) { return q.lp === me.rootPort; });
+    out.push("VLAN" + String(v).padStart(4, "0"), "  Spanning tree enabled protocol " + proto, "  Root ID    Priority    " + me.rootBid.prio, "             Address     " + me.rootBid.mac);
+    if (me.root === T.me) out.push("             This bridge is the root"); else out.push("             Cost        " + me.cost, "             Port        " + (rp ? rp.num + " (" + (rp.lp.indexOf("Po") === 0 ? "Port-channel" + rp.lp.slice(2) : rp.lp) + ")" : "-"));
+    out.push("             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec", "", "  Bridge ID  Priority    " + me.bid.prio + "  (priority " + (me.bid.prio - v) + " sys-id-ext " + v + ")", "             Address     " + me.bid.mac,
+      "             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec", "             Aging Time  300 sec", "", "Interface           Role Sts Cost      Prio.Nbr Type", "------------------- ---- --- --------- -------- --------------------------------");
+    mine.forEach(function (q) { const r = T.result.roles[q.sw + " " + q.lp]; out.push(pad(q.lp.indexOf("Po") === 0 ? q.lp : short(q.lp), 20) + r.role + " " + r.sts + " " + pad(q.cost, 10) + pad("128." + q.num, 9) + "P2p" + (r.edge ? " Edge" : "")); });
+    out.push("");
+  });
+  return out.length ? out : ["No spanning tree instance exists."];
 }
 /* show etherchannel summary: each port-channel, up in use (SU) with a member bundled, otherwise down (SD); each member flagged */
 function chanSummary(sw) {

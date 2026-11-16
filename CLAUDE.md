@@ -3436,11 +3436,27 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
     link): active with active or passive bundles, passive with passive never does, on bundles without asking (its far end,
     if LACP, stands alone), a member whose VLAN settings aren't the port-channel's or whose far end is another switch is
     suspended: line protocol down, and it carries nothing (`linkEdges`). `tests/campus-lag.test.js` (7).
-  - **Checks:** `tests/campus-l3.test.js` (6), `tests/campus-sim.test.js` (6), `tests/campus-lag.test.js` (7); `python3 tools/plants-campus-node.py` (in a
-    throwaway copy): 18 plants, all caught. Two missed at first: one hit only one of the two `ip routing` guards (re-aimed at
+  - **Spanning tree, rapid and per VLAN** (`js/net/stp.js`, pure; on both switch models: every switch runs it): per VLAN, each
+    group of switches joined in it elects the lowest bridge ID (priority plus the VLAN, then the address); root ports by the
+    lowest path cost (short method: 1 Gb/s 4, 100 Mb/s 19; a port-channel of two 3, of three or more 2), designated ports the
+    end nearer the root, every other port between switches an alternate, blocking; a port to anything that isn't a switch is
+    designated (an edge port with portfast). The simulation (`stpVlan`, `stpAll`, cached until a switch or cable changes)
+    leaves a blocked port's VLANs out of what it carries (`linkEdges`), but only where a loop is possible at all (`stpLoops`:
+    fewer than two switch-to-switch cables, or no group with more links than a tree, and nothing is worked out, so the office's
+    and the business's networks run exactly as before). Commands: `spanning-tree mode rapid-pvst|pvst`, `spanning-tree vlan
+    <list> priority <in 4096s>` (the real refusal listing the allowed values), `root primary` (24576, or 4096 under a lower root
+    it finds now) and `root secondary` (28672), `no spanning-tree vlan`; on a port `spanning-tree portfast` (with the real
+    warning), `bpduguard enable|disable`, `cost`; `show spanning-tree [vlan N]` in the real layout (root ID, "This bridge is the
+    root", bridge ID with its sys-id-ext, each port's role, state, cost, Prio.Nbr, P2p and Edge). BPDU guard after each change
+    (`bpduGuard`): a port with it on that hears another switch is err-disabled until it's shut and opened. The settings are made
+    only when used (`sw.stp`, `p.stp`), so saved switches read as before. A switch's console on the page gets `swLive` (its
+    tree, and the routes a protocol will learn). `tests/campus-stp.test.js` (7).
+  - **Checks:** `tests/campus-l3.test.js` (6), `tests/campus-sim.test.js` (6), `tests/campus-lag.test.js` (7), `tests/campus-stp.test.js` (7); `python3 tools/plants-campus-node.py` (in a
+    throwaway copy): 28 plants, all caught. Two missed at first: one hit only one of the two `ip routing` guards (re-aimed at
     both), and "a suspended member still carries frames" passed because the test's suspended member was an access port that
     couldn't carry the VLAN anyway (the test now suspends a trunk that still carries it). The existing suites run unchanged
-    against it (home, office, business command line, simulation and page, with the campus's: 219 of 219).
+    against it (home, office, business command line, simulation and page, with the campus's: 226 of 226). The business's
+    ticket tests ran within noise of the tickets branch on a loaded machine (time them again on an idle one before going live).
 
 ## Objectives
 

@@ -5,7 +5,8 @@
    Every change goes through apply(), so a ticket can be replayed exactly
    (progress is saved as the list of actions). */
 import { rng, hash, ip2n, n2ip, sameSubnet, isIp, isApipa, isPublic, isPrivate, isLoopback, broadcast, network, maskBits } from "./util.js";
-import { reload as reloadSwitch, duplexEnds, carries, ownAddrs, psRunOf, errDisabled, dotMac, l3Ifs, l3Route, chanState } from "./swcli.js";
+import { reload as reloadSwitch, duplexEnds, carries, ownAddrs, psRunOf, errDisabled, dotMac, l3Ifs, l3Route, chanState, portUp, PORT_NAMES as SW_PORTS } from "./swcli.js";
+import { solve as stpSolve, costOf as stpCost } from "./stp.js";
 import * as RT from "./rtcli.js";
 
 /* each radio has its own hardware address: the 5 GHz one is the next number up */
@@ -363,6 +364,7 @@ export class Sim {
   /* bridging devices pass frames between everything joined to them */
   edges() {
     const e = [], seen = new Set();
+    this._stpNow = this.stpLoops() ? this.stpAll() : null;
     for (const c0 of this.net.cables) {
       if (c0.kind === "coax" || c0.kind === "console" || !this.cableUp(c0)) continue;
       let c = c0;
@@ -389,8 +391,9 @@ export class Sim {
         if (x.sw.ports[swPort(end.port)] && x.sw.ports[swPort(end.port)].routed) return { u: this.l3Node(end.dev, swPort(end.port)), t: {} };   /* a layer 3 switch's routed port: untagged, to the port itself */
         if (x.sw.ports[swPort(end.port)] && x.sw.ports[swPort(end.port)].chan && chanState(Object.assign({}, x.sw, { links: this.switchLinks(end.dev) }), swPort(end.port)) === "s") return { u: null, t: {} };   /* suspended from its port-channel: it carries nothing */
         const fx = this.d[far.dev], fp = fx && fx.kind === "mswitch" ? fx.sw.ports[swPort(far.port)] : null, cr = carries(x.sw, swPort(end.port), fp && !fp.routed ? { mode: fp.mode, nonegotiate: fp.nonegotiate } : null), t = {};
-        cr.tagged.forEach(function (v) { t[v] = this.vnode(end.dev, v); }, this);
-        return { u: cr.untagged != null ? this.vnode(end.dev, cr.untagged) : null, t: t };
+        const blk = this.stpBlockedOn(end.dev, swPort(end.port)) || [];   /* spanning tree: an alternate port forwards nothing in its VLANs */
+        cr.tagged.forEach(function (v) { if (blk.indexOf(v) < 0) t[v] = this.vnode(end.dev, v); }, this);
+        return { u: cr.untagged != null && blk.indexOf(cr.untagged) < 0 ? this.vnode(end.dev, cr.untagged) : null, t: t };
       }
       if (x && x.kind === "bap") { const t = {}; (x.ssids || []).forEach(function (w) { if (w.vlan) t[w.vlan] = this.bapNode(end.dev, w.vlan); }, this); return { u: this.bapNode(end.dev, null), t: t }; }   /* its uplink: untagged for itself (and any network with no VLAN), each network's VLAN tagged */
       if (x && x.kind === "brouter") {   /* a routed port: untagged to the port itself (or its native subinterface), each subinterface's tag to that subinterface */
@@ -681,7 +684,7 @@ export class Sim {
   }
   /* after something changes physically, clients whose link came up ask again */
   relink(before) {
-    this.snoopTidy(); this.portSecurity();
+    this.snoopTidy(); this.portSecurity(); this.bpduGuard();
     /* a DHCP pool still being typed (a console in its dhcp-config mode): a device asks now and then, not on every line, so it doesn't
        catch the pool half made (its network typed, its default-router not yet: a lease with no gateway) */
     const cli = this.cli || {}, poolOpen = Object.keys(cli).some(function (k) { const st = cli[k]; return !!(st && st.S && st.S.mode === "dhcp"); });
@@ -767,6 +770,102 @@ export class Sim {
     const e = c.a.dev === "msw" ? c.a : c.b; if (!/^\d+$/.test(e.port)) return false;
     const n = swPort(e.port), p = this.d.msw.sw.ports[n], lk = this.switchLinks("msw")[n];
     return !!(p && lk && duplexEnds(p, lk).mismatch);
+  }
+
+  /* ------------------------------------------------------------ spanning tree (Level 4, the campus: stp.js) */
+  /* switch ports cabled to each other, with their links up: "dev|GigabitEthernet0/23" to { dev, port } */
+  switchPeers() {
+    const P = {};
+    for (const c0 of this.net.cables) {
+      if (c0.kind !== "cat6" && c0.kind !== "fibre") continue;
+      const c = c0.kind === "cat6" && this.panelEnd(c0) ? this.viaPanel(c0) : c0; if (!c || !this.cableUp(c0)) continue;
+      const A = this.d[c.a.dev], Bd = this.d[c.b.dev]; if (!A || !Bd || A.kind !== "mswitch" || Bd.kind !== "mswitch" || !this.on(c.a.dev) || !this.on(c.b.dev)) continue;
+      const pa = swPort(c.a.port), pb = swPort(c.b.port); P[c.a.dev + "|" + pa] = { dev: c.b.dev, port: pb }; P[c.b.dev + "|" + pb] = { dev: c.a.dev, port: pa };
+    }
+    return P;
+  }
+  /* could the switches make a loop at all (more links than a tree has, in any group of them)? If not, nothing ever blocks, and
+     the office's and the business's networks are worked out as they always were */
+  stpLoops() {
+    /* a loop needs two links between switches at least: count the cables that could be one (a switch at one end, a switch or a patch
+       panel at the other) before working anything out, so a network with one trunk costs nothing */
+    let k = 0; for (const c of this.net.cables) { const A = this.d[c.a.dev], Bd = this.d[c.b.dev]; if (!A || !Bd) continue; const sa = A.kind === "mswitch", sb = Bd.kind === "mswitch"; if ((sa && (sb || Bd.kind === "patchpanel")) || (sb && A.kind === "patchpanel")) k++; }
+    if (k < 2) return false;
+    const P = this.switchPeers(), adj = {}, seen = {};
+    Object.keys(P).forEach(function (k) { const a = k.split("|")[0], b = P[k].dev; (adj[a] = adj[a] || []).push(b); });
+    for (const s0 in adj) {
+      if (seen[s0]) continue; let nodes = 0, ends = 0; const q = [s0]; seen[s0] = true;
+      while (q.length) { const v = q.shift(); nodes++; ends += adj[v].length; adj[v].forEach(function (w) { if (!seen[w]) { seen[w] = true; q.push(w); } }); }
+      if (ends / 2 >= nodes) return true;
+    }
+    return false;
+  }
+  stpPrio(sw, v) { return sw.stp && sw.stp.prio && sw.stp.prio[v] != null ? sw.stp.prio[v] : 32768; }
+  /* one VLAN's spanning tree: every switch with the VLAN, every port of theirs that's up and carries it (a bundled port-channel
+     once), each with its cost, number, far end and whether it's an edge port. Worked out, never stored */
+  stpVlan(v, peers, views) {
+    const sws = {}, ports = [], byLp = {};
+    const lpOf = function (sw, view, n) { const p = sw.ports[n]; return p.chan && chanState(view, n) === "P" ? "Po" + p.chan.group : n; };
+    for (const id in this.d) {
+      const x = this.d[id]; if (x.kind !== "mswitch" || !this.on(id) || !x.sw.vlans || !x.sw.vlans[v]) continue;
+      const view = views[id]; sws[id] = { mac: x.sw.mac || x.mac, prio: this.stpPrio(x.sw, v) };
+      SW_PORTS.forEach(function (n) {
+        const p = x.sw.ports[n]; if (!p || p.routed || !portUp(view, n)) return;
+        const cs = p.chan ? chanState(view, n) : null; if (cs === "s" || cs === "D") return;
+        const cr = carries(view, n); if (cr.untagged !== v && cr.tagged.indexOf(v) < 0) return;
+        const lp = lpOf(x.sw, view, n), l = view.links[n] || {}, mbps = p.speed !== "auto" ? +p.speed : Math.min(+(l.max || 1000), l.speed && l.speed !== "auto" ? +l.speed : 1000);
+        const peer = peers[id + "|" + n]; let far = null;
+        if (peer && this.d[peer.dev].sw.vlans && this.d[peer.dev].sw.vlans[v]) { const fv = views[peer.dev], fp = this.d[peer.dev].sw.ports[peer.port], fc = carries(fv, peer.port); if (fp && !fp.routed && (fc.untagged === v || fc.tagged.indexOf(v) >= 0)) far = { sw: peer.dev, lp: lpOf(this.d[peer.dev].sw, fv, peer.port) }; }
+        const key = id + " " + lp;
+        if (byLp[key]) { byLp[key].mbps += mbps; byLp[key].members++; return; }
+        byLp[key] = { sw: id, lp: lp, num: lp.indexOf("Po") === 0 ? 100 + +lp.slice(2) : +n.split("/")[1], mbps: mbps, members: 1, far: far, edge: !!(p.stp && p.stp.portfast), fixed: p.stp && p.stp.cost };
+        ports.push(byLp[key]);
+      }, this);
+    }
+    ports.forEach(function (q) { q.cost = q.fixed || stpCost(q.mbps / (q.members || 1), q.lp.indexOf("Po") === 0 ? q.members : 1); });
+    return { sws: sws, ports: ports, result: stpSolve(sws, ports, v) };
+  }
+  /* every VLAN's, kept until a switch or a cable changes */
+  stpAll() {
+    const ids = Object.keys(this.d).filter(function (id) { return this.d[id].kind === "mswitch"; }, this);
+    const sig = JSON.stringify(ids.map(function (id) { const x = this.d[id]; return [id, this.on(id), x.sw.ports, x.sw.pcs, x.sw.stp, x.sw.vlans, x.sw.psRun, x.sfp]; }, this)) + JSON.stringify(this.net.cables);
+    if (this._stp && this._stp.sig === sig) return this._stp.all;
+    const peers = this.switchPeers(), views = {}, vl = {};
+    ids.forEach(function (id) { if (this.on(id)) { views[id] = Object.assign({}, this.d[id].sw, { links: this.switchLinks(id) }); Object.keys(this.d[id].sw.vlans || {}).forEach(function (k) { vl[k] = true; }); } }, this);
+    const all = {}; Object.keys(vl).map(Number).forEach(function (v) { all[v] = this.stpVlan(v, peers, views); }, this);
+    this._stp = { sig: sig, all: all }; return all;
+  }
+  /* the VLANs a switch port doesn't forward (an alternate port, blocking), only where a loop is possible at all */
+  stpBlockedOn(id, n) {
+    if (!this._stpNow) return null;
+    const x = this.d[id], p = x.sw.ports[n], lp = p && p.chan ? "Po" + p.chan.group : n, out = [];
+    for (const v in this._stpNow) { const r = this._stpNow[v].result.roles[id + " " + lp] || this._stpNow[v].result.roles[id + " " + n]; if (r && r.sts === "BLK") out.push(+v); }
+    return out;
+  }
+  /* BPDU guard after each change: a port with it on that hears another switch is shut down (err-disabled), until someone shuts it
+     and opens it again */
+  bpduGuard() {
+    let peers = null;
+    for (const id in this.d) {
+      const x = this.d[id]; if (x.kind !== "mswitch" || !this.on(id)) continue;
+      for (const n in x.sw.ports) {
+        const p = x.sw.ports[n]; if (!p.stp || !p.stp.bpduguard || p.shutdown) continue;
+        const run = psRunOf(x.sw, n); if (run.err) continue;
+        peers = peers || this.switchPeers(); const peer = peers[id + "|" + n]; if (!peer) continue;
+        const fp = this.d[peer.dev].sw.ports[peer.port]; if (!fp || fp.routed || fp.shutdown) continue;
+        run.err = true; run.why = "bpduguard";
+      }
+    }
+  }
+  /* what a switch's command line asks the network: its spanning tree for a VLAN, its routing protocol's routes */
+  swLive(id) {
+    const self = this;
+    return function (k, v) {
+      if (k === "stp") { const all = self.stpAll(); return all[v] ? { result: all[v].result, ports: all[v].ports.filter(function (q) { return q.sw === id; }), me: id } : null; }
+      if (k === "stpvlans") return Object.keys(self.stpAll()).map(Number).filter(function (w) { return self.d[id].sw.vlans[w]; });
+      if (k === "learned") return self.learned(id);
+      return null;
+    };
   }
 
   /* ------------------------------------------------------------ the layer 3 switches (Level 4, the campus: swcli.js, l3.js) */

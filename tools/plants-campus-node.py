@@ -2,7 +2,7 @@
 # Run it in a throwaway copy of the checkout, never in the real one:   python3 tools/plants-campus-node.py [name ...]
 import subprocess, shutil, sys, os
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-TESTS = ["tests/campus-l3.test.js", "tests/campus-sim.test.js", "tests/campus-lag.test.js"]
+TESTS = ["tests/campus-l3.test.js", "tests/campus-sim.test.js", "tests/campus-lag.test.js", "tests/campus-stp.test.js"]
 PLANTS = [
  ("a routed port still carries its VLANs", "js/net/swcli.js", '  if (sw.ports[n].routed) return { mode: "routed", untagged: null, tagged: [] };', ''),
  ("switchport settings accepted on a routed port", "js/net/swcli.js", 'S.ifs.some(function (n) { return !isSvi(n) && S.sw.ports[n].routed; })) return ["% Invalid input', 'false) return ["% Invalid input'),
@@ -22,6 +22,16 @@ PLANTS = [
  ("LACP: a member to another switch bundles", "js/net/swcli.js", '  if (first && first !== n && sw.links[first].farDev && l.farDev !== sw.links[first].farDev) return "s";', ''),
  ("LACP: the bandwidth counts every member, bundled or not", "js/net/swcli.js", 'const M = membersOf(sw, g), B = M.filter(function (n) { return chanState(sw, n) === "P"; }), up = B.length > 0;', 'const M = membersOf(sw, g), B = M, up = M.some(function (n) { return chanState(sw, n) === "P"; });'),
  ("LACP: interface port-channel reaches no member", "js/net/swcli.js", 'S.mode = "if"; S.po = f.po; S.ifs = membersOf(S.sw, f.po); return []; }', 'S.mode = "if"; S.po = f.po; S.ifs = []; return []; }'),
+ ("STP: the highest bridge ID made root", "js/net/stp.js", 'const cmpId = function (a, b) { return a.prio - b.prio || (a.mac < b.mac ? -1 : a.mac > b.mac ? 1 : 0); };', 'const cmpId = function (a, b) { return b.prio - a.prio || (a.mac < b.mac ? 1 : a.mac > b.mac ? -1 : 0); };'),
+ ("STP: a blocked port still forwards", "js/net/sim.js", '        const blk = this.stpBlockedOn(end.dev, swPort(end.port)) || [];', '        const blk = [];'),
+ ("STP: a port-channel's members each a port", "js/net/sim.js", 'const lpOf = function (sw, view, n) { const p = sw.ports[n]; return p.chan && chanState(view, n) === "P" ? "Po" + p.chan.group : n; };', 'const lpOf = function (sw, view, n) { return n; };'),
+ ("STP: root primary always 24576", "js/net/swcli.js", 'P[v] = !B || B.root === T.me || rp > 24576 ? 24576 : Math.max(0, rp - 4096);', 'P[v] = 24576;'),
+ ("STP: any priority taken", "js/net/swcli.js", 'if (n % 4096) return ["% Bridge Priority must be in increments of 4096.",', 'if (false) return ["% Bridge Priority must be in increments of 4096.",'),
+ ("STP: BPDU guard never shuts the port", "js/net/sim.js", '        run.err = true; run.why = "bpduguard";', '        run.why = "bpduguard";'),
+ ("STP: portfast never marks an edge port", "js/net/sim.js", 'edge: !!(p.stp && p.stp.portfast), fixed:', 'edge: false, fixed:'),
+ ("STP: never a loop, so nothing ever blocks", "js/net/sim.js", '      if (ends / 2 >= nodes) return true;', ''),
+ ("STP: the designated port the far end's when it shouldn't be", "js/net/stp.js", "    out.roles[key] = mine ? { role: \"Desg\", sts: \"FWD\" } : { role: \"Altn\", sts: \"BLK\" };", "    out.roles[key] = !mine ? { role: \"Desg\", sts: \"FWD\" } : { role: \"Altn\", sts: \"BLK\" };"),
+ ("STP: a bundle costs the same as one port", "js/net/stp.js", '  if (members && members > 1) return members >= 3 ? 2 : 3;', ''),
  ("LACP: a suspended member's line protocol shown up", "js/net/swcli.js", '  if (p.chan && chanState(sw, n) === "s") return ["up", "down"];   /* suspended from its port-channel */', ''),
 ]
 only = sys.argv[1:]

@@ -138,7 +138,7 @@ function tftpGetFrom(sim, sw) {
   };
 }
 /* a session on a switch or the business router: the callbacks it needs from the network */
-function opts(sim, tgt, via) { const o = { via: via, reach: reachFrom(sim, tgt), tftp: tftpFrom(sim, tgt), tftpGet: tftpGetFrom(sim, tgt) }; if (sim.d[tgt].kind === "brouter") o.live = sim.rtLive(tgt); return o; }
+function opts(sim, tgt, via) { const o = { via: via, reach: reachFrom(sim, tgt), tftp: tftpFrom(sim, tgt), tftpGet: tftpGetFrom(sim, tgt) }; if (sim.d[tgt].kind === "brouter") o.live = sim.rtLive(tgt); else if (sim.d[tgt].kind === "mswitch") o.live = sim.swLive(tgt); return o; }
 const sync = function (sim, id) { return sim.d[id].kind === "brouter" ? sim.syncRouter(id) : sim.syncSwitch(id); };
 const lines = function (L) { return L.length ? L.join("\n") + "\n" : ""; };
 /* no shutdown is answered before the links are worked out again, so a cabled port read as down: once they are, a port that

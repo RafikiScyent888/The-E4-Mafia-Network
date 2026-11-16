@@ -15,7 +15,8 @@ PAGE = [
  ("the map's small business site lists no tickets", "js/desk/left.js", ' || (s.id === "bakery" && isOpen(3))) {', ") {"),
  ("Mason never says SB-01's fix isn't saved", "js/tickets/business.js", "    if (!(st && st.access === S.id)) return \"It works right now, but the switch hasn't saved it:", "    if (false) return \"It works right now, but the switch hasn't saved it:"),
  ("Level 3 counts 1 tickets", "js/desk/levelsui.js", '" ticket" + (c.ntickets === 1 ? "" : "s")', '" tickets"'),
- ("Level 3 still says its work orders are on the way", "js/desk/levels.js", 'coming: "more tickets on the way" },', 'coming: "more work orders and its tickets on the way" },'),
+ ("Level 3 still says more tickets are on the way, all 15 built", "js/desk/levels.js", 'jobs: BUSINESS_JOBS.map(function (d) { return d.id; }) },', 'jobs: BUSINESS_JOBS.map(function (d) { return d.id; }), coming: "more tickets on the way" },'),
+ ("Level 3 still waiting for a 26th piece, so it can never be finished", "js/desk/levels.js", 'jobs: BUSINESS_JOBS.map(function (d) { return d.id; }) },', 'jobs: BUSINESS_JOBS.map(function (d) { return d.id; }), planned: 26 },'),
  ("the counter PC's port moved to the wrong port", "js/tickets/business.js", '["configure terminal", "interface gi0/1", "switchport access vlan " + V, "end"];', '["configure terminal", "interface gi0/2", "switchport access vlan " + V, "end"];'),
  ("a switch command over SSH never reaches the notebook", "js/tickets/business.js", 'const devOut = function (f) { return (f.cmd === "serial" || f.cmd === "ssh" || f.cmd === "telnet") && typeof f.out === "string" ? f.out : ""; };', 'const devOut = function (f) { return ""; };'),
 ]

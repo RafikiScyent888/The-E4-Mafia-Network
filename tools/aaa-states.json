@@ -1257,7 +1257,7 @@
   "after": "document.querySelector('#left [data-level=\"3\"]').click()"
  },
  {
-  "name": "levels: build, the small business's work orders (more on the way)",
+  "name": "levels: build, the small business's work orders (all built)",
   "page": "build.html",
   "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS[0].tickets.concat(L.LEVELS[1].tickets).map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS[0].jobs.concat(L.LEVELS[1].jobs).map(id=>[id,1]))})); window.__e4b.openJob('SB-J1',true,4242);})()"
  },

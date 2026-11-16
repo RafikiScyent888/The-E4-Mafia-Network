@@ -78,6 +78,20 @@ PLANTS = [
  ("CP-J2: the walk-through sets no secondary", "js/build/campus.js", '    [["dist1", "primary"], ["dist2", "secondary"]].forEach(function (d) {', '    [["dist1", "primary"]].forEach(function (d) {'),
  ("CP-J2: it starts from nothing done", "js/build/campus.js", '    for (const a of CJ1.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }', '    for (const a of []) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }'),
  ("CP-J2: a hint names a VLAN number", "js/build/campus.js", 'rung1: function () { return "show spanning-tree on distribution switch 1, VLAN by VLAN', 'rung1: function (v) { return v.plan.vlans.mgmt.id + " show spanning-tree on distribution switch 1, VLAN by VLAN'),
+ ("CP-J3: two separate trunks never named", "js/build/campus.js", 'const none = !all.some(function (q) { return q.chan; }), alone', 'const none = false, alone'),
+ ("CP-J3: one end bundled passes", "js/build/campus.js", ', alone = !none && E.some(function (e) { return !inCh(e).length; });', ', alone = false;'),
+ ("CP-J3: one link left out passes", "js/build/campus.js", '  const one = !none && !alone && E.find(', '  const one = false && E.find('),
+ ("CP-J3: passive with passive passes", "js/build/campus.js", ', passive = modes.length > 0 && modes.every(function (m) { return m === "passive"; });', ', passive = false;'),
+ ("CP-J3: on with LACP passes", "js/build/campus.js", '  const mixed = modes.indexOf("on") >= 0 && modes.some(function (m) { return m !== "on"; }),', '  const mixed = false,'),
+ ("CP-J3: a suspended member passes", "js/build/campus.js", '  const susp = all.find(function (q) { return q.st === "s"; }),', '  const susp = null,'),
+ ("CP-J3: a member down passes", "js/build/campus.js", ' down = all.find(function (q) { return q.st === "D"; }),', ' down = null,'),
+ ("CP-J3: forced on at both ends passes", "js/build/campus.js", ', on = modes.length > 0 && modes.every(function (m) { return m === "on"; });', ', on = false;'),
+ ("CP-J3: what the link carries never compared (both guards: what crosses, and the port-channel's list)", "js/build/campus.js", 'else if (want.some(function (x) { return (c.tagged || []).indexOf(x) < 0 && c.untagged !== x; }) || (o.allowed !== "all" && want.some(function (x) { return o.allowed.indexOf(x) < 0; }))) bad = { k: "allowed"', 'else if (false) bad = { k: "allowed"'),
+ ("CP-J3: the root never checked again", "js/build/campus.js", 'const rootKept = function (sim, v) { const r = rootCauses(sim, v), b = backupCauses(sim, v);', 'const rootKept = function (sim, v) { const r = [], b = [];'),
+ ("CP-J3: the walk-through bundles one end", "js/build/campus.js", '    ["dist1", "dist2"].forEach(function (d) { ["ssh " + p.user + "@" + p.sw[d].ip, p.userPw, "enable", p.secret, "configure terminal", "interface range gi0/21 - 22", "channel-group 1 mode active",', '    ["dist1"].forEach(function (d) { ["ssh " + p.user + "@" + p.sw[d].ip, p.userPw, "enable", p.secret, "configure terminal", "interface range gi0/21 - 22", "channel-group 1 mode active",'),
+ ("CP-J3: it starts from nothing done", "js/build/campus.js", '    for (const a of CJ2.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }', '    for (const a of []) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }'),
+ ("CP-J3: a hint names the native VLAN", "js/build/campus.js", 'rung1: function () { return "show interfaces trunk on both distribution switches', 'rung1: function (v) { return v.plan.vlans.native.id + " show interfaces trunk on both distribution switches'),
+ ("LACP: an allowed list typed on the port-channel never reaches its own record", "js/net/swcli.js", "    if (S.po && !bad.length) { const pc = pcOf(S.sw, S.po), cur = pc.allowed", "    if (false) { const pc = pcOf(S.sw, S.po), cur = pc.allowed"),
 ]
 only = sys.argv[1:]
 bad = 0

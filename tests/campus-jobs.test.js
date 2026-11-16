@@ -122,6 +122,8 @@ test("CP-J3: the tempting wrong ways each fail their own line for their own caus
     J = tryIt(def, s, sol.concat(on("dist1", ["interface gi0/22", "switchport trunk allowed vlan remove " + p.vlans.mgmt.id]))); assert.equal(cause(J, "bundle"), "susp", s + " a member changed on its own");
     J = tryIt(def, s, sol.concat(on("dist1", ["interface gi0/22", "shutdown"]))); assert.equal(cause(J, "bundle"), "down", s + " a member shut");
     J = tryIt(def, s, sol.concat(both(["interface port-channel 1", "switchport trunk allowed vlan " + p.vlans.svc.id]))); assert.ok(line(J, "bundle").ok); assert.equal(cause(J, "trunk"), "allowed", s + " the port-channel's list replaced");
+    const L = ["svc", "bench", "office", "servers", "printers", "mgmt"].map((k) => p.vlans[k].id).join(",");
+    J = tryIt(def, s, sol.concat(on("dist1", ["no spanning-tree vlan " + L]))); assert.equal(cause(J, "root"), "dist2", s + " distribution switch 1's priority taken off on the way");
     const saves = sol.map((a, i) => (a.line === "copy running-config startup-config" ? i : -1)).filter((i) => i >= 0);
     J = tryIt(def, s, sol.filter((a, i) => i !== saves[0] && i !== saves[0] + 1)); assert.equal(cause(J, "saved1"), "unsaved");
   }

@@ -1025,7 +1025,7 @@ const CJ7 = {
     { id: "online", text: "Both training PCs have addresses in the training network and reach the internet", causes: online4Causes,
       ok: function () { return "Both training PCs are online with addresses from the training pool."; },
       rung1: function () { return "ipconfig /all then ping 8.8.8.8 on each training PC; tracert if a ping fails."; },
-      rung2: function () { return "A PC with a 169.254 address asked and nobody answered: follow the request from the desk to the pool."; } },
+      rung2: function () { return "A PC that gave itself an automatic private (APIPA) address asked and nobody answered: follow the request from the desk to the pool."; } },
     { id: "fail", text: "If distribution switch 1 fails, the training floor stays online", causes: fail4Causes,
       ok: function () { return "With distribution switch 1 off, switch 2 answers the training gateway and the floor stays online."; },
       rung1: function () { return "Picture distribution switch 1 off: show standby brief and show interfaces trunk on distribution switch 2."; },

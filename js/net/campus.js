@@ -70,8 +70,12 @@ export function installCore(net, cable) {
     lines.push("interface range " + spare.map(function (k) { return "gi0/" + k; }).join(" , "), "shutdown", "exit");
     run(D[id].sw, lines); delete D[id].boxed;
   });
-  L.filter(cable || function () { return true; }).forEach(function (l) { net.cables.push({ id: l.id, kind: "cat6", a: { dev: l.a, port: l.ap, seated: true }, b: { dev: l.b, port: l.bp, seated: true }, cond: "good", length: 2 }); });
+  coreCables(net, cable);
   return L;
+}
+/* the core's links cabled (only those `cable` takes), each 2 m across the data room */
+export function coreCables(net, cable) {
+  coreLinks(net.plan).filter(cable || function () { return true; }).forEach(function (l) { if (!net.cables.some(function (c) { return c.id === l.id; })) net.cables.push({ id: l.id, kind: "cat6", a: { dev: l.a, port: l.ap, seated: true }, b: { dev: l.b, port: l.bp, seated: true }, cond: "good", length: 2 }); });
 }
 
 export function makeCampus(seed) {

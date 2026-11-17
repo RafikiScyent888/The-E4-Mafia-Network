@@ -126,7 +126,7 @@ PLANTS = [
  ("FAR: a switch port up while the far switch's port is shut", "js/net/sim.js", '      if (fd.kind === "mswitch") { const fp = fd.sw.ports[swPort(far.port)]; if (!fp || fp.shutdown || errDisabled(fd.sw, swPort(far.port))) continue; }', ""),
  ("FAR: a switch port up while the router's port is shut", "js/net/sim.js", '      if (fd.kind === "brouter") { const ph = RT_IF(far.port); if (!ph || fd.sw.ifs[ph].shutdown) continue; }', ""),
  ("CP-J5: the core never installed", "js/build/campus.js", '    const before = sim.links(); installCore(sim.net, function (l) { return l.b !== "dist2"; }); sim.relink(before);', "    const before = sim.links(); sim.relink(before);"),
- ("CP-J5: the installer's cables left out", "js/net/campus.js", '  L.filter(cable || function () { return true; }).forEach(function (l) { net.cables.push({ id: l.id, kind: "cat6",', '  [].forEach(function (l) { net.cables.push({ id: l.id, kind: "cat6",'),
+ ("CP-J5: the installer's cables left out", "js/net/campus.js", '  coreLinks(net.plan).filter(cable || function () { return true; }).forEach(function (l) {', '  [].forEach(function (l) {'),
  ("CP-J5: the edge router's end at the wrong address passes", "js/build/campus.js", '  return [C("eaddr", !e.a || e.a.ip !== bad.ia || e.a.mask !== bad.mask,', '  return [C("eaddr", false,'),
  ("CP-J5: switch 1's ends left switch ports pass", "js/build/campus.js", '  return [C("trunk", !k.p.routed, "Distribution switch 1\'s link to "', '  return [C("trunk", false, "Distribution switch 1\'s link to "'),
  ("CP-J5: a router without OSPF passes", "js/build/campus.js", '  return [C("proc", !!noProc,', '  return [C("proc", false,'),

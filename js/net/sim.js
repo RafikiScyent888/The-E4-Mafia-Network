@@ -1045,8 +1045,8 @@ export class Sim {
     while (routers < 16) {
       if (seen.indexOf(cur) >= 0) return Object.assign({ fail: "no-reply", hops: hops.slice(), why: "loop", routers: routers }, base);   /* round in a circle until the TTL runs out */
       seen.push(cur); routers++;
-      const V = this.l3View(cur), mine = l3Ifs(V).find(function (f) { return f.up && f.ip === dst; });
-      if (mine) {   /* one of this switch's own addresses */
+      const V = this.l3View(cur), mine = l3Ifs(V).find(function (f) { return f.up && f.ip === dst; }) || (this.hsrpVips(cur).some(function (o) { return o.vip === dst; }) ? { vip: true } : null);
+      if (mine) {   /* one of this switch's own addresses, or a virtual address it's active for (the active router answers there too) */
         if (routers > 1 && !oneWay) { const r = this.routeFromL3(cur, a.ip, proto, true); if (r.fail || !(r.local || r.routed)) return Object.assign({ fail: "no-reply", hops: hops.slice(), why: "no way back", routers: routers }, base); }
         return Object.assign(routers === 1 ? { local: true } : { routed: true }, { owner: [cur], next: dst, hops: hops.concat(routers === 1 ? [] : [dst]), routers: routers - 1 }, base);
       }

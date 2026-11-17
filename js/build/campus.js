@@ -1,7 +1,7 @@
 /* Level 4 build mode: the campus's work orders (Rafiki's HQ; the plan approved 16 November 2026: "Yes to the level 4 plans,
    build it out"). Each starts from the campus as the one before it left it. Every line is an ordered list of causes, as on
    the other levels: the first one really there is what the check saw, everything before it is ruled out by the network. */
-import { makeCampus, coreLinks, installCore } from "../net/campus.js";
+import { makeCampus, coreLinks, installCore, coreCables } from "../net/campus.js";
 import { Sim } from "../net/sim.js";
 import { errDisabled, dotMac, unsaved, chanState, carries, l3Ifs, l3Route } from "../net/swcli.js";
 import * as RT from "../net/rtcli.js";
@@ -479,8 +479,8 @@ function distEndCauses(sim, v) {
 }
 /* OSPF on each link: both ends running it, the link in it at both ends, neither passive, the same area, the same MTU: FULL */
 const runsOspf = function (sim, id) { const w = sim.d[id].sw; return !!w.ospf && (id === "edge" || !!w.routing); };
-function nbrCauses(sim, v) {
-  const R = sim.ospfAll(), L = CORE5(v.plan);
+const nbrCausesFor = function (pick) { return function (sim, v) {
+  const R = sim.ospfAll(), L = pick(v.plan);
   const ofIf = function (id, n) { const r = R.routers[id]; return r ? r.ifs.find(function (f) { return f.name === n; }) : null; };
   const full = function (l) { const A = endOf(l, l.a), Bn = endOf(l, l.b); return (R.nbrs[l.a] || []).some(function (x) { return x.ip === Bn.ip && /^FULL/.test(x.state); }) && (R.nbrs[l.b] || []).some(function (x) { return x.ip === A.ip && /^FULL/.test(x.state); }); };
   const l = L.find(function (k) { return !full(k); }) || L[0], ends = [l.a, l.b].map(function (id) { const e = endOf(l, id), n = ifName(id, e.port); return { id: id, n: n, g: gi(n), f: ofIf(id, n) }; });
@@ -492,7 +492,8 @@ function nbrCauses(sim, v) {
     C("area", !!both && !pas && ends[0].f.area !== ends[1].f.area, link + " have the link in different areas", "Both ends in area 0.", both ? "show ip ospf interface brief on each: area " + ends[0].f.area + " and " + ends[1].f.area + "." : ""),
     C("mtu", !!both && !pas && ends[0].f.area === ends[1].f.area && (ends[0].f.mtu || 1500) !== (ends[1].f.mtu || 1500), link + " disagree about the link's MTU: they hear each other but never get past EXSTART", "Both ends the same MTU.", "show ip ospf neighbor: EXSTART."),
     C("nofull", !noProc && !noNet && !pas && !(both && (ends[0].f.area !== ends[1].f.area || (ends[0].f.mtu || 1500) !== (ends[1].f.mtu || 1500))) && !full(l), link + " aren't neighbours across their link", "Every pair is FULL.", "show ip ospf neighbor on " + sayOf(sim, l.a) + ".")];
-}
+}; };
+const nbrCauses = nbrCausesFor(CORE5);
 /* distribution switch 1 advertises every VLAN in use, hello only where there's a router; the provider's side out of OSPF */
 function passiveCauses(sim, v) {
   const p = v.plan, R = sim.ospfAll(), D = R.routers.dist1, E = R.routers.edge;
@@ -667,4 +668,171 @@ const CJ5 = {
   summary() { return ["OSPF runs across the core: the edge router, both core switches and distribution switch 1 are neighbours on every link.", "The edge router hands its default route to OSPF; every VLAN in use comes back to it through both core switches, at the same cost, so either can fail.", "The static routes and the old direct link are retired: nothing is held up by hand any more."]; }
 };
 
-export const CAMPUS_JOBS = [CJ1, CJ2, CJ3, CJ4, CJ5];
+/* ------------------------------------------------------------ CP-J6, the virtual gateway: distribution switch 2 joins */
+const CORE6 = function (p) { return coreLinks(p).filter(function (l) { return l.b === "dist2"; }); };
+/* on every VLAN in use: distribution switch 1 the second address, distribution switch 2 the third, the gateway (the first) shared */
+const ownAt = function (p, k, id) { return p.vlans[k].gw.replace(/\.1$/, id === "dist1" ? ".2" : ".3"); };
+const sviOf = function (sim, id, p, k) { return (sim.d[id].sw.svis || {})[p.vlans[k].id] || null; };
+const sviUpOn = function (sim, id, p, k) { return l3Ifs(sim.l3View(id)).some(function (f) { return f.name === "Vlan" + p.vlans[k].id && f.up; }); };
+function join2Causes(sim, v) {
+  const p = v.plan, w = sim.d.dist2.sw, ifs = l3Ifs(sim.l3View("dist2")), L = CORE6(p);
+  const look = function (l) { const n = "GigabitEthernet0/" + l.bp, q = w.ports[n], f = ifs.find(function (x) { return x.name === n; }); return { n: n, p: q, f: f }; };
+  const bad = L.find(function (l) { const k = look(l); return !k.p.routed || k.p.ip !== l.ib || k.p.mask !== l.mask || !k.f || !k.f.up; }) || L[0], k = look(bad), g = gi(k.n), to = sayOf(sim, bad.a);
+  return [C("off", !w.routing, "Distribution switch 2 doesn't route: ip routing is off", "It routes.", "show ip route on distribution switch 2: Default gateway is ..., no routing table."),
+    C("trunk", !k.p.routed, "Distribution switch 2's link to " + to + " (" + g + ") is still a switch port: it can't take an address", "Both its links to the core are routed ports.", "show running-config on distribution switch 2: interface " + k.n + " has no \"no switchport\"."),
+    C("daddr", !!k.p.routed && (k.p.ip !== bad.ib || k.p.mask !== bad.mask), "Distribution switch 2's link to " + to + " (" + g + ") isn't on the records' address and mask (the end further from the provider takes the second usable address)", "Both have the records' addresses.", "show ip interface brief on distribution switch 2: " + g + " " + (k.p.ip || "unassigned") + "."),
+    C("dshut", !!k.p.routed && !!k.p.shutdown, "Distribution switch 2's link to " + to + " (" + g + ") is shut down", "Both are up.", "show ip interface brief on distribution switch 2: " + g + " administratively down."),
+    C("ddown", !!k.p.routed && !k.p.shutdown && !!k.f && !k.f.up, "Distribution switch 2's link to " + to + " (" + g + ") is down", "Both are up.", "show ip interface brief on distribution switch 2: " + g + " down.")];
+}
+function passive2Causes(sim, v) {
+  const p = v.plan, D = sim.ospfAll().routers.dist2, inO = function (k) { return D && D.ifs.find(function (f) { return f.name === "Vlan" + p.vlans[k].id; }); };
+  const noadv = USED.find(function (k) { return !inO(k); }), hello = USED.find(function (k) { const f = inO(k); return f && !f.passive; });
+  return [C("noadv", !!noadv, "VLAN " + (noadv ? p.vlans[noadv].id + " (" + p.vlans[noadv].name + ")" : "") + " isn't in OSPF on distribution switch 2: if it's the one answering, the core can't send replies back through it", "Every VLAN in use is in OSPF on it.", noadv ? "show ip ospf interface brief on distribution switch 2: Vlan" + p.vlans[noadv].id + " missing." : ""),
+    C("hello", !!hello, "VLAN " + (hello ? p.vlans[hello].id : "") + "'s interface on distribution switch 2 sends OSPF hellos to the desks", "Its VLAN interfaces are passive.", hello ? "show ip protocols on distribution switch 2: Vlan" + p.vlans[hello].id + " isn't among the passive interfaces." : "")];
+}
+function svi2Causes(sim, v) {
+  const p = v.plan, k = USED.find(function (x) { const r = sviOf(sim, "dist2", p, x); return !r || r.ip !== ownAt(p, x, "dist2") || r.mask !== p.mask || r.shutdown || !sviUpOn(sim, "dist2", p, x); }), r = k ? sviOf(sim, "dist2", p, k) : null, V = k ? p.vlans[k] : null;
+  const at = V ? "show ip interface brief on distribution switch 2: Vlan" + V.id : "";
+  return [C("none", !!k && !r, "VLAN " + (V ? V.id + " (" + V.name + ")" : "") + " has no interface on distribution switch 2: it can't stand in for that gateway", "Every VLAN in use has its interface there.", at + " missing."),
+    C("addr", !!r && r.ip !== ownAt(p, k, "dist2"), "VLAN " + (V ? V.id : "") + "'s interface on distribution switch 2 isn't on its own address (the records give it the third)", "Each is on its own address.", at + " " + (r && r.ip || "unassigned") + "."),
+    C("mask", !!r && r.ip === ownAt(p, k, "dist2") && r.mask !== p.mask, "VLAN " + (V ? V.id : "") + "'s interface on distribution switch 2 has the wrong mask", "Each has its network's mask.", r ? "show running-config on distribution switch 2: interface Vlan" + V.id + ", ip address " + r.ip + " " + r.mask + "." : ""),
+    C("shut", !!r && r.ip === ownAt(p, k, "dist2") && r.mask === p.mask && !!r.shutdown, "VLAN " + (V ? V.id : "") + "'s interface on distribution switch 2 is shut down", "Each is up.", at + " administratively down."),
+    C("down", !!r && !r.shutdown && r.ip === ownAt(p, k, "dist2") && r.mask === p.mask && !sviUpOn(sim, "dist2", p, k), "VLAN " + (V ? V.id : "") + "'s interface on distribution switch 2 is down", "Each is up.", at + " up/down.")];
+}
+function own1Causes(sim, v) {
+  const p = v.plan, k = USED.find(function (x) { const r = sviOf(sim, "dist1", p, x); return !r || r.ip !== ownAt(p, x, "dist1") || r.mask !== p.mask; }), r = k ? sviOf(sim, "dist1", p, k) : null, V = k ? p.vlans[k] : null;
+  return [C("still", !!r && r.ip === V.gw, "VLAN " + (V ? V.id : "") + "'s gateway address is still distribution switch 1's own interface address: there's nothing for the two switches to share", "Each of its VLAN interfaces is on its own address; the gateway belongs to the group.", "show ip interface brief on distribution switch 1: Vlan" + (V ? V.id : "") + " " + (r ? r.ip : "") + "."),
+    C("addr", !!k && !(r && r.ip === V.gw), "VLAN " + (V ? V.id : "") + "'s interface on distribution switch 1 isn't on its own address (the records give it the second)", "Each is on its own address.", "show ip interface brief on distribution switch 1: Vlan" + (V ? V.id : "") + " " + (r && r.ip || "unassigned") + ".")];
+}
+/* each VLAN in use: one standby group the two share, its virtual address the gateway */
+const sbOf = function (sim, id, p, k) { const r = sviOf(sim, id, p, k); return (r && r.standby) || {}; };
+function groupCauses(sim, v) {
+  const p = v.plan, rows = USED.map(function (k) { const a = sbOf(sim, "dist1", p, k), b = sbOf(sim, "dist2", p, k), both = Object.keys(a).filter(function (g) { return b[g]; }); return { k: k, a: a, b: b, both: both, V: p.vlans[k] }; });
+  const none1 = rows.find(function (r) { return !Object.keys(r.a).length; }), none2 = rows.find(function (r) { return !Object.keys(r.b).length; });
+  const split = rows.find(function (r) { return Object.keys(r.a).length && Object.keys(r.b).length && !r.both.length; });
+  const vip = rows.find(function (r) { return r.both.length && r.both.some(function (g) { return r.a[g].ip !== r.V.gw || r.b[g].ip !== r.V.gw; }); });
+  const grp = rows.find(function (r) { return r.both.length && r.both.indexOf(String(r.V.id)) < 0; });
+  const nm = function (r) { return r ? "VLAN " + r.V.id : ""; };
+  return [C("none1", !!none1, nm(none1) + " has no standby group on distribution switch 1", "Both switches have a group on every VLAN in use.", none1 ? "show standby brief on distribution switch 1: Vl" + none1.V.id + " missing." : ""),
+    C("none2", !none1 && !!none2, nm(none2) + " has no standby group on distribution switch 2: if switch 1 goes, nothing answers for the gateway", "Both switches have a group on every VLAN in use.", none2 ? "show standby brief on distribution switch 2: Vl" + none2.V.id + " missing." : ""),
+    C("split", !!split, nm(split) + "'s groups have different numbers on the two switches: two groups, each with one member, both active, both answering for the address", "The two switches share one group per VLAN.", split ? "show standby brief on each: Vl" + split.V.id + ", two different groups, both Active." : ""),
+    C("vip", !split && !!vip, nm(vip) + "'s virtual address isn't the gateway its devices use, on " + (vip && vip.both.some(function (g) { return vip.a[g].ip !== vip.V.gw; }) ? "distribution switch 1" : "distribution switch 2"), "Each group's virtual address is its VLAN's gateway, on both switches.", vip ? "show standby brief: Vl" + vip.V.id + "'s virtual IP." : ""),
+    C("grp", !split && !vip && !!grp, nm(grp) + "'s group number isn't its VLAN's number, as the records keep them", "Each group is numbered for its VLAN.", grp ? "show standby brief: Vl" + grp.V.id + ", group " + grp.both[0] + "." : "")];
+}
+/* the group's state as it runs: per VLAN in use, who's active */
+const groupState = function (s2, p, k) { const S = s2.hsrpState(), key = Object.keys(S).find(function (x) { return S[x].members.some(function (m) { return m.id === "dist1" && m.iface === "Vlan" + p.vlans[k].id; }) || S[x].members.some(function (m) { return m.id === "dist2" && m.iface === "Vlan" + p.vlans[k].id; }); }); return key ? S[key] : null; };
+/* a copy of the network to try a failure on: a check never changes the real one */
+const copyOf = function (sim) { return new Sim(JSON.parse(JSON.stringify(sim.net))); };
+const power = function (s2, id, on) { const b4 = s2.links(); s2.net.devices[id].on = on; s2.relink(b4); };
+function activeCauses(sim, v) {
+  const p = v.plan, st = USED.map(function (k) { return { k: k, q: groupState(sim, p, k) }; });
+  const two = st.find(function (r) { return r.q && r.q.active && r.q.active.id === "dist2"; }), none = st.find(function (r) { return !r.q || !r.q.active; });
+  let back = null;
+  if (!two && !none) { const s2 = copyOf(sim); power(s2, "dist1", false); power(s2, "dist1", true); back = USED.find(function (k) { const q = groupState(s2, p, k); return !q || !q.active || q.active.id !== "dist1"; }) || null; }
+  const nm = function (k) { return k ? "VLAN " + p.vlans[k].id : ""; };
+  return [C("none", !!none, (none ? nm(none.k) : "A VLAN") + "'s group has nobody active", "Every group has an active switch.", none ? "show standby brief: Vl" + p.vlans[none.k].id + "." : ""),
+    C("dist2", !none && !!two, "Distribution switch 2 is active for " + (two ? nm(two.k) : "a VLAN") + ": the gateway sits on the switch spanning tree doesn't send that VLAN to, so its traffic crosses between them", "Distribution switch 1 is active for every group.", two ? "show standby brief on distribution switch 1: Vl" + p.vlans[two.k].id + " Standby, active " + (two.q.active.ip || "") + "." : ""),
+    C("nopre", !!back, "Distribution switch 1 is active now, but after a restart it stays standby for " + nm(back) + ": it never takes back over", "It takes back over (preempt).", back ? "show standby brief on distribution switch 1: Vl" + p.vlans[back].id + ", no P beside its priority." : "")];
+}
+/* distribution switch 1 fails (on a copy): distribution switch 2 takes every gateway, every PC stays online and still gets an address */
+function failCauses(sim, v) {
+  const p = v.plan, s2 = copyOf(sim); power(s2, "dist1", false);
+  const gone = USED.find(function (k) { const q = groupState(s2, p, k); return !q || !q.active; }), wrong = USED.find(function (k) { const q = groupState(s2, p, k); return q && q.active && q.vip !== p.vlans[k].gw; });
+  const off = CAMPUS_PCS.find(function (id) { return !s2.route(id, "8.8.8.8").internet; });
+  const lease = DHCPV.find(function (x) { s2.release(x[1]); return s2.dhcp(x[1], "renew").result !== "lease"; });
+  const nm = function (k) { return k ? "VLAN " + p.vlans[k].id : ""; };
+  return [C("gone", !!gone, "With distribution switch 1 off, nothing answers for " + nm(gone) + "'s gateway", "Distribution switch 2 takes over every gateway.", gone ? "Power distribution switch 1 off, then show standby brief on distribution switch 2: Vl" + p.vlans[gone].id + " missing or not Active." : ""),
+    C("vip", !gone && !!wrong, "With distribution switch 1 off, distribution switch 2 takes over " + nm(wrong) + " but answers at a different address from the gateway its devices use", "It answers at each VLAN's gateway.", wrong ? "show standby brief on distribution switch 2: Vl" + p.vlans[wrong].id + "'s virtual IP." : ""),
+    C("out", !gone && !wrong && !!off, "With distribution switch 1 off, the " + (off ? name(sim, off) : "") + " reaches its gateway but not the internet: distribution switch 2 has no way out, or nothing knows the way back through it", "Every PC stays online.", off ? "Power distribution switch 1 off, then tracert -d 8.8.8.8 from the " + name(sim, off) + "." : ""),
+    C("relay", !gone && !wrong && !off && !!lease, "With distribution switch 1 off, a PC in VLAN " + (lease ? p.vlans[lease[0]].id : "") + " that asks for an address gets none: distribution switch 2 doesn't relay", "Distribution switch 2 relays as switch 1 does.", lease ? "show running-config on distribution switch 2: interface Vlan" + p.vlans[lease[0]].id + " has no ip helper-address." : "")];
+}
+function saved6Causes(sim) { return ["dist1", "dist2"].map(function (id) { return C("unsaved-" + id, unsaved(sim.d[id].sw), Cap(said(sim, id)) + " hasn't been saved: a power cut takes the changes away", "Both are saved.", "show startup-config on " + said(sim, id) + ": it's not what's running."); }); }
+
+const CJ6 = {
+  id: "CP-J6", level: "campus", title: "The virtual gateway: distribution switch 2 joins, every gateway shared by standby",
+  already: ["works", "saved"],
+  start(seed) {
+    const b = CJ5.start(seed), sim = b.sim;
+    for (const a of CJ5.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    const before = sim.links(); coreCables(sim.net, function (l) { return l.b === "dist2"; }); sim.relink(before);   /* this morning: distribution switch 2's links to the core cabled */
+    sim.cli = {};
+    return { sim: sim, v: Object.assign({}, b.v, { runs: sim.net.extra.runs || 0 }) };
+  },
+  brief() { return { quote: "Distribution switch 1 is every network's gateway now, and that's the trouble: if it dies, every floor goes with it. Distribution switch 2 is sitting right next to it doing nothing clever. Its links to the core were cabled this morning: bring it into the routing, give it a leg on every network, and have the two share each gateway so a PC never notices which one answers. Switch 1 carries the load day to day.", from: "Rafiki, owner" }; },
+  mason: "Move each gateway address into its group on distribution switch 1 first, so it's active before distribution switch 2 joins. Then prove the whole point of the job: what happens when distribution switch 1 goes away?",
+  limits: function (v) {
+    const p = v.plan, L = CORE6(p), lab = function (id, port) { return (id === "core1" ? "core switch 1" : id === "core2" ? "core switch 2" : "distribution switch 2") + " port " + port; };
+    return ["Distribution switch 2's links to the core, from the records: " + L.map(function (l) { return lab(l.a, l.ap) + " to " + lab(l.b, l.bp) + ", " + l.cidr; }).join("; ") + " (the core's end the first usable address, distribution switch 2's the second). Cabled this morning.",
+      "On every VLAN in use, distribution switch 1's interface takes the network's second address and distribution switch 2's the third; the gateway the devices already use, the first, becomes the standby group's virtual address. Each VLAN's group is numbered for its VLAN. On the management VLAN that makes the switches' own addresses " + p.sw.dist1.ip + " and " + p.sw.dist2.ip + ".",
+      "Distribution switch 1 is active: priority 110, and preempt, so it takes back over after a restart. Distribution switch 2 is standby at the default priority.",
+      "Distribution switch 2 joins OSPF as distribution switch 1 did: area 0, every VLAN in use advertised, its VLAN interfaces passive. It relays the " + DHCPV.map(function (x) { return p.vlans[x[0]].name; }).join(", ") + " VLANs' DHCP requests to the same edge router address as switch 1.",
+      "Your laptop's console cable reaches anything in the data room. Console password: " + p.console + ". Enable secret: " + p.secret + "."];
+  },
+  reqs: [
+    { id: "join", text: "Distribution switch 2 routes, its two links to the core routed and up on the records' addresses", causes: join2Causes,
+      ok: function () { return "Distribution switch 2 routes; both its links to the core are routed ports with the records' addresses, up."; },
+      rung1: function () { return "show ip route and show ip interface brief on distribution switch 2."; },
+      rung2: function () { return "A layer 3 switch only routes once it's told to, and an address goes on a routed port, never on a switch port."; } },
+    { id: "ospf", text: "Distribution switch 2 is an OSPF neighbour of both core switches", causes: nbrCausesFor(CORE6),
+      ok: function () { return "Both of distribution switch 2's links to the core have a FULL neighbour at each end."; },
+      rung1: function () { return "show ip ospf neighbor on distribution switch 2 and on each core switch."; },
+      rung2: function () { return "Two routers become neighbours only if both say hello on the link and agree about it: the same area, subnet and mask, the same MTU."; } },
+    { id: "passive", text: "Distribution switch 2 advertises every VLAN in use, passive on each", causes: passive2Causes,
+      ok: function () { return "Distribution switch 2 advertises every VLAN in use without saying hello to the desks."; },
+      rung1: function () { return "show ip protocols and show ip ospf interface brief on distribution switch 2."; },
+      rung2: function () { return "Whichever switch answers for a gateway, the replies come back to the networks it advertises."; } },
+    { id: "svis2", text: "Distribution switch 2 has its own interface on every VLAN in use, up", causes: svi2Causes,
+      ok: function () { return "Distribution switch 2 has an interface on every VLAN in use, on its own address, up."; },
+      rung1: function () { return "show ip interface brief on distribution switch 2."; },
+      rung2: function () { return "A switch can only stand in for a gateway on a network it has an interface in."; } },
+    { id: "own1", text: "Distribution switch 1's VLAN interfaces are on their own addresses: each gateway address belongs to its group", causes: own1Causes,
+      ok: function () { return "Distribution switch 1's VLAN interfaces are on their own addresses."; },
+      rung1: function () { return "show ip interface brief on distribution switch 1, against the records."; },
+      rung2: function () { return "A virtual address is nobody's own: each switch keeps an address of its own on the network, and the group answers at the shared one."; } },
+    { id: "groups", text: "Every VLAN in use has one standby group across both switches, its virtual address the gateway the devices use", causes: groupCauses,
+      ok: function () { return "Each VLAN in use has one group, numbered for it, on both switches, its virtual address the VLAN's gateway."; },
+      rung1: function () { return "show standby brief on both distribution switches, side by side."; },
+      rung2: function () { return "Two switches share a gateway only in the same group: the number has to match, and so does the address they answer at."; } },
+    { id: "active", text: "Distribution switch 1 is active for every group, and takes back over after a restart", causes: activeCauses,
+      ok: function () { return "Distribution switch 1 is active for every group, with preempt, distribution switch 2 standby."; },
+      rung1: function () { return "show standby brief on distribution switch 1: the state, the priority, and the P beside it."; },
+      rung2: function () { return "The higher priority wins an election, then a tie goes to the higher address; but a switch that comes back only takes over again if preempt lets it."; } },
+    { id: "fail", text: "If distribution switch 1 fails, every PC stays online through distribution switch 2, and still gets an address", causes: failCauses,
+      ok: function () { return "With distribution switch 1 off, distribution switch 2 answers every gateway, every PC stays online, and DHCP is still relayed."; },
+      rung1: function () { return "Picture distribution switch 1 switched off: show standby brief, show ip route and the VLAN interfaces' lines on distribution switch 2."; },
+      rung2: function () { return "The standby switch has to be able to do everything the active one does: answer at the address, route the traffic out and back, and relay the requests."; } },
+    { id: "works", text: "Everyone still works: every PC online, both printers and every switch answering", causes: reachCauses,
+      ok: function () { return "Every PC is online; both printers and every switch answer."; },
+      rung1: function () { return "ping 8.8.8.8 from each PC; the printers and the switches from the service desk."; },
+      rung2: function () { return "The devices keep the gateway they have: whatever answers at that address is their router."; } },
+    { id: "saved", text: "Both distribution switches are saved", causes: saved6Causes,
+      ok: function () { return "Both are saved."; }, rung1: function () { return "show startup-config against show running-config on each."; }, rung2: function () { return "Only what's saved survives a power cut."; } }
+  ],
+  solve(v, sim) {
+    const p = v.plan, L = CORE6(p), relay = coreLinks(p)[0].ia, b = p.vlans.svc.net.split(".")[1], out = [], c = function (l) { out.push({ t: "cmd", dev: "tech", line: l, cli: true }); }, n = sim ? sim.net.extra.runs || 0 : v.runs || 0;
+    const login = function () { [""].concat([p.console, "enable", p.secret, "configure terminal"]).forEach(c); };
+    const save = function () { c("end"); c("copy running-config startup-config"); c(""); };
+    /* distribution switch 1 first: each gateway into its group, switch 1 active before switch 2 joins */
+    out.push({ t: "lay", a: { dev: "tech", port: "USB-C" }, b: { dev: "dist1", port: "CONSOLE" } }); login();
+    USED.forEach(function (k) { const V = p.vlans[k]; c("interface vlan " + V.id); c("ip address " + ownAt(p, k, "dist1") + " " + p.mask); c("standby " + V.id + " ip " + V.gw); c("standby " + V.id + " priority 110"); c("standby " + V.id + " preempt"); c("exit"); });
+    save();
+    /* distribution switch 2: routing, its links to the core, OSPF, a leg on every VLAN in the groups, the relay */
+    out.push({ t: "pull", cable: "c-console-" + (n + 1) }, { t: "lay", a: { dev: "tech", port: "USB-C" }, b: { dev: "dist2", port: "CONSOLE" } }); login();
+    c("ip routing");
+    L.forEach(function (l) { c("interface gi0/" + l.bp); c("no switchport"); c("ip address " + l.ib + " " + l.mask); c("no shutdown"); c("exit"); });
+    c("router ospf 1"); c("network 10." + b + ".0.0 0.0.255.255 area 0"); c("passive-interface default"); L.forEach(function (l) { c("no passive-interface gi0/" + l.bp); }); c("exit");
+    USED.forEach(function (k) { const V = p.vlans[k]; c("interface vlan " + V.id); if (k !== "mgmt") c("ip address " + ownAt(p, k, "dist2") + " " + p.mask); if (DHCPV.some(function (x) { return x[0] === k; })) c("ip helper-address " + relay); c("standby " + V.id + " ip " + V.gw); c("no shutdown"); c("exit"); });
+    save();
+    out.push({ t: "pull", cable: "c-console-" + (n + 2) });
+    return out;
+  },
+  answer(v) {
+    const p = v.plan, L = CORE6(p), b = p.vlans.svc.net.split(".")[1];
+    return ["Console into distribution switch 1: on each VLAN interface in use, ip address <the second address>, standby <the VLAN's number> ip <the gateway>, standby <number> priority 110, standby <number> preempt; save.",
+      "Console into distribution switch 2: ip routing; ports " + L.map(function (l) { return l.bp + " (no switchport, ip address " + l.ib + " " + l.mask + ")"; }).join(" and ") + "; router ospf 1, network 10." + b + ".0.0 0.0.255.255 area 0, passive-interface default, no passive-interface on the two links; on each VLAN in use an interface at the third address (the management VLAN's keeps " + p.sw.dist2.ip + "), standby <number> ip <the gateway>, the pooled VLANs with ip helper-address " + coreLinks(p)[0].ia + "; save.",
+      "Then show standby brief on both: switch 1 Active, switch 2 Standby, every group."];
+  },
+  summary() { return ["Distribution switch 2 is in OSPF beside switch 1, with an interface on every VLAN in use.", "Each VLAN's gateway is a standby group's virtual address: distribution switch 1 answers day to day, the same switch spanning tree sends everything to; distribution switch 2 stands by.", "If switch 1 fails, switch 2 takes every gateway, routes the traffic and relays DHCP; when switch 1 comes back, it takes over again."]; }
+};
+
+export const CAMPUS_JOBS = [CJ1, CJ2, CJ3, CJ4, CJ5, CJ6];

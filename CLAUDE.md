@@ -137,8 +137,14 @@ The owner, 10 November 2026: "create a save point here." Where everything stands
   for every level: `ipconfig /release` then `/renew` (the address came back as released) and the sticky columns following the
   bars when they grow. The Level 3 complete checks now expect the campus to open, not to be built later. See "Stage 1 on the page"
   in "Level 4, the campus" below.
-- **Next, in the owner's order:** the rest of Level 4 (CP-J5 OSPF across the core, CP-J6 standby, then the other work orders and
-  its 15 tickets), then Level 5 (Enterprise); each new piece has its objectives shown and its details talked out before it's built.
+- **Level 4, stage 2, live 17 November 2026:** CP-J5 (OSPF across the core: the core switches installed, the default from the edge
+  router, the statics and the old link retired) and CP-J6 (distribution switch 2 joins, every gateway shared by standby). With them,
+  for every level: a switch port facing a shut port now says notconnect; port security works the links out once a pass (a campus
+  work order opens in about a second, not five). See the CP-J5 and CP-J6 notes in "Level 4, the campus" below.
+- **Next, in the owner's order:** the rest of Level 4 (re-sized by the owner's rule: a new floor end to end and the Training Annex
+  first, needing nothing new from the engine; then jumbo frames and the central DHCP server, which need the rack server's model and
+  a Linux command line; then the 15 tickets), then Level 5 (Enterprise); each new piece has its objectives shown and its details
+  talked out before it's built.
 - **The container was rebuilt on 15 November 2026:** the worktrees were made again from the pushed branches, and the browser
   is now Chromium 1243 (`/opt/pw-browsers/chromium`): run the drive, AAA and models tools with `CHROME=/opt/pw-browsers/chromium`.
 - **SB-14 and SB-15 are built** on `save/level3-sb14` and `save/level3-sb15` (worktrees `/home/user/e4-sb14`, `/home/user/e4-sb15`;
@@ -3748,12 +3754,12 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
   - **The logical diagram:** the edge router moved over the middle of the core (x 560): at x 380 the old link to distribution
     switch 1 ran straight through core switch 1, and their port names sat on each other. The core switches spread wider than the
     distribution pair (x 300 and 820). CP-J1 to CP-J4's drawings measured again on six campuses: all clear.
-  - **Checks so far:** `tests/campus-jobs.test.js` CP-J5's wrong ways (17, each its own line and cause) and other right ways (one
+  - **Checks:** `tests/campus-jobs.test.js` CP-J5's wrong ways (17, each its own line and cause) and other right ways (one
     statement for every link, interfaces passive one at a time, router IDs, the relay by core switch 2's side, the old cable pulled);
     the drive through the page on three campuses (63 checks: OSPF neighbours and the two-path default over SSH, tracert through a core
-    switch, the renew relayed to the new address) and its drawings on six (36); its 3 contrast states pass (13,854 text runs); Node
-    plants for equal-cost paths and the far port all caught (one missed at first, a network two routers have: the test had no such
-    case; it does now), CP-J5's being run.
+    switch, the renew relayed to the new address) and its drawings on six (36); its 3 contrast states pass (13,854 text runs); its
+    Node plants and those for equal-cost paths and the far port all caught (one missed at first, a network two routers have: the
+    test had no such case; it does now).
 - **CP-J6, the virtual gateway, built 17 November 2026 on `save/level4-campus`** (not live):
   - Its start cables distribution switch 2's two links to the core (`coreCables`). **CP-J6** (`js/build/campus.js`), 10 lines:
     distribution switch 2 routes, its links routed and up (ip routing off, still a switch port, address, shut, down); an OSPF
@@ -3773,9 +3779,17 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
   - **The drawing:** distribution switch 2's port 2 (to the 2F access switch) landed where the 3F switch's link to distribution switch
     1 crosses it. A port's name now tries the stretch nearer its device before giving up on other lines (`draw.js`), and the 2F
     access switch sits at x 600 on the logical diagram.
-  - **Checks so far:** CP-J6's wrong ways (15) and other right ways (switch 2 first, then switch 1 taking over by preempt; other
-    priorities; preempt on both; interfaces passive one at a time); its drive's own checks pass (`show standby brief` on both switches
-    over SSH, the management VLAN's virtual gateway answering a ping); 3 contrast states written; Node plants written (20).
+  - **Checks:** CP-J6's wrong ways (16) and other right ways (switch 2 first, then switch 1 taking over by preempt; other priorities;
+    preempt on both; interfaces passive one at a time); its drive's own checks (`show standby brief` on both switches over SSH, the
+    management VLAN's virtual gateway answering a ping); its Node plants all caught (one missed at first, "switch 2 active passes":
+    no test ever ended with switch 2 active; one does now, switch 2 configured first with switch 1 at the default priority).
+- **Stage 2 (CP-J5 and CP-J6), live 17 November 2026** (from 0cfec71). Checked on its tree: `npm test` 587 of 587 (on e4a91cd; the
+  final commit adds one test case, `tests/campus-jobs.test.js` run again on it, 15 of 15, 12 campuses); the whole campus drive (every check but a
+  written-in count of the campus's work orders, now read from the level; the lock run again, 5); the full drive 6,965 checks, every level; `node
+  tools/models.mjs` 202, 0 failed; the campus and levels contrast states, 25, 84,802 text runs; every earlier work order's logical
+  diagram compared under the live and the new drawing code (home, office and business, start and done, two seeds, both fonts: 240
+  drawings, all the same; the comparison calibrated on CP-J1, where the 2F switch moved: all 8 different); the plants for CP-J5,
+  CP-J6, equal-cost paths, the far port and the virtual address, all caught.
 
 ## Objectives
 

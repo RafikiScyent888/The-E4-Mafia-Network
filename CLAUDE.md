@@ -291,7 +291,7 @@ students move around all of it from the command line.
   requirements, limits such as 100 m runs and the PoE budget, the model
   checks the job against it) as the main path, and free build.
   **No budget** (owner, 10 October 2026: "We are not worried about budget").
-- **Instructor tools behind PIN 3693:** choose a specific fault for a class
+- **Instructor tools behind the instructor PIN** (kept in the owner's private notes, never in this public repo): choose a specific fault for a class
   demonstration, show the fault and the fix after class, unlock any level.
 - **Defaults the owner did not object to:** a logical diagram and a
   physical view (house floor plan, closet rack in 3D) plus a terminal
@@ -607,7 +607,7 @@ Home · five more":
   camera" (names are lower-cased only when the first word is a plain
   capitalised word: "office PC", "IP camera", "PoE injector").
 
-**The instructor tools** (menu: Instructor; PIN 3693, the owner's
+**The instructor tools** (menu: Instructor; the instructor PIN, the owner's
 standing PIN). Only a hash of the PIN is in the code; it unlocks for that
 browser tab (sessionStorage), so the next student on the computer doesn't
 inherit it. Inside: open any ticket on a chosen house number for a
@@ -952,7 +952,8 @@ scope."** On subnetting by hand on the IPAM sheet: **"I really like this."**
   a fill attribute it couldn't hide (now `fill: currentColor`, as on the
   site's own diagrams). `tools/aaa.mjs` skips its hover step on a page
   without the view buttons (the model previews).
-- **The PIN stays 3693** (owner, 12 October 2026: "The pin is to be 3693").
+- **The PIN stays as the owner set it** (owner, 12 October 2026). It is kept in the owner's private notes, not here: the owner, 17
+  November 2026, "remove the pin for now". The drive reads it from `E4_PIN`.
   The preview's instructor view now asks for it, checked as the live
   Instructor menu checks it (only the hash 4061435687 is in the code; the
   unlock lasts for the browser tab under the same sessionStorage key, so
@@ -3501,7 +3502,7 @@ PC-end unplug and HOME-13's passive injector were never driven), through
 the terminal, the forms and the Physical tab; the rungs; red marked three
 ways; a wrong fix not solving; putting the network back; reload keeps
 progress; the three views; easier reading persisting; the instructor
-tools: a wrong PIN refused, 3693 unlocking, the demo opening the chosen
+tools: a wrong PIN refused, the PIN unlocking, the demo opening the chosen
 house, nothing revealed on the board, the PIN not in the code); AAA on painted
 pixels across 86 states (32 of them build mode) plus scrolled positions,
 measured with WebGL on so

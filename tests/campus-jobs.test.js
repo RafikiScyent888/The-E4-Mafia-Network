@@ -248,6 +248,11 @@ test("CP-J6: the tempting wrong ways each fail their own line for their own caus
     J = tryIt(def, s, ["dist1", "dist2"].reduce((acc, d) => editOn(acc, d, (l) => { const m = /^standby (\d+) (.*)$/.exec(l); return m && m[1] === String(V.id) ? ["standby 7 " + m[2]] : undefined; }), sol)); assert.equal(cause(J, "groups"), "grp", s + " a group numbered off the records' convention"); assert.ok(line(J, "fail").ok);
     const saves = segOf(sol, "dist2").filter((i) => sol[i].line === "copy running-config startup-config");
     J = tryIt(def, s, sol.filter((a, i) => saves.indexOf(i) < 0 && saves.indexOf(i - 1) < 0)); assert.equal(cause(J, "saved"), "unsaved-dist2", s + " switch 2 unsaved");
+    { /* switch 2 configured first, switch 1 left at the default priority: switch 2 is active and stays so (a tie goes to the higher address) */
+      const S1 = segOf(sol, "dist1"), S2 = segOf(sol, "dist2"), one = sol.filter((a, i) => S1.indexOf(i) >= 0 && !/ priority 110$/.test(a.line || "")), two = sol.filter((a, i) => S2.indexOf(i) >= 0);
+      J = tryIt(def, s, sol.slice(0, S1[0]).concat(two, [{ t: "pull", cable: "c-console-" + (v.runs + 1) }], one, [{ t: "pull", cable: "c-console-" + (v.runs + 2) }]));
+      assert.equal(cause(J, "active"), "dist2", s + " switch 2 active"); assert.ok(line(J, "fail").ok && line(J, "works").ok, s + " everything works, through the wrong switch");
+    }
   }
 });
 

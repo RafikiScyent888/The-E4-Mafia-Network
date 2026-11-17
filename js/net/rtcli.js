@@ -102,7 +102,7 @@ export function routes(r, live) {
   /* what OSPF learned (Level 4), believed at distance 110: never over a connected network or a static route */
   ((live && live("learned")) || []).forEach(function (o) {
     if (T.some(function (t) { return t.code !== "L" && t.net === o.net && t.mask === o.mask; })) return;
-    T.push({ code: o.net === "0.0.0.0" && o.mask === "0.0.0.0" ? "O*" : "O", ext: o.ext || "", net: o.net, mask: o.mask, nh: o.nh, iface: o.iface, ad: 110, metric: o.metric || 0 });
+    T.push({ code: o.net === "0.0.0.0" && o.mask === "0.0.0.0" ? "O*" : "O", ext: o.ext || "", net: o.net, mask: o.mask, nh: o.nh, iface: o.iface, ad: 110, metric: o.metric || 0, paths: o.paths });
   });
   return T;
 }
@@ -513,7 +513,10 @@ function rtRoutes(r, live) {
     const len = "/" + bits(t.mask);
     if (t.code === "C") L.push("C        " + t.net + len + " is directly connected, " + t.iface);
     else if (t.code === "L") L.push("L        " + t.net + len + " is directly connected, " + t.iface);
-    else L.push(pad(t.code + (t.ext || ""), 9) + t.net + len + " [" + (t.ad || (t.dhcp ? 254 : 1)) + "/" + (t.metric || 0) + "] via " + (t.nh || t.iface) + (t.nh && t.iface ? ", " + t.iface : ""));
+    else {
+      L.push(pad(t.code + (t.ext || ""), 9) + t.net + len + " [" + (t.ad || (t.dhcp ? 254 : 1)) + "/" + (t.metric || 0) + "] via " + (t.nh || t.iface) + (t.nh && t.iface ? ", " + t.iface : ""));
+      (t.paths || []).slice(1).forEach(function (h) { L.push(" ".repeat(9 + (t.net + len).length + 1) + "[" + t.ad + "/" + (t.metric || 0) + "] via " + h.nh + ", " + h.iface); });   /* equal-cost paths */
+    }
   });
   return L;
 }

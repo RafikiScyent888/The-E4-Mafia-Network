@@ -44,6 +44,35 @@ export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 3
 const swMac = function (hi, lo) { return "00e0.4c" + hi.toString(16).padStart(2, "0") + "." + lo.toString(16).padStart(4, "0"); };
 const run = function (sw, lines) { const S = session(sw); ["", "enable", "configure terminal"].concat(lines, ["end", "copy running-config startup-config", ""]).forEach(function (l) { exec(S, l); }); return sw; };
 
+/* every switch's name and locks, as Rafiki's HQ sets them up: the secret, the console password, SSH only with a local user */
+const lockLines = function (plan, host) { return ["hostname " + host, "enable secret " + plan.secret, "line console 0", "password " + plan.console, "login", "exit", "ip domain-name " + plan.domain, "username " + plan.user + " secret " + plan.userPw, "crypto key generate rsa modulus 2048", "line vty 0 15", "login local", "transport input ssh", "exit"]; };
+
+/* the core's routed links (work order 5 on), as the records give them: seven /30s in 10.b.255.0/24 after the edge router's link to
+   distribution switch 1 (10.b.255.0/30, work order 4), the end nearer the provider on the first usable address. Each: the two
+   ends (device and port, as the cable names it), the block, each end's address and its port's description */
+export const CORE_LINKS = [["edge", "Gi0/2", "core1", "24"], ["edge", "Gi0/3", "core2", "24"], ["core1", "21", "core2", "21"], ["core1", "1", "dist1", "19"], ["core2", "1", "dist1", "20"], ["core1", "2", "dist2", "19"], ["core2", "2", "dist2", "20"]];
+const CORE_DESC = { edge: "EDGE-ROUTER", core1: "CORE1", core2: "CORE2", dist1: "DIST1", dist2: "DIST2" };
+export function coreLinks(plan) {
+  const b = plan.vlans.svc.net.split(".")[1];
+  return CORE_LINKS.map(function (L, i) { const n = 4 * (i + 1); return { id: "c-core-" + (i + 1), a: L[0], ap: L[1], b: L[2], bp: L[3], net: "10." + b + ".255." + n, cidr: "10." + b + ".255." + n + "/30", ia: "10." + b + ".255." + (n + 1), ib: "10." + b + ".255." + (n + 2), mask: "255.255.255.252", da: CORE_DESC[L[2]], db: CORE_DESC[L[0]] }; });
+}
+/* the installer's night (work order 5): both core switches racked in the data room, out of their boxes, named and locked, routing on,
+   each routed port addressed and described from the records, the spares shut, saved; the seven links cabled. Nothing runs OSPF
+   yet, and the edge router's and the distribution switches' ends are left for the technician */
+export function installCore(net) {
+  const plan = net.plan, D = net.devices, L = coreLinks(plan);
+  ["core1", "core2"].forEach(function (id) {
+    const mine = L.filter(function (l) { return l.a === id || l.b === id; }), used = mine.map(function (l) { return +(l.a === id ? l.ap : l.bp); });
+    const lines = lockLines(plan, plan.sw[id].host).concat(["ip routing"]);
+    mine.forEach(function (l) { const me = l.a === id; lines.push("interface gi0/" + (me ? l.ap : l.bp), "description " + (me ? l.da : l.db), "no switchport", "ip address " + (me ? l.ia : l.ib) + " " + l.mask, "no shutdown", "exit"); });
+    const spare = []; for (let k = 1; k <= 28; k++) if (used.indexOf(k) < 0) spare.push(k);
+    lines.push("interface range " + spare.map(function (k) { return "gi0/" + k; }).join(" , "), "shutdown", "exit");
+    run(D[id].sw, lines); delete D[id].boxed;
+  });
+  L.forEach(function (l) { net.cables.push({ id: l.id, kind: "cat6", a: { dev: l.a, port: l.ap, seated: true }, b: { dev: l.b, port: l.bp, seated: true }, cond: "good", length: 2 }); });
+  return L;
+}
+
 export function makeCampus(seed) {
   const r = rng(seed ^ 0x4c41), V = VLAN_SETS[r.int(0, VLAN_SETS.length - 1)], b = r.pick([16, 27, 38, 49, 63]);
   const net24 = function (v) { return "10." + b + "." + v + ".0"; }, ip = function (v, h) { return "10." + b + "." + v + "." + h; };
@@ -61,7 +90,7 @@ export function makeCampus(seed) {
   };
   const all = Object.keys(V).filter(function (k) { return k !== "native" && k !== "parking"; }).map(function (k) { return V[k]; }).sort(function (x, y) { return x - y; });
   const vlanLines = Object.keys(V).flatMap(function (k) { return ["vlan " + V[k], "name " + NAMES[k], "exit"]; });
-  const lock = function (host) { return ["hostname " + host, "enable secret " + plan.secret, "line console 0", "password " + plan.console, "login", "exit", "ip domain-name " + plan.domain, "username " + plan.user + " secret " + plan.userPw, "crypto key generate rsa modulus 2048", "line vty 0 15", "login local", "transport input ssh", "exit"]; };
+  const lock = function (host) { return lockLines(plan, host); };
   const trunk = function (ports) { return ["interface range " + ports, "switchport trunk native vlan " + V.native, "switchport trunk allowed vlan " + all.join(","), "switchport mode trunk", "switchport nonegotiate", "exit"]; };
   const mgmt = function (id) { return ["interface vlan " + V.mgmt, "ip address " + plan.sw[id].ip + " " + plan.mask, "no shutdown", "exit", "ip default-gateway " + vl.mgmt.gw]; };
   /* the switches: the 2F access switch has the lowest address of all (left at the defaults, it's the root of every VLAN) */

@@ -1,7 +1,7 @@
 /* Level 4 build mode: the campus's work orders (Rafiki's HQ; the plan approved 16 November 2026: "Yes to the level 4 plans,
    build it out"). Each starts from the campus as the one before it left it. Every line is an ordered list of causes, as on
    the other levels: the first one really there is what the check saw, everything before it is ruled out by the network. */
-import { makeCampus } from "../net/campus.js";
+import { makeCampus, coreLinks, installCore } from "../net/campus.js";
 import { Sim } from "../net/sim.js";
 import { errDisabled, dotMac, unsaved, chanState, carries, l3Ifs, l3Route } from "../net/swcli.js";
 import * as RT from "../net/rtcli.js";
@@ -451,4 +451,220 @@ const CJ4 = {
   summary() { return ["Distribution switch 1 routes between the VLANs: each VLAN's gateway is its own interface there.", "The edge router is joined to it by a routed /30 and does the internet: NAT, and the DHCP pools, which distribution switch 1 relays to.", "Traffic between floors no longer goes down to the edge router and back up."]; }
 };
 
-export const CAMPUS_JOBS = [CJ1, CJ2, CJ3, CJ4];
+/* ------------------------------------------------------------ CP-J5, OSPF across the core */
+/* the five links this work order puts to work (the core switches' ports 2, to distribution switch 2, wait for the next one) */
+const CORE5 = function (p) { return coreLinks(p).filter(function (l) { return l.b !== "dist2"; }); };
+const endOf = function (l, id) { return l.a === id ? { port: l.ap, ip: l.ia, far: l.b } : { port: l.bp, ip: l.ib, far: l.a }; };
+const ifName = function (id, port) { return id === "edge" ? "GigabitEthernet" + port.replace(/^Gi/, "") : "GigabitEthernet0/" + port; };
+const OSPF_DEVS = ["edge", "core1", "core2", "dist1"];
+const sayOf = function (sim, id) { return id === "edge" ? "the edge router" : id === "core1" ? "core switch 1" : id === "core2" ? "core switch 2" : said(sim, id); };
+const Cap = function (t) { return t.replace(/^./, function (m) { return m.toUpperCase(); }); };
+const edgeIf = function (sim, n) { const R = sim.rtView("edge"), live = sim.rtLive("edge"); return { a: RT.addrOf(R, n, live), st: RT.rtStatus(R, n), f: sim.d.edge.sw.ifs[n] || {} }; };
+function edgeEndCauses(sim, v) {
+  const L = CORE5(v.plan).filter(function (l) { return l.a === "edge"; });
+  const bad = L.find(function (l) { const e = edgeIf(sim, ifName("edge", l.ap)); return !e.a || e.a.ip !== l.ia || e.a.mask !== l.mask || e.st[1] !== "up"; }) || L[0], n = ifName("edge", bad.ap), e = edgeIf(sim, n), g = gi(n);
+  const to = sayOf(sim, bad.b);
+  return [C("eaddr", !e.a || e.a.ip !== bad.ia || e.a.mask !== bad.mask, "The edge router's link to " + to + " (" + g + ") isn't on the records' address and mask (the end nearer the provider takes the first usable address)", "Both its links to the core have the records' addresses.", "show ip interface brief on the edge router: " + g + " " + (e.a ? e.a.ip : "unassigned") + "."),
+    C("eshut", !!e.f.shutdown, "The edge router's link to " + to + " (" + g + ") is shut down", "Both are up.", "show ip interface brief on the edge router: " + g + " administratively down."),
+    C("edown", !e.f.shutdown && e.st[1] !== "up", "The edge router's link to " + to + " (" + g + ") is down", "Both are up.", "show ip interface brief on the edge router: " + g + " down.")];
+}
+function distEndCauses(sim, v) {
+  const L = CORE5(v.plan).filter(function (l) { return l.b === "dist1"; }), ifs = l3Ifs(sim.l3View("dist1"));
+  const look = function (l) { const n = ifName("dist1", l.bp), p = sim.d.dist1.sw.ports[n], f = ifs.find(function (x) { return x.name === n; }); return { n: n, p: p, f: f }; };
+  const bad = L.find(function (l) { const k = look(l); return !k.p.routed || k.p.ip !== l.ib || k.p.mask !== l.mask || !k.f || !k.f.up; }) || L[0], k = look(bad), g = gi(k.n), to = sayOf(sim, bad.a);
+  return [C("trunk", !k.p.routed, "Distribution switch 1's link to " + to + " (" + g + ") is still a switch port: it can't take an address", "Both its links to the core are routed ports.", "show running-config on distribution switch 1: interface " + k.n + " has no \"no switchport\"."),
+    C("daddr", !!k.p.routed && (k.p.ip !== bad.ib || k.p.mask !== bad.mask), "Distribution switch 1's link to " + to + " (" + g + ") isn't on the records' address and mask (the end further from the provider takes the second usable address)", "Both have the records' addresses.", "show ip interface brief on distribution switch 1: " + g + " " + (k.p.ip || "unassigned") + "."),
+    C("dshut", !!k.p.routed && !!k.p.shutdown, "Distribution switch 1's link to " + to + " (" + g + ") is shut down", "Both are up.", "show ip interface brief on distribution switch 1: " + g + " administratively down."),
+    C("ddown", !!k.p.routed && !k.p.shutdown && !!k.f && !k.f.up, "Distribution switch 1's link to " + to + " (" + g + ") is down", "Both are up.", "show ip interface brief on distribution switch 1: " + g + " down.")];
+}
+/* OSPF on each link: both ends running it, the link in it at both ends, neither passive, the same area, the same MTU: FULL */
+const runsOspf = function (sim, id) { const w = sim.d[id].sw; return !!w.ospf && (id === "edge" || !!w.routing); };
+function nbrCauses(sim, v) {
+  const R = sim.ospfAll(), L = CORE5(v.plan);
+  const ofIf = function (id, n) { const r = R.routers[id]; return r ? r.ifs.find(function (f) { return f.name === n; }) : null; };
+  const full = function (l) { const A = endOf(l, l.a), Bn = endOf(l, l.b); return (R.nbrs[l.a] || []).some(function (x) { return x.ip === Bn.ip && /^FULL/.test(x.state); }) && (R.nbrs[l.b] || []).some(function (x) { return x.ip === A.ip && /^FULL/.test(x.state); }); };
+  const l = L.find(function (k) { return !full(k); }) || L[0], ends = [l.a, l.b].map(function (id) { const e = endOf(l, id), n = ifName(id, e.port); return { id: id, n: n, g: gi(n), f: ofIf(id, n) }; });
+  const noProc = ends.find(function (e) { return !runsOspf(sim, e.id); }), noNet = ends.find(function (e) { return runsOspf(sim, e.id) && !e.f; }), pas = ends.find(function (e) { return e.f && e.f.passive; });
+  const both = ends[0].f && ends[1].f, link = Cap(sayOf(sim, l.a)) + " and " + sayOf(sim, l.b);
+  return [C("proc", !!noProc, (noProc ? Cap(sayOf(sim, noProc.id)) : "A router") + " doesn't run OSPF", "Every router in the core runs OSPF.", noProc ? "show ip protocols on " + sayOf(sim, noProc.id) + ": nothing." : ""),
+    C("net", !noProc && !!noNet, (noNet ? Cap(sayOf(sim, noNet.id)) + "'s link to " + sayOf(sim, noNet.id === l.a ? l.b : l.a) + " (" + noNet.g + ")" : "A link") + " isn't in OSPF: none of its network statements covers that interface's address", "Every link of the core is in OSPF at both ends.", noNet ? "show ip ospf interface brief on " + sayOf(sim, noNet.id) + ": " + noNet.g + " missing." : ""),
+    C("passive", !noProc && !noNet && !!pas, (pas ? Cap(sayOf(sim, pas.id)) + "'s link to " + sayOf(sim, pas.id === l.a ? l.b : l.a) + " (" + pas.g + ")" : "A link") + " is passive: it advertises the link but never says hello across it, so no neighbour forms", "No link of the core is passive.", pas ? "show ip protocols on " + sayOf(sim, pas.id) + ": Passive Interface(s): " + pas.n + "." : ""),
+    C("area", !!both && !pas && ends[0].f.area !== ends[1].f.area, link + " have the link in different areas", "Both ends in area 0.", both ? "show ip ospf interface brief on each: area " + ends[0].f.area + " and " + ends[1].f.area + "." : ""),
+    C("mtu", !!both && !pas && ends[0].f.area === ends[1].f.area && (ends[0].f.mtu || 1500) !== (ends[1].f.mtu || 1500), link + " disagree about the link's MTU: they hear each other but never get past EXSTART", "Both ends the same MTU.", "show ip ospf neighbor: EXSTART."),
+    C("nofull", !noProc && !noNet && !pas && !(both && (ends[0].f.area !== ends[1].f.area || (ends[0].f.mtu || 1500) !== (ends[1].f.mtu || 1500))) && !full(l), link + " aren't neighbours across their link", "Every pair is FULL.", "show ip ospf neighbor on " + sayOf(sim, l.a) + ".")];
+}
+/* distribution switch 1 advertises every VLAN in use, hello only where there's a router; the provider's side out of OSPF */
+function passiveCauses(sim, v) {
+  const p = v.plan, R = sim.ospfAll(), D = R.routers.dist1, E = R.routers.edge;
+  const inO = function (k) { return D && D.ifs.find(function (f) { return f.name === "Vlan" + p.vlans[k].id; }); };
+  const noadv = USED.find(function (k) { return !inO(k); }), hello = USED.find(function (k) { const f = inO(k); return f && !f.passive; }), wan = E && E.ifs.find(function (f) { return f.name === p.edge.wan; });
+  return [C("noadv", !!noadv, "VLAN " + (noadv ? p.vlans[noadv].id + " (" + p.vlans[noadv].name + ")" : "") + " isn't in OSPF on distribution switch 1: no network statement covers its interface, so nobody else learns it", "Every VLAN in use is in OSPF.", noadv ? "show ip ospf interface brief on distribution switch 1: Vlan" + p.vlans[noadv].id + " missing." : ""),
+    C("hello", !!hello, "VLAN " + (hello ? p.vlans[hello].id : "") + "'s interface sends OSPF hellos to the desks: anything there that answers could become a neighbour and feed the campus routes", "The VLAN interfaces are passive.", hello ? "show ip protocols on distribution switch 1: Vlan" + p.vlans[hello].id + " isn't among the passive interfaces." : ""),
+    C("wan", !!wan, "The edge router's provider side (" + gi(p.edge.wan) + ") is in OSPF: it says hello to the provider and hands the campus the provider's network", "The provider's side isn't in OSPF.", "show ip ospf interface brief on the edge router: " + gi(p.edge.wan) + ".")];
+}
+/* the edge router reaches every VLAN in use by OSPF, by both core switches */
+function coreRouteCauses(sim, v) {
+  const p = v.plan, L = CORE5(p), viaCore = L.filter(function (l) { return l.a === "edge"; }).map(function (l) { return l.ib; }), t = transit(p);
+  const D = sim.ospfAll().routers.dist1, lr = sim.learned("edge"), R = sim.rtView("edge"), live = sim.rtLive("edge");
+  const of = function (k) { return lr.find(function (r) { return r.net === p.vlans[k].net && r.mask === p.mask; }); };
+  const noadv = USED.find(function (k) { return !(D && D.ifs.some(function (f) { return f.name === "Vlan" + p.vlans[k].id; })); });
+  const none = USED.find(function (k) { return !of(k); }), direct = USED.find(function (k) { const r = RT.lookup(R, p.vlans[k].gw, live); return r && r.nh === t.dist; });
+  const hops = function (k) { return ((of(k) || {}).paths || []).map(function (h) { return h.nh; }); }, one = USED.find(function (k) { const h = hops(k); return !viaCore.every(function (x) { return h.indexOf(x) >= 0; }); });
+  const nm = function (k) { return k ? p.vlans[k].net : ""; };
+  return [C("noadv", !!noadv, "Distribution switch 1 doesn't advertise " + nm(noadv) + ": the edge router can't learn it", "Every VLAN in use is advertised.", "show ip route ospf on the edge router: no " + nm(noadv) + "."),
+    C("none", !noadv && !!none, "The edge router has no OSPF route to " + nm(none), "It learns every VLAN in use.", "show ip route ospf on the edge router: no " + nm(none) + "."),
+    C("direct", !!direct, "The edge router still reaches " + nm(direct) + " over the old direct link to distribution switch 1, not through the core", "It goes through the core.", "show ip route on the edge router: " + nm(direct) + " via " + t.dist + "."),
+    C("one", !noadv && !none && !direct && !!one, "The edge router learns " + nm(one) + " by only one core switch: if that one fails, the VLAN is cut off until something reconverges", "Both core switches carry every VLAN, at the same cost.", "show ip route on the edge router: " + nm(one) + " has one next hop.")];
+}
+/* distribution switch 1's way out: the default OSPF brings from the edge router */
+function defaultCauses(sim, v) {
+  const lr = sim.learned("dist1").find(function (r) { return r.net === "0.0.0.0" && r.mask === "0.0.0.0"; }), D = sim.d.dist1.sw.routing ? l3Route(sim.l3View("dist1"), "8.8.8.8", sim.learned("dist1")) : null;
+  const O = sim.d.edge.sw.ospf;
+  return [C("noorig", !lr && !(O && O.originate), "The edge router doesn't hand its default route to OSPF: distribution switch 1 never learns a way out", "The edge router originates the default.", "show ip route on distribution switch 1: no O*E2 route; show running-config on the edge router: router ospf has no default-information originate."),
+    C("nolearn", !lr && !!(O && O.originate), "The edge router originates a default, but it doesn't reach distribution switch 1", "Distribution switch 1 learns it.", "show ip route on distribution switch 1: no O*E2 route."),
+    C("hidden", !!lr && !!D && D.code !== "O", "Distribution switch 1 learns OSPF's default, but its own static default still wins (distance 1 against 110)", "OSPF's default is the one in use.", D ? "show ip route on distribution switch 1: Gateway of last resort is " + (D.nh || "") + ", S*." : "")];
+}
+function staticCauses(sim, v) {
+  const p = v.plan, t = transit(p), ds = (sim.d.dist1.sw.routes || []).find(function (r) { return r.net === "0.0.0.0" && r.mask === "0.0.0.0"; }), es = (sim.d.edge.sw.routes || []).find(function (r) { return r.net !== "0.0.0.0" && /^10\./.test(r.net); });
+  return [C("dstatic", !!ds, "Distribution switch 1 still has its static default route", "It has none.", "show running-config on distribution switch 1: ip route 0.0.0.0 0.0.0.0 " + (ds ? ds.nh || ds.iface : "") + "."),
+    C("estatic", !!es, "The edge router still has a static route for the campus", "It has none.", es ? "show running-config on the edge router: ip route " + es.net + " " + es.mask + " " + (es.nh || es.iface) + "." : "")];
+}
+function directCauses(sim, v) {
+  const p = v.plan, port = sim.d.dist1.sw.ports["GigabitEthernet0/24"], e = sim.d.edge.sw.ifs[p.edge.lan] || {}, c = sim.cable("c-edge-dist1"), up = !!c && sim.cableUp(c);
+  return [C("up", up, "The old direct link between the edge router and distribution switch 1 is still up", "It's retired.", "show ip interface brief on the edge router: " + gi(p.edge.lan) + " up."),
+    C("end", !up && (!port.shutdown || !e.shutdown), "The old link is down, but " + (!port.shutdown ? "distribution switch 1's end (Gi0/24)" : "the edge router's end (" + gi(p.edge.lan) + ")") + " is still open: a port not in use is shut", "Both ends are shut.", "show ip interface brief: one end still up/down.")];
+}
+function natCauses5(sim, v) {
+  const p = v.plan, rt = sim.d.edge.sw, R = sim.rtView("edge"), live = sim.rtLive("edge");
+  const out = RT.allIfs(R).find(function (n) { if (n === p.edge.wan || n.indexOf(".") > 0) return false; const a = RT.addrOf(R, n, live); return a && /^10\./.test(a.ip) && RT.rtStatus(R, n)[1] === "up" && (rt.ifs[n] || {}).nat !== "inside"; });
+  const rule = (rt.nat || []).find(function (x) { return x.overload && rt.acls[x.list]; }), covers = rule && RT.aclVerdict(rt, rule.list, { proto: "ip", src: p.vlans.svc.gw, dst: "8.8.8.8" }).permit;
+  return [C("inside", !!out, "The edge router's " + (out ? gi(out) : "") + " faces the campus but isn't NAT's inside: whatever comes in there goes out untranslated, and the provider drops it", "Every interface facing the campus is NAT's inside.", out ? "show running-config on the edge router: " + out + " has no ip nat inside." : ""),
+    C("list", !out && !covers, "NAT's list doesn't cover the campus's addresses", "It covers them.", "show access-lists on the edge router.")];
+}
+function relayCauses5(sim, v) {
+  const p = v.plan, t = transit(p), R = sim.rtView("edge"), live = sim.rtLive("edge");
+  const mine = RT.allIfs(R).map(function (n) { const a = RT.addrOf(R, n, live); return a && RT.rtStatus(R, n)[1] === "up" ? a.ip : null; }).filter(Boolean);
+  const bad = DHCPV.find(function (x) { return !sim.dhcpServers(x[1]).length; }), k = bad && bad[0], r = k ? svi(sim, k, p) : null, h = r && r.helpers || [];
+  const at = k ? "ipconfig /release then /renew on the " + name(sim, bad[1]) + ": no DHCP server answers." : "";
+  return [C("none", !!k && !h.length, "Nothing relays VLAN " + (k ? p.vlans[k].id : "") + "'s DHCP requests", "Each VLAN's requests are relayed.", at + " show running-config on distribution switch 1: interface Vlan" + (k ? p.vlans[k].id : "") + " has no ip helper-address."),
+    C("gone", !!k && h.length > 0 && h.indexOf(t.edge) >= 0 && mine.indexOf(t.edge) < 0, "VLAN " + (k ? p.vlans[k].id : "") + "'s requests are still relayed to the edge router's address on the old link: with that link retired, nothing answers there", "They go to an address the edge router still answers at.", at + " show running-config on distribution switch 1: ip helper-address " + t.edge + "."),
+    C("wrong", !!k && h.length > 0 && !h.some(function (x) { return mine.indexOf(x) >= 0; }) && h.indexOf(t.edge) < 0, "VLAN " + (k ? p.vlans[k].id : "") + "'s requests are relayed to an address where no DHCP server answers", "They go to the edge router.", at),
+    C("noway", !!k && h.some(function (x) { return mine.indexOf(x) >= 0; }), "VLAN " + (k ? p.vlans[k].id : "") + "'s requests reach the edge router, but its answer can't get back to distribution switch 1", "The answers get back.", at + " show ip dhcp binding on the edge router: nothing new.")];
+}
+/* the core switches answer from the service desk: a way there, and a way back */
+function manageCauses(sim, v) {
+  const p = v.plan, L = CORE5(p), addr = { core1: L[0].ib, core2: L[1].ib };
+  const r = {}; ["core1", "core2"].forEach(function (id) { r[id] = sim.route("sd1", addr[id]); });
+  const bad = ["core1", "core2"].find(function (id) { return !r[id].routed && !r[id].local; }), x = bad ? r[bad] : null;
+  return [C("there", !!x && x.why !== "no way back", (bad ? Cap(sayOf(sim, bad)) : "A core switch") + " can't be reached from the service desk: nothing on the way has a route to its link", "Both are reachable.", bad ? "ping " + addr[bad] + " from the service desk PC: " + (x.fail === "net-unreachable" ? "Destination net unreachable." : "Request timed out.") : ""),
+    C("back", !!x && x.why === "no way back", (bad ? Cap(sayOf(sim, bad)) : "A core switch") + " gets the service desk's pings but has no route back to the service desk's network", "Both answer.", bad ? "ping " + addr[bad] + " from the service desk PC: Request timed out; show ip route on " + sayOf(sim, bad) + "." : "")];
+}
+function savedCauses5(sim) {
+  return OSPF_DEVS.map(function (id) { return C("unsaved-" + id, unsaved(sim.d[id].sw), Cap(sayOf(sim, id)) + " hasn't been saved: a power cut takes the changes away", "Every device is saved.", "show startup-config on " + sayOf(sim, id) + ": it's not what's running."); });
+}
+
+const CJ5 = {
+  id: "CP-J5", level: "campus", title: "OSPF across the core: the default from the edge router, the static routes retired",
+  already: ["nat", "dhcp", "works", "saved"],
+  start(seed) {
+    const b = CJ4.start(seed), sim = b.sim;
+    for (const a of CJ4.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    const before = sim.links(); installCore(sim.net); sim.relink(before);   /* the installer's night: the core racked, cabled, addressed */
+    sim.cli = {};
+    return { sim: sim, v: Object.assign({}, b.v, { runs: sim.net.extra.runs || 0 }) };   /* the console cables CP-J4 laid: the walk-through's numbers follow on */
+  },
+  brief() { return { quote: "The core's in: the installer racked both core switches in the data room last night and cabled them. Right now everything between the campus and the internet still runs over one cable from the edge router to distribution switch 1, held up by two static routes. Put the core to work: OSPF across it, the default route from the edge router, and once it carries everything, retire the old cable and the statics. If a core switch dies, nobody should notice.", from: "Rafiki, owner" }; },
+  mason: "Bring the new paths up beside the old ones and prove them before you take anything away: neighbours first, then what's in each table. The old link and the static routes go last.",
+  limits: function (v) {
+    const p = v.plan, L = CORE5(p), lab = function (id, port) { return id === "edge" ? "the edge router " + port : (id === "dist1" ? "distribution switch 1" : id === "core1" ? "core switch 1" : "core switch 2") + " port " + port; };
+    return ["The core's links, from the records (each a /30; the end nearer the provider takes the first usable address, the other end the second): " + L.map(function (l) { return lab(l.a, l.ap) + " to " + lab(l.b, l.bp) + ", " + l.cidr; }).join("; ") + ". The installer has done the core switches' ends; the edge router's and distribution switch 1's are yours. The core switches' ports 2 go to distribution switch 2, which joins in the next work order.",
+      "OSPF: area 0, on the edge router, both core switches and distribution switch 1: every link of the core, and every VLAN in use on distribution switch 1. It says hello only where there's another router: the VLAN interfaces are passive, and the provider's side stays out of it. The edge router originates the default route.",
+      "Once OSPF carries everything: the two static routes from the last work order removed, the direct link between the edge router (" + p.edge.lan + ") and distribution switch 1 (port 24) retired, both ends shut, and DHCP still relayed to the edge router.",
+      "The core switches: " + p.sw.core1.host + " and " + p.sw.core2.host + ", locked as every switch here is. Your laptop's console cable reaches anything in the data room. Console password: " + p.console + ". Enable secret: " + p.secret + "."];
+  },
+  reqs: [
+    { id: "edge", text: "The edge router's two links to the core are up, on the records' addresses", causes: edgeEndCauses,
+      ok: function () { return "Both of the edge router's links to the core are up with the records' addresses."; },
+      rung1: function () { return "show ip interface brief on the edge router, then the records' list of links."; },
+      rung2: function () { return "A block's first address is its network and its last its broadcast: the two usable ones between go one to each end."; } },
+    { id: "dist", text: "Distribution switch 1's two links to the core are routed, up, on the records' addresses", causes: distEndCauses,
+      ok: function () { return "Both of distribution switch 1's links to the core are routed ports with the records' addresses, up."; },
+      rung1: function () { return "show ip interface brief on distribution switch 1, and those ports in its running configuration."; },
+      rung2: function () { return "An address goes on a routed port, never on a switch port: the port has to stop being a switch port first."; } },
+    { id: "ospf", text: "OSPF neighbours across every link of the core: the edge router and distribution switch 1 each with both core switches, the core switches with each other", causes: nbrCauses,
+      ok: function () { return "Every link of the core has a FULL neighbour at each end."; },
+      rung1: function () { return "show ip ospf neighbor on each router, then show ip ospf interface brief where one is missing."; },
+      rung2: function () { return "Two routers become neighbours only if both say hello on the link and agree about it: the same area, the same subnet and mask, the same MTU. A network statement only decides which interfaces take part."; } },
+    { id: "passive", text: "OSPF only where it belongs: every VLAN in use advertised by distribution switch 1 but passive there, the provider's side left out", causes: passiveCauses,
+      ok: function () { return "Distribution switch 1 advertises every VLAN in use without saying hello to the desks; the provider's side isn't in OSPF."; },
+      rung1: function () { return "show ip protocols and show ip ospf interface brief on distribution switch 1 and on the edge router."; },
+      rung2: function () { return "A passive interface still has its network advertised; it just never looks for a neighbour. Anywhere there's no router to talk to, hellos are only an invitation to something that shouldn't be there."; } },
+    { id: "routes", text: "The edge router reaches every VLAN in use by OSPF, through both core switches", causes: coreRouteCauses,
+      ok: function () { return "The edge router learns every VLAN in use by OSPF, with a next hop through each core switch."; },
+      rung1: function () { return "show ip route on the edge router: what's learned, and by which next hops."; },
+      rung2: function () { return "OSPF keeps every path of the same lowest cost; a cheaper path anywhere, an old link included, hides the others."; } },
+    { id: "default", text: "Distribution switch 1's way out is the default route OSPF brings from the edge router", causes: defaultCauses,
+      ok: function () { return "Distribution switch 1's gateway of last resort is OSPF's external default, from the edge router."; },
+      rung1: function () { return "show ip route on distribution switch 1: the gateway of last resort and its code."; },
+      rung2: function () { return "A router hands its default to OSPF only when told to, and a route typed by hand is believed over one learned (distance 1 against 110)."; } },
+    { id: "statics", text: "The static routes are retired: OSPF carries the campus's routes both ways", causes: staticCauses,
+      ok: function () { return "Neither the edge router nor distribution switch 1 has a static route left for the campus."; },
+      rung1: function () { return "The ip route lines in each one's running configuration."; },
+      rung2: function () { return "A static route never notices a failure on its own: left in, it can carry traffic into a link that's gone."; } },
+    { id: "direct", text: "The old direct link between the edge router and distribution switch 1 is retired, both ends shut", causes: directCauses,
+      ok: function () { return "The old link is down, both ends shut."; },
+      rung1: function () { return "show ip interface brief on both ends of the old link."; },
+      rung2: function () { return "A port not in use is shut, so nothing comes up on it by accident."; } },
+    { id: "nat", text: "The edge router still translates the campus's traffic to the internet", causes: natCauses5,
+      ok: function () { return "Every edge router interface facing the campus is NAT's inside, and its list covers the campus."; },
+      rung1: function () { return "show ip nat translations and show running-config on the edge router."; },
+      rung2: function () { return "NAT translates only what comes in on an inside interface and goes out on an outside one: every way in from the campus is an inside interface."; } },
+    { id: "dhcp", text: "A PC that asks for an address again still gets one, in every VLAN with a pool", causes: relayCauses5,
+      ok: function () { return "Each VLAN's requests are relayed to an address the edge router answers at, and the answers get back."; },
+      rung1: function () { return "ipconfig /release then /renew on a PC in each VLAN; the VLAN interfaces' lines on distribution switch 1."; },
+      rung2: function () { return "A relay sends each request to one address. If that address goes away, so does the DHCP server, as far as the relay knows."; } },
+    { id: "works", text: "Everyone still works: every PC online, both printers and every switch answering", causes: reachCauses,
+      ok: function () { return "Every PC is online; both printers and every switch answer."; },
+      rung1: function () { return "ping 8.8.8.8 from each PC; the printers and the switches from the service desk."; },
+      rung2: function () { return "A packet needs a route at every router on the way there, and every router on the way back."; } },
+    { id: "manage", text: "Both core switches answer from the service desk", causes: manageCauses,
+      ok: function () { return "Both core switches answer from the service desk."; },
+      rung1: function () { return "ping each core switch from the service desk PC; then show ip route on the core switch that doesn't answer."; },
+      rung2: function () { return "A reply is a packet too: the far end needs its own route back to whoever asked."; } },
+    { id: "saved", text: "The edge router, both core switches and distribution switch 1 are saved", causes: savedCauses5,
+      ok: function () { return "All four are saved."; }, rung1: function () { return "show startup-config against show running-config on each."; }, rung2: function () { return "Only what's saved survives a power cut."; } }
+  ],
+  solve(v, sim) {
+    const p = v.plan, t = transit(p), L = CORE5(p), b = t.net.split(".")[1], out = [], c = function (l) { out.push({ t: "cmd", dev: "tech", line: l, cli: true }); }, n = sim ? sim.net.extra.runs || 0 : v.runs || 0;
+    const login = function () { [""].concat([p.console, "enable", p.secret, "configure terminal"]).forEach(c); };
+    const save = function () { c("end"); c("copy running-config startup-config"); c(""); };
+    let k = 0; const to = function (dev) { if (k) out.push({ t: "pull", cable: "c-console-" + (n + k) }); k++; out.push({ t: "lay", a: { dev: "tech", port: "USB-C" }, b: { dev: dev, port: "CONSOLE" } }); login(); };
+    /* the new paths beside the old: the edge router's ends, NAT inside, OSPF with the default */
+    to("edge");
+    L.filter(function (l) { return l.a === "edge"; }).forEach(function (l) { c("interface " + ifName("edge", l.ap)); c("ip address " + l.ia + " " + l.mask); c("ip nat inside"); c("no shutdown"); c("exit"); });
+    c("router ospf 1"); L.filter(function (l) { return l.a === "edge"; }).forEach(function (l) { c("network " + l.net + " 0.0.0.3 area 0"); }); c("default-information originate"); c("end");
+    /* the core switches: the installer did everything but OSPF */
+    ["core1", "core2"].forEach(function (id) { to(id); c("router ospf 1"); c("network 10." + b + ".255.0 0.0.0.255 area 0"); save(); });
+    /* distribution switch 1: its ends routed, OSPF with every VLAN passive; then the old default, the relay's address, the old link */
+    to("dist1");
+    L.filter(function (l) { return l.b === "dist1"; }).forEach(function (l) { c("interface gi0/" + l.bp); c("no switchport"); c("ip address " + l.ib + " " + l.mask); c("no shutdown"); c("exit"); });
+    c("router ospf 1"); c("network 10." + b + ".0.0 0.0.255.255 area 0"); c("passive-interface default"); L.filter(function (l) { return l.b === "dist1"; }).forEach(function (l) { c("no passive-interface gi0/" + l.bp); }); c("exit");
+    c("no ip route 0.0.0.0 0.0.0.0 " + t.edge);
+    DHCPV.forEach(function (x) { c("interface vlan " + p.vlans[x[0]].id); c("no ip helper-address " + t.edge); c("ip helper-address " + L[0].ia); c("exit"); });
+    c("interface gi0/24"); c("shutdown"); save();
+    /* the edge router: its static route and its end of the old link */
+    to("edge"); c("no ip route " + t.block + " " + t.bmask + " " + t.dist); c("interface " + p.edge.lan); c("shutdown"); save();
+    out.push({ t: "pull", cable: "c-console-" + (n + k) });
+    return out;
+  },
+  answer(v) {
+    const p = v.plan, t = transit(p), L = CORE5(p), b = t.net.split(".")[1];
+    return ["Console into the edge router: " + L.filter(function (l) { return l.a === "edge"; }).map(function (l) { return "interface " + ifName("edge", l.ap) + ", ip address " + l.ia + " " + l.mask + ", ip nat inside, no shutdown"; }).join("; ") + "; router ospf 1, a network statement for each link (0.0.0.3), default-information originate.",
+      "Each core switch: router ospf 1, network 10." + b + ".255.0 0.0.0.255 area 0; save.",
+      "Distribution switch 1: ports " + L.filter(function (l) { return l.b === "dist1"; }).map(function (l) { return l.bp + " (no switchport, ip address " + l.ib + " " + l.mask + ")"; }).join(" and ") + "; router ospf 1, network 10." + b + ".0.0 0.0.255.255 area 0, passive-interface default, no passive-interface on the two links. Check the neighbours and the routes, then: no ip route 0.0.0.0 0.0.0.0 " + t.edge + "; each pooled VLAN's helper moved to " + L[0].ia + "; port 24 shut; save.",
+      "The edge router: no ip route " + t.block + " " + t.bmask + " " + t.dist + "; " + p.edge.lan + " shut; save."];
+  },
+  summary() { return ["OSPF runs across the core: the edge router, both core switches and distribution switch 1 are neighbours on every link.", "The edge router hands its default route to OSPF; every VLAN in use comes back to it through both core switches, at the same cost, so either can fail.", "The static routes and the old direct link are retired: nothing is held up by hand any more."]; }
+};
+
+export const CAMPUS_JOBS = [CJ1, CJ2, CJ3, CJ4, CJ5];

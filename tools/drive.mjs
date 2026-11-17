@@ -2307,7 +2307,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
       const plan = await BJ(p, () => window.__e4b.T.sim.net.plan);
       check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed && /Level 4 · Campus/.test(await p.$eval("#labtitle", (n) => n.textContent)), tag + "opens the job on the campus asked for, under Level 4 · Campus");
       const lim = await p.$eval(".limits", (n) => n.textContent);
-      check([plan.secret].concat(job === "CP-J4" ? [plan.console, plan.vlans.mgmt.gw] : [plan.user, plan.userPw]).every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the campus's records the job needs");
+      check([plan.secret].concat(job === "CP-J4" ? [plan.console, plan.vlans.mgmt.gw] : job === "CP-J5" ? [plan.console, plan.sw.core1.host, plan.sw.core2.host] : [plan.user, plan.userPw]).every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the campus's records the job needs");
       await checkJob(p);
       check((await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do");
       const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
@@ -2331,6 +2331,15 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
         await step(p, { t: "cmd", dev: "sd1", line: "ipconfig /release" }); await step(p, { t: "cmd", dev: "sd1", line: "ipconfig /renew" });
         check(re("10." + b + "." + plan.vlans.svc.id + ".").test(await term(p)) && (await BJ(p, () => window.__e4b.T.sim.addr("sd1").kind)) === "dhcp", tag + "the service desk PC gets its address again, relayed to the edge router's pool");
         await step(p, { t: "cmd", dev: "sd1", line: "ping 8.8.8.8" }); check(/Reply from 8\.8\.8\.8/.test(await term(p)), tag + "and pings out");
+      }
+      if (job === "CP-J5") {   /* OSPF across the core, seen from the desks and from distribution switch 1 */
+        const b = plan.vlans.svc.net.split(".")[1], o = await ssh(p, plan, plan.vlans.mgmt.gw, ["show ip ospf neighbor", "show ip route"]), nb = o.slice(o.lastIndexOf("show ip ospf neighbor"), o.lastIndexOf("show ip route")), rt = o.slice(o.lastIndexOf("show ip route"));
+        check((nb.match(/FULL/g) || []).length === 2 && re("10." + b + ".255.17").test(nb) && re("10." + b + ".255.21").test(nb), tag + "show ip ospf neighbor on distribution switch 1: both core switches, FULL");
+        check(new RegExp("O\\*E2\\s+0\\.0\\.0\\.0/0 \\[110/1\\] via 10\\." + b + "\\.255\\.17, \\S+\\n\\s+\\[110/1\\] via 10\\." + b + "\\.255\\.21").test(rt) && !/^S\*/m.test(rt), tag + "show ip route on distribution switch 1: the default by OSPF through both core switches, no static default");
+        await step(p, { t: "cmd", dev: "sd1", line: "tracert -d 8.8.8.8" }); const tr = await term(p), tt = tr.slice(tr.lastIndexOf("tracert"));
+        check(re(plan.vlans.svc.gw).test(tt) && /10\.\d+\.255\.(17|21)\b/.test(tt) && /10\.\d+\.255\.(5|9)\b/.test(tt) && !re("10." + b + ".255.1 ").test(tt), tag + "tracert from the service desk: its gateway, a core switch, then the edge router, not the old link");
+        await step(p, { t: "cmd", dev: "sd1", line: "ipconfig /release" }); await step(p, { t: "cmd", dev: "sd1", line: "ipconfig /renew" });
+        check(re("10." + b + "." + plan.vlans.svc.id + ".").test(await term(p)) && (await BJ(p, () => window.__e4b.T.sim.addr("sd1").kind)) === "dhcp", tag + "the service desk PC still gets its address, relayed to the edge router's new address");
       }
       if (job === "CP-J4" && seed === 11) {   /* the bars over a long title, easier reading's font in: the sticky columns sit under them (16 November 2026: their height was measured only at load) */
         await p.click("#dys"); await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(250);

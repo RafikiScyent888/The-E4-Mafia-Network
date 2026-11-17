@@ -228,6 +228,9 @@ export class Sim {
       const c = this.panelEnd(c0) ? this.viaPanel(c0) : c0; if (!c) continue;   /* patched through a panel: the device beyond it */
       const me = c.a.dev === id ? c.a : c.b, far = c.a.dev === id ? c.b : c.a, fd = this.d[far.dev];
       if (!/^\d+$/.test(me.port) || !me.seated || !far.seated || fd.kind === "jack" || c.cond === "crushed" || (c.length || 0) > COPPER_MAX || !this.on(far.dev) || !this.pairsMeet(c)) continue;
+      /* the far end's own port shut (another managed switch's, or a router's): no link here either, as the cable itself says */
+      if (fd.kind === "mswitch") { const fp = fd.sw.ports[swPort(far.port)]; if (!fp || fp.shutdown || errDisabled(fd.sw, swPort(far.port))) continue; }
+      if (fd.kind === "brouter") { const ph = RT_IF(far.port); if (!ph || fd.sw.ifs[ph].shutdown) continue; }
       const m = (fd.kind === "router" || fd.kind === "rogue" ? fd.mac : fd.ifaces ? fd.ifaces[0].mac : "02-00-5e-" + (hash(far.dev) >>> 0).toString(16).padStart(8, "0").slice(0, 6).replace(/(..)(..)(..)/, "$1-$2-$3")).replace(/-/g, "");
       L["GigabitEthernet0/" + me.port] = { lldp: this.cableUp(c0) ? this.lldpOf(this.viaInjectorEnd(c0, id) || far) : null, dtp: this.dtpOf(far), chan: this.chanOf(far), farDev: far.dev, mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n };
       if (fd.maxMbps) L["GigabitEthernet0/" + me.port].max = Math.min(L["GigabitEthernet0/" + me.port].max, fd.maxMbps);

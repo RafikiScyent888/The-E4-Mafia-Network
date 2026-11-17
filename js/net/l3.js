@@ -53,6 +53,7 @@ export function routeLines(T, routing, gateway) {
     if (t.code === "C" || t.code === "L") { L.push(t.code + "        " + t.net + len + " is directly connected, " + t.iface); return; }
     const code = t.code + (isDefault(t) ? "*" : "") + (t.ext || "");
     L.push(pad(code, 9) + t.net + len + " [" + t.ad + "/" + (t.metric || 0) + "] via " + (t.nh || t.iface) + (t.nh && t.iface ? ", " + t.iface : ""));
+    (t.paths || []).slice(1).forEach(function (h) { L.push(" ".repeat(9 + (t.net + len).length + 1) + "[" + t.ad + "/" + (t.metric || 0) + "] via " + h.nh + ", " + h.iface); });   /* equal-cost paths, each its own line under the first */
   });
   return L;
 }

@@ -3815,7 +3815,17 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
     again.
   - **Found on the way:** a hint said "169.254", which the help check read as VLAN 254 on the campuses where that's the management
     VLAN; it names the address type instead.
-  - **Checks so far:** CP-J7's wrong ways (25) and other right ways; its walk-through meets every line; the drive and drawings running.
+  - **Faster, for every level** (a campus work order's reload replays every step; CP-J7's took 7.6 s, past the drive's 5 s limit):
+    - the links worked out once per computation that can't change them (`withEdges`), and spanning tree, standby and OSPF with them
+      (`scoped`); worked out again when a port is shut mid-pass (`edgesChanged`); the console's duplicate-address look once a session;
+    - a switch's VLAN settings fixed once per configuration (`fix` in `js/net/swcli.js`, a WeakSet; any of its four settings missing
+      again, as a test strips them in place, and it runs in full);
+    - within one pass a switch's view of its links (`switchLinks`) and a relay's way to its helper kept (`leased`), and dropped when a
+      lease changes (`dhcp`, `release`) or a port shuts.
+    - CP-J7 in Node: its start 2.2 s to 1.5 s, its 163 steps replayed 3.1 s to 1.4 s; the browser's reload 7.6 s to 2.7 s. The same
+      output and network after every step as before, on every office, business and campus work order, three seeds each (3,816 steps).
+  - **Checks so far:** CP-J7's wrong ways (25) and other right ways; its walk-through meets every line; `ONLY=campus JOB=CP-J7` 60
+    checks (three campuses, the reload inside the limit).
 
 ## Objectives
 

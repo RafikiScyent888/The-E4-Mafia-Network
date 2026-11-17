@@ -5,7 +5,9 @@
    Every change goes through apply(), so a ticket can be replayed exactly
    (progress is saved as the list of actions). */
 import { rng, hash, ip2n, n2ip, sameSubnet, isIp, isApipa, isPublic, isPrivate, isLoopback, broadcast, network, maskBits } from "./util.js";
-import { reload as reloadSwitch, duplexEnds, carries, ownAddrs, psRunOf, errDisabled, dotMac } from "./swcli.js";
+import { reload as reloadSwitch, duplexEnds, carries, ownAddrs, psRunOf, errDisabled, dotMac, l3Ifs, l3Route, l3Table, chanState, portUp, ospfPassive, PORT_NAMES as SW_PORTS } from "./swcli.js";
+import { solve as ospfSolve, wildMatch as ospfMatch, ifCost as ospfCost } from "./ospf.js";
+import { solve as stpSolve, costOf as stpCost } from "./stp.js";
 import * as RT from "./rtcli.js";
 
 /* each radio has its own hardware address: the 5 GHz one is the next number up */
@@ -207,7 +209,9 @@ export class Sim {
   }
   /* what a managed switch's port says about trunking to the far end (DTP); null from anything else */
   dtpOf(end) { const x = end && this.d[end.dev]; if (x && x.dtp) return { mode: x.dtp, nonegotiate: false };   /* a device that negotiates a trunk itself (SB-15's laptop) */
-    if (!x || x.kind !== "mswitch") return null; const p = x.sw.ports[swPort(end.port)]; return p ? { mode: p.mode || "dynamic auto", nonegotiate: !!p.nonegotiate } : null; }
+    if (!x || x.kind !== "mswitch") return null; const p = x.sw.ports[swPort(end.port)]; return p && !p.routed ? { mode: p.mode || "dynamic auto", nonegotiate: !!p.nonegotiate } : null; }   /* a routed port never negotiates (Level 4) */
+  /* the far end's port-channel settings, if it's a switch port in one (LACP's partner, Level 4) */
+  chanOf(end) { const x = end && this.d[end.dev]; if (!x || x.kind !== "mswitch") return null; const p = x.sw.ports[swPort(end.port)]; return p && p.chan ? { group: p.chan.group, mode: p.chan.mode } : null; }
   /* what each of a managed switch's ports sees at the far end of its cable, worked out without changing anything
      (a check must never change the network: a saved job has to replay exactly) */
   switchLinks(id) {
@@ -217,7 +221,7 @@ export class Sim {
     Object.keys(x.sfp || {}).forEach(function (slot) {
       const M = SFP_MODULES[x.sfp[slot]], c = this.cableAt(id, slot); if (!M) return;
       const far = c ? (c.a.dev === id && c.a.port === slot ? c.b : c.a) : null, fd = far && this.d[far.dev], up = !!c && c.kind === "fibre" && this.fibreUp(c), mm = fd && fd.mac ? fd.mac.replace(/[^0-9a-f]/gi, "").toLowerCase() : "";
-      L[swPort(slot)] = { lldp: up ? this.lldpOf(far) : null, dtp: this.dtpOf(far), module: M.show, pid: M.pid, unsupported: M.rate !== 1000, sfpMismatch: !up, light: up, mac: up ? mm.slice(0, 4) + "." + mm.slice(4, 8) + "." + mm.slice(8, 12) : null, speed: "1000", duplex: "full", max: 1000, tick: this.n };
+      L[swPort(slot)] = { lldp: up ? this.lldpOf(far) : null, dtp: this.dtpOf(far), chan: this.chanOf(far), farDev: far ? far.dev : null, module: M.show, pid: M.pid, unsupported: M.rate !== 1000, sfpMismatch: !up, light: up, mac: up ? mm.slice(0, 4) + "." + mm.slice(4, 8) + "." + mm.slice(8, 12) : null, speed: "1000", duplex: "full", max: 1000, tick: this.n };
     }, this);
     for (const c0 of this.cablesOf(id)) {
       if (c0.kind !== "cat6") continue;
@@ -225,7 +229,7 @@ export class Sim {
       const me = c.a.dev === id ? c.a : c.b, far = c.a.dev === id ? c.b : c.a, fd = this.d[far.dev];
       if (!/^\d+$/.test(me.port) || !me.seated || !far.seated || fd.kind === "jack" || c.cond === "crushed" || (c.length || 0) > COPPER_MAX || !this.on(far.dev) || !this.pairsMeet(c)) continue;
       const m = (fd.kind === "router" || fd.kind === "rogue" ? fd.mac : fd.ifaces ? fd.ifaces[0].mac : "02-00-5e-" + (hash(far.dev) >>> 0).toString(16).padStart(8, "0").slice(0, 6).replace(/(..)(..)(..)/, "$1-$2-$3")).replace(/-/g, "");
-      L["GigabitEthernet0/" + me.port] = { lldp: this.cableUp(c0) ? this.lldpOf(this.viaInjectorEnd(c0, id) || far) : null, dtp: this.dtpOf(far), mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n };
+      L["GigabitEthernet0/" + me.port] = { lldp: this.cableUp(c0) ? this.lldpOf(this.viaInjectorEnd(c0, id) || far) : null, dtp: this.dtpOf(far), chan: this.chanOf(far), farDev: far.dev, mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n };
       if (fd.maxMbps) L["GigabitEthernet0/" + me.port].max = Math.min(L["GigabitEthernet0/" + me.port].max, fd.maxMbps);
       if (fd.dtp && this.cableUp(c0)) {   /* a device trunking with the port (SB-15): its frames come in on every VLAN the port carries, so the switch learns it in each */
         const n = "GigabitEthernet0/" + me.port, cr = carries(x.sw, n, { mode: fd.dtp, nonegotiate: false }), mac = L[n].mac;
@@ -366,6 +370,7 @@ export class Sim {
   /* bridging devices pass frames between everything joined to them */
   edges() {
     const e = [], seen = new Set();
+    this._stpNow = this.stpLoops() ? this.stpAll() : null;
     for (const c0 of this.net.cables) {
       if (c0.kind === "coax" || c0.kind === "console" || !this.cableUp(c0)) continue;
       let c = c0;
@@ -389,9 +394,12 @@ export class Sim {
     const side = function (end, far) {
       const x = this.d[end.dev];
       if (x && x.kind === "mswitch") {
-        const fx = this.d[far.dev], fp = fx && fx.kind === "mswitch" ? fx.sw.ports[swPort(far.port)] : fx && fx.dtp ? { mode: fx.dtp, nonegotiate: false } : null, cr = carries(x.sw, swPort(end.port), fp ? { mode: fp.mode, nonegotiate: fp.nonegotiate } : null), t = {};
-        cr.tagged.forEach(function (v) { t[v] = this.vnode(end.dev, v); }, this);
-        return { u: cr.untagged != null ? this.vnode(end.dev, cr.untagged) : null, t: t };
+        if (x.sw.ports[swPort(end.port)] && x.sw.ports[swPort(end.port)].routed) return { u: this.l3Node(end.dev, swPort(end.port)), t: {} };   /* a layer 3 switch's routed port: untagged, to the port itself */
+        if (x.sw.ports[swPort(end.port)] && x.sw.ports[swPort(end.port)].chan && chanState(Object.assign({}, x.sw, { links: this.switchLinks(end.dev) }), swPort(end.port)) === "s") return { u: null, t: {} };   /* suspended from its port-channel: it carries nothing */
+        const fx = this.d[far.dev], fp = fx && fx.kind === "mswitch" ? fx.sw.ports[swPort(far.port)] : fx && fx.dtp ? { mode: fx.dtp, nonegotiate: false } : null, cr = carries(x.sw, swPort(end.port), fp && !fp.routed ? { mode: fp.mode, nonegotiate: fp.nonegotiate } : null), t = {};   /* the far end a switch port, or a device that negotiates a trunk itself (SB-15) */
+        const blk = this.stpBlockedOn(end.dev, swPort(end.port)) || [];   /* spanning tree: an alternate port forwards nothing in its VLANs */
+        cr.tagged.forEach(function (v) { if (blk.indexOf(v) < 0) t[v] = this.vnode(end.dev, v); }, this);
+        return { u: cr.untagged != null && blk.indexOf(cr.untagged) < 0 ? this.vnode(end.dev, cr.untagged) : null, t: t };
       }
       if (x && x.kind === "bap") { const t = {}; (x.ssids || []).forEach(function (w) { if (w.vlan) t[w.vlan] = this.bapNode(end.dev, w.vlan); }, this); return { u: this.bapNode(end.dev, null), t: t }; }   /* its uplink: untagged for itself (and any network with no VLAN), each network's VLAN tagged */
       if (x && x.kind === "brouter") {   /* a routed port: untagged to the port itself (or its native subinterface), each subinterface's tag to that subinterface */
@@ -432,7 +440,7 @@ export class Sim {
   anySnoop() { for (const id in this.d) { const x = this.d[id]; if (x.kind === "mswitch" && x.sw.snoop && x.sw.snoop.on) return true; } return false; }
   anyDai() { for (const id in this.d) { const x = this.d[id]; if (x.kind === "mswitch" && x.sw.dai && x.sw.dai.vlans.length) return true; } return false; }
   /* a DHCP server's node by its key: a router's LAN side ("router"), its guest network ("router:guest"), a business router's interface ("rtr@...") */
-  srvNode(key) { if (key.indexOf("@") > 0) { const [rid, n] = key.split("@"); return this.rtNode(rid, n); } return key === "router:guest" ? "router:guest" : key + ":lan"; }
+  srvNode(key) { if (key.indexOf("@") > 0) { const rl = this.relayOf(key); if (rl) return rl.node; const [rid, n] = key.split("@"); return this.rtNode(rid, n); } return key === "router:guest" ? "router:guest" : key + ":lan"; }
   /* DHCP snooping: a server's answers are dropped at the first switch that snoops their VLAN and doesn't trust the port they
      come in by. Where, or null */
   snoopBlock(serverNode, clientNode) {
@@ -562,7 +570,7 @@ export class Sim {
       const x = this.d[id];
       if (x.kind === "router" || x.kind === "rogue") { if ((dom.has(id + ":lan") && this.on(id) && x.lan.ip === ip) || (id === "router" && this.guestOn() && dom.has("router:guest") && x.guest.lan.ip === ip)) out.push(id); continue; }
       if (x.kind === "brouter") { if (this.on(id) && this.rtIfFor(id, ip, dom)) out.push(id); continue; }
-      if (x.kind === "mswitch") { if (this.on(id)) { if (this.mgmtAddrs(id).some(function (o) { return o.ip === ip && dom.has(this.vnode(id, o.vlan)); }, this)) out.push(id); } continue; }
+      if (x.kind === "mswitch") { if (this.on(id)) { if (this.mgmtAddrs(id).some(function (o) { return o.ip === ip && dom.has(this.vnode(id, o.vlan)); }, this) || this.routedAddrs(id).some(function (o) { return o.ip === ip && dom.has(o.node); }) || this.hsrpVips(id).some(function (o) { return o.vip === ip && dom.has(o.node); })) out.push(id); } continue; }
       if (!x.ifaces) continue;
       if (!dom.has(x.kind === "bap" ? this.bapNode(id, null) : id)) continue;   /* a business access point's own address is on its untagged side */
       const a = this.addr(id); if (a && a.ip === ip) out.push(id);
@@ -588,9 +596,41 @@ export class Sim {
       const discover = { proto: "udp", src: "0.0.0.0", dst: "255.255.255.255", sport: 68, port: 67 };
       RT.allIfs(R).forEach(function (n) { const a = RT.addrOf(R, n, live), f = n.indexOf(".") > 0 ? R.subs[n] : R.ifs[n]; if (a && RT.rtStatus(R, n)[1] === "up" && dom.has(this.rtNode(rid, n)) && RT.poolFor(R, a.ip, a.mask) && (!f.aclIn || RT.aclVerdict(R, f.aclIn, discover).permit)) out.push(rid + "@" + n); }, this);
     }
+    out.push.apply(out, this.relays(dom));
     if (raw || !this.anySnoop()) return out;
     const me = this.homeNode(id);
     return out.filter(function (k) { return !this.snoopBlock(this.srvNode(k), me); }, this);   /* an answer coming in by a port a snooping switch doesn't trust never reaches the client */
+  }
+  /* DHCP relay (ip helper-address): a layer 3 switch routing, with an interface up on the client's broadcast domain that has helpers,
+     sends the request on to each helper as a unicast from its own way out, the relaying interface's address (giaddr) in it. A business
+     router at a helper's address answers from its pool for giaddr's network, if the request reaches it and its answer can be routed
+     back to giaddr. Keys "rtr@relay|switch|interface|helper". Worked out, never stored */
+  relays(dom) {
+    const out = [];
+    for (const sid in this.d) {
+      if (!this.routes3(sid)) continue;
+      const V = this.l3View(sid), sw = this.d[sid].sw;
+      l3Ifs(V).forEach(function (f) {
+        const m = /^Vlan(\d+)$/.exec(f.name), rec = m ? (+m[1] === 1 ? sw.vlan1 : sw.svis[m[1]]) : sw.ports[f.name];
+        if (!f.up || !f.ip || !rec || !rec.helpers || !dom.has(this.l3Node(sid, f.name))) return;
+        rec.helpers.forEach(function (h) {
+          const there = this.routeFromL3(sid, h, { proto: "udp", port: 67, sport: 67 }), rid = there && !there.fail && (there.local || there.routed) && there.owner ? there.owner.find(function (o) { return this.d[o].kind === "brouter"; }, this) : null;
+          if (!rid || !this.on(rid)) return;
+          const R = this.rtView(rid), live = this.rtLive(rid), at = RT.allIfs(R).find(function (n) { const x = RT.addrOf(R, n, live); return x && x.ip === h && RT.rtStatus(R, n)[1] === "up"; });
+          if (!at || !RT.poolFor(R, f.ip, f.mask)) return;
+          const back = this.routeFromRouter(rid, f.ip, { proto: "udp", port: 67, sport: 67 });
+          if (back.fail || !(back.local || back.routed) || !(back.owner || []).some(function (o) { return o === sid; })) return;
+          out.push(rid + "@relay|" + sid + "|" + f.name + "|" + h);
+        }, this);
+      }, this);
+    }
+    return out;
+  }
+  /* a relayed key's parts: the router, the relaying switch and interface (with its address now), the helper address */
+  relayOf(key) {
+    const [rid, rest] = key.split("@"); if (!rest || rest.indexOf("relay|") !== 0) return null;
+    const [, sid, ifn, h] = rest.split("|"), f = l3Ifs(this.l3View(sid)).find(function (k) { return k.name === ifn; });
+    return { rid: rid, sid: sid, ifn: ifn, helper: h, giaddr: f ? { ip: f.ip, mask: f.mask } : null, node: this.l3Node(sid, ifn) };
   }
   /* the servers a client's request reaches whose answers a snooping switch drops: where (for the checks' causes) */
   snoopDrops(id) {
@@ -601,9 +641,9 @@ export class Sim {
      else the lowest free one. Like the real server it checks an address isn't answering first: one in use by a device set by
      hand (an address nobody excluded) goes on its conflict list and is skipped */
   rtOffer(key, mac) {
-    const [rid, n] = key.split("@"), x = this.d[rid], R = x.sw, a = RT.addrOf(R, n, this.rtLive(rid)), P = RT.poolFor(R, a.ip, a.mask); if (!P) return null;
+    const rl = this.relayOf(key), [rid, n] = key.split("@"), x = this.d[rid], R = x.sw, a = rl ? rl.giaddr : RT.addrOf(R, n, this.rtLive(rid)), P = a && RT.poolFor(R, a.ip, a.mask); if (!P) return null;   /* relayed: the pool for the relaying interface's network */
     x.leases = x.leases || []; x.conflicts = x.conflicts || [];
-    const taken = new Set(x.leases.filter(function (l) { return l.mac !== mac; }).map(function (l) { return l.ip; })), dom = this.domain(this.rtNode(rid, n));
+    const taken = new Set(x.leases.filter(function (l) { return l.mac !== mac; }).map(function (l) { return l.ip; })), dom = this.domain(rl ? rl.node : this.rtNode(rid, n));
     /* a manual binding for this client (a reservation, matched on the client identifier it sends): its address and nothing else,
        unless something else already answers at it */
     const M = RT.manualFor(R, RT.clientIdOf(mac), a.ip, a.mask);
@@ -669,7 +709,7 @@ export class Sim {
   }
   /* a lease from the business router: what its pool says (its mask, its default router, its DNS servers), right or wrong */
   rtLease(key, x, f, o) {
-    const [rid, n] = key.split("@"), r = this.d[rid], a = RT.addrOf(r.sw, n, this.rtLive(rid)), P = o.pool;
+    const rl = this.relayOf(key), [rid, n] = key.split("@"), r = this.d[rid], a = rl ? { ip: rl.helper } : RT.addrOf(r.sw, n, this.rtLive(rid)), P = o.pool;   /* relayed: the server is the helper address */
     r.leases = r.leases.filter(function (l) { return l.mac !== f.mac; });
     r.leases.push({ mac: f.mac, ip: o.ip, pool: P.name, name: x.label, host: x.host || x.label.replace(/\s+/g, "-").toUpperCase(), manual: !!P.manual });
     f.lease = { ip: o.ip, mask: P.mask, gw: P.router[0] || null, dns: P.dns.slice(), server: a.ip, obtained: this.n, hours: P.lease === "infinite" ? 0 : P.lease[0] * 24 + (P.lease[1] || 0), domain: P.domain || null };
@@ -688,7 +728,7 @@ export class Sim {
   }
   /* after something changes physically, clients whose link came up ask again */
   relink(before) {
-    this.snoopTidy(); this.portSecurity();
+    this.snoopTidy(); this.portSecurity(); this.bpduGuard(); this.hsrpTick();
     /* a DHCP pool still being typed (a console in its dhcp-config mode): a device asks now and then, not on every line, so it doesn't
        catch the pool half made (its network typed, its default-router not yet: a lease with no gateway) */
     const cli = this.cli || {}, poolOpen = Object.keys(cli).some(function (k) { const st = cli[k]; return !!(st && st.S && st.S.mode === "dhcp"); });
@@ -705,8 +745,9 @@ export class Sim {
 
   /* ------------------------------------------------------------ reaching an address */
   /* the path a packet from a device takes to an address, without sending it */
-  route(id, dst, proto) {
+  route(id, dst, proto, oneWay) {
     if (this.d[id] && this.d[id].kind === "brouter") return this.routeFromRouter(id, dst, proto);
+    if (this.routes3(id)) return this.routeFromL3(id, dst, proto);
     const a = this.addr(id);
     if (!a) return { fail: "no-link" };
     if (isLoopback(dst)) return { local: true, owner: [id], hops: [] };
@@ -732,6 +773,7 @@ export class Sim {
     /* through a router */
     const gwId = owners[0], g = this.d[gwId];
     if (g.kind === "brouter") return this.routeBR(id, a, dst, gwId, dom, proto);
+    if (this.routes3(gwId)) return this.routeL3(id, a, dst, gwId, dom, proto, oneWay);
     if (g.kind === "router" && this.inGuest(a.ip) && this.guestOn()) {   /* from the guest network: the internet yes; the home network only if the router allows it */
       if (sameSubnet(dst, g.lan.ip, g.lan.mask) || dst === this.d.modem.mgmt) {
         if (g.guest.isolate) return { fail: "blocked", via: gwId, addr: a, hops: [g.guest.lan.ip] };
@@ -755,10 +797,11 @@ export class Sim {
   /* can this device send a reply to an address on its own LAN? */
   canReply(id, to, dom) {
     const x = this.d[id];
+    if (this.routes3(id)) return !!l3Route(this.l3View(id), to, this.learned(id));   /* a switch that routes replies by its own table */
     if (x.kind === "router" || x.kind === "rogue" || x.kind === "brouter" || (!x.ifaces && x.kind !== "mswitch")) return true;
     const b = this.addr(id); if (!b) return false;
     if (sameSubnet(b.ip, to, b.mask)) return true;
-    return !!(b.gw && sameSubnet(b.ip, b.gw, b.mask) && this.owners(b.gw, dom).some((g) => this.d[g].kind === "router" || this.d[g].kind === "rogue" || this.d[g].kind === "brouter"));   /* the router hands it back across the LAN */
+    return !!(b.gw && sameSubnet(b.ip, b.gw, b.mask) && this.owners(b.gw, dom).some((g) => this.d[g].kind === "router" || this.d[g].kind === "rogue" || this.d[g].kind === "brouter" || this.routes3(g)));   /* the router hands it back across the LAN */
   }
   /* the quality of the first hop: Wi-Fi loss and delay */
   hop(id) {
@@ -771,6 +814,257 @@ export class Sim {
     const e = c.a.dev === "msw" ? c.a : c.b; if (!/^\d+$/.test(e.port)) return false;
     const n = swPort(e.port), p = this.d.msw.sw.ports[n], lk = this.switchLinks("msw")[n];
     return !!(p && lk && duplexEnds(p, lk).mismatch);
+  }
+
+  /* ------------------------------------------------------------ spanning tree (Level 4, the campus: stp.js) */
+  /* switch ports cabled to each other, with their links up: "dev|GigabitEthernet0/23" to { dev, port } */
+  switchPeers() {
+    const P = {};
+    for (const c0 of this.net.cables) {
+      if (c0.kind !== "cat6" && c0.kind !== "fibre") continue;
+      const c = c0.kind === "cat6" && this.panelEnd(c0) ? this.viaPanel(c0) : c0; if (!c || !this.cableUp(c0)) continue;
+      const A = this.d[c.a.dev], Bd = this.d[c.b.dev]; if (!A || !Bd || A.kind !== "mswitch" || Bd.kind !== "mswitch" || !this.on(c.a.dev) || !this.on(c.b.dev)) continue;
+      const pa = swPort(c.a.port), pb = swPort(c.b.port); P[c.a.dev + "|" + pa] = { dev: c.b.dev, port: pb }; P[c.b.dev + "|" + pb] = { dev: c.a.dev, port: pa };
+    }
+    return P;
+  }
+  /* could the switches make a loop at all (more links than a tree has, in any group of them)? If not, nothing ever blocks, and
+     the office's and the business's networks are worked out as they always were */
+  stpLoops() {
+    /* a loop needs two links between switches at least: count the cables that could be one (a switch at one end, a switch or a patch
+       panel at the other) before working anything out, so a network with one trunk costs nothing */
+    let k = 0; for (const c of this.net.cables) { const A = this.d[c.a.dev], Bd = this.d[c.b.dev]; if (!A || !Bd) continue; const sa = A.kind === "mswitch", sb = Bd.kind === "mswitch"; if ((sa && (sb || Bd.kind === "patchpanel")) || (sb && A.kind === "patchpanel")) k++; }
+    if (k < 2) return false;
+    const P = this.switchPeers(), adj = {}, seen = {};
+    Object.keys(P).forEach(function (k) { const a = k.split("|")[0], b = P[k].dev; (adj[a] = adj[a] || []).push(b); });
+    for (const s0 in adj) {
+      if (seen[s0]) continue; let nodes = 0, ends = 0; const q = [s0]; seen[s0] = true;
+      while (q.length) { const v = q.shift(); nodes++; ends += adj[v].length; adj[v].forEach(function (w) { if (!seen[w]) { seen[w] = true; q.push(w); } }); }
+      if (ends / 2 >= nodes) return true;
+    }
+    return false;
+  }
+  stpPrio(sw, v) { return sw.stp && sw.stp.prio && sw.stp.prio[v] != null ? sw.stp.prio[v] : 32768; }
+  /* one VLAN's spanning tree: every switch with the VLAN, every port of theirs that's up and carries it (a bundled port-channel
+     once), each with its cost, number, far end and whether it's an edge port. Worked out, never stored */
+  stpVlan(v, peers, views) {
+    const sws = {}, ports = [], byLp = {};
+    const lpOf = function (sw, view, n) { const p = sw.ports[n]; return p.chan && chanState(view, n) === "P" ? "Po" + p.chan.group : n; };
+    for (const id in this.d) {
+      const x = this.d[id]; if (x.kind !== "mswitch" || !this.on(id) || !x.sw.vlans || !x.sw.vlans[v]) continue;
+      const view = views[id]; sws[id] = { mac: x.sw.mac || x.mac, prio: this.stpPrio(x.sw, v) };
+      SW_PORTS.forEach(function (n) {
+        const p = x.sw.ports[n]; if (!p || p.routed || !portUp(view, n)) return;
+        const cs = p.chan ? chanState(view, n) : null; if (cs === "s" || cs === "D") return;
+        const cr = carries(view, n); if (cr.untagged !== v && cr.tagged.indexOf(v) < 0) return;
+        const lp = lpOf(x.sw, view, n), l = view.links[n] || {}, mbps = p.speed !== "auto" ? +p.speed : Math.min(+(l.max || 1000), l.speed && l.speed !== "auto" ? +l.speed : 1000);
+        const peer = peers[id + "|" + n]; let far = null;
+        if (peer && this.d[peer.dev].sw.vlans && this.d[peer.dev].sw.vlans[v]) { const fv = views[peer.dev], fp = this.d[peer.dev].sw.ports[peer.port], fc = carries(fv, peer.port); if (fp && !fp.routed && (fc.untagged === v || fc.tagged.indexOf(v) >= 0)) far = { sw: peer.dev, lp: lpOf(this.d[peer.dev].sw, fv, peer.port) }; }
+        const key = id + " " + lp;
+        if (byLp[key]) { byLp[key].mbps += mbps; byLp[key].members++; return; }
+        byLp[key] = { sw: id, lp: lp, num: lp.indexOf("Po") === 0 ? 100 + +lp.slice(2) : +n.split("/")[1], mbps: mbps, members: 1, far: far, edge: !!(p.stp && p.stp.portfast), fixed: p.stp && p.stp.cost };
+        ports.push(byLp[key]);
+      }, this);
+    }
+    ports.forEach(function (q) { q.cost = q.fixed || stpCost(q.mbps / (q.members || 1), q.lp.indexOf("Po") === 0 ? q.members : 1); });
+    return { sws: sws, ports: ports, result: stpSolve(sws, ports, v) };
+  }
+  /* every VLAN's, kept until a switch or a cable changes */
+  stpAll() {
+    const ids = Object.keys(this.d).filter(function (id) { return this.d[id].kind === "mswitch"; }, this);
+    const sig = JSON.stringify(ids.map(function (id) { const x = this.d[id]; return [id, this.on(id), x.sw.ports, x.sw.pcs, x.sw.stp, x.sw.vlans, x.sw.psRun, x.sfp]; }, this)) + JSON.stringify(this.net.cables);
+    if (this._stp && this._stp.sig === sig) return this._stp.all;
+    const peers = this.switchPeers(), views = {}, vl = {};
+    ids.forEach(function (id) { if (this.on(id)) { views[id] = Object.assign({}, this.d[id].sw, { links: this.switchLinks(id) }); Object.keys(this.d[id].sw.vlans || {}).forEach(function (k) { vl[k] = true; }); } }, this);
+    const all = {}; Object.keys(vl).map(Number).forEach(function (v) { all[v] = this.stpVlan(v, peers, views); }, this);
+    this._stp = { sig: sig, all: all }; return all;
+  }
+  /* the VLANs a switch port doesn't forward (an alternate port, blocking), only where a loop is possible at all */
+  stpBlockedOn(id, n) {
+    if (!this._stpNow) return null;
+    const x = this.d[id], p = x.sw.ports[n], lp = p && p.chan ? "Po" + p.chan.group : n, out = [];
+    for (const v in this._stpNow) { const r = this._stpNow[v].result.roles[id + " " + lp] || this._stpNow[v].result.roles[id + " " + n]; if (r && r.sts === "BLK") out.push(+v); }
+    return out;
+  }
+  /* BPDU guard after each change: a port with it on that hears another switch is shut down (err-disabled), until someone shuts it
+     and opens it again */
+  bpduGuard() {
+    let peers = null;
+    for (const id in this.d) {
+      const x = this.d[id]; if (x.kind !== "mswitch" || !this.on(id)) continue;
+      for (const n in x.sw.ports) {
+        const p = x.sw.ports[n]; if (!p.stp || !p.stp.bpduguard || p.shutdown) continue;
+        const run = psRunOf(x.sw, n); if (run.err) continue;
+        peers = peers || this.switchPeers(); const peer = peers[id + "|" + n]; if (!peer) continue;
+        const fp = this.d[peer.dev].sw.ports[peer.port]; if (!fp || fp.routed || fp.shutdown) continue;
+        run.err = true; run.why = "bpduguard";
+      }
+    }
+  }
+  /* what a switch's command line asks the network: its spanning tree for a VLAN, its routing protocol's routes */
+  swLive(id) {
+    const self = this;
+    return function (k, v) {
+      if (k === "stp") { const all = self.stpAll(); return all[v] ? { result: all[v].result, ports: all[v].ports.filter(function (q) { return q.sw === id; }), me: id } : null; }
+      if (k === "stpvlans") return Object.keys(self.stpAll()).map(Number).filter(function (w) { return self.d[id].sw.vlans[w]; });
+      if (k === "learned") return self.learned(id);
+      if (k === "hsrp") {
+        const S = self.hsrpState(), out = [];
+        Object.keys(S).forEach(function (key) { const q = S[key]; q.members.filter(function (m) { return m.id === id; }).forEach(function (m) {
+          const state = !m.up ? "Init" : q.active && q.active.id === id && q.active.iface === m.iface ? "Active" : q.standby && q.standby.id === id ? "Standby" : "Listen";
+          out.push({ iface: m.iface, grp: m.grp, pri: m.pri, preempt: m.preempt, state: state, active: q.active ? (q.active.id === id ? "local" : q.active.ip) : "unknown", standby: q.standby ? (q.standby.id === id ? "local" : q.standby.ip) : "unknown", vip: q.vip || m.vip });
+        }); });
+        return out.sort(function (p, q2) { return p.iface < q2.iface ? -1 : p.iface > q2.iface ? 1 : p.grp - q2.grp; });
+      }
+      if (k === "ospf") {
+        const R = self.ospfAll(), me = R.routers[id]; if (!me) return null;
+        const nb = R.nbrs[id] || [];
+        return { rid: me.rid, nbrs: nb, ifs: me.ifs.map(function (f) { const on = nb.filter(function (q) { return q.iface === f.name; }); return { name: f.name, ip: f.ip, mask: f.mask, area: f.area, cost: f.cost, passive: f.passive, role: R.roles[id + " " + f.name] || null, nbrs: on.length, full: on.filter(function (q) { return /^FULL/.test(q.state); }).length }; }) };
+      }
+      return null;
+    };
+  }
+
+  /* ------------------------------------------------------------ the layer 3 switches (Level 4, the campus: swcli.js, l3.js) */
+  /* a switch that routes: a layer 3 one, switched on, with "ip routing" */
+  routes3(id) { const x = this.d[id]; return !!x && x.kind === "mswitch" && !!x.sw && x.sw.os === "l3switch" && !!x.sw.routing && this.on(id); }
+  /* the node one of its interfaces is on: a VLAN interface is its VLAN inside the switch, a routed port a node of its own */
+  l3Node(id, n) { const m = /^Vlan(\d+)$/.exec(n); return m ? this.vnode(id, +m[1]) : id + "@" + n; }
+  /* the switch as it runs now, its links fresh (a copy: a check changes nothing) */
+  l3View(id) { return Object.assign({}, this.d[id].sw, { links: this.switchLinks(id) }); }
+  /* its routed ports' addresses (up, with an address), each with its node */
+  routedAddrs(id) {
+    const x = this.d[id]; if (!x.sw || x.sw.os !== "l3switch" || !Object.keys(x.sw.ports).some(function (n) { return x.sw.ports[n].routed; })) return [];
+    return l3Ifs(this.l3View(id)).filter(function (f) { return f.up && f.ip && !/^Vlan/.test(f.name); }).map(function (f) { return { ip: f.ip, mask: f.mask, node: this.l3Node(id, f.name), iface: f.name }; }, this);
+  }
+  /* routes OSPF worked out for it (each switch that routes, with "router ospf") */
+  learned(id) { const x = this.d[id]; if (!x || !x.sw || !x.sw.ospf) return []; const R = this.ospfAll(); return (R.routes[id] || []).map(function (r) { return Object.assign({ ad: 110 }, r); }); }
+  /* ------------------------------------------------------------ first-hop redundancy: standby (Level 4) */
+  /* each standby group on each segment: its members (switch, interface, real address, virtual address, priority, preempt, up),
+     kept until a switch or a cable changes. Only a layer 3 switch has any */
+  hsrpGroups() {
+    const ids = Object.keys(this.d).filter(function (id) { const x = this.d[id]; return x.kind === "mswitch" && x.sw.os === "l3switch" && this.on(id); }, this);
+    const any = ids.some(function (id) { const w = this.d[id].sw; return Object.keys(w.svis || {}).some(function (k) { return w.svis[k].standby; }) || (w.vlan1 && w.vlan1.standby) || Object.keys(w.ports).some(function (k) { return w.ports[k].standby; }); }, this);
+    if (!any) return {};
+    const sig = JSON.stringify(Object.keys(this.d).filter(function (id) { return this.d[id].kind === "mswitch"; }, this).map(function (id) { const w = this.d[id].sw; return [id, this.on(id), w.ports, w.svis, w.vlan1, w.vlans, w.pcs, w.stp]; }, this)) + JSON.stringify(this.net.cables);
+    if (this._hsrp && this._hsrp.sig === sig) return this._hsrp.G;
+    const G = {}, segs = {};
+    const segOf = function (node) { if (segs[node]) return segs[node]; const D = [...this.domain(node)].sort(), k = D[0]; D.forEach(function (n) { segs[n] = k; }); return k; }.bind(this);
+    ids.forEach(function (id) {
+      const w = this.d[id].sw;
+      l3Ifs(this.l3View(id)).forEach(function (f) {
+        const rec = /^Vlan/.test(f.name) ? (f.name === "Vlan1" ? w.vlan1 : w.svis[f.name.slice(4)]) : w.ports[f.name]; if (!rec || !rec.standby) return;
+        const seg = f.up ? segOf(this.l3Node(id, f.name)) : this.l3Node(id, f.name);
+        Object.keys(rec.standby).forEach(function (g) { const c = rec.standby[g], k = seg + "|" + g; (G[k] = G[k] || []).push({ id: id, iface: f.name, ip: f.ip, vip: c.ip || null, pri: c.pri == null ? 100 : c.pri, preempt: !!c.preempt, up: !!(f.up && f.ip), grp: +g, node: this.l3Node(id, f.name) }); }, this);
+      }, this);
+    }, this);
+    this._hsrp = { sig: sig, G: G }; return G;
+  }
+  /* the election after each change: the active router stays active while it's up, unless one with a higher priority and preempt
+     set comes along; when it goes, the best of the rest (highest priority, then highest address) takes over */
+  hsrpTick() {
+    const G = this.hsrpGroups(), keys = Object.keys(G); if (!keys.length && !(this.net.extra && this.net.extra.hsrp)) return;
+    this.net.extra = this.net.extra || {}; const A = this.net.extra.hsrp = this.net.extra.hsrp || {};
+    const rank = function (p, q) { return q.pri - p.pri || ip2n(q.ip) - ip2n(p.ip); };
+    keys.forEach(function (k) {
+      const el = G[k].filter(function (m) { return m.up; }).sort(rank); if (!el.length) { delete A[k]; return; }
+      const cur = el.find(function (m) { return m.id === A[k]; }), best = el[0];
+      if (!cur) A[k] = best.id; else if (best.id !== cur.id && best.preempt && best.pri > cur.pri) A[k] = best.id;
+    });
+    Object.keys(A).forEach(function (k) { if (!G[k]) delete A[k]; });
+  }
+  /* each group's state: who's active and who's standby, the virtual address the active one answers for */
+  hsrpState() {
+    const G = this.hsrpGroups(), A = (this.net.extra && this.net.extra.hsrp) || {}, out = {};
+    const rank = function (p, q) { return q.pri - p.pri || ip2n(q.ip) - ip2n(p.ip); };
+    Object.keys(G).forEach(function (k) {
+      const el = G[k].filter(function (m) { return m.up; }).sort(rank), act = el.find(function (m) { return m.id === A[k]; }) || null;
+      const sby = el.filter(function (m) { return !act || m.id !== act.id; })[0] || null;
+      out[k] = { members: G[k], active: act, standby: sby, vip: act ? act.vip || (el.find(function (m) { return m.vip; }) || {}).vip : null };
+    });
+    return out;
+  }
+  /* the virtual addresses a switch answers ARP for now (it's the active router in that group), each with its node */
+  hsrpVips(id) {
+    const x = this.d[id]; if (!x.sw || x.sw.os !== "l3switch") return [];
+    const S = this.hsrpState(), out = []; Object.keys(S).forEach(function (k) { const q = S[k]; if (q.active && q.active.id === id && q.vip) out.push({ vip: q.vip, node: q.active.node }); }); return out;
+  }
+
+  /* ------------------------------------------------------------ OSPF (Level 4, the campus: ospf.js) */
+  /* every switch's OSPF interfaces (up, an address, in a network statement), each on its segment (its layer 2 broadcast domain),
+     and what the protocol settles on; kept until a switch or a cable changes */
+  ospfAll() {
+    const ids = Object.keys(this.d).filter(function (id) { const x = this.d[id]; return x.kind === "mswitch" && x.sw.os === "l3switch" && x.sw.ospf && x.sw.routing && this.on(id); }, this);
+    const sig = JSON.stringify(Object.keys(this.d).filter(function (id) { return this.d[id].kind === "mswitch"; }, this).map(function (id) { const w = this.d[id].sw; return [id, this.on(id), w.ports, w.svis, w.ospf, w.routes, w.routing, w.vlans, w.pcs, w.stp, w.vlan1]; }, this)) + JSON.stringify(this.net.cables);
+    if (this._ospf && this._ospf.sig === sig) return this._ospf.res;
+    const routers = {}, segs = {};
+    const segOf = function (node) { if (segs[node]) return segs[node]; const D = [...this.domain(node)].sort(), k = D[0]; D.forEach(function (n) { segs[n] = k; }); return k; }.bind(this);
+    ids.forEach(function (id) {
+      const sw = this.d[id].sw, O = sw.ospf, view = this.l3View(id), up = l3Ifs(view).filter(function (f) { return f.up && f.ip; });
+      const ifs = [];
+      up.forEach(function (f) {
+        const st = O.nets.find(function (x) { return ospfMatch(f.ip, x.net, x.wild); }); if (!st) return;
+        const rec = /^Vlan/.test(f.name) ? (f.name === "Vlan1" ? sw.vlan1 : sw.svis[f.name.slice(4)]) : sw.ports[f.name];
+        const mbps = /^Vlan/.test(f.name) ? 1000 : (rec.speed && rec.speed !== "auto" ? +rec.speed : 1000);
+        ifs.push({ name: f.name, ip: f.ip, mask: f.mask, area: st.area, cost: rec.ospfCost || ospfCost(mbps, O.refBw), passive: ospfPassive(O, f.name), mtu: rec.mtu || 1500, pri: rec.ospfPri, seg: segOf(this.l3Node(id, f.name)) });
+      }, this);
+      const rid = O.rid || up.map(function (f) { return f.ip; }).sort(function (a, b) { return ip2n(b) - ip2n(a); })[0] || "0.0.0.0";
+      const def = !!O.originate && l3Table(view, []).some(function (t) { return t.code === "S" && t.net === "0.0.0.0" && t.mask === "0.0.0.0"; });
+      routers[id] = { rid: rid, ifs: ifs, originate: def };
+    }, this);
+    const res = ospfSolve(routers); res.routers = routers;
+    this._ospf = { sig: sig, res: res }; return res;
+  }
+  /* a packet from a device through layer 3 switches: in at its gateway, the longest match there, out; on to the next hop's
+     switch while the route says so, until it reaches the destination's own network, where whoever owns the address answers.
+     Each switch it crosses takes one off the TTL. The reply has to find its own way back: the destination's route to the
+     sender must work too (oneWay: this is that check, so it doesn't check again). A next hop that never answers, a network
+     no switch has a route to, a loop, each stops it for its own reason. Worked out, never stored: a check changes nothing */
+  routeL3(id, a, dst, gwId, dom, proto, oneWay, depth) {
+    const base = { via: gwId, addr: a }, hops = [a.gw], seen = [];
+    let cur = gwId, routers = 0;
+    if ((depth || 0) > 8) return Object.assign({ fail: "no-reply", hops: hops, why: "loop", routers: 16 }, base);   /* handed back and forth between switches and a router until the TTL runs out */
+    while (routers < 16) {
+      if (seen.indexOf(cur) >= 0) return Object.assign({ fail: "no-reply", hops: hops.slice(), why: "loop", routers: routers }, base);   /* round in a circle until the TTL runs out */
+      seen.push(cur); routers++;
+      const V = this.l3View(cur), mine = l3Ifs(V).find(function (f) { return f.up && f.ip === dst; });
+      if (mine) {   /* one of this switch's own addresses */
+        if (routers > 1 && !oneWay) { const r = this.routeFromL3(cur, a.ip, proto, true); if (r.fail || !(r.local || r.routed)) return Object.assign({ fail: "no-reply", hops: hops.slice(), why: "no way back", routers: routers }, base); }
+        return Object.assign(routers === 1 ? { local: true } : { routed: true }, { owner: [cur], next: dst, hops: hops.concat(routers === 1 ? [] : [dst]), routers: routers - 1 }, base);
+      }
+      const rt = l3Route(V, dst, this.learned(cur));
+      if (!rt) return Object.assign({ fail: "net-unreachable", hops: [hops[hops.length - 1]], path: hops.slice(), why: "no-route", at: cur, routers: routers }, base);   /* this switch has no route: it says so */
+      const odom = this.domain(this.l3Node(cur, rt.iface)), next = rt.nh || dst;
+      const owners = this.owners(next, odom).filter(function (o) { return o !== cur; });
+      if (!owners.length) return Object.assign({ fail: "no-reply", hops: hops.slice(), why: rt.nh ? "next-hop" : "arp", at: cur, routers: routers }, base);   /* its ARP for the next hop, or the destination, goes unanswered */
+      if (rt.nh) {
+        const n = owners[0];
+        if (this.d[n].kind === "brouter") {   /* on into a business router (the campus's edge): it carries on from its interface on this network */
+          const br = this.routeBR(id, { ip: a.ip, mask: a.mask, gw: rt.nh, kind: a.kind }, dst, n, odom, proto, oneWay, (depth || 0) + 1);
+          return Object.assign({}, br, { via: gwId, addr: a, hops: hops.concat(br.hops || []), routers: routers + (br.routers || 1) });
+        }
+        if (!this.routes3(n)) return Object.assign({ fail: "beyond", hops: hops.concat([rt.nh]), routers: routers }, base);   /* a next hop that doesn't route it on */
+        hops.push(rt.nh); cur = n; continue;
+      }
+      const back = owners.filter(function (o) { return this.canReply(o, a.ip, odom); }, this);
+      if (!back.length) return Object.assign({ fail: "no-reply", hops: hops.slice(), why: "their gateway", owner: owners, routers: routers }, base);
+      if (!oneWay) { const r = this.route(back[0], a.ip, proto, true); if (r.fail || !(r.local || r.routed)) return Object.assign({ fail: "no-reply", hops: hops.slice(), why: "no way back", owner: owners, routers: routers }, base); }
+      return Object.assign({ local: false, routed: true, owner: back, outIf: rt.iface, next: dst, hops: hops.concat([dst]), routers: routers }, base);
+    }
+    return Object.assign({ fail: "no-reply", hops: hops, why: "loop", routers: routers }, base);
+  }
+  /* a packet the switch sends itself (its ping): out by its own routing table, from the way-out interface's address */
+  routeFromL3(rid, dst, proto, oneWay) {
+    const V = this.l3View(rid), ifs = l3Ifs(V);
+    if (ifs.some(function (f) { return f.up && f.ip === dst; })) return { local: true, owner: [rid], hops: [], self: true };
+    const rt = l3Route(V, dst, this.learned(rid)); if (!rt) return { fail: "no-route" };
+    const src = ifs.find(function (f) { return f.name === rt.iface; }), a = { ip: src.ip, mask: src.mask, gw: rt.nh || null, kind: "static" };
+    const odom = this.domain(this.l3Node(rid, rt.iface)), next = rt.nh || dst;
+    const owners = this.owners(next, odom).filter(function (o) { return o !== rid; });
+    if (!owners.length) return { fail: "no-reply", addr: a, why: "arp" };
+    if (rt.nh) { const n = owners[0]; if (this.d[n].kind === "brouter") { const br = this.routeBR(rid, a, dst, n, odom, proto, oneWay, 1); return Object.assign({}, br, { hops: [rt.nh].concat((br.hops || []).slice(1)) }); } if (!this.routes3(n)) return { fail: "beyond", addr: a, hops: [rt.nh] }; const r = this.routeL3(rid, a, dst, n, odom, proto, oneWay); return Object.assign({}, r, { routers: (r.routers || 0) }); }
+    const back = owners.filter(function (o) { return this.canReply(o, a.ip, odom); }, this);
+    return back.length ? { local: true, owner: back, addr: a, next: dst } : { fail: "no-reply", owner: owners, addr: a };
   }
 
   /* ------------------------------------------------------------ the business router (BR-4200: rtcli.js) */
@@ -851,16 +1145,20 @@ export class Sim {
      in on that interface; routed by the longest match; out through the access list out on the way-out interface; NAT to the
      provider. The reply has to come back the same way, through the same lists the other way round (access lists remember
      nothing). acls: each list line a packet matched, for the hit counts when the traffic is really sent */
-  routeBR(id, a, dst, rid, dom, proto) {
+  routeBR(id, a, dst, rid, dom, proto, oneWay, depth) {
     const R = this.rtView(rid), live = this.rtLive(rid), P = proto || { proto: "icmp" }, acls = [];
     const inIf = this.rtIfFor(rid, a.gw, dom, R); if (!inIf) return { fail: "gateway-unreachable", addr: a, next: a.gw };
+    if ((depth || 0) > 8) return { fail: "no-reply", addr: a, hops: [a.gw], why: "loop", routers: 16 };
+    /* a source routed in from another router (a layer 3 switch in front of it): the reply needs a route back there too */
+    const ia = RT.addrOf(R, inIf, live), far = !!(ia && !sameSubnet(a.ip, ia.ip, ia.mask)), self = this;
+    const wayBack = function () { if (!far || oneWay) return true; const r = self.routeFromRouter(rid, a.ip, Object.assign({}, P, { src: dst, dst: a.ip, port: P.sport, sport: P.port }), (depth || 0) + 1); return !r.fail && !!(r.local || r.routed); };
     const pass = function (n, dir, pk) { const f = RT.allIfs(R).indexOf(n) >= 0 ? (n.indexOf(".") > 0 ? R.subs[n] : R.ifs[n]) : null, L = f && (dir === "in" ? f.aclIn : f.aclOut); if (!L) return true; const v = RT.aclVerdict(R, L, pk); if (!v.missing) acls.push([L, v.line]); return v.permit; };
     const req = Object.assign({}, P, { src: a.ip, dst: dst }), rep = Object.assign({}, P, { src: dst, dst: a.ip, port: P.sport, sport: P.port });
     const gwIp = a.gw, base = { via: rid, addr: a, inIf: inIf, acls: acls };
     if (!pass(inIf, "in", req)) return Object.assign({ fail: "blocked", hops: [], acl: { iface: inIf, dir: "in" } }, base);   /* checked as it comes in, before anything else: even tracert's first probe gets no answer */
     /* to one of the router's own addresses */
     const own = RT.allIfs(R).find(function (n) { const x = RT.addrOf(R, n, live); return x && x.ip === dst && RT.rtStatus(R, n)[1] === "up"; });
-    if (own) return pass(inIf, "out", rep) ? Object.assign({ local: true, owner: [rid], next: dst, hops: [dst], routed: own !== inIf }, base) : Object.assign({ fail: "no-reply", hops: [gwIp] }, base);
+    if (own) return pass(inIf, "out", rep) && wayBack() ? Object.assign({ local: true, owner: [rid], next: dst, hops: [dst], routed: own !== inIf }, base) : Object.assign({ fail: "no-reply", hops: [gwIp], why: far ? "no way back" : undefined }, base);
     const rt = RT.lookup(R, dst, live);
     if (!rt) return Object.assign({ fail: "net-unreachable", hops: [gwIp], why: "no-route" }, base);
     const outIf = rt.iface, w = this.rtWan(rid, R);
@@ -873,12 +1171,18 @@ export class Sim {
       const rule = R.nat.find(function (x) { return x.iface === outIf && RT.aclVerdict(R, x.list, { proto: "ip", src: a.ip, dst: dst }).permit && R.acls[x.list]; });
       if (isPrivate(a.ip) && !(fin === "inside" && fout === "outside" && rule && rule.overload)) return Object.assign({ fail: "no-nat", hops: [gwIp], why: !rule ? "no rule" : fin !== "inside" ? "inside" : fout !== "outside" ? "outside" : "overload" }, base);   /* a private source the provider won't route: no reply ever comes */
       if (!pass(outIf, "in", Object.assign({}, rep, { dst: w.addr })) || !pass(inIf, "out", rep)) return Object.assign({ fail: "no-reply", hops: [gwIp] }, base);
+      if (!wayBack()) return Object.assign({ fail: "no-reply", hops: [gwIp, w.gw], why: "no way back" }, base);   /* translated back, then nowhere to send it */
       return Object.assign({ internet: true, nat: { inside: a.ip, global: w.addr }, hops: dst === w.gw ? [gwIp, w.gw] : [gwIp, w.gw, this.net.isp.core, dst] }, base);
     }
     /* out onto another of the business's own networks */
     const odom = this.domain(this.rtNode(rid, outIf)), next = rt.nh || dst, oa = RT.addrOf(R, outIf, live);
     let blk = null; const owners = this.owners(next, odom).filter(function (o) { if (o === rid) return false; const b = oa && this.arpBlocked(this.rtNode(rid, outIf), this.macOf(rid), oa.ip, o, next, odom); if (b) blk = blk || b; return !b; }, this);
     if (!owners.length) return Object.assign({ fail: "no-reply", hops: [gwIp], why: "arp", dai: blk }, base);   /* the router's ARP for it goes unanswered (or a switch inspecting ARP drops it): Request timed out */
+    if (rt.nh && this.routes3(owners[0])) {   /* on to a layer 3 switch: it carries on by its own table */
+      if (!pass(outIf, "in", rep) || !pass(inIf, "out", rep)) return Object.assign({ fail: "no-reply", hops: [gwIp], why: "reply blocked" }, base);
+      const r = this.routeL3(id, { ip: a.ip, mask: a.mask, gw: rt.nh, kind: a.kind }, dst, owners[0], odom, proto, oneWay, (depth || 0) + 1);
+      return Object.assign({}, r, { via: rid, addr: a, inIf: inIf, acls: acls, hops: [gwIp].concat(r.hops || []), routers: (r.routers || 0) + 1 });
+    }
     if (rt.nh) return Object.assign({ fail: "beyond", hops: [gwIp, rt.nh] }, base);
     const back = owners.filter(function (o) { return this.canReply(o, a.ip, odom); }, this);
     if (!back.length) return Object.assign({ fail: "no-reply", hops: [gwIp], why: "their gateway" }, base);   /* the router answers tracert's first probe; nothing after it */
@@ -888,7 +1192,7 @@ export class Sim {
 
   /* a packet the router sends itself (its ping, a TFTP copy): out by its own routing table, from the way-out interface's
      address. The reply comes in through that interface's access list in (what the router sends isn't checked going out) */
-  routeFromRouter(rid, dst, proto) {
+  routeFromRouter(rid, dst, proto, depth) {
     if (!this.on(rid)) return { fail: "no-link" };
     const R = this.rtView(rid), live = this.rtLive(rid), acls = [];
     const own = RT.allIfs(R).find(function (n) { const a = RT.addrOf(R, n, live); return a && a.ip === dst && RT.rtStatus(R, n)[1] === "up"; });
@@ -906,6 +1210,11 @@ export class Sim {
     const odom = this.domain(this.rtNode(rid, outIf)), next = rt.nh || dst;
     let blk = null; const owners = this.owners(next, odom).filter(function (o) { if (o === rid) return false; const b = src && this.arpBlocked(this.rtNode(rid, outIf), this.macOf(rid), src, o, next, odom); if (b) blk = blk || b; return !b; }, this);
     if (!owners.length) return { fail: "host-unreachable", src: src, next: next, dai: blk };
+    if (rt.nh && this.routes3(owners[0])) {   /* on to a layer 3 switch: it carries on by its own table; the reply comes back in through this interface's list */
+      const r = this.routeL3(rid, { ip: src, mask: oa.mask, gw: rt.nh, kind: "static" }, dst, owners[0], odom, proto, true, (depth || 0) + 1);
+      if (r.fail) return Object.assign({ src: src }, r);
+      return inOk(outIf, rep) ? Object.assign({}, r, { src: src, outIf: outIf, acls: acls }) : { fail: "no-reply", src: src, acls: acls };
+    }
     if (rt.nh) return { fail: "beyond", src: src, hops: [rt.nh] };
     const back = owners.filter(function (o) { return this.canReply(o, src, odom); }, this);
     if (!back.length || !inOk(outIf, rep)) return { fail: "no-reply", src: src, acls: acls };

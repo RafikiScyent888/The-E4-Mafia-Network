@@ -40,3 +40,31 @@ test("the router's port shut: the switch's port to it goes down, and a routed po
     assert.ok(!/10\.9\.255\.0\/30/.test(show(sim, "dist1", "show ip route")), s + " no connected network for a link that's down");
   }
 });
+
+/* The links worked out once a pass (17 November 2026: a campus work order's reload replays every step) are kept only while nothing
+   they read changes: a port shut part way through the pass (port security, BPDU guard) or a lease given or let go. */
+test("within a pass: a port shut part way through (as BPDU guard shuts it) and the kept links are worked out again", () => {
+  for (const s of [3, 4]) {
+    const sim = new Sim(makeCampus(s)); sim.boot(PCS);
+    sim.withEdges(function () {
+      assert.ok(this.switchLinks("dist1")["GigabitEthernet0/21"], s + " switch 1 sees switch 2 to start with");
+      const run = C.psRunOf(this.d.dist2.sw, "GigabitEthernet0/21"); run.err = true; run.why = "bpduguard"; this.edgesChanged();
+      assert.equal(this.switchLinks("dist1")["GigabitEthernet0/21"], undefined, s + " switch 2's end shut: no link at switch 1's end, in the same pass");
+    });
+  }
+});
+
+test("within a pass: a lease let go or given and the kept links are worked out again (an access point advertises its address)", async () => {
+  const { BUSINESS_JOBS } = await import("../js/build/business.js"), B = await import("../js/build/engine.js");
+  const def = BUSINESS_JOBS.find((d) => d.id === "SB-J3");
+  for (const s of [11, 2025]) {
+    const J = B.open(def, s); for (const a of def.solve(J.v, J.sim)) B.act(J, a);
+    const sim = J.sim, port = "GigabitEthernet0/" + J.v.plan.apPort, addr = () => { const l = sim.switchLinks("msw")[port]; return l && l.lldp ? l.lldp.addr : "none"; };
+    const ip = sim.addr("ap").ip; assert.ok(ip, s + " the access point has its address");
+    sim.withEdges(function () {
+      assert.equal(addr(), ip, s + " advertised to start with");
+      this.release("ap"); assert.equal(addr(), null, s + " let go: no address advertised, in the same pass");
+      this.dhcp("ap", "renew"); assert.equal(addr(), sim.addr("ap").ip, s + " given again: advertised again, in the same pass");
+    });
+  }
+});

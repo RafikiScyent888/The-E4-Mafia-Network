@@ -162,7 +162,10 @@ function serial(sim, id, raw) {
   sync(sim, tgt);
   if (!st || st.sw !== tgt) st = sim.cli[id] = { S: SW.session(sim.d[tgt].sw, opts(sim, tgt, "console")), sw: tgt, via: "console" };
   const r = SW.exec(st.S, raw); st.prompt = r.prompt; r.out = linkNews(sim, tgt, r.out);
-  const dup = sim.d[tgt].kind === "mswitch" && dupAddr(sim, tgt); if (dup && st.dup !== dup) { st.dup = dup; r.out = r.out.concat([dup]); }   /* once a session, as the console log shows it */
+  /* once a session, as the console log shows it: looked for as the console wakes (its first line, or a bare Enter), not after every
+     line (17 November 2026: it worked the whole network out each time, and a campus work order's start types hundreds of lines) */
+  const look = !st.dupLooked || raw.trim() === ""; st.dupLooked = true;
+  const dup = look && sim.d[tgt].kind === "mswitch" && dupAddr(sim, tgt); if (dup && st.dup !== dup) { st.dup = dup; r.out = r.out.concat([dup]); }
   const sl = sfpLog(sim, tgt), sk = sl.join("|"); if (sl.length && st.sfp !== sk) { st.sfp = sk; r.out = r.out.concat(sl); }
   const nl = sim.d[tgt].kind === "mswitch" ? nativeLog(sim, tgt) : [], nk = nl.join("|"); if (nl.length && st.nat !== nk) { st.nat = nk; r.out = r.out.concat(nl); }   /* once a session, as the console log shows it */
   const tl = sim.d[tgt].kind === "mswitch" ? trunkLog(sim, tgt) : [], tk = tl.join("|"); if (tl.length && st.dtp !== tk) { st.dtp = tk; r.out = r.out.concat(tl); }   /* a port that became a trunk with a device that asked (SB-15): once a session */

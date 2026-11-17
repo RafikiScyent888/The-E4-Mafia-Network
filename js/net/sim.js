@@ -371,7 +371,19 @@ export class Sim {
     return dev;
   }
   /* bridging devices pass frames between everything joined to them */
+  /* the links worked out once for a whole computation that can't change them (a route, the DHCP servers a device hears, a standby
+     election, OSPF's segments, the DHCP pass after a change): each of those asked for them again and again, and a campus work
+     order's start, which replays every earlier one, spent seconds on it (17 November 2026) */
+  withEdges(f) { if (this._emOn) return f.call(this); this._emOn = true; this._em = null; this._emK = {}; try { return f.call(this); } finally { this._emOn = false; this._em = null; this._emK = null; } }
+  /* within such a computation, spanning tree, standby and OSPF can't change either: each kept for its length, not fingerprinted again */
+  edgesChanged() { if (this._emOn) { this._em = null; this._emK = {}; } }   /* a port shut mid-pass (port security, BPDU guard): worked out again */
+  scoped(k, f) { if (!this._emOn) return f.call(this); if (!(k in this._emK)) this._emK[k] = f.call(this); return this._emK[k]; }   /* worked out the first time it's asked for */
   edges() {
+    if (this._emOn && this._em) return this._em;
+    if (this._emOn) return (this._em = this.edges0());
+    return this.edges0();
+  }
+  edges0() {
     const e = [], seen = new Set();
     this._stpNow = this.stpLoops() ? this.stpAll() : null;
     for (const c0 of this.net.cables) {
@@ -510,7 +522,7 @@ export class Sim {
      configuration when sticky) up to its limit; one more is a violation, which shuts the port (err-disabled) in shutdown mode. A
      port that loses its link forgets what it learned without sticking */
   portSecurity() {
-    let E = null; const edgesOf = function () { return E || (E = this.edges()); }.bind(this);   /* the links worked out once a pass, and again only after a port is shut for a violation */
+    let E = null; const edgesOf = function () { return E || (E = this.edges()); }.bind(this);   /* within the pass the shared links serve (a violation clears both) */   /* the links worked out once a pass, and again only after a port is shut for a violation */
     for (const id in this.d) {
       const x = this.d[id]; if (x.kind !== "mswitch" || !this.on(id)) continue;
       const sw = x.sw;
@@ -524,7 +536,7 @@ export class Sim {
           if (P.macs.length + run.dyn.length < P.max) { if (P.sticky) P.macs.push({ mac: m.mac, sticky: true }); else run.dyn.push({ mac: m.mac, vlan: m.vlan }); continue; }
           if (run.seen.indexOf(m.mac) < 0) { run.viol++; run.seen.push(m.mac); }
           run.last = { mac: m.mac, vlan: m.vlan };
-          if (P.viol === "shutdown") { run.err = true; E = null; break; }
+          if (P.viol === "shutdown") { run.err = true; E = null; this.edgesChanged(); break; }
         }
       }
     }
@@ -585,7 +597,8 @@ export class Sim {
   ttlOf(id) { const k = this.d[id].kind; return k === "pc" || k === "laptop" ? 128 : k === "mswitch" || k === "brouter" ? 255 : 64; }
 
   /* DHCP servers a client's request reaches */
-  dhcpServers(id, raw) {   /* raw: before any snooping switch drops their answers */
+  dhcpServers(id, raw) { return this.withEdges(function () { return this.dhcpServers0(id, raw); }); }
+  dhcpServers0(id, raw) {   /* raw: before any snooping switch drops their answers */
     const dom = this.domain(this.homeNode(id)), out = [];
     for (const sid in this.d) {
       const s = this.d[sid];
@@ -731,25 +744,27 @@ export class Sim {
     for (const id of order) if (this.d[id] && this.d[id].ifaces) this.dhcp(id, "boot");
   }
   /* after something changes physically, clients whose link came up ask again */
-  relink(before) {
+  relink(before) { return this.withEdges(function () { return this.relink0(before); }); }   /* the whole pass on one set of links, worked out again only if it shuts a port */
+  relink0(before) {
     this.snoopTidy(); this.portSecurity(); this.bpduGuard(); this.hsrpTick();
     /* a DHCP pool still being typed (a console in its dhcp-config mode): a device asks now and then, not on every line, so it doesn't
        catch the pool half made (its network typed, its default-router not yet: a lease with no gateway) */
     const cli = this.cli || {}, poolOpen = Object.keys(cli).some(function (k) { const st = cli[k]; return !!(st && st.S && st.S.mode === "dhcp"); });
-    for (const id in this.d) {
+    this.withEdges(function () { for (const id in this.d) {
       const x = this.d[id]; if (!x.ifaces || x.ifaces[0].cfg.mode === "static") continue;
       const now = this.hasLink(id), f = x.ifaces[0];
       if (now && !before[id]) this.dhcp(id, "link");
       /* build mode: a device that gave itself 169.254 keeps asking (Windows tries every few minutes), so cabling the
          router in after the switch still gets everyone an address. The tickets keep the moment frozen. */
       else if (now && this.net.extra.build && f.apipa && !f.lease && !poolOpen && this.dhcpServers(id).length) this.dhcp(id, "retry");
-    }
+    } });   /* a lease changes no link: the links are worked out once for the pass */
   }
   links() { const o = {}; for (const id in this.d) if (this.d[id].ifaces) o[id] = this.hasLink(id); return o; }
 
   /* ------------------------------------------------------------ reaching an address */
   /* the path a packet from a device takes to an address, without sending it */
-  route(id, dst, proto, oneWay) {
+  route(id, dst, proto, oneWay) { return this.withEdges(function () { return this.route0(id, dst, proto, oneWay); }); }
+  route0(id, dst, proto, oneWay) {
     if (this.d[id] && this.d[id].kind === "brouter") return this.routeFromRouter(id, dst, proto);
     if (this.routes3(id)) return this.routeFromL3(id, dst, proto);
     const a = this.addr(id);
@@ -874,7 +889,8 @@ export class Sim {
     return { sws: sws, ports: ports, result: stpSolve(sws, ports, v) };
   }
   /* every VLAN's, kept until a switch or a cable changes */
-  stpAll() {
+  stpAll() { return this.scoped("stp", this.stpAll0); }
+  stpAll0() {
     const ids = Object.keys(this.d).filter(function (id) { return this.d[id].kind === "mswitch"; }, this);
     const sig = JSON.stringify(ids.map(function (id) { const x = this.d[id]; return [id, this.on(id), x.sw.ports, x.sw.pcs, x.sw.stp, x.sw.vlans, x.sw.psRun, x.sfp]; }, this)) + JSON.stringify(this.net.cables);
     if (this._stp && this._stp.sig === sig) return this._stp.all;
@@ -901,7 +917,7 @@ export class Sim {
         const run = psRunOf(x.sw, n); if (run.err) continue;
         peers = peers || this.switchPeers(); const peer = peers[id + "|" + n]; if (!peer) continue;
         const fp = this.d[peer.dev].sw.ports[peer.port]; if (!fp || fp.routed || fp.shutdown) continue;
-        run.err = true; run.why = "bpduguard";
+        run.err = true; run.why = "bpduguard"; this.edgesChanged();
       }
     }
   }
@@ -948,12 +964,14 @@ export class Sim {
   /* ------------------------------------------------------------ first-hop redundancy: standby (Level 4) */
   /* each standby group on each segment: its members (switch, interface, real address, virtual address, priority, preempt, up),
      kept until a switch or a cable changes. Only a layer 3 switch has any */
-  hsrpGroups() {
+  hsrpGroups() { return this.scoped("hsrp", this.hsrpGroups0); }
+  hsrpGroups0() {
     const ids = Object.keys(this.d).filter(function (id) { const x = this.d[id]; return x.kind === "mswitch" && x.sw.os === "l3switch" && this.on(id); }, this);
     const any = ids.some(function (id) { const w = this.d[id].sw; return Object.keys(w.svis || {}).some(function (k) { return w.svis[k].standby; }) || (w.vlan1 && w.vlan1.standby) || Object.keys(w.ports).some(function (k) { return w.ports[k].standby; }); }, this);
     if (!any) return {};
     const sig = JSON.stringify(Object.keys(this.d).filter(function (id) { return this.d[id].kind === "mswitch"; }, this).map(function (id) { const w = this.d[id].sw; return [id, this.on(id), w.ports, w.svis, w.vlan1, w.vlans, w.pcs, w.stp]; }, this)) + JSON.stringify(this.net.cables);
     if (this._hsrp && this._hsrp.sig === sig) return this._hsrp.G;
+    if (!this._emOn) return this.withEdges(function () { return this.hsrpGroups0(); });   /* worked out again: its segments from one set of links */
     const G = {}, segs = {};
     const segOf = function (node) { if (segs[node]) return segs[node]; const D = [...this.domain(node)].sort(), k = D[0]; D.forEach(function (n) { segs[n] = k; }); return k; }.bind(this);
     ids.forEach(function (id) {
@@ -999,11 +1017,13 @@ export class Sim {
   /* ------------------------------------------------------------ OSPF (Level 4, the campus: ospf.js) */
   /* every switch's OSPF interfaces (up, an address, in a network statement), each on its segment (its layer 2 broadcast domain),
      and what the protocol settles on; kept until a switch or a cable changes */
-  ospfAll() {
+  ospfAll() { return this.scoped("ospf", this.ospfAll0); }
+  ospfAll0() {
     const ids = Object.keys(this.d).filter(function (id) { const x = this.d[id]; return x.kind === "mswitch" && x.sw.os === "l3switch" && x.sw.ospf && x.sw.routing && this.on(id); }, this);
     const brs = Object.keys(this.d).filter(function (id) { const x = this.d[id]; return x.kind === "brouter" && x.sw.ospf && this.on(id); }, this);   /* a business router running OSPF (the campus's edge router, Level 4) */
     const sig = JSON.stringify(Object.keys(this.d).filter(function (id) { return this.d[id].kind === "mswitch"; }, this).map(function (id) { const w = this.d[id].sw; return [id, this.on(id), w.ports, w.svis, w.ospf, w.routes, w.routing, w.vlans, w.pcs, w.stp, w.vlan1]; }, this)) + JSON.stringify(brs.map(function (id) { const w = this.d[id].sw, wan = this.rtWan(id); return [id, w.ifs, w.subs, w.ospf, w.routes, wan && wan.lease]; }, this)) + JSON.stringify(this.net.cables);
     if (this._ospf && this._ospf.sig === sig) return this._ospf.res;
+    if (!this._emOn) return this.withEdges(function () { return this.ospfAll0(); });   /* worked out again: its segments from one set of links */
     const routers = {}, segs = {};
     const segOf = function (node) { if (segs[node]) return segs[node]; const D = [...this.domain(node)].sort(), k = D[0]; D.forEach(function (n) { segs[n] = k; }); return k; }.bind(this);
     ids.forEach(function (id) {

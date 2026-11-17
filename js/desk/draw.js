@@ -214,7 +214,9 @@ export function drawLogical(svg, sim, o) {
         /* first clear of every other cable's line too, in its own half of its line; where lines crowd too close for that (three meeting at
            a switch's corner), clear of every name, tile and dot as before; and where a short line's half is all taken (its dot on the
            switch's own name), further along its line, its dot still before the far end's own (the printer's "3" at the closet switch, 25 October 2026). A crowded corner never ends with one name on another */
-        for (const [st, from, to] of [[true, off, L / 2], [false, off0, L / 2], [false, off0, L - R - 26]]) {
+        /* (17 November 2026) and, before giving up on other lines, nearer its own device than the rule's spot: on a short link whose rule
+           spot is where another link crosses it (distribution switch 2's port to the 2F access switch, CP-J6), the clear spot is nearer */
+        for (const [st, from, to] of [[true, off, L / 2], [true, R + 12, off], [false, off0, L / 2], [false, off0, L - R - 26]]) {
           strict = st;
           for (let o = from; o + 4 < to && !at; o += 8) for (const flip of [false, true]) { const q = put(o, flip); if (clear(q)) { at = q; break; } }
           for (let o = from; o + 4 < to && !at; o += 8) { const q = put(o, "on"); if (clear(q)) at = q; }   /* neither side clear anywhere: on the line itself */

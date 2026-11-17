@@ -2,7 +2,7 @@
 # Run it in a throwaway copy of the checkout, never in the real one:   python3 tools/plants-campus-node.py [name ...]
 import subprocess, shutil, sys, os
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-TESTS = ["tests/campus-l3.test.js", "tests/campus-sim.test.js", "tests/campus-lag.test.js", "tests/campus-stp.test.js", "tests/campus-ospf.test.js", "tests/campus-hsrp.test.js", "tests/campus-site.test.js", "tests/campus-jobs.test.js", "tests/campus-edge.test.js"]
+TESTS = ["tests/links-far.test.js", "tests/campus-l3.test.js", "tests/campus-sim.test.js", "tests/campus-lag.test.js", "tests/campus-stp.test.js", "tests/campus-ospf.test.js", "tests/campus-hsrp.test.js", "tests/campus-site.test.js", "tests/campus-jobs.test.js", "tests/campus-edge.test.js"]
 if os.environ.get("TESTS"): TESTS = os.environ["TESTS"].split()   # TESTS="tests/campus-edge.test.js": a narrower run (SEEDS=4 shortens the work orders' tests too)
 PLANTS = [
  ("a routed port still carries its VLANs", "js/net/swcli.js", '  if (sw.ports[n].routed) return { mode: "routed", untagged: null, tagged: [] };', ''),
@@ -42,8 +42,8 @@ PLANTS = [
  ("OSPF: the far network's own cost left out", "js/net/ospf.js", '        const m = dist[x] + (f.cost || 1);', '        const m = dist[x];'),
  ("OSPF: a default originated with none to give", "js/net/sim.js", 'const def = !!O.originate && l3Table(view, []).some(', 'const def = !!O.originate || l3Table(view, []).some('),
  ("OSPF: what it learns never used", "js/net/sim.js", "  learned(id) { const x = this.d[id]; if (!x || !x.sw || !x.sw.ospf) return [];", "  learned(id) { return [];"),
- ("OSPF: the reference bandwidth ignored", "js/net/sim.js", 'cost: rec.ospfCost || ospfCost(mbps, O.refBw),', 'cost: rec.ospfCost || ospfCost(mbps, 100),'),
- ("OSPF: an external type 2's metric grows on the way", "js/net/ospf.js", 'nh: first[x].nh, iface: first[x].iface, metric: 1 };', 'nh: first[x].nh, iface: first[x].iface, metric: dist[x] + 1 };'),
+ ("OSPF: the reference bandwidth ignored", "js/net/sim.js", 'ifs.push({ name: f.name, ip: f.ip, mask: f.mask, area: st.area, cost: rec.ospfCost || ospfCost(mbps, O.refBw),', 'ifs.push({ name: f.name, ip: f.ip, mask: f.mask, area: st.area, cost: rec.ospfCost || ospfCost(mbps, 100),'),
+ ("OSPF: an external type 2's metric grows on the way", "js/net/ospf.js", 'mask: "0.0.0.0", metric: 1, paths: first[x].slice() };', 'mask: "0.0.0.0", metric: dist[x] + 1, paths: first[x].slice() };'),
  ("HSRP: the lowest priority made active (the election's rank and the state's)", [("js/net/sim.js", "    const rank = function (p, q) { return q.pri - p.pri || ip2n(q.ip) - ip2n(p.ip); };\n    keys.forEach(function (k) {", "    const rank = function (p, q) { return p.pri - q.pri || ip2n(q.ip) - ip2n(p.ip); };\n    keys.forEach(function (k) {"),
    ("js/net/sim.js", "    const rank = function (p, q) { return q.pri - p.pri || ip2n(q.ip) - ip2n(p.ip); };\n    Object.keys(G).forEach(function (k) {", "    const rank = function (p, q) { return p.pri - q.pri || ip2n(q.ip) - ip2n(p.ip); };\n    Object.keys(G).forEach(function (k) {")]),
  ("HSRP: an interface up with no address can stay active", "js/net/sim.js", "      const el = G[k].filter(function (m) { return m.up; }).sort(rank); if (!el.length) { delete A[k]; return; }", "      const el = G[k].slice().sort(rank); if (!el.length) { delete A[k]; return; }"),
@@ -74,7 +74,7 @@ PLANTS = [
  ("CP-J2: a tie passes (both guards)", [("js/build/campus.js", ' || d2.prio <= d1.prio; };', ' || d2.prio < d1.prio; };'), ("js/build/campus.js", 'C("tie", t.B.dist2.prio === t.B.dist1.prio,', 'C("tie", false,')]),
  ("CP-J2: an access switch beating the secondary passes (both guards)", [("js/build/campus.js", 'return t.prio("dist2") === 32768 || Object.keys(t.B).some(function (s) { return /^acc/.test(s) && cmpBid(t.B[s], d2) < 0; }) || ', 'return t.prio("dist2") === 32768 || '),
    ("js/build/campus.js", ', acc = Object.keys(t.B).filter(function (s) { return /^acc/.test(s) && cmpBid(t.B[s], t.B.dist2) < 0; }).sort(function (a, b) { return cmpBid(t.B[a], t.B[b]); })[0];', ', acc = null;')]),
- ("CP-J2: a switch that doesn't answer still counts as working", "js/build/campus.js", 'gone = ["dist1", "dist2", "acc1", "acc2", "acc3"].find(', 'gone = [].find('),
+ ("CP-J2: a switch that doesn't answer still counts as working", "js/build/campus.js", 'const S = v.plan.sw, gone = ["dist1", "dist2", "acc1", "acc2", "acc3"].find(', 'const S = v.plan.sw, gone = [].find('),
  ("CP-J2: an access switch left unsaved passes", "js/build/campus.js", 'return [C("unsaved", !!id, (id ? "The " + name(sim, id) : "An access switch")', 'return [C("unsaved", false, (id ? "The " + name(sim, id) : "An access switch")'),
  ("CP-J2: the walk-through sets no secondary", "js/build/campus.js", '    [["dist1", "primary"], ["dist2", "secondary"]].forEach(function (d) {', '    [["dist1", "primary"]].forEach(function (d) {'),
  ("CP-J2: it starts from nothing done", "js/build/campus.js", '    for (const a of CJ1.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }', '    for (const a of []) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }'),
@@ -114,12 +114,60 @@ PLANTS = [
  ("CP-J4: a route back for one VLAN passes", "js/build/campus.js", '    C("narrow", !!miss, "The edge router\'s route back', '    C("narrow", false, "The edge router\'s route back'),
  ("CP-J4: a default route at the wrong next hop passes", "js/build/campus.js", '    C("defnh", !!D && D.nh !== t.edge,', '    C("defnh", false,'),
  ("CP-J4: the link not NAT's inside passes", "js/build/campus.js", '  return [C("inside", !inside, "The edge router\'s side facing the campus', '  return [C("inside", false, "The edge router\'s side facing the campus'),
- ("CP-J4: nothing relayed passes", "js/build/campus.js", '  return [C("none", !!k && !h.length, "Nothing relays VLAN', '  return [C("none", false, "Nothing relays VLAN'),
+ ("CP-J4: nothing relayed passes", "js/build/campus.js", '  return [C("none", !!k && !h.length, "Nothing relays VLAN " + (k ? p.vlans[k].id : "") + "\'s DHCP requests: a PC', '  return [C("none", false, "Nothing relays VLAN " + (k ? p.vlans[k].id : "") + "\'s DHCP requests: a PC'),
  ("CP-J4: relayed where nobody answers passes", "js/build/campus.js", '    C("wrong", !!k && h.length > 0 && h.indexOf(t.edge) < 0,', '    C("wrong", false,'),
  ("CP-J4: the edge router unsaved passes", "js/build/campus.js", 'return [C("unsaved", unsaved(sw), "The edge router hasn\'t been saved:', 'return [C("unsaved", false, "The edge router hasn\'t been saved:'),
  ("CP-J4: the walk-through never brings the VLAN interfaces up", "js/build/campus.js", '    USED.filter(function (k) { return k !== "mgmt"; }).forEach(function (k) { c("interface vlan " + p.vlans[k].id); c("no shutdown"); c("exit"); });', ''),
  ("CP-J4: it starts from nothing done", "js/build/campus.js", '    for (const a of CJ3.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }', '    for (const a of []) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }'),
  ("CP-J4: a hint names the link's address", "js/build/campus.js", 'rung1: function () { return "show ip route on both: the gateway of last resort', 'rung1: function (v) { return transit(v.plan).edge + " show ip route on both: the gateway of last resort'),
+ ("ECMP: an equal-cost path dropped", "js/net/ospf.js", "          else if (d === dist[o.id]) addHops(first[o.id], hops);", ""),
+ ("ECMP: the second path never shown", "js/net/l3.js", "    (t.paths || []).slice(1).forEach(function (h) { L.push(", "    [].slice(1).forEach(function (h) { L.push("),
+ ("ECMP: a network two routers have, one path kept", "js/net/ospf.js", "        else if (m === best[key].metric) addHops(best[key].paths, first[x]);", ""),
+ ("FAR: a switch port up while the far switch's port is shut", "js/net/sim.js", '      if (fd.kind === "mswitch") { const fp = fd.sw.ports[swPort(far.port)]; if (!fp || fp.shutdown || errDisabled(fd.sw, swPort(far.port))) continue; }', ""),
+ ("FAR: a switch port up while the router's port is shut", "js/net/sim.js", '      if (fd.kind === "brouter") { const ph = RT_IF(far.port); if (!ph || fd.sw.ifs[ph].shutdown) continue; }', ""),
+ ("CP-J5: the core never installed", "js/build/campus.js", '    const before = sim.links(); installCore(sim.net, function (l) { return l.b !== "dist2"; }); sim.relink(before);', "    const before = sim.links(); sim.relink(before);"),
+ ("CP-J5: the installer's cables left out", "js/net/campus.js", '  coreLinks(net.plan).filter(cable || function () { return true; }).forEach(function (l) {', '  [].forEach(function (l) {'),
+ ("CP-J5: the edge router's end at the wrong address passes", "js/build/campus.js", '  return [C("eaddr", !e.a || e.a.ip !== bad.ia || e.a.mask !== bad.mask,', '  return [C("eaddr", false,'),
+ ("CP-J5: switch 1's ends left switch ports pass", "js/build/campus.js", '  return [C("trunk", !k.p.routed, "Distribution switch 1\'s link to "', '  return [C("trunk", false, "Distribution switch 1\'s link to "'),
+ ("CP-J5: a router without OSPF passes", "js/build/campus.js", '  return [C("proc", !!noProc,', '  return [C("proc", false,'),
+ ("CP-J5: a link no network statement covers passes", "js/build/campus.js", '    C("net", !noProc && !!noNet,', '    C("net", false,'),
+ ("CP-J5: a passive link passes", "js/build/campus.js", '    C("passive", !noProc && !noNet && !!pas,', '    C("passive", false,'),
+ ("CP-J5: two areas pass", "js/build/campus.js", '    C("area", !!both && !pas && ends[0].f.area !== ends[1].f.area,', '    C("area", false,'),
+ ("CP-J5: a VLAN never advertised passes", "js/build/campus.js", '  return [C("noadv", !!noadv, "VLAN " + (noadv ? p.vlans[noadv].id + " (" + p.vlans[noadv].name + ")" : "") + " isn\'t in OSPF on distribution switch 1', '  return [C("noadv", false, "VLAN " + (noadv ? p.vlans[noadv].id + " (" + p.vlans[noadv].name + ")" : "") + " isn\'t in OSPF on distribution switch 1'),
+ ("CP-J5: hellos to the desks pass", "js/build/campus.js", '    C("hello", !!hello, "VLAN " + (hello ? p.vlans[hello].id : "") + "\'s interface sends OSPF hellos', '    C("hello", false, "VLAN " + (hello ? p.vlans[hello].id : "") + "\'s interface sends OSPF hellos'),
+ ("CP-J5: the provider's side in OSPF passes", "js/build/campus.js", '    C("wan", !!wan,', '    C("wan", false,'),
+ ("CP-J5: one core switch carrying it all passes", "js/build/campus.js", '    C("one", !noadv && !none && !direct && !!one,', '    C("one", false,'),
+ ("CP-J5: no default handed to OSPF passes", "js/build/campus.js", '  return [C("noorig", !lr && !(O && O.originate),', '  return [C("noorig", false,'),
+ ("CP-J5: switch 1's static default left in passes", "js/build/campus.js", '  return [C("dstatic", !!ds,', '  return [C("dstatic", false,'),
+ ("CP-J5: the edge router's static left in passes", "js/build/campus.js", '    C("estatic", !!es,', '    C("estatic", false,'),
+ ("CP-J5: the old link left up passes", "js/build/campus.js", '  return [C("up", up, "The old direct link', '  return [C("up", false, "The old direct link'),
+ ("CP-J5: one end of the old link left open passes", "js/build/campus.js", '    C("end", !up && (!port.shutdown || !e.shutdown),', '    C("end", false,'),
+ ("CP-J5: the relay left on the old link's address passes", "js/build/campus.js", '    C("gone", !!k && h.length > 0 && h.indexOf(t.edge) >= 0 && mine.indexOf(t.edge) < 0,', '    C("gone", false,'),
+ ("CP-J5: a link to the core not NAT's inside passes", "js/build/campus.js", '  return [C("inside", !!out, "The edge router\'s "', '  return [C("inside", false, "The edge router\'s "'),
+ ("CP-J5: a core switch with no way back passes", "js/build/campus.js", '    C("back", !!x && x.why === "no way back",', '    C("back", false,'),
+ ("CP-J5: a device left unsaved passes", "js/build/campus.js", '  return OSPF_DEVS.map(function (id) { return C("unsaved-" + id, unsaved(sim.d[id].sw),', '  return OSPF_DEVS.map(function (id) { return C("unsaved-" + id, false,'),
+ ("CP-J5: the walk-through never moves the relay", "js/build/campus.js", '    DHCPV.forEach(function (x) { c("interface vlan " + p.vlans[x[0]].id); c("no ip helper-address " + t.edge); c("ip helper-address " + L[0].ia); c("exit"); });', ''),
+ ("CP-J5: a hint names an address", "js/build/campus.js", 'rung1: function () { return "show ip interface brief on the edge router, then the records\' list of links."; },', 'rung1: function (v) { return CORE5(v.plan)[0].ia; },'),
+ ("CP-J6: distribution switch 2's links never cabled", "js/build/campus.js", '    const before = sim.links(); coreCables(sim.net, function (l) { return l.b === "dist2"; }); sim.relink(before);', "    const before = sim.links(); sim.relink(before);"),
+ ("CP-J6: switch 2 not routing passes", "js/build/campus.js", '  return [C("off", !w.routing, "Distribution switch 2 doesn\'t route', '  return [C("off", false, "Distribution switch 2 doesn\'t route'),
+ ("CP-J6: switch 2's links left switch ports pass", "js/build/campus.js", '    C("trunk", !k.p.routed, "Distribution switch 2\'s link to "', '    C("trunk", false, "Distribution switch 2\'s link to "'),
+ ("CP-J6: hellos to the desks from switch 2 pass", "js/build/campus.js", '    C("hello", !!hello, "VLAN " + (hello ? p.vlans[hello].id : "") + "\'s interface on distribution switch 2', '    C("hello", false, "VLAN " + (hello ? p.vlans[hello].id : "") + "\'s interface on distribution switch 2'),
+ ("CP-J6: switch 2 on the wrong address passes", "js/build/campus.js", '    C("addr", !!r && r.ip !== ownAt(p, k, "dist2"),', '    C("addr", false,'),
+ ("CP-J6: switch 1 keeping the gateway passes", "js/build/campus.js", '  return [C("still", !!r && r.ip === V.gw,', '  return [C("still", false,'),
+ ("CP-J6: two groups pass", "js/build/campus.js", '    C("split", !!split,', '    C("split", false,'),
+ ("CP-J6: a mistyped virtual address passes", "js/build/campus.js", '    C("vip", !split && !!vip,', '    C("vip", false,'),
+ ("CP-J6: no group on switch 2 passes", "js/build/campus.js", '    C("none2", !none1 && !!none2,', '    C("none2", false,'),
+ ("CP-J6: a group off the records' numbering passes", "js/build/campus.js", '    C("grp", !split && !vip && !!grp,', '    C("grp", false,'),
+ ("CP-J6: switch 2 active passes", "js/build/campus.js", '    C("dist2", !none && !!two,', '    C("dist2", false,'),
+ ("CP-J6: no preempt passes (the restart never tried)", "js/build/campus.js", '  if (!two && !none) { const s2 = copyOf(sim); power(s2, "dist1", false); power(s2, "dist1", true);', '  if (false) { const s2 = copyOf(sim);'),
+ ("CP-J6: the failover never tried", "js/build/campus.js", '  const p = v.plan, s2 = copyOf(sim); power(s2, "dist1", false);', '  const p = v.plan, s2 = copyOf(sim);'),
+ ("CP-J6: the wrong address taken over passes", "js/build/campus.js", '    C("vip", !gone && !!wrong,', '    C("vip", false,'),
+ ("CP-J6: no way out through switch 2 passes", "js/build/campus.js", '    C("out", !gone && !wrong && !!off,', '    C("out", false,'),
+ ("CP-J6: switch 2 not relaying passes", "js/build/campus.js", '    C("relay", !gone && !wrong && !off && !!lease,', '    C("relay", false,'),
+ ("CP-J6: switch 2 unsaved passes", "js/build/campus.js", 'function saved6Causes(sim) { return ["dist1", "dist2"].map(function (id) { return C("unsaved-" + id, unsaved(sim.d[id].sw),', 'function saved6Causes(sim) { return ["dist1", "dist2"].map(function (id) { return C("unsaved-" + id, false,'),
+ ("CP-J6: a check changes the network (the failure tried on the real one)", "js/build/campus.js", 'const copyOf = function (sim) { return new Sim(JSON.parse(JSON.stringify(sim.net))); };', 'const copyOf = function (sim) { return sim; };'),
+ ("VIP: a virtual address never answers from another network", "js/net/sim.js", ' || (this.hsrpVips(cur).some(function (o) { return o.vip === dst; }) ? { vip: true } : null);', ';'),
+ ("CP-J6: a hint names an address", "js/build/campus.js", 'rung1: function () { return "show ip route and show ip interface brief on distribution switch 2."; },', 'rung1: function (v) { return v.plan.sw.dist2.ip; },'),
 ]
 only = sys.argv[1:]
 bad = 0
@@ -131,7 +179,8 @@ for P in PLANTS:
     for f in files: shutil.copy(f, f + ".plant-bak")
     for f, a, b in edits: src = open(f).read(); open(f, "w").write(src.replace(a, b))
     try:
-        r = subprocess.run(["node", "--test"] + TESTS, capture_output=True, text=True, timeout=600)
+        pat = ["--test-name-pattern=" + os.environ["NAMEPAT"]] if os.environ.get("NAMEPAT") else []   # NAMEPAT="CP-J5": only the tests named so
+        r = subprocess.run(["node", "--test"] + pat + TESTS, capture_output=True, text=True, timeout=1800)
         fails = [l for l in r.stdout.splitlines() if l.startswith("not ok")]
         print(("CAUGHT" if r.returncode else "MISSED") + " · " + name + " · " + str(len(fails)) + " failing" + ("" if not fails else ": " + fails[0][:150]), flush=True)
         if not r.returncode: bad = 1

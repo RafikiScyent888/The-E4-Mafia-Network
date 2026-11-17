@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { CAMPUS_JOBS } from "../js/build/campus.js";
 import * as B from "../js/build/engine.js";
+import { coreLinks } from "../js/net/campus.js";
 
 const N = Number(process.env.SEEDS || 12);
 const byId = Object.fromEntries(CAMPUS_JOBS.map((d) => [d.id, d]));
@@ -168,6 +169,107 @@ test("CP-J4: other right ways pass: the VLAN interfaces brought up at once, a ro
     const used = ["svc", "bench", "office", "servers", "printers", "mgmt"].map((k) => p.vlans[k]);
     const acts = sol.flatMap((a) => (a.line === "shutdown" ? [] : a.line === "ip route 10." + b + ".0.0 255.255.0.0 " + dist ? used.map((x) => Object.assign({}, a, { line: "ip route " + x.net + " " + p.mask + " " + dist })) : [a]))
       .flatMap((a) => (a.line === "ip routing" ? [a].concat(["servers", "printers"].flatMap((k) => ["interface vlan " + p.vlans[k].id, "ip helper-address 10." + b + ".255.1", "exit"]).map((l) => Object.assign({}, a, { line: l }))) : [a]));
+    const J = tryIt(def, s, acts); const c = B.check(J); assert.ok(c.res.every((r) => r.ok), s + " " + c.res.filter((r) => !r.ok).map((r) => r.id + ": " + r.ev).join("; "));
+  }
+});
+
+test("CP-J5: the tempting wrong ways each fail their own line for their own cause", () => {
+  const def = byId["CP-J5"];
+  for (const s of seeds("CP-J5").slice(0, 4)) {
+    const v = B.open(def, s).v, p = v.plan, sol = def.solve(v), cause = (J, id) => { const r = line(J, id); return r.ok ? null : r.real.id; };
+    const b = p.vlans.svc.net.split(".")[1], L = coreLinks(p), E1 = L[0], E2 = L[1], D1 = L[3], old = "10." + b + ".255.1";
+    const is = (l) => (a) => a.line === l, sub = (acts, f) => acts.flatMap((a) => { const r = f(a); return r === undefined ? [a] : r.map((l) => Object.assign({}, a, { line: l })); });
+    /* each device's OSPF lines, found by where they sit in the walk-through (between laying the console on it and pulling it) */
+    const seg = (dev) => { const out = []; let on = null; sol.forEach((a, i) => { if (a.t === "lay") on = a.b.dev; if (a.t === "pull") on = null; if (on === dev) out.push(i); }); return out; };
+    const onDev = (dev, pred) => { const S = seg(dev); return (a, i) => S.indexOf(i) >= 0 && pred(a); };
+    const dropAt = (acts, f) => acts.filter((a, i) => !f(a, i)), subAt = (acts, f) => acts.flatMap((a, i) => { const r = f(a, i); return r === undefined ? [a] : r.map((l) => Object.assign({}, a, { line: l })); });
+    let J = tryIt(def, s, swap(sol, "ip address " + E1.ia + " " + E1.mask, "ip address " + E1.ib + " " + E1.mask)); assert.equal(cause(J, "edge"), "eaddr", s + " the edge router's end on the second usable address");
+    J = tryIt(def, s, drop(sol, is("no switchport"))); assert.equal(cause(J, "dist"), "trunk", s + " distribution switch 1's ends left switch ports");
+    J = tryIt(def, s, dropAt(sol, onDev("core2", (a) => /^(router ospf|network )/.test(a.line)))); assert.equal(cause(J, "ospf"), "proc", s + " core switch 2 without OSPF"); assert.equal(cause(J, "routes"), "one", s + " every VLAN by one core switch only"); assert.ok(line(J, "works").ok, s + " core switch 1 carries everything");
+    J = tryIt(def, s, swap(sol, "network " + E2.net + " 0.0.0.3 area 0", "network " + E2.net + " 0.0.0.0 area 0")); assert.equal(cause(J, "ospf"), "net", s + " a wildcard that matches only the block's own address");
+    J = tryIt(def, s, drop(sol, (a) => /^no passive-interface /.test(a.line))); assert.equal(cause(J, "ospf"), "passive", s + " every interface passive, the links too"); assert.equal(line(J, "works").ok, false);
+    J = tryIt(def, s, swap(sol, "network 10." + b + ".0.0 0.0.255.255 area 0", "network 10." + b + ".0.0 0.0.255.255 area 1")); assert.equal(cause(J, "ospf"), "area", s + " distribution switch 1 in another area");
+    J = tryIt(def, s, drop(sol, is("passive-interface default"))); assert.equal(cause(J, "passive"), "hello", s + " the VLAN interfaces saying hello to the desks"); assert.ok(line(J, "works").ok);
+    J = tryIt(def, s, subAt(sol, (a, i) => (onDev("edge", (x) => x.line === "default-information originate")(a, i) ? ["network 0.0.0.0 255.255.255.255 area 0", "default-information originate"] : undefined))); assert.equal(cause(J, "passive"), "wan", s + " the provider's side in OSPF");
+    J = tryIt(def, s, drop(sol, is("default-information originate"))); assert.equal(cause(J, "default"), "noorig", s + " no default handed to OSPF"); assert.equal(line(J, "works").ok, false, s + " nothing gets out once the static default is gone");
+    J = tryIt(def, s, drop(sol, is("no ip route 0.0.0.0 0.0.0.0 " + old))); assert.equal(cause(J, "statics"), "dstatic", s + " the static default left in"); assert.ok(line(J, "default").ok, s + " its next hop is gone with the old link, so OSPF's default is the one in use");
+    J = tryIt(def, s, drop(sol, (a) => /^no ip route 10\./.test(a.line))); assert.equal(cause(J, "statics"), "estatic", s + " the edge router's static left in");
+    J = tryIt(def, s, drop(sol, is("shutdown"))); assert.equal(cause(J, "direct"), "up", s + " the old link left up"); assert.equal(cause(J, "dhcp"), null, s + " the relay's new address works either way");
+    const shuts = sol.map((a, i) => (a.line === "shutdown" ? i : -1)).filter((i) => i >= 0);
+    J = tryIt(def, s, sol.filter((a, i) => i !== shuts[shuts.length - 1])); assert.equal(cause(J, "direct"), "end", s + " only distribution switch 1's end shut");
+    J = tryIt(def, s, drop(sol, (a) => /helper-address/.test(a.line))); assert.equal(cause(J, "dhcp"), "gone", s + " the relay left on the old link's address"); assert.ok(line(J, "works").ok, s + " the PCs keep their leases for now");
+    J = tryIt(def, s, drop(sol, is("ip nat inside"))); assert.equal(cause(J, "nat"), "inside", s + " the edge router's links to the core not NAT's inside"); assert.equal(cause(J, "works"), "pc");
+    J = tryIt(def, s, swap(sol, "network 10." + b + ".0.0 0.0.255.255 area 0", "network 10." + b + ".255.0 0.0.0.255 area 0")); assert.equal(cause(J, "passive"), "noadv", s + " only the links in OSPF"); assert.equal(cause(J, "routes"), "noadv"); assert.equal(cause(J, "manage"), "back", s + " the core switches have no way back to the desks");
+    const saves = seg("core1").filter((i) => sol[i].line === "copy running-config startup-config");
+    J = tryIt(def, s, sol.filter((a, i) => saves.indexOf(i) < 0 && saves.indexOf(i - 1) < 0)); assert.equal(cause(J, "saved"), "unsaved-core1", s + " core switch 1 unsaved");
+  }
+});
+
+test("CP-J5: other right ways pass: one statement for every link, interfaces passive one at a time, router IDs, the relay by core switch 2's side, the old cable pulled", () => {
+  const def = byId["CP-J5"];
+  for (const s of seeds("CP-J5").slice(0, 3)) {
+    const v = B.open(def, s).v, p = v.plan, sol = def.solve(v), b = p.vlans.svc.net.split(".")[1], L = coreLinks(p), used = ["svc", "bench", "office", "servers", "printers", "mgmt"].map((k) => p.vlans[k].id);
+    let n = 0; const rid = ["1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"];
+    const acts = sol.flatMap((a) => {
+      if (a.line === "network " + L[0].net + " 0.0.0.3 area 0") return [Object.assign({}, a, { line: "network 10." + b + ".255.0 0.0.0.255 area 0" })];
+      if (a.line === "network " + L[1].net + " 0.0.0.3 area 0") return [];
+      if (a.line === "router ospf 1") return [a, Object.assign({}, a, { line: "router-id " + rid[n++] })];
+      if (a.line === "passive-interface default") return used.map((id) => Object.assign({}, a, { line: "passive-interface vlan " + id }));
+      if (/^no passive-interface /.test(a.line)) return [];
+      if (a.line === "ip helper-address " + L[0].ia) return [Object.assign({}, a, { line: "ip helper-address " + L[1].ia })];
+      return [a];
+    }).concat([{ t: "pull", cable: "c-edge-dist1" }]);
+    const J = tryIt(def, s, acts); const c = B.check(J); assert.ok(c.res.every((r) => r.ok), s + " " + c.res.filter((r) => !r.ok).map((r) => r.id + ": " + r.ev).join("; "));
+  }
+});
+
+/* the walk-through's lines typed on one device: between laying the console on it and pulling it */
+const segOf = (sol, dev) => { const out = []; let on = null; sol.forEach((a, i) => { if (a.t === "lay") on = a.b.dev; if (a.t === "pull") on = null; if (on === dev) out.push(i); }); return out; };
+const editOn = (sol, dev, f) => { const S = segOf(sol, dev); return sol.flatMap((a, i) => { if (S.indexOf(i) < 0 || a.t !== "cmd") return [a]; const r = f(a.line); return r === undefined ? [a] : r.map((l) => Object.assign({}, a, { line: l })); }); };
+
+test("CP-J6: the tempting wrong ways each fail their own line for their own cause", () => {
+  const def = byId["CP-J6"];
+  for (const s of seeds("CP-J6").slice(0, 3)) {
+    const v = B.open(def, s).v, p = v.plan, sol = def.solve(v), cause = (J, id) => { const r = line(J, id); return r.ok ? null : r.real.id; };
+    const V = p.vlans.svc, own = (k, n) => p.vlans[k].gw.replace(/\.1$/, "." + n);
+    let J = tryIt(def, s, editOn(sol, "dist2", (l) => (l === "ip routing" ? [] : undefined))); assert.equal(cause(J, "join"), "off", s + " distribution switch 2 not routing");
+    J = tryIt(def, s, editOn(sol, "dist2", (l) => (l === "no switchport" ? [] : undefined))); assert.equal(cause(J, "join"), "trunk", s + " its links left switch ports");
+    J = tryIt(def, s, editOn(sol, "dist2", (l) => (l === "router ospf 1" ? ["interface gi0/19"] : /^(network |passive-interface|no passive)/.test(l) ? [] : undefined)));   /* the block's own exit kept in step */ assert.equal(cause(J, "ospf"), "proc", s + " no OSPF on switch 2"); assert.equal(cause(J, "fail"), "out", s + " so with switch 1 gone, nothing knows the way back through switch 2"); assert.ok(line(J, "works").ok);
+    J = tryIt(def, s, editOn(sol, "dist2", (l) => (/^no passive-interface/.test(l) ? [] : undefined))); assert.equal(cause(J, "ospf"), "passive", s + " its links passive too");
+    J = tryIt(def, s, editOn(sol, "dist2", (l) => (l === "passive-interface default" ? [] : undefined))); assert.equal(cause(J, "passive"), "hello", s + " hellos to the desks");
+    J = tryIt(def, s, editOn(sol, "dist2", (l) => (l === "ip address " + own("svc", 3) + " " + p.mask ? ["ip address " + own("svc", 4) + " " + p.mask] : undefined))); assert.equal(cause(J, "svis2"), "addr", s + " switch 2 on an address the records don't give it");
+    J = tryIt(def, s, editOn(sol, "dist1", (l) => (/^ip address /.test(l) ? [] : undefined))); assert.equal(cause(J, "own1"), "still", s + " switch 1 kept the gateway as its own address");
+    J = tryIt(def, s, editOn(sol, "dist2", (l) => (l === "standby " + V.id + " ip " + V.gw ? ["standby 1 ip " + V.gw] : undefined))); assert.equal(cause(J, "groups"), "split", s + " the two switches in different groups");
+    J = tryIt(def, s, editOn(sol, "dist2", (l) => (l === "standby " + V.id + " ip " + V.gw ? ["standby " + V.id + " ip " + V.gw.replace(/\.1$/, ".254")] : undefined))); assert.equal(cause(J, "groups"), "vip", s + " switch 2's virtual address mistyped"); assert.equal(cause(J, "fail"), "vip", s + " so it takes over the wrong address"); assert.ok(line(J, "works").ok, s + " nobody notices until switch 1 fails");
+    J = tryIt(def, s, editOn(sol, "dist1", (l) => (/ priority 110$/.test(l) ? [] : undefined))); assert.equal(cause(J, "active"), "nopre", s + " switch 1 at the default priority: after a restart switch 2 keeps it");
+    J = tryIt(def, s, editOn(sol, "dist1", (l) => (/ preempt$/.test(l) ? [] : undefined))); assert.equal(cause(J, "active"), "nopre", s + " no preempt");
+    J = tryIt(def, s, editOn(sol, "dist2", (l) => (/^ip helper-address/.test(l) ? [] : undefined))); assert.equal(cause(J, "fail"), "relay", s + " switch 2 doesn't relay");
+    J = tryIt(def, s, editOn(sol, "dist2", (l) => (l === "standby " + p.vlans.mgmt.id + " ip " + p.vlans.mgmt.gw ? [] : undefined))); assert.equal(cause(J, "groups"), "none2", s + " the management VLAN left out on switch 2"); assert.equal(cause(J, "fail"), "gone");
+    J = tryIt(def, s, ["dist1", "dist2"].reduce((acc, d) => editOn(acc, d, (l) => { const m = /^standby (\d+) (.*)$/.exec(l); return m && m[1] === String(V.id) ? ["standby 7 " + m[2]] : undefined; }), sol)); assert.equal(cause(J, "groups"), "grp", s + " a group numbered off the records' convention"); assert.ok(line(J, "fail").ok);
+    const saves = segOf(sol, "dist2").filter((i) => sol[i].line === "copy running-config startup-config");
+    J = tryIt(def, s, sol.filter((a, i) => saves.indexOf(i) < 0 && saves.indexOf(i - 1) < 0)); assert.equal(cause(J, "saved"), "unsaved-dist2", s + " switch 2 unsaved");
+    { /* switch 2 configured first, switch 1 left at the default priority: switch 2 is active and stays so (a tie goes to the higher address) */
+      const S1 = segOf(sol, "dist1"), S2 = segOf(sol, "dist2"), one = sol.filter((a, i) => S1.indexOf(i) >= 0 && !/ priority 110$/.test(a.line || "")), two = sol.filter((a, i) => S2.indexOf(i) >= 0);
+      J = tryIt(def, s, sol.slice(0, S1[0]).concat(two, [{ t: "pull", cable: "c-console-" + (v.runs + 1) }], one, [{ t: "pull", cable: "c-console-" + (v.runs + 2) }]));
+      assert.equal(cause(J, "active"), "dist2", s + " switch 2 active"); assert.ok(line(J, "fail").ok && line(J, "works").ok, s + " everything works, through the wrong switch");
+    }
+  }
+});
+
+test("CP-J6: other right ways pass: switch 2 configured first, other priorities, preempt on both, interfaces passive one at a time", () => {
+  const def = byId["CP-J6"];
+  for (const s of seeds("CP-J6").slice(0, 2)) {
+    const v = B.open(def, s).v, p = v.plan, sol = def.solve(v), used = ["svc", "bench", "office", "servers", "printers", "mgmt"].map((k) => p.vlans[k].id);
+    const S1 = segOf(sol, "dist1"), S2 = segOf(sol, "dist2"), first = sol.slice(0, S1[0]);
+    const one = sol.filter((a, i) => S1.indexOf(i) >= 0), two = sol.filter((a, i) => S2.indexOf(i) >= 0), pull = (n) => ({ t: "pull", cable: "c-console-" + n });
+    const tweak1 = one.map((a) => (/ priority 110$/.test(a.line || "") ? Object.assign({}, a, { line: a.line.replace(/110$/, "150") }) : a));
+    const tweak2 = two.flatMap((a) => {
+      if (/^standby \d+ ip /.test(a.line || "")) { const g = a.line.split(" ")[1]; return [a, Object.assign({}, a, { line: "standby " + g + " priority 90" }), Object.assign({}, a, { line: "standby " + g + " preempt" })]; }
+      if (a.line === "passive-interface default") return used.map((id) => Object.assign({}, a, { line: "passive-interface vlan " + id }));
+      if (/^no passive-interface /.test(a.line || "")) return [];
+      return [a];
+    });
+    const acts = first.concat(tweak2, [pull(v.runs + 1)], tweak1, [pull(v.runs + 2)]);   /* switch 2 first, then switch 1 takes over by preempt */
     const J = tryIt(def, s, acts); const c = B.check(J); assert.ok(c.res.every((r) => r.ok), s + " " + c.res.filter((r) => !r.ok).map((r) => r.id + ": " + r.ev).join("; "));
   }
 });

@@ -1159,7 +1159,7 @@ const L3_ROUTER = [
 /* is an interface passive: named, or everything is passive but it */
 export function ospfPassive(O, n) { return O.passiveDefault ? (O.active || []).indexOf(n) < 0 : O.passive.indexOf(n) >= 0; }
 /* show ip ospf neighbor / interface brief, show ip protocols: what the network has settled (live("ospf")) */
-function ospfShow(S, what) {
+export function ospfShow(S, what) {
   const O = ospfOf(S.sw); if (!O) return what === "protocols" ? [] : [];
   const L = (S.live && S.live("ospf")) || { nbrs: [], ifs: [], rid: O.rid || "0.0.0.0" }, pad = function (x, n) { return (String(x) + " ".repeat(n)).slice(0, n); };
   if (what === "neighbor") return ["", "Neighbor ID     Pri   State           Dead Time   Address         Interface"].concat(L.nbrs.map(function (q) { return pad(q.rid, 16) + pad(q.pri, 6) + pad(q.state, 16) + pad("00:00:3" + (q.rid.length % 10), 12) + pad(q.ip, 16) + q.iface; }));

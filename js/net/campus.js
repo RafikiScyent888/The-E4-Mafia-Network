@@ -31,11 +31,11 @@ export const CAMPUS_FLOORS = { data: 1, svc: 1, c2: 2, bench: 2, c3: 3, office: 
 export const CAMPUS_RUN = { data: { svc: 22, c2: 38, bench: 52, c3: 54, office: 68 }, svc: { c2: 50, bench: 60, c3: 66, office: 76 }, c2: { bench: 18, c3: 26, office: 40 }, bench: { c3: 40, office: 48 }, c3: { office: 16 } };
 /* the logical diagram (three tiers, the provider at the top) and the floor plan (three floors, one band each) */
 export const CAMPUS_LAYOUT = {
-  isp: { x: 10, y: 40 }, modem: { x: 210, y: 40, px: 120, py: 110, room: "data" }, edge: { x: 380, y: 40, lab: "right", px: 290, py: 110, room: "data" },
-  core1: { x: 380, y: 150, lab: "left", px: 460, py: 110, room: "data" }, core2: { x: 740, y: 150, lab: "right", px: 460, py: 195, room: "data" },
+  isp: { x: 10, y: 40 }, modem: { x: 210, y: 40, px: 120, py: 110, room: "data" }, edge: { x: 560, y: 40, lab: "right", px: 290, py: 110, room: "data" },
+  core1: { x: 300, y: 150, lab: "left", px: 460, py: 110, room: "data" }, core2: { x: 820, y: 150, lab: "right", px: 460, py: 195, room: "data" },
   dist1: { x: 380, y: 270, lab: "left", px: 290, py: 195, room: "data" }, dist2: { x: 740, y: 270, lab: "right", px: 290, py: 280, room: "data" },
   tech: { x: 70, y: 270, px: 120, py: 195, room: "data" },
-  acc1: { x: 210, y: 390, lab: "left", px: 460, py: 280, room: "data" }, acc2: { x: 560, y: 390, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 890, y: 390, lab: "right", px: 115, py: 655, room: "c3" },
+  acc1: { x: 210, y: 390, lab: "left", px: 460, py: 280, room: "data" }, acc2: { x: 600, y: 390, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 890, y: 390, lab: "right", px: 115, py: 655, room: "c3" },
   sd1: { x: 70, y: 510, px: 650, py: 120, room: "svc" }, hd1: { x: 200, y: 580, px: 880, py: 120, room: "svc" }, pr1: { x: 330, y: 510, px: 765, py: 250, room: "svc" },
   bn1: { x: 500, y: 510, px: 480, py: 455, room: "bench" }, bn2: { x: 630, y: 580, px: 740, py: 455, room: "bench" },
   mgr: { x: 760, y: 510, px: 440, py: 655, room: "office" }, fin: { x: 890, y: 580, px: 650, py: 655, room: "office" }, pr3: { x: 1020, y: 510, px: 860, py: 655, room: "office" }
@@ -43,6 +43,40 @@ export const CAMPUS_LAYOUT = {
 export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 345], c2: [30, 365, 220, 545], bench: [220, 365, 980, 545], c3: [30, 565, 220, 745], office: [220, 565, 980, 745] };
 const swMac = function (hi, lo) { return "00e0.4c" + hi.toString(16).padStart(2, "0") + "." + lo.toString(16).padStart(4, "0"); };
 const run = function (sw, lines) { const S = session(sw); ["", "enable", "configure terminal"].concat(lines, ["end", "copy running-config startup-config", ""]).forEach(function (l) { exec(S, l); }); return sw; };
+
+/* every switch's name and locks, as Rafiki's HQ sets them up: the secret, the console password, SSH only with a local user */
+const lockLines = function (plan, host) { return ["hostname " + host, "enable secret " + plan.secret, "line console 0", "password " + plan.console, "login", "exit", "ip domain-name " + plan.domain, "username " + plan.user + " secret " + plan.userPw, "crypto key generate rsa modulus 2048", "line vty 0 15", "login local", "transport input ssh", "exit"]; };
+
+/* the core's routed links (work order 5 on), as the records give them: seven /30s in 10.b.255.0/24 after the edge router's link to
+   distribution switch 1 (10.b.255.0/30, work order 4), the end nearer the provider on the first usable address. Each: the two
+   ends (device and port, as the cable names it), the block, each end's address and its port's description */
+export const CORE_LINKS = [["edge", "Gi0/2", "core1", "24"], ["edge", "Gi0/3", "core2", "24"], ["core1", "21", "core2", "21"], ["core1", "1", "dist1", "19"], ["core2", "1", "dist1", "20"], ["core1", "2", "dist2", "19"], ["core2", "2", "dist2", "20"]];
+const CORE_DESC = { edge: "EDGE-ROUTER", core1: "CORE1", core2: "CORE2", dist1: "DIST1", dist2: "DIST2" };
+export function coreLinks(plan) {
+  const b = plan.vlans.svc.net.split(".")[1];
+  return CORE_LINKS.map(function (L, i) { const n = 4 * (i + 1); return { id: "c-core-" + (i + 1), a: L[0], ap: L[1], b: L[2], bp: L[3], net: "10." + b + ".255." + n, cidr: "10." + b + ".255." + n + "/30", ia: "10." + b + ".255." + (n + 1), ib: "10." + b + ".255." + (n + 2), mask: "255.255.255.252", da: CORE_DESC[L[2]], db: CORE_DESC[L[0]] }; });
+}
+/* the installer's night (work order 5): both core switches racked in the data room, out of their boxes, named and locked, routing on,
+   each routed port addressed and described from the records, the spares shut, saved; the links cabled (only those `cable` takes:
+   work order 5 leaves distribution switch 2's two uncabled until it joins in work order 6). Nothing runs OSPF yet, and the edge
+   router's and the distribution switches' ends are left for the technician */
+export function installCore(net, cable) {
+  const plan = net.plan, D = net.devices, L = coreLinks(plan);
+  ["core1", "core2"].forEach(function (id) {
+    const mine = L.filter(function (l) { return l.a === id || l.b === id; }), used = mine.map(function (l) { return +(l.a === id ? l.ap : l.bp); });
+    const lines = lockLines(plan, plan.sw[id].host).concat(["ip routing"]);
+    mine.forEach(function (l) { const me = l.a === id; lines.push("interface gi0/" + (me ? l.ap : l.bp), "description " + (me ? l.da : l.db), "no switchport", "ip address " + (me ? l.ia : l.ib) + " " + l.mask, "no shutdown", "exit"); });
+    const spare = []; for (let k = 1; k <= 28; k++) if (used.indexOf(k) < 0) spare.push(k);
+    lines.push("interface range " + spare.map(function (k) { return "gi0/" + k; }).join(" , "), "shutdown", "exit");
+    run(D[id].sw, lines); delete D[id].boxed;
+  });
+  coreCables(net, cable);
+  return L;
+}
+/* the core's links cabled (only those `cable` takes), each 2 m across the data room */
+export function coreCables(net, cable) {
+  coreLinks(net.plan).filter(cable || function () { return true; }).forEach(function (l) { if (!net.cables.some(function (c) { return c.id === l.id; })) net.cables.push({ id: l.id, kind: "cat6", a: { dev: l.a, port: l.ap, seated: true }, b: { dev: l.b, port: l.bp, seated: true }, cond: "good", length: 2 }); });
+}
 
 export function makeCampus(seed) {
   const r = rng(seed ^ 0x4c41), V = VLAN_SETS[r.int(0, VLAN_SETS.length - 1)], b = r.pick([16, 27, 38, 49, 63]);
@@ -61,7 +95,7 @@ export function makeCampus(seed) {
   };
   const all = Object.keys(V).filter(function (k) { return k !== "native" && k !== "parking"; }).map(function (k) { return V[k]; }).sort(function (x, y) { return x - y; });
   const vlanLines = Object.keys(V).flatMap(function (k) { return ["vlan " + V[k], "name " + NAMES[k], "exit"]; });
-  const lock = function (host) { return ["hostname " + host, "enable secret " + plan.secret, "line console 0", "password " + plan.console, "login", "exit", "ip domain-name " + plan.domain, "username " + plan.user + " secret " + plan.userPw, "crypto key generate rsa modulus 2048", "line vty 0 15", "login local", "transport input ssh", "exit"]; };
+  const lock = function (host) { return lockLines(plan, host); };
   const trunk = function (ports) { return ["interface range " + ports, "switchport trunk native vlan " + V.native, "switchport trunk allowed vlan " + all.join(","), "switchport mode trunk", "switchport nonegotiate", "exit"]; };
   const mgmt = function (id) { return ["interface vlan " + V.mgmt, "ip address " + plan.sw[id].ip + " " + plan.mask, "no shutdown", "exit", "ip default-gateway " + vl.mgmt.gw]; };
   /* the switches: the 2F access switch has the lowest address of all (left at the defaults, it's the root of every VLAN) */

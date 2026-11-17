@@ -92,3 +92,28 @@ test("the configuration carries it; a switch that isn't layer 3 has no router os
   const before = JSON.stringify(sim.net); sim.route("pc1", "10.1.20.20"); show(sim, "dsw1", "show ip ospf neighbor"); sim.ospfAll(); sim.learned("dsw2");
   assert.equal(JSON.stringify(sim.net), before);
 });
+
+test("equal-cost paths: both kept, lowest next hop first, each its own line in show ip route; a cheaper one replaces them", async () => {
+  const { solve } = await import("../js/net/ospf.js"); const { routeTable, routeLines } = await import("../js/net/l3.js");
+  const f = (name, ip, seg, cost) => ({ name, ip, mask: "255.255.255.252", area: 0, seg, cost: cost || 1 });
+  /* a square: edge on top, two cores, a distribution switch below; the distribution switch has a /24 of its own */
+  const R = (c) => ({
+    edge: { rid: "1.1.1.1", originate: true, ifs: [f("Gi0/2", "10.9.255.5", "s1"), f("Gi0/3", "10.9.255.9", "s2")] },
+    core1: { rid: "2.2.2.2", ifs: [f("Gi0/24", "10.9.255.6", "s1"), f("Gi0/1", "10.9.255.17", "s3", c)] },
+    core2: { rid: "3.3.3.3", ifs: [f("Gi0/24", "10.9.255.10", "s2"), f("Gi0/1", "10.9.255.21", "s4")] },
+    dist1: { rid: "4.4.4.4", ifs: [f("Gi0/19", "10.9.255.18", "s3", c), f("Gi0/20", "10.9.255.22", "s4"), { name: "Vlan10", ip: "10.9.10.1", mask: "255.255.255.0", area: 0, passive: true, cost: 1 }] } });
+  let out = solve(R(1));
+  const d = out.routes.dist1.find((r) => r.net === "0.0.0.0"), v = out.routes.edge.find((r) => r.net === "10.9.10.0");
+  assert.deepEqual(d.paths.map((h) => h.nh), ["10.9.255.17", "10.9.255.21"], "the default by both cores"); assert.equal(d.nh, "10.9.255.17");
+  assert.deepEqual(v.paths.map((h) => h.nh + " " + h.iface), ["10.9.255.6 Gi0/2", "10.9.255.10 Gi0/3"], "the VLAN by both cores"); assert.equal(v.metric, 3);
+  const T = routeTable([{ name: "Gi0/19", ip: "10.9.255.18", mask: "255.255.255.252", up: true }, { name: "Gi0/20", ip: "10.9.255.22", mask: "255.255.255.252", up: true }], [], out.routes.dist1.map((r) => Object.assign({ ad: 110 }, r)));
+  const L = routeLines(T, true).join("\n");
+  assert.match(L, /^O\*E2     0\.0\.0\.0\/0 \[110\/1\] via 10\.9\.255\.17, Gi0\/19\n {19}\[110\/1\] via 10\.9\.255\.21, Gi0\/20$/m, L);
+  /* a network two routers have at the same cost (a VLAN on both distribution switches): both kept, one path from each */
+  const R2 = R(1); R2.dist2 = { rid: "5.5.5.5", ifs: [f("Gi0/19", "10.9.255.26", "s5"), { name: "Vlan10", ip: "10.9.10.3", mask: "255.255.255.0", area: 0, passive: true, cost: 1 }] }; R2.core1.ifs.push(f("Gi0/2", "10.9.255.25", "s5"));
+  const c1 = solve(R2).routes.core1.find((r) => r.net === "10.9.10.0");
+  assert.deepEqual(c1.paths.map((h) => h.nh), ["10.9.255.18", "10.9.255.26"], "core 1 reaches the VLAN by both distribution switches"); assert.equal(c1.metric, 2);
+  out = solve(R(10));   /* core 1's link to the distribution switch made dearer: only core 2's way is left for it */
+  assert.deepEqual(out.routes.dist1.find((r) => r.net === "0.0.0.0").paths.map((h) => h.nh), ["10.9.255.21"]);
+  assert.deepEqual(out.routes.edge.find((r) => r.net === "10.9.10.0").paths.map((h) => h.nh), ["10.9.255.10"]);
+});

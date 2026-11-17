@@ -1,0 +1,30 @@
+/* CP-J5 by hand (work in progress): CP-J4 done, the installer's night, then OSPF across the core */
+import { CAMPUS_JOBS } from "../../js/build/campus.js";
+import * as B from "../../js/build/engine.js";
+import * as C from "../../js/net/swcli.js";
+import { coreLinks, installCore } from "../../js/net/campus.js";
+const seed = +(process.argv[2] || 6001);
+const def = CAMPUS_JOBS.find((d) => d.id === "CP-J4"), J = B.open(def, seed); for (const a of def.solve(J.v, J.sim)) B.act(J, a);
+const sim = J.sim, p = J.v.plan; const before = sim.links(); const L = installCore(sim.net); sim.relink(before);
+const sess = (id) => { if (sim.d[id].kind === "mswitch") sim.syncSwitch(id); const S = C.session(sim.d[id].sw, sim.d[id].kind === "mswitch" ? { live: sim.swLive(id) } : { live: sim.rtLive(id) }); S.mode = "priv"; S.fresh = false; S.pending = null; return S; };
+const conf = (id, lines) => { const b4 = sim.links(); const S = sess(id); const out = ["configure terminal"].concat(lines, ["end"]).map((l) => C.exec(S, l).out).flat(); if (sim.d[id].kind === "mswitch") sim.syncSwitch(id); sim.relink(b4); return out.filter((x) => x.trim()); };
+const show = (id, line) => C.exec(sess(id), line).out.join("\n");
+const b = p.vlans.svc.net.split(".")[1];
+console.log("links", L.map((l) => l.cidr + " " + l.a + ":" + l.ap + " " + l.b + ":" + l.bp).join(" | "));
+console.log("sd1 at start", JSON.stringify(sim.route("sd1", "8.8.8.8")).slice(0, 200));
+console.log(show("core1", "show ip interface brief"));
+const end = (id, l) => (l.a === id ? { port: l.ap, ip: l.ia } : { port: l.bp, ip: l.ib });
+const mine = (id) => L.filter((l) => (l.a === id || l.b === id) && !/dist2/.test(l.a + l.b));
+console.log(conf("edge", mine("edge").flatMap((l) => ["interface " + end("edge", l).port.replace("Gi", "GigabitEthernet"), "ip address " + end("edge", l).ip + " " + l.mask, "ip nat inside", "no shutdown", "exit"]).concat(["router ospf 1", "network 10." + b + ".255.0 0.0.0.255 area 0", "default-information originate"])).join("\n"));
+console.log(conf("dist1", mine("dist1").flatMap((l) => ["interface gi0/" + end("dist1", l).port, "no switchport", "ip address " + end("dist1", l).ip + " " + l.mask, "no shutdown", "exit"]).concat(["router ospf 1", "network 10." + b + ".0.0 0.0.255.255 area 0", "passive-interface default", "no passive-interface gi0/19", "no passive-interface gi0/20", "no passive-interface gi0/24"])).join("\n"));
+for (const c of ["core1", "core2"]) console.log(conf(c, ["router ospf 1", "network 10." + b + ".255.0 0.0.0.255 area 0"]).join("\n"));
+console.log(show("dist1", "show ip ospf neighbor")); console.log(show("dist1", "show ip route")); console.log(show("edge", "show ip route"));
+console.log("sd1 now", JSON.stringify(sim.route("sd1", "8.8.8.8")).slice(0, 300));
+/* retire the statics and the direct link */
+conf("dist1", ["no ip route 0.0.0.0 0.0.0.0 10." + b + ".255.1", "interface gi0/24", "shutdown"]); conf("edge", ["no ip route 10." + b + ".0.0 255.255.0.0 10." + b + ".255.2", "interface " + p.edge.lan, "shutdown"]);
+console.log(show("dist1", "show ip route")); console.log(show("edge", "show ip route"));
+for (const id of ["sd1", "hd1", "bn1", "bn2", "mgr", "fin"]) console.log(id, JSON.stringify(sim.route(id, "8.8.8.8")).slice(0, 220));
+sim.release("sd1"); console.log("renew via old helper", JSON.stringify(sim.dhcp("sd1", "renew")));
+conf("dist1", ["svc", "bench", "office"].flatMap((k) => ["interface vlan " + p.vlans[k].id, "no ip helper-address 10." + b + ".255.1", "ip helper-address 10." + b + ".255.5", "exit"]));
+sim.release("sd1"); console.log("renew via new helper", JSON.stringify(sim.dhcp("sd1", "renew"))); console.log("sd1 online", JSON.stringify(sim.route("sd1", "8.8.8.8")).slice(0, 200));
+console.log(show("core1", "show ip route"));

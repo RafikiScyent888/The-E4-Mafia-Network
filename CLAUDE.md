@@ -137,8 +137,14 @@ The owner, 10 November 2026: "create a save point here." Where everything stands
   for every level: `ipconfig /release` then `/renew` (the address came back as released) and the sticky columns following the
   bars when they grow. The Level 3 complete checks now expect the campus to open, not to be built later. See "Stage 1 on the page"
   in "Level 4, the campus" below.
-- **Next, in the owner's order:** the rest of Level 4 (CP-J5 OSPF across the core, CP-J6 standby, then the other work orders and
-  its 15 tickets), then Level 5 (Enterprise); each new piece has its objectives shown and its details talked out before it's built.
+- **Level 4, stage 2, live 17 November 2026:** CP-J5 (OSPF across the core: the core switches installed, the default from the edge
+  router, the statics and the old link retired) and CP-J6 (distribution switch 2 joins, every gateway shared by standby). With them,
+  for every level: a switch port facing a shut port now says notconnect; port security works the links out once a pass (a campus
+  work order opens in about a second, not five). See the CP-J5 and CP-J6 notes in "Level 4, the campus" below.
+- **Next, in the owner's order:** the rest of Level 4 (re-sized by the owner's rule: a new floor end to end and the Training Annex
+  first, needing nothing new from the engine; then jumbo frames and the central DHCP server, which need the rack server's model and
+  a Linux command line; then the 15 tickets), then Level 5 (Enterprise); each new piece has its objectives shown and its details
+  talked out before it's built.
 - **The container was rebuilt on 15 November 2026:** the worktrees were made again from the pushed branches, and the browser
   is now Chromium 1243 (`/opt/pw-browsers/chromium`): run the drive, AAA and models tools with `CHROME=/opt/pw-browsers/chromium`.
 - **SB-14 and SB-15 are built** on `save/level3-sb14` and `save/level3-sb15` (worktrees `/home/user/e4-sb14`, `/home/user/e4-sb15`;
@@ -3720,6 +3726,70 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
     (`tools/plants-campus-node.py`, `SEEDS=4`, `TESTS=` naming the suite, each in a throwaway copy).
   - **Not in stage 1:** OSPF on the BR-4200 (13a1478, the groundwork for CP-J5, with `tests/campus-rtospf.test.js`) stays on
     `save/level4-campus` until CP-J5 goes live.
+- **CP-J5, OSPF across the core, built 17 November 2026 on `save/level4-campus`** (not live):
+  - **The installer's night** (`installCore` in `js/net/campus.js`, called from CP-J5's start): both core switches out of their
+    boxes in the data room, named, locked, routing on, each routed port addressed and described from the records (`CORE_LINKS`,
+    `coreLinks`: seven /30s in 10.b.255.0/24 after CP-J4's link, the end nearer the provider on the first usable address), the
+    spares shut, saved; five links cabled (the edge router's Gi0/2 and Gi0/3 to each core switch's port 24, the cores' ports 21
+    together, each core's port 1 to distribution switch 1's ports 19 and 20). The cores' ports 2, for distribution switch 2, are
+    addressed but not cabled until it joins (CP-J6): cabled, they drew two red links nobody was meant to touch, and core switch
+    1's port 2 left at nearly the core-to-core link's angle, its name on that line.
+  - **CP-J5** (`js/build/campus.js`), 13 lines: the edge router's two ends (address, shut, down); distribution switch 1's two ends
+    (still a switch port, address, shut, down); OSPF neighbours on every link, the first link short of FULL judged in order (a
+    router not running OSPF, the link in no network statement, passive, another area, MTU); every VLAN in use advertised but
+    passive on distribution switch 1, the provider's side not in OSPF; every VLAN at the edge router by both core switches (not
+    advertised, not learned, still over the old link, by one core switch only); distribution switch 1's way out OSPF's default (not
+    originated, not reaching it, hidden behind its own static); the statics retired; the old link retired, both ends shut; NAT
+    (an edge link to the core not inside); DHCP still relayed (the classic trap: the helper still on the old link's address, gone
+    with it); everyone working; both core switches answering from the service desk (no way there, or no way back); all four saved.
+    Worked from the console. The walk-through numbers its console cables from the ones CP-J4 laid (`v.runs`).
+  - **Equal-cost paths** (`js/net/ospf.js`): every path of the same lowest cost is kept, up to four, lowest next hop first (`paths`;
+    `nh` and `iface` are the first, which traffic follows); `show ip route` on both models prints each under the first, as the
+    real thing does. A network two routers have at the same cost gets both; the nearest router originating a default wins, ties
+    share.
+  - **A switch port down when the far port is shut** (`switchLinks` in `js/net/sim.js`, every level): a switch's own view of a link
+    listed the far end whatever its port said, so a port facing another switch's shut port, or a router's, said up/up while the
+    cable carried nothing (traffic already stopped: `cableUp` checked both ends). Now it's notconnect, and a routed port facing a
+    shut port loses its connected network. `tests/links-far.test.js` (2, both failing on the old code).
+  - **The logical diagram:** the edge router moved over the middle of the core (x 560): at x 380 the old link to distribution
+    switch 1 ran straight through core switch 1, and their port names sat on each other. The core switches spread wider than the
+    distribution pair (x 300 and 820). CP-J1 to CP-J4's drawings measured again on six campuses: all clear.
+  - **Checks:** `tests/campus-jobs.test.js` CP-J5's wrong ways (17, each its own line and cause) and other right ways (one
+    statement for every link, interfaces passive one at a time, router IDs, the relay by core switch 2's side, the old cable pulled);
+    the drive through the page on three campuses (63 checks: OSPF neighbours and the two-path default over SSH, tracert through a core
+    switch, the renew relayed to the new address) and its drawings on six (36); its 3 contrast states pass (13,854 text runs); its
+    Node plants and those for equal-cost paths and the far port all caught (one missed at first, a network two routers have: the
+    test had no such case; it does now).
+- **CP-J6, the virtual gateway, built 17 November 2026 on `save/level4-campus`** (not live):
+  - Its start cables distribution switch 2's two links to the core (`coreCables`). **CP-J6** (`js/build/campus.js`), 10 lines:
+    distribution switch 2 routes, its links routed and up (ip routing off, still a switch port, address, shut, down); an OSPF
+    neighbour of both core switches (`nbrCausesFor(CORE6)`); every VLAN advertised, passive; its own interface on every VLAN (the
+    records give it the third address); distribution switch 1 off the gateway addresses (the second); one standby group per VLAN on
+    both, the gateway its virtual address (none on either, the two in different groups, the virtual address mistyped, a group not
+    numbered for its VLAN); distribution switch 1 active, and active again after a restart (tried on a copy: off, then on; without
+    preempt, or at the default priority, switch 2 keeps it); **if distribution switch 1 fails** (switched off on a copy of the network,
+    `copyOf`, so a check never changes the real one): switch 2 answers every gateway, at the right address, every PC stays online,
+    and DHCP is still relayed; everyone working; both saved. Worked from the console, switch 1 first so it's active before switch 2
+    joins.
+  - **The active switch answers at its virtual address from other networks too** (`routeL3`): a ping from the service desk to the
+    management VLAN's gateway got no reply, where the real thing answers.
+  - **A work order's start was slow:** each starts from the one before it done, so CP-J6 replays every earlier walk-through (4.7 s in
+    Node, past the drive's 5 s reload in the browser). Port security worked out the whole network's links again for every secured
+    port after every command; now once a pass (`portSecurity`, every level). CP-J6's start is 1.3 s.
+  - **The drawing:** distribution switch 2's port 2 (to the 2F access switch) landed where the 3F switch's link to distribution switch
+    1 crosses it. A port's name now tries the stretch nearer its device before giving up on other lines (`draw.js`), and the 2F
+    access switch sits at x 600 on the logical diagram.
+  - **Checks:** CP-J6's wrong ways (16) and other right ways (switch 2 first, then switch 1 taking over by preempt; other priorities;
+    preempt on both; interfaces passive one at a time); its drive's own checks (`show standby brief` on both switches over SSH, the
+    management VLAN's virtual gateway answering a ping); its Node plants all caught (one missed at first, "switch 2 active passes":
+    no test ever ended with switch 2 active; one does now, switch 2 configured first with switch 1 at the default priority).
+- **Stage 2 (CP-J5 and CP-J6), live 17 November 2026** (from 0cfec71). Checked on its tree: `npm test` 587 of 587 (on e4a91cd; the
+  final commit adds one test case, `tests/campus-jobs.test.js` run again on it, 15 of 15, 12 campuses); the whole campus drive (every check but a
+  written-in count of the campus's work orders, now read from the level; the lock run again, 5); the full drive 6,965 checks, every level; `node
+  tools/models.mjs` 202, 0 failed; the campus and levels contrast states, 25, 84,802 text runs; every earlier work order's logical
+  diagram compared under the live and the new drawing code (home, office and business, start and done, two seeds, both fonts: 240
+  drawings, all the same; the comparison calibrated on CP-J1, where the 2F switch moved: all 8 different); the plants for CP-J5,
+  CP-J6, equal-cost paths, the far port and the virtual address, all caught.
 
 ## Objectives
 

@@ -2282,7 +2282,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
       const { p, ctx } = await cpage("index.html", { net: solvedTo(3), build: { j: {}, done: doneTo(3) } }); const tag = "campus levels, the small business finished: ";
       try {
         const L = await lv(p, 4);
-        check(!L.locked && /0 of 4 work orders done · more work orders and its tickets on the way/.test(L.text), tag + "Level 4 is open on the Ticket Desk, counts its work orders and says more is coming (" + L.text + ")");
+        check(!L.locked && new RegExp("0 of " + LEVELS[3].jobs.length + " work orders done · more work orders and its tickets on the way").test(L.text), tag + "Level 4 is open on the Ticket Desk, counts its work orders and says more is coming (" + L.text + ")");
         await p.click('#left [data-level="4"]'); await p.waitForTimeout(60);
         check((await p.$$('#left a[href="build.html#job=CP-J1"]')).length === 1, tag + "the desk links the campus's work orders into Build");
         await p.click('#left a[href="build.html#job=CP-J1"]'); await p.waitForTimeout(400);
@@ -2307,7 +2307,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
       const plan = await BJ(p, () => window.__e4b.T.sim.net.plan);
       check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed && /Level 4 · Campus/.test(await p.$eval("#labtitle", (n) => n.textContent)), tag + "opens the job on the campus asked for, under Level 4 · Campus");
       const lim = await p.$eval(".limits", (n) => n.textContent);
-      check([plan.secret].concat(job === "CP-J4" ? [plan.console, plan.vlans.mgmt.gw] : [plan.user, plan.userPw]).every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the campus's records the job needs");
+      check([plan.secret].concat(job === "CP-J4" ? [plan.console, plan.vlans.mgmt.gw] : job === "CP-J5" ? [plan.console, plan.sw.core1.host, plan.sw.core2.host] : job === "CP-J6" ? [plan.console, plan.sw.dist1.ip, plan.sw.dist2.ip] : [plan.user, plan.userPw]).every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the campus's records the job needs");
       await checkJob(p);
       check((await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do");
       const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
@@ -2332,6 +2332,23 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
         check(re("10." + b + "." + plan.vlans.svc.id + ".").test(await term(p)) && (await BJ(p, () => window.__e4b.T.sim.addr("sd1").kind)) === "dhcp", tag + "the service desk PC gets its address again, relayed to the edge router's pool");
         await step(p, { t: "cmd", dev: "sd1", line: "ping 8.8.8.8" }); check(/Reply from 8\.8\.8\.8/.test(await term(p)), tag + "and pings out");
       }
+      if (job === "CP-J5") {   /* OSPF across the core, seen from the desks and from distribution switch 1 */
+        const b = plan.vlans.svc.net.split(".")[1], o = await ssh(p, plan, plan.vlans.mgmt.gw, ["show ip ospf neighbor", "show ip route"]), nb = o.slice(o.lastIndexOf("show ip ospf neighbor"), o.lastIndexOf("show ip route")), rt = o.slice(o.lastIndexOf("show ip route"));
+        check((nb.match(/FULL/g) || []).length === 2 && re("10." + b + ".255.17").test(nb) && re("10." + b + ".255.21").test(nb), tag + "show ip ospf neighbor on distribution switch 1: both core switches, FULL");
+        check(new RegExp("O\\*E2\\s+0\\.0\\.0\\.0/0 \\[110/1\\] via 10\\." + b + "\\.255\\.17, \\S+\\n\\s+\\[110/1\\] via 10\\." + b + "\\.255\\.21").test(rt) && !/^S\*/m.test(rt), tag + "show ip route on distribution switch 1: the default by OSPF through both core switches, no static default");
+        await step(p, { t: "cmd", dev: "sd1", line: "tracert -d 8.8.8.8" }); const tr = await term(p), tt = tr.slice(tr.lastIndexOf("tracert"));
+        check(re(plan.vlans.svc.gw).test(tt) && /10\.\d+\.255\.(17|21)\b/.test(tt) && /10\.\d+\.255\.(5|9)\b/.test(tt) && !re("10." + b + ".255.1 ").test(tt), tag + "tracert from the service desk: its gateway, a core switch, then the edge router, not the old link");
+        await step(p, { t: "cmd", dev: "sd1", line: "ipconfig /release" }); await step(p, { t: "cmd", dev: "sd1", line: "ipconfig /renew" });
+        check(re("10." + b + "." + plan.vlans.svc.id + ".").test(await term(p)) && (await BJ(p, () => window.__e4b.T.sim.addr("sd1").kind)) === "dhcp", tag + "the service desk PC still gets its address, relayed to the edge router's new address");
+      }
+      if (job === "CP-J6") {   /* every gateway shared: switch 1 active with preempt, switch 2 standby, the gateway answering */
+        const o1 = await ssh(p, plan, plan.sw.dist1.ip, ["show standby brief"]), b1 = o1.slice(o1.lastIndexOf("show standby brief"));
+        const o2 = await ssh(p, plan, plan.sw.dist2.ip, ["show standby brief"]), b2 = o2.slice(o2.lastIndexOf("show standby brief"));
+        const ids = ["svc", "bench", "office", "servers", "printers", "mgmt"].map((k) => plan.vlans[k]);
+        check(ids.every((V) => new RegExp("Vl" + V.id + "\\s+" + V.id + "\\s+110 P Active\\s+local\\s+" + V.gw.replace(/\.1$/, ".3").replace(/\./g, "\\.") + "\\s+" + V.gw.replace(/\./g, "\\.")).test(b1)), tag + "show standby brief on distribution switch 1: every VLAN's group Active, priority 110 with preempt, switch 2 standby, the gateway the virtual address");
+        check(ids.every((V) => new RegExp("Vl" + V.id + "\\s+" + V.id + "\\s+100\\s+Standby").test(b2)), tag + "show standby brief on distribution switch 2: Standby in every group");
+        await step(p, { t: "cmd", dev: "sd1", line: "ping " + plan.vlans.mgmt.gw }); check(new RegExp("Reply from " + plan.vlans.mgmt.gw.replace(/\./g, "\\.")).test(await term(p)), tag + "the management VLAN's gateway, a virtual address, answers a ping from the service desk");
+      }
       if (job === "CP-J4" && seed === 11) {   /* the bars over a long title, easier reading's font in: the sticky columns sit under them (16 November 2026: their height was measured only at load) */
         await p.click("#dys"); await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(250);
         const ch = await p.evaluate(() => [document.querySelector(".chrome").offsetHeight, parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--chromeH"))]);
@@ -2351,7 +2368,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
   }
   if (!process.env.JOB || process.env.JOB === "plans") {
     const { p, ctx } = await cpage("build.html", { net: solvedTo(3), build: { j: {}, done: doneTo(3) } });
-    for (const job of LEVELS[3].jobs) for (const seed of [1, 2, 3, 4, 5, 10]) for (const at of ["start", "done"]) {
+    for (const job of LEVELS[3].jobs.filter((k) => !process.env.PLANJOB || k === process.env.PLANJOB)) for (const seed of [1, 2, 3, 4, 5, 10]) for (const at of ["start", "done"]) {   /* PLANJOB=<id>: one job's drawings */
       const tag = "campus " + job + " " + seed + " " + at + ": ";
       try {
         await p.evaluate(([job, seed, at]) => { const c = window.__e4b; c.openJob(job, true, seed); const J = c.T; if (at === "done") J.def.solve(J.v, J.sim).forEach((a) => c.act(a)); }, [job, seed, at]);

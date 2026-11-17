@@ -8,6 +8,10 @@
    Optional plant: node tools/drive.mjs "<js run in the page after load>" */
 import http from "node:http"; import fs from "node:fs"; import path from "node:path"; import url from "node:url";
 const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "..");
+/* the instructor PIN: never written in this public repo (the owner, 17 November 2026: "remove the pin for now"). It's in the owner's
+   private notes; run the drive with E4_PIN set to it. Without it the drive stops here, rather than pass the instructor checks unrun */
+const PIN = process.env.E4_PIN || "";
+if (!/^\d{4,}$/.test(PIN)) { console.log("FAIL\nset E4_PIN to the instructor PIN (in the owner's private notes) to run the drive"); process.exit(1); }
 const { HOME_TICKETS } = await import("../js/tickets/home.js"); const { OFFICE_TICKETS } = await import("../js/tickets/office.js"); const { BUSINESS_TICKETS } = await import("../js/tickets/business.js"); const EN = await import("../js/tickets/engine.js");
 const { OFFICE_JOBS } = await import("../js/build/office.js");
 const { JOBS } = await import("../js/build/jobs.js");
@@ -949,7 +953,7 @@ if (!process.env.ONLY || process.env.ONLY === "tickets-business") {
 }
 
 /* the three views share the ticket; each left column opens tickets; the map and the plan open devices */
-if (!process.env.ONLY) {
+if (!process.env.ONLY || process.env.ONLY === "instructor") {   /* ONLY=instructor: the instructor tools alone */
   let { p, ctx } = await page("HOME-03", 99, "lab-bench.html");
   check(/Lab HOME-03/.test(await p.$eval("#labtitle", (n) => n.textContent)), "bench: the bar names the lab");
   await p.click('.shelves [data-t="HOME-05"]'); await p.waitForTimeout(60);
@@ -972,8 +976,8 @@ if (!process.env.ONLY) {
   await p.click("#mInst"); check(await p.$("#inst[open] #instpin") !== null, "instructor: asks for the PIN");
   await p.fill("#instpin", "1234"); await p.press("#instpin", "Enter"); check(/isn't right/.test(await p.$eval("#inst .msg", (n) => n.textContent).catch(() => "")), "instructor: a wrong PIN is refused");
   check(await p.$("#inst #instt") === null, "instructor: nothing unlocked by a wrong PIN");
-  if (await p.$("#inst #instpin")) { await p.fill("#instpin", "3693"); await p.press("#instpin", "Enter"); }
-  const unlockedNow = await p.$("#inst #instt") !== null; check(unlockedNow, "instructor: 3693 unlocks the tools");
+  if (await p.$("#inst #instpin")) { await p.fill("#instpin", PIN); await p.press("#instpin", "Enter"); }
+  const unlockedNow = await p.$("#inst #instt") !== null; check(unlockedNow, "instructor: the PIN unlocks the tools");
   if (unlockedNow) {
   await p.selectOption("#instt", "HOME-12"); await p.fill("#insts", "4242"); await p.click('#inst button:text-is("Open it")'); await p.waitForTimeout(80);
   check((await T(p, () => window.__e4.T.def.id)) === "HOME-12" && (await T(p, () => window.__e4.T.seed)) === 4242, "instructor: the demo opens the chosen ticket on the chosen house");
@@ -987,7 +991,7 @@ if (!process.env.ONLY) {
   await p.click('#inst button:text-is("Lock the instructor tools")'); check(await p.$("#inst #instpin") !== null, "instructor: Lock asks for the PIN again");
   }
   const src = await p.evaluate(async () => (await (await fetch("js/desk/instructor.js")).text()) + (await (await fetch("js/desk/app.js")).text()));
-  check(src.indexOf("3693") < 0, "instructor: the PIN itself isn't written in the page's code");
+  check(src.indexOf(PIN) < 0, "instructor: the PIN itself isn't written in the page's code");
   await ctx.close();
 }
 /* build mode: each client job done entirely through the page, as a student would, on three houses */
@@ -1175,14 +1179,14 @@ for (const job of ["J1", "J2", "J3", "J4", "J5", "J6", "J7", "J8", "J9", "J10", 
   } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }   /* a broken page fails by name; it doesn't stop the run */
   await ctx.close();
 }
-if (!process.env.ONLY) {
+if (!process.env.ONLY || process.env.ONLY === "instructor") {   /* ONLY=instructor: the instructor tools alone */
   const { p, ctx } = await bpage("J1", 4242);
   await p.click('.chrome nav[aria-label="Mode"] a:text-is("Tickets")'); await p.waitForTimeout(300);
   check(/index\.html$/.test(p.url()) && !!(await p.$("#board")), "mode: Tickets goes to the Ticket Desk");
   await p.click('.chrome nav[aria-label="Mode"] a:text-is("Build")'); await p.waitForTimeout(300);
   check(/build\.html$/.test(p.url()) && (await BJ(p, () => window.__e4b.T.seed)) === 4242, "mode: Build comes back to the same job");
-  await p.click("#mInst"); await p.fill("#instpin", "3693"); await p.press("#instpin", "Enter");
-  check(await p.$("#inst #instt") !== null, "build instructor: 3693 unlocks");
+  await p.click("#mInst"); await p.fill("#instpin", PIN); await p.press("#instpin", "Enter");
+  check(await p.$("#inst #instt") !== null, "build instructor: the PIN unlocks");
   if (await p.$("#inst #instt")) {
     await p.selectOption("#instt", "J2"); await p.fill("#insts", "5150"); await p.click('#inst button:text-is("Open it")'); await p.waitForTimeout(80);
     check((await BJ(p, () => window.__e4b.T.def.id)) === "J2" && (await BJ(p, () => window.__e4b.T.seed)) === 5150, "build instructor: the demo opens the chosen job on the chosen house");
@@ -1191,7 +1195,7 @@ if (!process.env.ONLY) {
     await p.click('#inst button:text-is("Show all of Mason\'s help")'); check(/Rung 1[\s\S]*Rung 2/.test(await p.$eval("#inst .inst-out", (n) => n.textContent)), "build instructor: all of Mason's help");
   }
   const src = await p.evaluate(async () => (await (await fetch("js/build/app.js")).text()) + (await (await fetch("js/build/jobs.js")).text()));
-  check(src.indexOf("3693") < 0, "build: the PIN isn't written in the page's code");
+  check(src.indexOf(PIN) < 0, "build: the PIN isn't written in the page's code");
   await ctx.close();
 }
 
@@ -1233,22 +1237,22 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
   {
     const { p, ctx } = await opage("build.html", {}); const tag = "levels, instructor: ";
     try {
-      await p.click("#mInst"); await p.fill("#instpin", "3693"); await p.press("#instpin", "Enter"); await p.waitForTimeout(60);
-      check(!(await lv(p, 2)).locked && /Opened by your instructor/.test((await lv(p, 2)).text), tag + "3693 opens Level 2, and it says the instructor opened it");
+      await p.click("#mInst"); await p.fill("#instpin", PIN); await p.press("#instpin", "Enter"); await p.waitForTimeout(60);
+      check(!(await lv(p, 2)).locked && /Opened by your instructor/.test((await lv(p, 2)).text), tag + "the PIN opens Level 2, and it says the instructor opened it");
       await p.click('#inst button:text-is("Lock the instructor tools")'); await p.waitForTimeout(60);
       check(threeWays(await lv(p, 2)), tag + "locking the tools locks the level again");
-      await p.fill("#instpin", "3693"); await p.press("#instpin", "Enter"); await p.waitForTimeout(60);
+      await p.fill("#instpin", PIN); await p.press("#instpin", "Enter"); await p.waitForTimeout(60);
       await p.click("#instLevels"); await p.waitForTimeout(40);
       check(/Lock the levels again/.test(await p.$eval("#instLevels", (n) => n.textContent)), tag + "the button turns into Lock the levels again");
       await p.click('#inst button:text-is("Lock the instructor tools")'); await p.waitForTimeout(60);
       check(!(await lv(p, 2)).locked, tag + "every level stays open on this computer after the tools are locked");
       await p.reload(); await p.waitForTimeout(350);
       check(!(await lv(p, 2)).locked, tag + "and after a reload");
-      await p.click("#mInst"); await p.fill("#instpin", "3693"); await p.press("#instpin", "Enter"); await p.waitForTimeout(60);
+      await p.click("#mInst"); await p.fill("#instpin", PIN); await p.press("#instpin", "Enter"); await p.waitForTimeout(60);
       await p.click("#instLevels"); await p.click('#inst button:text-is("Lock the instructor tools")'); await p.waitForTimeout(60);
       check(threeWays(await lv(p, 2)), tag + "Lock the levels again locks them on this computer");
       const src = await p.evaluate(async () => { let t = ""; for (const f of ["js/desk/levels.js", "js/desk/levelsui.js", "js/desk/instructor.js", "js/build/app.js", "js/build/office.js"]) t += await (await fetch(f)).text(); return t; });
-      check(src.indexOf("3693") < 0, tag + "the PIN isn't written in the code");
+      check(src.indexOf(PIN) < 0, tag + "the PIN isn't written in the code");
     } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
     await ctx.close();
   }

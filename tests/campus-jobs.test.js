@@ -274,12 +274,61 @@ test("CP-J6: other right ways pass: switch 2 configured first, other priorities,
   }
 });
 
+test("CP-J7: the tempting wrong ways each fail their own line for their own cause", () => {
+  const def = byId["CP-J7"];
+  for (const s of seeds("CP-J7").slice(0, 3)) {
+    const v = B.open(def, s).v, p = v.plan, T = p.train, sol = def.solve(v), cause = (J, id) => { const r = line(J, id); return r.ok ? null : r.real.id; };
+    const on = (dev, from, to) => editOn(sol, dev, (l) => (l === from ? (to === null ? [] : [].concat(to)) : undefined)), drp = (dev, re) => editOn(sol, dev, (l) => (re.test(l) ? [] : undefined));
+    let J = tryIt(def, s, sol.map((a) => (a.t === "lay" && a.a.dev === "acc4" && a.a.port === "23" ? Object.assign({}, a, { b: { dev: "dist1", port: "5" } }) : a))); assert.equal(cause(J, "rack"), "ports", s + " the uplink on another port");
+    J = tryIt(def, s, editOn(sol, "dist1", (l) => (l === "no shutdown" ? [] : undefined))); assert.equal(cause(J, "rack"), "down", s + " distribution switch 1's port 4 left shut");
+    J = tryIt(def, s, on("acc4", "hostname " + p.sw.acc4.host, "hostname RIT-ACC4")); assert.equal(cause(J, "base"), "name", s + " named off the records");
+    J = tryIt(def, s, on("acc4", "ip default-gateway " + p.vlans.mgmt.gw, null)); assert.equal(cause(J, "base"), "gw", s + " no default gateway");
+    J = tryIt(def, s, editOn(sol, "dist2", (l) => (l === "vlan " + T.id ? ["vlan " + p.vlans.native.id] : undefined))); assert.equal(cause(J, "vlan"), "none", s + " the VLAN never made on switch 2");
+    J = tryIt(def, s, on("acc4", "name " + T.name, "name TRAIN")); assert.equal(cause(J, "vlan"), "name", s + " named off the records on the 4F switch");
+    J = tryIt(def, s, drp("acc4", /^switchport (mode trunk|nonegotiate)$/)); assert.equal(cause(J, "trunks"), "mode", s + " the 4F's uplinks left to negotiate with ends that don't");
+    J = tryIt(def, s, on("acc4", "switchport nonegotiate", null)); assert.equal(cause(J, "trunks"), "dtp", s + " still negotiating");
+    J = tryIt(def, s, on("acc4", "switchport trunk native vlan " + p.vlans.native.id, null)); assert.equal(cause(J, "trunks"), "native", s + " native VLAN 1 on the 4F's side");
+    J = tryIt(def, s, on("dist1", "switchport trunk allowed vlan " + T.id + "," + p.vlans.mgmt.id, "switchport trunk allowed vlan " + p.vlans.mgmt.id)); assert.equal(cause(J, "trunks"), "train", s + " switch 1's end leaves the training VLAN off");
+    J = tryIt(def, s, on("acc4", "switchport trunk allowed vlan " + T.id + "," + p.vlans.mgmt.id, "switchport trunk allowed vlan " + T.id)); assert.equal(cause(J, "trunks"), "mgmt", s + " the management VLAN left off the 4F's uplinks");
+    J = tryIt(def, s, drp("dist1", /^switchport trunk allowed vlan add /)); assert.equal(cause(J, "trunks"), "bundle", s + " the bundle on switch 1 never given the training VLAN");
+    J = tryIt(def, s, ["dist1", "dist2"].reduce((acc, d) => editOn(acc, d, (l) => (/^spanning-tree vlan /.test(l) ? [] : undefined)), sol)); assert.equal(cause(J, "stp"), "acc4", s + " the root left to the defaults: the 4F switch's address is lowest");
+    J = tryIt(def, s, ["dist1", "dist2"].reduce((acc, d) => editOn(acc, d, (l) => (/^spanning-tree vlan .* root primary$/.test(l) ? [l.replace("primary", "secondary")] : /^spanning-tree vlan .* root secondary$/.test(l) ? [l.replace("secondary", "primary")] : undefined)), sol)); assert.equal(cause(J, "stp"), "dist2", s + " the root on switch 2");
+    J = tryIt(def, s, drp("dist2", /^spanning-tree vlan /)); assert.equal(cause(J, "stp"), "backup", s + " no backup: the 4F switch is next");
+    J = tryIt(def, s, on("dist2", "ip address " + T.gw.replace(/\.1$/, ".3") + " " + p.mask, null)); assert.equal(cause(J, "gw"), "svi", s + " switch 2 with no address on the training VLAN"); assert.equal(cause(J, "fail"), "gone");
+    J = tryIt(def, s, on("dist1", "standby " + T.id + " priority 110", null)); assert.equal(cause(J, "gw"), "active", s + " switch 1 at the default priority");
+    J = tryIt(def, s, drp("edge", /^(ip dhcp pool|network |default-router|dns-server)/)); assert.equal(cause(J, "pool"), "none", s + " no pool"); assert.equal(cause(J, "online"), "apipa");
+    J = tryIt(def, s, on("edge", "default-router " + T.gw, "default-router " + T.gw.replace(/\.1$/, ".254"))); assert.equal(cause(J, "pool"), "router", s + " the pool's default router wrong"); assert.equal(cause(J, "online"), "off");
+    J = tryIt(def, s, drp("edge", /^ip dhcp excluded-address/)); assert.equal(cause(J, "pool"), "excl", s + " nothing kept back");
+    J = tryIt(def, s, drp("dist2", /^ip helper-address/)); assert.equal(cause(J, "relay"), "none", s + " switch 2 doesn't relay"); assert.ok(line(J, "online").ok, s + " switch 1 relays meanwhile");
+    J = tryIt(def, s, drp("acc4", /^switchport port-security/)); assert.equal(cause(J, "desks"), "ps", s + " the desks not locked down");
+    J = tryIt(def, s, on("acc4", "interface range gi0/3 - 22", "interface range gi0/5 - 22")); assert.equal(cause(J, "desks"), "spare", s + " spares 3 and 4 left open");
+    J = tryIt(def, s, sol.map((a) => (a.t === "lay" && a.a.dev === "tr2" ? Object.assign({}, a, { b: { dev: "acc4", port: "3" } }) : a))); assert.equal(cause(J, "desks"), "port", s + " a PC on a spare port");
+    J = tryIt(def, s, drp("acc4", /^copy running-config/)); assert.equal(cause(J, "saved"), "unsaved-acc4", s + " the 4F switch unsaved");
+  }
+});
+
+test("CP-J7: other right ways pass: priorities typed for the root, the bundle's list given whole, the training VLAN added a line at a time", () => {
+  const def = byId["CP-J7"];
+  for (const s of seeds("CP-J7").slice(0, 2)) {
+    const v = B.open(def, s).v, p = v.plan, T = p.train, sol = def.solve(v), all = ["svc", "bench", "office", "servers", "printers", "mgmt"].map((k) => p.vlans[k].id).concat([T.id]).sort((a, b) => a - b);
+    let acts = ["dist1", "dist2"].reduce((acc, d) => editOn(acc, d, (l) => {
+      if (/^spanning-tree vlan .* root primary$/.test(l)) return ["spanning-tree vlan " + T.id + " priority 24576"];
+      if (/^spanning-tree vlan .* root secondary$/.test(l)) return ["spanning-tree vlan " + T.id + " priority 28672"];
+      if (/^switchport trunk allowed vlan add /.test(l)) return ["switchport trunk allowed vlan " + all.join(",")];
+      return undefined;
+    }), sol);
+    acts = editOn(acts, "acc4", (l) => (l === "switchport trunk allowed vlan " + T.id + "," + p.vlans.mgmt.id ? ["switchport trunk allowed vlan " + T.id, "switchport trunk allowed vlan add " + p.vlans.mgmt.id] : undefined));
+    const J = tryIt(def, s, acts); const c = B.check(J); assert.ok(c.res.every((r) => r.ok), s + " " + c.res.filter((r) => !r.ok).map((r) => r.id + ": " + r.ev).join("; "));
+  }
+});
+
 test("no help names a password, an address or a VLAN number; Mason's ladder climbs on a failing line", () => {
   for (const def of CAMPUS_JOBS) for (const s of seeds(def.id).slice(0, 3)) {
     const J = B.open(def, s), p = J.v.plan, b = p.vlans.svc.net.split(".")[1], secrets = [p.secret, p.console, p.userPw].concat(Object.values(p.sw).map((w) => w.ip).filter(Boolean), Object.values(p.vlans).flatMap((x) => [x.gw, x.net]).filter(Boolean), Object.values(p.printers), ["10." + b + ".255.", "10." + b + ".0.0"]);
     const words = [def.mason].concat(def.reqs.flatMap((q) => [q.rung1(J.v), q.rung2(J.v)])).join("\n");
     for (const x of secrets) assert.ok(words.indexOf(x) < 0, def.id + " help names " + x);
     for (const k of Object.keys(p.vlans)) assert.ok(!new RegExp("\\b" + p.vlans[k].id + "\\b").test(words), def.id + " help names VLAN " + p.vlans[k].id);
+    assert.ok(!new RegExp("\\b" + p.train.id + "\\b").test(words) && words.indexOf(p.train.net) < 0 && words.indexOf(p.train.gw) < 0, def.id + " help names the training VLAN or its addresses");
     for (let i = 0; i < 5; i++) B.check(J);
     const m = B.mason(J); assert.ok(m && JSON.stringify(m).length > 20);
   }

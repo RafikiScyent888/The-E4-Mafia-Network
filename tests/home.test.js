@@ -235,3 +235,17 @@ test("HOME-15: back on the real network isn't the end: the password was given aw
   E.act(T, { t: "join", dev: "laptop" }); E.act(T, { t: "cmd", dev: "laptop", line: "ping 203.0.113.80" }); assert.match(T.partial, /every other device/);
   E.act(T, { t: "join", dev: "phone" }); E.act(T, { t: "cmd", dev: "laptop", line: "ping 203.0.113.80" }); assert.equal(T.solved, true);
 });
+
+test("ipconfig /release then /renew: the adapter stays plugged in (no IPv4 address in between, never Media disconnected) and gets an address back", () => {
+  for (let seed = 1; seed <= 6; seed++) {
+    const T = E.open(byId["HOME-03"], seed), sim = T.sim;
+    let r = exec(sim, "pc", "ipconfig /release");
+    assert.ok(!/media disconnected/i.test(r.out) && !/IPv4 Address/.test(r.out) && /Default Gateway[ .]*:\s*$/m.test(r.out), seed + " released: no address, still connected\n" + r.out);
+    assert.equal(r.facts.media, "connected"); assert.equal(sim.hasLink("pc"), true);
+    r = exec(sim, "pc", "ipconfig"); assert.ok(!/media disconnected/i.test(r.out) && !/IPv4 Address/.test(r.out), seed + " still released, still connected");
+    r = exec(sim, "pc", "ipconfig /renew"); assert.ok(/IPv4 Address/.test(r.out) && !/media disconnected|unable to contact/i.test(r.out), seed + " renewed\n" + r.out);
+    exec(sim, "pc", "ipconfig /release"); sim.d.pc.ifaces[0].cfg.mode = "dhcp";
+    const c = sim.cableAt("pc", "NIC"); c.b.seated = false; c.a.seated = false;
+    r = exec(sim, "pc", "ipconfig /renew"); assert.ok(/while it has its media disconnected/.test(r.out), seed + " unplugged: Media disconnected, as before");
+  }
+});

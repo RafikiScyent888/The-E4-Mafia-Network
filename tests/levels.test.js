@@ -37,5 +37,8 @@ test("the small business is complete: 10 work orders and 15 tickets, all built (
   const P = all(3); delete P.j[L.jobs[L.jobs.length - 1]];
   assert.equal(finished(L, P), false, "every ticket and all but one work order: not finished");
   assert.equal(finished(L, all(3)), true, "everything done: finished");
-  assert.equal(LEVELS[3].later, true, "the campus is built later: the page shows it so, and it can't be picked");
+  assert.equal(LEVELS[3].later, undefined, "the campus is no longer built later (stage 1, CP-J1 to CP-J4)");
+  assert.equal(isOpen(4, all(2)), false, "the campus stays locked while the small business isn't finished");
+  assert.equal(isOpen(4, all(3)), true, "and opens once it is");
+  assert.equal(built(LEVELS[3]), false, "the campus is still being built: it can't count as finished yet");
 });

@@ -220,6 +220,7 @@ setupInstructor(ctx, {
   clear: function () { Object.keys(S.t).forEach(function (k) { delete S.t[k]; }); Object.keys(S.solved).forEach(function (k) { delete S.solved[k]; }); openTicket(HOME_TICKETS[0].id, true); }
 });
 chromeH(); window.addEventListener("resize", chromeH);
+if (window.ResizeObserver) new ResizeObserver(chromeH).observe(document.querySelector(".chrome"));   /* the bars grow when a long title wraps or easier reading's font arrives: the sticky columns under them follow, or their foot runs off the screen */
 openTicket(S.current && DEFS[S.current] ? S.current : HOME_TICKETS[0].id, false);
 if (location.hash === "#physical") setView(true);
 if (location.hash === "#step") setTime(true);

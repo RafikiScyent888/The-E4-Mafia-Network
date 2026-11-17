@@ -1584,7 +1584,7 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
 }
 
 /* the small business complete (16 November 2026: its 10 work orders and 15 tickets all built, SB-15 the last): with every ticket
-   solved and every work order but the last done, finishing the last one finishes Level 3; the campus is still being built */
+   solved and every work order but the last done, finishing the last one finishes Level 3 and opens the campus (Level 4, stage 1) */
 if (!process.env.ONLY || process.env.ONLY === "business" || process.env.ONLY === "tickets-business") {
   const { LEVELS } = await import("../js/desk/levels.js");
   const net = { t: {}, solved: Object.fromEntries(LEVELS[0].tickets.concat(LEVELS[1].tickets, LEVELS[2].tickets).map((id) => [id, 1])) };
@@ -1604,11 +1604,11 @@ if (!process.env.ONLY || process.env.ONLY === "business" || process.env.ONLY ===
     await p.evaluate((id) => { const c = window.__e4b; c.openJob(id, true, 2026); const J = c.T; J.def.solve(J.v, J.sim).forEach((a) => c.act(a)); }, lastJob);
     await p.click("#doCheck"); await p.waitForTimeout(150);   /* the real button: it's what counts a job done */
     const box = await p.$eval("#check", (n) => n.textContent);
-    check(/Level 3 finished/.test(box) && /Campus is still being built/.test(box) && !/on the way|so far/.test(box), tag + lastJob + "'s done box says Level 3 is finished and the campus is still being built (" + box.slice(box.indexOf("Level 3"), box.indexOf("Level 3") + 70) + ")");
+    check(/Level 3 finished/.test(box) && /The campus is open: level 4/.test(box) && !/on the way|so far|still being built/.test(box), tag + lastJob + "'s done box says Level 3 is finished and the campus is open (" + box.slice(box.indexOf("Level 3"), box.indexOf("Level 3") + 70) + ")");
     await p.goto(base + "index.html"); await p.waitForTimeout(350);
     const L3 = await p.$eval('#left [data-level="3"]', (n) => n.textContent), L4 = await p.$eval('#left [data-level="4"]', (n) => n.textContent);
     check(/Finished: 15 of 15 tickets, 10 of 10 work orders/.test(L3), tag + "Level 3 says finished, 15 of 15 tickets and 10 of 10 work orders (" + L3 + ")");
-    check(/built later/.test(L4), tag + "Level 4 says it's built later (" + L4 + ")");
+    check(L4 === "Level 4 · Campus0 of " + LEVELS[3].jobs.length + " work orders done · " + LEVELS[3].coming && !/built later/.test(L4) && !(await p.$eval('#left [data-level="4"]', (n) => n.parentNode.classList.contains("locked"))), tag + "Level 4 is open, counts its work orders, and says more are on the way (" + L4 + ")");
   } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
   await ctx.close();
 }
@@ -2242,6 +2242,122 @@ if (!process.env.ONLY || process.env.ONLY === "business") {
         if (!here) continue;
         if (at === "key") check(/KEY IN/.test(await p.$eval("#plan .cabl", (n) => n.textContent)), tag + "the cabinet's label says the key is in");
         await planBothFonts(p, tag + "the business");
+      } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+    }
+    await ctx.close();
+  }
+}
+
+/* Level 4, the campus (stage 1, 16 November 2026: CP-J1 to CP-J4). The lock: Level 4 shut until the small business is finished,
+   then open, its work orders linked from the desk into Build. Each work order through the page on three campuses: the work to do at
+   the first check, every step of its walk-through typed into the page's own terminals and forms (SSH from a desk PC's Command
+   Prompt; CP-J4 from the console of your laptop, its cable moved between the two devices), every line met, a show command or a
+   desk PC proving it, both drawings measured in both fonts, still done after a reload. Then every work order's floor plan, at its
+   start and done, on six campuses, in both fonts */
+if (!process.env.ONLY || process.env.ONLY === "campus") {
+  const { LEVELS } = await import("../js/desk/levels.js");
+  const solvedTo = (n) => ({ t: {}, solved: Object.fromEntries(LEVELS.slice(0, n).flatMap((L) => L.tickets).map((id) => [id, 1])) });
+  const doneTo = (n) => Object.fromEntries(LEVELS.slice(0, n).flatMap((L) => L.jobs).map((id) => [id, 1]));
+  async function cpage(file, o) {
+    const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
+    await ctx.addInitScript((o) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify(o.net)); localStorage.setItem("e4-build-v1", JSON.stringify(o.build)); sessionStorage.setItem("seeded", "1"); } }, o);
+    const p = await ctx.newPage(); p.setDefaultTimeout(5000); p.on("pageerror", (e) => errs.push("campus " + file + ": " + e.message));
+    await p.goto(base + file); await p.waitForTimeout(350);
+    if (plant) await p.evaluate(plant);
+    return { p, ctx };
+  }
+  const lv = (p, n) => p.$eval('#left [data-level="' + n + '"]', (b) => ({ text: b.textContent, locked: b.parentNode.classList.contains("locked"), dashed: getComputedStyle(b).borderStyle === "dashed", lock: !!b.querySelector('.lk[aria-hidden="true"]') }));
+  if (!process.env.JOB || process.env.JOB === "lock") {   /* JOB=lock: the lock alone (the page plants' run) */
+    {
+      const { p, ctx } = await cpage("build.html", { net: solvedTo(2), build: { j: {}, done: doneTo(2) } }); const tag = "campus levels, the small business not finished: ";
+      try {
+        const L = await lv(p, 4);
+        check(L.locked && L.lock && L.dashed && /Locked: opens when Small business is finished/.test(L.text), tag + "Level 4 is locked, marked three ways (" + L.text + ")");
+        await p.click('#left [data-level="4"]'); await p.waitForTimeout(60);
+        check(await p.$$eval("#queue button.locked", (l) => l.length >= 4 && l.every((b) => b.getAttribute("aria-disabled") === "true")), tag + "its work orders are listed, locked");
+      } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+      await ctx.close();
+    }
+    {
+      const { p, ctx } = await cpage("index.html", { net: solvedTo(3), build: { j: {}, done: doneTo(3) } }); const tag = "campus levels, the small business finished: ";
+      try {
+        const L = await lv(p, 4);
+        check(!L.locked && /0 of 4 work orders done · more work orders and its tickets on the way/.test(L.text), tag + "Level 4 is open on the Ticket Desk, counts its work orders and says more is coming (" + L.text + ")");
+        await p.click('#left [data-level="4"]'); await p.waitForTimeout(60);
+        check((await p.$$('#left a[href="build.html#job=CP-J1"]')).length === 1, tag + "the desk links the campus's work orders into Build");
+        await p.click('#left a[href="build.html#job=CP-J1"]'); await p.waitForTimeout(400);
+        check((await BJ(p, () => window.__e4b.T.def.id)) === "CP-J1" && /Level 4 · Campus/.test(await p.$eval("#labtitle", (n) => n.textContent)), tag + "the link opens CP-J1 in Build, titled Level 4 · Campus");
+      } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+      await ctx.close();
+    }
+  }
+  const step = async (p, a) => {
+    if (a.t === "lay") return lay(p, a.a.dev, a.a.port, a.b.dev, a.b.port);
+    if (a.t === "pull") { const i = await p.evaluate((id) => window.__e4b.T.sim.net.cables.findIndex((c) => c.id === id), a.cable); check(i >= 0, "the cable to pull, " + a.cable + ", is in the runs table"); await p.click("#runs tbody tr:nth-child(" + (i + 1) + ") button"); await p.waitForTimeout(40); return; }
+    if (a.t === "cmd" && a.cli) { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== "tech") await dev(p, "tech"); if (!(await p.$('.win-tabs button[aria-selected="true"]:text-is("Serial terminal")'))) await tab(p, "Serial terminal"); return type(p, a.line); }
+    if (a.t === "cmd") { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== a.dev) { await dev(p, a.dev); await tab(p, "Command Prompt"); } return type(p, a.line); }
+    throw new Error("no page step for " + JSON.stringify(a));
+  };
+  const re = (x) => new RegExp(String(x).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const ssh = async (p, plan, ip, lines) => { for (const l of ["ssh " + plan.user + "@" + ip, plan.userPw, "enable", plan.secret].concat(lines)) await step(p, { t: "cmd", dev: "sd1", line: l }); const out = await term(p); await step(p, { t: "cmd", dev: "sd1", line: "exit" }); return out; };
+  for (const job of LEVELS[3].jobs.filter((k) => !process.env.JOB || k === process.env.JOB)) for (const seed of [11, 2025, 777777]) {
+    const { p, ctx } = await cpage("build.html", { net: solvedTo(3), build: { current: job, j: { [job]: { seed } }, done: doneTo(3) } });
+    const tag = "campus " + job + " " + seed + ": ";
+    try {
+      const plan = await BJ(p, () => window.__e4b.T.sim.net.plan);
+      check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed && /Level 4 · Campus/.test(await p.$eval("#labtitle", (n) => n.textContent)), tag + "opens the job on the campus asked for, under Level 4 · Campus");
+      const lim = await p.$eval(".limits", (n) => n.textContent);
+      check([plan.secret].concat(job === "CP-J4" ? [plan.console, plan.vlans.mgmt.gw] : [plan.user, plan.userPw]).every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the campus's records the job needs");
+      await checkJob(p);
+      check((await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do");
+      const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
+      for (const a of sol) await step(p, a);
+      check(!/% Invalid|% Incomplete|% Ambiguous|Permission denied|Connection refused/.test(await term(p)), tag + "no line was refused");
+      const t = await checkJob(p), n = await BJ(p, () => window.__e4b.T.def.reqs.length);
+      check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
+      if (job === "CP-J1") { const o = await ssh(p, plan, plan.sw.acc2.ip, ["show port-security"]); check(/Gi0\/1[\s\S]*Shutdown/.test(o) && /Gi0\/2/.test(o) && !/Gi0\/2[34]\b/.test(o.slice(o.lastIndexOf("show port-security"))), tag + "show port-security on the 2F switch: its desk ports secured, shutdown on a violation, the uplinks not"); }
+      if (job === "CP-J2") { const o = await ssh(p, plan, plan.sw.dist1.ip, ["show spanning-tree vlan " + plan.vlans.svc.id]); check(/This bridge is the root/.test(o.slice(o.lastIndexOf("show spanning-tree"))), tag + "show spanning-tree on distribution switch 1: This bridge is the root"); }
+      if (job === "CP-J2" && seed === 11) {   /* the Physical tabs: the MSW-3900X says its model is borrowed; a desk PC has its own */
+        await dev(p, "dist1"); await tab(p, "Physical"); await p.waitForTimeout(400);
+        check(/Drawn with the MSW-2800G's model until photographs of the MSW-3900X come/.test(await p.$eval(".win-body", (n) => n.textContent)), tag + "distribution switch 1's Physical tab says it's drawn with the MSW-2800G's model until the MSW-3900X's photographs come");
+        await dev(p, "sd1"); await tab(p, "Physical"); await p.waitForTimeout(400);
+        check(/What you can see on it[\s\S]*LAN: cable plugged in/.test(await p.$eval(".win-body", (n) => n.textContent)), tag + "the service desk PC has its Physical tab, its model and words");
+      }
+      if (job === "CP-J3") { const o = await ssh(p, plan, plan.sw.dist2.ip, ["show etherchannel summary"]); const s2 = o.slice(o.lastIndexOf("show etherchannel")); check(/Po1\(SU\)/.test(s2) && /Gi0\/21\(P\)/.test(s2) && /Gi0\/22\(P\)/.test(s2), tag + "show etherchannel summary on distribution switch 2: Po1(SU), both ports (P)"); }
+      if (job === "CP-J4") {
+        const b = plan.vlans.svc.net.split(".")[1];
+        await step(p, { t: "cmd", dev: "sd1", line: "tracert -d 8.8.8.8" }); const tr = await term(p);
+        check(re(plan.vlans.svc.gw).test(tr) && re("10." + b + ".255.1").test(tr), tag + "tracert from the service desk: its gateway on distribution switch 1, then the edge router across the link");
+        await step(p, { t: "cmd", dev: "sd1", line: "ipconfig /release" }); await step(p, { t: "cmd", dev: "sd1", line: "ipconfig /renew" });
+        check(re("10." + b + "." + plan.vlans.svc.id + ".").test(await term(p)) && (await BJ(p, () => window.__e4b.T.sim.addr("sd1").kind)) === "dhcp", tag + "the service desk PC gets its address again, relayed to the edge router's pool");
+        await step(p, { t: "cmd", dev: "sd1", line: "ping 8.8.8.8" }); check(/Reply from 8\.8\.8\.8/.test(await term(p)), tag + "and pings out");
+      }
+      if (job === "CP-J4" && seed === 11) {   /* the bars over a long title, easier reading's font in: the sticky columns sit under them (16 November 2026: their height was measured only at load) */
+        await p.click("#dys"); await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(250);
+        const ch = await p.evaluate(() => [document.querySelector(".chrome").offsetHeight, parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--chromeH"))]);
+        check(Math.abs(ch[0] - ch[1]) < 1, tag + "with easier reading on, the bars' height and the columns' allowance for them agree (" + ch.join(" and ") + ")");
+        await p.click("#dys"); await p.waitForTimeout(100);
+      }
+      await p.click("#vLog"); await p.waitForTimeout(60);
+      const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the finished campus's logical diagram: every port name and device name on it, clear of each other and every tile" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(40);
+      const fp = await labelsClear(p, "plan"); check(fp.n > 0 && !fp.out.length, tag + "the finished campus's floor plan: all " + fp.n + " names of devices and rooms on it, clear of each other and of every tile" + (fp.out.length ? " (" + fp.out.join("; ") + ")" : ""));
+      await dysClear(p, tag + "the finished campus");
+      await planBothFonts(p, tag + "the finished campus");
+      await p.reload(); await p.waitForTimeout(350);
+      check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)) && /done 1×|Done 1×/.test(await p.$eval('#queue [data-j="' + job + '"]', (n) => n.textContent)), tag + "still done after a reload, and the list counts it");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0] + (process.env.STACK ? " " + (String(e.stack).match(/drive\.mjs:\d+/g) || []).join(" ") : "")); }
+    await ctx.close();
+  }
+  if (!process.env.JOB || process.env.JOB === "plans") {
+    const { p, ctx } = await cpage("build.html", { net: solvedTo(3), build: { j: {}, done: doneTo(3) } });
+    for (const job of LEVELS[3].jobs) for (const seed of [1, 2, 3, 4, 5, 10]) for (const at of ["start", "done"]) {
+      const tag = "campus " + job + " " + seed + " " + at + ": ";
+      try {
+        await p.evaluate(([job, seed, at]) => { const c = window.__e4b; c.openJob(job, true, seed); const J = c.T; if (at === "done") J.def.solve(J.v, J.sim).forEach((a) => c.act(a)); }, [job, seed, at]);
+        await p.click("#vLog"); await p.waitForTimeout(40);
+        const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the logical diagram's names clear" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
+        await planBothFonts(p, tag + "the campus");
       } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
     }
     await ctx.close();

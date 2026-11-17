@@ -131,8 +131,14 @@ The owner, 10 November 2026: "create a save point here." Where everything stands
   complete (failing on the old file). Checked on its own tree: `npm test` 509 of 509; the business-ticket drive 2,022 checks and
   the small office's 647; 54 contrast states (the levels and the business tickets), 166,749 text runs; 2 page plants (the old
   wording put back, a 26th piece waited for), both caught.
-- **Next, in the owner's order:** Level 4 (Campus), then Level 5 (Enterprise); each new piece has its objectives shown
-  and its details talked out before it's built.
+- **Level 4 (Campus), stage 1, live 17 November 2026:** Rafiki's HQ on the page with work orders CP-J1 to CP-J4 (lock down the
+  access ports, the spanning-tree root, LACP between the distribution switches, the gateways onto distribution switch 1). Level 3
+  finished opens it; it still carries `planned: 25` and says more work orders and its tickets are on the way. With it, two fixes
+  for every level: `ipconfig /release` then `/renew` (the address came back as released) and the sticky columns following the
+  bars when they grow. The Level 3 complete checks now expect the campus to open, not to be built later. See "Stage 1 on the page"
+  in "Level 4, the campus" below.
+- **Next, in the owner's order:** the rest of Level 4 (CP-J5 OSPF across the core, CP-J6 standby, then the other work orders and
+  its 15 tickets), then Level 5 (Enterprise); each new piece has its objectives shown and its details talked out before it's built.
 - **The container was rebuilt on 15 November 2026:** the worktrees were made again from the pushed branches, and the browser
   is now Chromium 1243 (`/opt/pw-browsers/chromium`): run the drive, AAA and models tools with `CHROME=/opt/pw-browsers/chromium`.
 - **SB-14 and SB-15 are built** on `save/level3-sb14` and `save/level3-sb15` (worktrees `/home/user/e4-sb14`, `/home/user/e4-sb15`;
@@ -3549,6 +3555,171 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
   virtual gateway, MTU. Port security and switch VLAN interfaces exist already.
 - **3D models:** a Layer 3 switch with fibre uplink slots, SFP transceivers, LC patch cords: the owner was asked for photographs
   on 15 November 2026 (as for SB-14's label printer). The engine and command line are built first; the models when they come.
+- **The plan, approved 16 November 2026: "Yes to the level 4 plans, build it out".** The site: Rafiki's IT Services' own HQ,
+  three floors, three tiers (two layer 3 core switches; two layer 3 distribution switches bundled with LACP, the VLAN gateways
+  with standby and the spanning-tree root; an access switch per floor, wired to both distribution switches; 1F the service
+  desk and the data room, 2F the technicians' bench, 3F management; VLANs for the service desk, the bench, the office, servers,
+  printers and management; the internet router at the edge originating the default route into OSPF), and the Training Annex
+  on a collapsed core (one layer 3 switch as core and distribution, an access switch for the classroom) over single-mode fibre,
+  routed and in OSPF. **10 work orders**, smallest first: (1) lock down the access ports (port security, portfast, BPDU guard);
+  (2) gateways onto the distribution switch (VLAN interfaces and ip routing, the router-on-a-stick retired); (3) the
+  distribution pair bundled with LACP; (4) the spanning-tree root where it belongs (distribution 1 primary, 2 secondary); (5)
+  OSPF across the core, the default originated at the edge; (6) the virtual gateway (distribution 2 joins with standby); (7)
+  jumbo frames for the backup network (the backup server and its Linux command line); (8) the Training Annex on a collapsed
+  core; (9) DHCP relay (ip helper-address) to a central DHCP server; (10) a new floor end to end. **15 tickets**: the wrong
+  root bridge; BPDU guard err-disabling a port (a desk switch); port security err-disabling a port (a visitor's laptop); a
+  port-channel member suspended (half the bandwidth); LACP passive at both ends; OSPF stuck in EXSTART (MTU); an OSPF area
+  mismatch after a replacement; a passive interface on the uplink; the default route not originated; the standby virtual
+  address mistyped on one switch; no preempt after maintenance; jumbo frames on the server but not a switch; a stale static
+  route looping (TTL expired); a wrong mask on a routed link; mismatched transceivers on the inter-building fibre. 3D models
+  need the owner's photographs: a layer 3 switch with fibre slots, SFP transceivers, LC cords, a rack server.
+- **Groundwork, built 15 November 2026 on `save/level4-campus`** (worktree `/home/user/e4-l4`; stage 1 went live 17 November
+  2026, below; `later: true` came off `levels.js` with it):
+  - **The layer 3 switch, MSW-3900X** (`newSwitch({ l3: true })`, its own command line registered as `l3switch`, so the office's
+    and the business's switches are unchanged, tested): `ip routing`; `no switchport` makes a routed port (on no VLAN, its own
+    address; switchport settings refused on it; `switchport` makes it a switch port again); static routes by next hop (only
+    while it's on a connected network) or by interface, with a distance; `show ip route` in the router's format with each
+    route's distance and metric (routing off: the switch's default gateway and an empty redirect cache, as the real thing says);
+    the lines in the running configuration and back in from a file; `show ip interface brief` with routed ports' addresses.
+    The table and longest match are in `js/net/l3.js` (pure); `l3Ifs`, `l3Table`, `l3Route` in `swcli.js`.
+  - **The simulation** (`sim.js`): a routed port is a node of its own on layer 2 (`l3Node`) and answers ARP there
+    (`routedAddrs`); a host's gateway on a switch that routes sends its packet on `routeL3`: the longest match at each switch,
+    on to the next hop's switch while the route says so, until the destination's own network; each switch crossed takes one off
+    the TTL (`routers`; ping's reply shows it); no route says so (Destination net unreachable from that switch); a next hop that
+    never answers, a loop, or no way back (the destination's route to the sender is checked too) each get no reply. The switch's
+    own ping goes by its table (`routeFromL3`). A switch that routes takes a reply by its own table (`canReply`). OSPF's learned
+    routes will come in through `learned(id)` and the session's `live("learned")`.
+  - **Link aggregation (LACP)**, on both switch models (access switches bundle their uplinks too): `channel-group <1-48> mode
+    active|passive|on` (no proprietary modes), which makes the port-channel the first time ("Creating a port-channel interface
+    Port-channel 1"); `interface port-channel N` reaches every member, and its switchport settings are its own as well
+    (`sw.pcs`, made only when used, so a switch without one saves and reads exactly as before); `show etherchannel summary` (Po
+    SU/SD; each member P bundled, I stand-alone, s suspended, D down); `show interfaces port-channel N` (its bandwidth the
+    bundled members' speeds added up). Each member works its state out from the far end (`chanOf`, `farDev` on each switch
+    link): active with active or passive bundles, passive with passive never does, on bundles without asking (its far end,
+    if LACP, stands alone), a member whose VLAN settings aren't the port-channel's or whose far end is another switch is
+    suspended: line protocol down, and it carries nothing (`linkEdges`). `tests/campus-lag.test.js` (7).
+  - **Spanning tree, rapid and per VLAN** (`js/net/stp.js`, pure; on both switch models: every switch runs it): per VLAN, each
+    group of switches joined in it elects the lowest bridge ID (priority plus the VLAN, then the address); root ports by the
+    lowest path cost (short method: 1 Gb/s 4, 100 Mb/s 19; a port-channel of two 3, of three or more 2), designated ports the
+    end nearer the root, every other port between switches an alternate, blocking; a port to anything that isn't a switch is
+    designated (an edge port with portfast). The simulation (`stpVlan`, `stpAll`, cached until a switch or cable changes)
+    leaves a blocked port's VLANs out of what it carries (`linkEdges`), but only where a loop is possible at all (`stpLoops`:
+    fewer than two switch-to-switch cables, or no group with more links than a tree, and nothing is worked out, so the office's
+    and the business's networks run exactly as before). Commands: `spanning-tree mode rapid-pvst|pvst`, `spanning-tree vlan
+    <list> priority <in 4096s>` (the real refusal listing the allowed values), `root primary` (24576, or 4096 under a lower root
+    it finds now) and `root secondary` (28672), `no spanning-tree vlan`; on a port `spanning-tree portfast` (with the real
+    warning), `bpduguard enable|disable`, `cost`; `show spanning-tree [vlan N]` in the real layout (root ID, "This bridge is the
+    root", bridge ID with its sys-id-ext, each port's role, state, cost, Prio.Nbr, P2p and Edge). BPDU guard after each change
+    (`bpduGuard`): a port with it on that hears another switch is err-disabled until it's shut and opened. The settings are made
+    only when used (`sw.stp`, `p.stp`), so saved switches read as before. A switch's console on the page gets `swLive` (its
+    tree, and the routes a protocol will learn). `tests/campus-stp.test.js` (7).
+  - **OSPF in one area** (`js/net/ospf.js`, pure; the layer 3 switch only): `router ospf <pid>` (one process; its own mode,
+    `(config-router)#`), `network <addr> <wildcard> area <n>`, `router-id`, `passive-interface <if> | default` (and `no` for
+    the exceptions), `default-information originate` (only with a default route of its own), `auto-cost reference-bandwidth`
+    (with the real warning to keep it the same everywhere); on a routed port or VLAN interface `ip ospf cost`, `ip ospf
+    priority`, `ip mtu`. Neighbours on each segment (a layer 2 broadcast domain) need the same area, subnet and mask, neither
+    passive, different router IDs; a different MTU leaves them in EXSTART. The DR is the highest priority, then router ID (set
+    by hand, or the highest interface address: on a switch with a provider port, that one); two that are neither stop at 2WAY.
+    Routes: the lowest total cost (each interface out on the way, then the far router's own into the network; the reference
+    bandwidth 100 by default, so a gigabit costs 1); a passive network still advertised; a default originated arrives as
+    `O*E2` with metric 1. The simulation (`ospfAll`, cached like the spanning tree) feeds them to the table through `learned`
+    at distance 110, so routing across switches (`routeL3`) uses them. `show ip ospf neighbor`, `show ip ospf interface brief`,
+    `show ip protocols`, `show ip route [ospf]`. `tests/campus-ospf.test.js` (7).
+  - **First-hop redundancy: standby** (the layer 3 switch only): on a VLAN interface or routed port `standby <0-255> ip <virtual>`
+    (refused outside the interface's subnet, as the real thing does), `priority`, `preempt`, and `no` for each. Per group on a
+    segment, the election (`hsrpTick`, after each change in `relink`, its result kept in `net.extra.hsrp` so a saved network
+    replays it): the active router stays active while it's up with an address, unless one with a higher priority and preempt
+    set comes along; when it goes, the best of the rest (highest priority, then highest address) takes over. Only the active
+    router answers ARP for the virtual address (`hsrpVips` in `owners`), so the hosts' gateway follows it. `show standby
+    [brief]` (each group's state: Active, Standby, Listen, Init; who's active and standby; the virtual address).
+    `tests/campus-hsrp.test.js` (6).
+  - **Checks:** `tests/campus-l3.test.js` (6), `tests/campus-sim.test.js` (6), `tests/campus-lag.test.js` (7), `tests/campus-stp.test.js` (7), `tests/campus-ospf.test.js` (7), `tests/campus-hsrp.test.js` (6); `python3 tools/plants-campus-node.py` (in a
+    throwaway copy): 47 plants, all caught (one standby plant missed twice: a switch that's off isn't a member and an interface
+    that's down is on a segment of its own, so only an interface up with no address reaches that guard; the test now has it). Two missed at first: one hit only one of the two `ip routing` guards (re-aimed at
+    both), and "a suspended member still carries frames" passed because the test's suspended member was an access port that
+    couldn't carry the VLAN anyway (the test now suspends a trunk that still carries it). The existing suites run unchanged
+    against it (home, office, business command line, simulation and page, with the campus's: 239 of 239). The business's
+    ticket tests ran within noise of the tickets branch on a loaded machine (time them again on an idle one before going live).
+- **The campus and its first work orders, built 16 November 2026 on `save/level4-campus`** (not on any page yet):
+  - **The order, re-sized by the owner's rule for the rest of E4** ("Keep building everything in order of increasing in size"):
+    the spanning-tree root and the LACP bundle are smaller than moving the gateways, so they come first. The work orders are
+    numbered in the order they go live: **CP-J1** lock down the access ports, **CP-J2** the spanning-tree root, **CP-J3** LACP
+    between the distribution switches, **CP-J4** the gateways onto distribution switch 1. Tell the owner the order changed and
+    why when they go live; the titles are theirs.
+  - **The campus template** (`js/net/campus.js`, `makeCampus(seed)`): Rafiki's HQ as the technician finds it: the edge router
+    (BR-4200) running router-on-a-stick, a subinterface and DHCP pool per VLAN, NAT; two MSW-3900X distribution switches,
+    routing off, joined by two trunks; an access switch per floor uplinked to both; the 2F access switch the root of every VLAN
+    (left at the defaults, it has the lowest address); the core switches in their boxes; every switch named, locked, SSH only, on
+    the management VLAN, saved. The seed decides the addresses (10.b.V.0/24, the VLAN's number its third octet), the VLAN
+    numbers and the passwords. `tests/campus-site.test.js`.
+  - **CP-J1** (port security, sticky, one device, shutdown; portfast and BPDU guard on every desk port; the uplinks untouched,
+    the spares still parked): over SSH from the service desk PC. **CP-J2**: distribution switch 1 the root of every VLAN in use,
+    distribution switch 2 the secondary (causes: the 2F switch still root, another access switch root after the 2F one was
+    pushed down, distribution switch 2 root; for the backup: left at the default, an access switch beating it, a tie, below the
+    primary). **CP-J3**: the two links one port-channel by LACP (causes: two separate trunks with one blocked, one end bundled,
+    one link left out, passive with passive, on with LACP, a member suspended, a member down, forced on at both ends), still
+    carrying every VLAN in use. **CP-J4**: distribution switch 1 every VLAN's gateway (its VLAN interfaces take the .1 the devices
+    already use, the management VLAN's too: it answers there from now on), its port 24 routed on a /30 to the edge router (the
+    mask worked out by hand), a default route one way and the campus's /16 the other, NAT kept on the edge router, DHCP relayed to
+    the edge router's pools (work order 9 moves the pools to a central server), the subinterfaces removed. Worked from the
+    console (Mason: over SSH you're standing on the branch you're cutting): ready first with the new interfaces shut, then the
+    edge router, then back to switch 1 to cut over. Each work order starts from the one before it done (a test holds them to it).
+  - **The simulation gained** (it touches `routeBR` and `routeFromRouter`, which the live business runs on, so the full drive is
+    needed before any of it goes live):
+    a layer 3 switch's next hop can be a business router, which carries the packet on (`routeBR` from `routeL3`); the router routes
+    on through a layer 3 switch, its own traffic and passing traffic; a source routed in from another router needs a route back
+    (`wayBack`); a loop between them stops (a depth guard). **DHCP relay:** `ip helper-address` on a VLAN interface or routed port
+    (`relays`, `relayOf`; keys `rtr@relay|switch|interface|helper`): the router answers from its pool for the relaying interface's
+    network, if the request gets there and the offer gets back; the lease names the helper as its server. Fixed: `switchport trunk
+    allowed vlan add/remove` typed on a port-channel changed its members but not its own record (the members suspended for
+    nothing).
+  - **Checks:** `tests/campus-jobs.test.js` (each work order: the start, the walk-through, the tempting wrong ways each failing
+    their own line for their own cause, other right ways, no help naming a password, an address or a VLAN number, each starting
+    from the one before done); `tests/campus-edge.test.js` (8: the cut-over by hand on 8 campuses). Plants
+    (`python3 tools/plants-campus-node.py`, in a throwaway copy): CP-J1 12, CP-J2 11, CP-J3 14, all caught (5 missed at first,
+    each a test gap closed or a plant re-aimed at both of two guards); the relay and routing handoff 12, all caught; CP-J4's 15 (run on 4 campuses, `SEEDS=4 TESTS=tests/campus-jobs.test.js`).
+- **Stage 1 on the page (CP-J1 to CP-J4), built 16 November 2026, live 17 November 2026** (from commit 2964011 with the levels
+  checks' fix, 038d825):
+  - `levels.js`: Level 4 has its work orders, `planned: 25`, and says more work orders and its tickets are on the way. Level 3
+    finished opens it; the desk links its work orders into Build.
+  - The build page lists them, gives every campus device a button (`ORDER`), and says rooms by the campus's names.
+  - `draw.js`: the campus is a site of its own (`SITES.campus`, `campusRooms`, `campusNames`; positions in `CAMPUS_LAYOUT`,
+    rooms in `CAMPUS_ROOM_BOX`). The logical diagram in tiers, wider than the others (`-44 -26 1150 710`): the provider, the modem
+    and the edge router; the core (boxed until CP-J5); the distribution pair; an access switch per floor, its name beside it; the
+    desks staggered on two rows under their floor's switch, so their names never meet. Icons by what a device is on the campus
+    (`iconOf`; a new `l3switch` icon). The floor plan in three bands, one a floor (1F the data room, three rows of devices 85 apart,
+    and the service desk; 2F and 3F each a closet and a room), its runs routed round the devices as the business's are; the 1F
+    access switch sits by the service desk's wall, so its runs don't cross the data room. Switches show their management address.
+  - Every campus PC and printer has a Physical tab (`MODEL_OF`, `STILL`). **The MSW-3900X is drawn with the MSW-2800G's model**
+    until its photographs come, and its words say so first (the ports and lights are in the same places, so what they show is this
+    switch's): never passed off as its own.
+  - Checks: `ONLY=campus node tools/drive.mjs` (the lock, each work order through the page on three campuses, the Physical tabs, both
+    drawings in both fonts, every work order's floor plan at its start and done on six campuses); the campus contrast states
+    (`ONLY=campus node tools/aaa.mjs tools/aaa-states.json`); `python3 tools/plants-campus-page.py` (8 page plants, in a throwaway
+    copy). CP-J1's drive passed (39 checks) after the drawings were re-laid: "CABLE IN" on a tile (the provider too near the modem),
+    three addresses off the logical diagram's foot, the 1F access switch's runs under the distribution switch's tile.
+  - **Two fixes for every level, found by the campus's checks:**
+    - **`ipconfig /release` then `/renew`** (`js/net/cmd.js`): after a release the adapter has no address, and ipconfig took that
+      to mean the media was disconnected: it said so, and `/renew` refused. Now the media is the link itself, as on Windows: a
+      released adapter shows no IPv4 address and a blank gateway, still connected, and `/renew` asks again; unplugged is still
+      Media disconnected. Found by CP-J4's drive (the drives had only ever used `/renew` on its own). `tests/home.test.js` holds
+      it (failing on the old code).
+    - **The sticky columns follow the bars** (`js/desk/app.js`, `js/build/app.js`): `--chromeH` was measured only at load and on a
+      window resize, so a long work-order title wrapping, or easier reading's font arriving, made the bars taller and the terminal
+      column ran off the foot of the screen, its input line out of reach. A `ResizeObserver` measures again whenever the bars
+      change size. Found by the contrast states (CP-J4's long title with easier reading on, 1.06:1 on the terminal's lines); the
+      drive checks the two agree, and a page plant taking the fix out is caught.
+  - **The Level 3 complete checks** (`tools/drive.mjs`, `tests/levels.test.js`) said the campus is built later; with stage 1 they
+    say Level 3 finished opens the campus, which counts its work orders and says more are on the way (both shown to fail with
+    `later: true` put back).
+  - **Checks before going live, on the stage 1 tree:** `npm test` 575 of 575; the full drive on 2964011, every check passing but the two Level 3
+    complete ones (fixed above; their block run again on the stage 1 tree, 10 checks; the campus's parts: the lock 5, CP-J1 39,
+    CP-J2 41, CP-J4 54, CP-J3 and the drawing plans in the whole run); `node tools/models.mjs` 202, 0 failed;
+    the 10 campus contrast states and the 10 levels states (23,732 text runs) all passing; plants, all caught: page 9
+    (`tools/plants-campus-page.py`), Node CP-J1 12, CP-J2 11, CP-J3 14, CP-J4 15, the routing handoff and relay 12
+    (`tools/plants-campus-node.py`, `SEEDS=4`, `TESTS=` naming the suite, each in a throwaway copy).
+  - **Not in stage 1:** OSPF on the BR-4200 (13a1478, the groundwork for CP-J5, with `tests/campus-rtospf.test.js`) stays on
+    `save/level4-campus` until CP-J5 goes live.
 
 ## Objectives
 

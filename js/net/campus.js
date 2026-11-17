@@ -31,8 +31,8 @@ export const CAMPUS_FLOORS = { data: 1, svc: 1, c2: 2, bench: 2, c3: 3, office: 
 export const CAMPUS_RUN = { data: { svc: 22, c2: 38, bench: 52, c3: 54, office: 68 }, svc: { c2: 50, bench: 60, c3: 66, office: 76 }, c2: { bench: 18, c3: 26, office: 40 }, bench: { c3: 40, office: 48 }, c3: { office: 16 } };
 /* the logical diagram (three tiers, the provider at the top) and the floor plan (three floors, one band each) */
 export const CAMPUS_LAYOUT = {
-  isp: { x: 10, y: 40 }, modem: { x: 210, y: 40, px: 120, py: 110, room: "data" }, edge: { x: 380, y: 40, lab: "right", px: 290, py: 110, room: "data" },
-  core1: { x: 380, y: 150, lab: "left", px: 460, py: 110, room: "data" }, core2: { x: 740, y: 150, lab: "right", px: 460, py: 195, room: "data" },
+  isp: { x: 10, y: 40 }, modem: { x: 210, y: 40, px: 120, py: 110, room: "data" }, edge: { x: 560, y: 40, lab: "right", px: 290, py: 110, room: "data" },
+  core1: { x: 300, y: 150, lab: "left", px: 460, py: 110, room: "data" }, core2: { x: 820, y: 150, lab: "right", px: 460, py: 195, room: "data" },
   dist1: { x: 380, y: 270, lab: "left", px: 290, py: 195, room: "data" }, dist2: { x: 740, y: 270, lab: "right", px: 290, py: 280, room: "data" },
   tech: { x: 70, y: 270, px: 120, py: 195, room: "data" },
   acc1: { x: 210, y: 390, lab: "left", px: 460, py: 280, room: "data" }, acc2: { x: 560, y: 390, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 890, y: 390, lab: "right", px: 115, py: 655, room: "c3" },
@@ -57,9 +57,10 @@ export function coreLinks(plan) {
   return CORE_LINKS.map(function (L, i) { const n = 4 * (i + 1); return { id: "c-core-" + (i + 1), a: L[0], ap: L[1], b: L[2], bp: L[3], net: "10." + b + ".255." + n, cidr: "10." + b + ".255." + n + "/30", ia: "10." + b + ".255." + (n + 1), ib: "10." + b + ".255." + (n + 2), mask: "255.255.255.252", da: CORE_DESC[L[2]], db: CORE_DESC[L[0]] }; });
 }
 /* the installer's night (work order 5): both core switches racked in the data room, out of their boxes, named and locked, routing on,
-   each routed port addressed and described from the records, the spares shut, saved; the seven links cabled. Nothing runs OSPF
-   yet, and the edge router's and the distribution switches' ends are left for the technician */
-export function installCore(net) {
+   each routed port addressed and described from the records, the spares shut, saved; the links cabled (only those `cable` takes:
+   work order 5 leaves distribution switch 2's two uncabled until it joins in work order 6). Nothing runs OSPF yet, and the edge
+   router's and the distribution switches' ends are left for the technician */
+export function installCore(net, cable) {
   const plan = net.plan, D = net.devices, L = coreLinks(plan);
   ["core1", "core2"].forEach(function (id) {
     const mine = L.filter(function (l) { return l.a === id || l.b === id; }), used = mine.map(function (l) { return +(l.a === id ? l.ap : l.bp); });
@@ -69,7 +70,7 @@ export function installCore(net) {
     lines.push("interface range " + spare.map(function (k) { return "gi0/" + k; }).join(" , "), "shutdown", "exit");
     run(D[id].sw, lines); delete D[id].boxed;
   });
-  L.forEach(function (l) { net.cables.push({ id: l.id, kind: "cat6", a: { dev: l.a, port: l.ap, seated: true }, b: { dev: l.b, port: l.bp, seated: true }, cond: "good", length: 2 }); });
+  L.filter(cable || function () { return true; }).forEach(function (l) { net.cables.push({ id: l.id, kind: "cat6", a: { dev: l.a, port: l.ap, seated: true }, b: { dev: l.b, port: l.bp, seated: true }, cond: "good", length: 2 }); });
   return L;
 }
 

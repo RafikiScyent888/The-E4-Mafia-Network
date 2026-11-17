@@ -1687,6 +1687,23 @@
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J2',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=dist1]').click(); tab('Physical');"
  },
  {
+  "name": "campus: CP-J5 at the start, the core switches on the floor plan, the first check",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J5',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); c.check(); document.getElementById('vPhy').click();"
+ },
+ {
+  "name": "campus: CP-J5 part way, the console on core switch 2, its neighbours and routes, Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J5',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const sol=J.def.solve(J.v,J.sim), at=sol.findIndex((a)=>a.t==='lay'&&a.b.dev==='dist1'); sol.slice(0,at-1).forEach(a=>c.act(a)); for(let i=0;i<5;i++) c.check(); document.querySelector('#devtabs [data-d=tech]').click(); tab('Serial terminal'); ['','show ip ospf neighbor','show ip route'].forEach(l=>k(l));",
+  "wait": "(() => { const t = document.querySelector('.term'); return !!t && document.fonts.status === 'loaded' && Math.abs(t.scrollTop + t.clientHeight - t.scrollHeight) < 3; })()"
+ },
+ {
+  "name": "campus: CP-J5 done, the logical diagram, distribution switch 1's routing table over SSH",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J5',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); document.getElementById('vLog').click(); document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); k('ssh -l '+p.user+' '+p.vlans.mgmt.gw); k(p.userPw); k('show ip route');",
+  "wait": "(() => { const t = document.querySelector('.term'); return !!t && document.fonts.status === 'loaded' && Math.abs(t.scrollTop + t.clientHeight - t.scrollHeight) < 3; })()"
+ },
+ {
   "name": "levels: build, the campus's work orders (more on the way)",
   "page": "build.html",
   "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS.slice(0,3).flatMap(x=>x.tickets).map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS.slice(0,3).flatMap(x=>x.jobs).map(id=>[id,1]))})); window.__e4b.openJob('CP-J1',true,4242);})()",

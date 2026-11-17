@@ -2360,7 +2360,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
   }
   if (!process.env.JOB || process.env.JOB === "plans") {
     const { p, ctx } = await cpage("build.html", { net: solvedTo(3), build: { j: {}, done: doneTo(3) } });
-    for (const job of LEVELS[3].jobs) for (const seed of [1, 2, 3, 4, 5, 10]) for (const at of ["start", "done"]) {
+    for (const job of LEVELS[3].jobs.filter((k) => !process.env.PLANJOB || k === process.env.PLANJOB)) for (const seed of [1, 2, 3, 4, 5, 10]) for (const at of ["start", "done"]) {   /* PLANJOB=<id>: one job's drawings */
       const tag = "campus " + job + " " + seed + " " + at + ": ";
       try {
         await p.evaluate(([job, seed, at]) => { const c = window.__e4b; c.openJob(job, true, seed); const J = c.T; if (at === "done") J.def.solve(J.v, J.sim).forEach((a) => c.act(a)); }, [job, seed, at]);

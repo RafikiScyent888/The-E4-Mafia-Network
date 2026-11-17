@@ -569,7 +569,7 @@ const CJ5 = {
   start(seed) {
     const b = CJ4.start(seed), sim = b.sim;
     for (const a of CJ4.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
-    const before = sim.links(); installCore(sim.net); sim.relink(before);   /* the installer's night: the core racked, cabled, addressed */
+    const before = sim.links(); installCore(sim.net, function (l) { return l.b !== "dist2"; }); sim.relink(before);   /* the installer's night: the core racked, cabled (distribution switch 2's links wait for it), addressed */
     sim.cli = {};
     return { sim: sim, v: Object.assign({}, b.v, { runs: sim.net.extra.runs || 0 }) };   /* the console cables CP-J4 laid: the walk-through's numbers follow on */
   },
@@ -577,7 +577,7 @@ const CJ5 = {
   mason: "Bring the new paths up beside the old ones and prove them before you take anything away: neighbours first, then what's in each table. The old link and the static routes go last.",
   limits: function (v) {
     const p = v.plan, L = CORE5(p), lab = function (id, port) { return id === "edge" ? "the edge router " + port : (id === "dist1" ? "distribution switch 1" : id === "core1" ? "core switch 1" : "core switch 2") + " port " + port; };
-    return ["The core's links, from the records (each a /30; the end nearer the provider takes the first usable address, the other end the second): " + L.map(function (l) { return lab(l.a, l.ap) + " to " + lab(l.b, l.bp) + ", " + l.cidr; }).join("; ") + ". The installer has done the core switches' ends; the edge router's and distribution switch 1's are yours. The core switches' ports 2 go to distribution switch 2, which joins in the next work order.",
+    return ["The core's links, from the records (each a /30; the end nearer the provider takes the first usable address, the other end the second): " + L.map(function (l) { return lab(l.a, l.ap) + " to " + lab(l.b, l.bp) + ", " + l.cidr; }).join("; ") + ". The installer has done the core switches' ends; the edge router's and distribution switch 1's are yours. The core switches' ports 2 are for distribution switch 2, cabled when it joins in the next work order.",
       "OSPF: area 0, on the edge router, both core switches and distribution switch 1: every link of the core, and every VLAN in use on distribution switch 1. It says hello only where there's another router: the VLAN interfaces are passive, and the provider's side stays out of it. The edge router originates the default route.",
       "Once OSPF carries everything: the two static routes from the last work order removed, the direct link between the edge router (" + p.edge.lan + ") and distribution switch 1 (port 24) retired, both ends shut, and DHCP still relayed to the edge router.",
       "The core switches: " + p.sw.core1.host + " and " + p.sw.core2.host + ", locked as every switch here is. Your laptop's console cable reaches anything in the data room. Console password: " + p.console + ". Enable secret: " + p.secret + "."];

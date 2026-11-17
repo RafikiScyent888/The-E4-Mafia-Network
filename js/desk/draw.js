@@ -432,7 +432,7 @@ function businessNames(sim) {
    closet and management. The provider's line comes in on the data room's wall, beside the modem */
 function campusRooms() {
   const B = CAMPUS_ROOM_BOX, r = function (k) { const b = B[k]; return '<rect class="room" x="' + b[0] + '" y="' + b[1] + '" width="' + (b[2] - b[0]) + '" height="' + (b[3] - b[1]) + '"/>'; };
-  return r("data") + r("svc") + r("c2") + r("bench") + r("c3") + r("office") + r("c4") + r("train") + '<path class="door" d="M560 160v40M220 470v40M220 670v40M300 870v40"/><rect class="plate" x="26" y="98" width="14" height="24"/>';
+  return r("data") + r("svc") + r("c2") + r("bench") + r("c3") + r("office") + r("c4") + r("train") + '<path class="door" d="M560 160v40M220 470v40M220 670v40M330 870v40"/><rect class="plate" x="26" y="98" width="14" height="24"/>';
 }
 function campusNames(sim) {
   const N = sim.net.roomNames, B = CAMPUS_ROOM_BOX, up = function (k) { return String(N[k] || "").toUpperCase().replace(/&/g, "&amp;").replace(/'/g, "&#39;"); };

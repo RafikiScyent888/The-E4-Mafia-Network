@@ -2282,7 +2282,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
       const { p, ctx } = await cpage("index.html", { net: solvedTo(3), build: { j: {}, done: doneTo(3) } }); const tag = "campus levels, the small business finished: ";
       try {
         const L = await lv(p, 4);
-        check(!L.locked && /0 of 4 work orders done · more work orders and its tickets on the way/.test(L.text), tag + "Level 4 is open on the Ticket Desk, counts its work orders and says more is coming (" + L.text + ")");
+        check(!L.locked && new RegExp("0 of " + LEVELS[3].jobs.length + " work orders done · more work orders and its tickets on the way").test(L.text), tag + "Level 4 is open on the Ticket Desk, counts its work orders and says more is coming (" + L.text + ")");
         await p.click('#left [data-level="4"]'); await p.waitForTimeout(60);
         check((await p.$$('#left a[href="build.html#job=CP-J1"]')).length === 1, tag + "the desk links the campus's work orders into Build");
         await p.click('#left a[href="build.html#job=CP-J1"]'); await p.waitForTimeout(400);

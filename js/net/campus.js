@@ -35,7 +35,7 @@ export const CAMPUS_LAYOUT = {
   core1: { x: 300, y: 150, lab: "left", px: 460, py: 110, room: "data" }, core2: { x: 820, y: 150, lab: "right", px: 460, py: 195, room: "data" },
   dist1: { x: 380, y: 270, lab: "left", px: 290, py: 195, room: "data" }, dist2: { x: 740, y: 270, lab: "right", px: 290, py: 280, room: "data" },
   tech: { x: 70, y: 270, px: 120, py: 195, room: "data" },
-  acc1: { x: 210, y: 390, lab: "left", px: 460, py: 280, room: "data" }, acc2: { x: 560, y: 390, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 890, y: 390, lab: "right", px: 115, py: 655, room: "c3" },
+  acc1: { x: 210, y: 390, lab: "left", px: 460, py: 280, room: "data" }, acc2: { x: 600, y: 390, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 890, y: 390, lab: "right", px: 115, py: 655, room: "c3" },
   sd1: { x: 70, y: 510, px: 650, py: 120, room: "svc" }, hd1: { x: 200, y: 580, px: 880, py: 120, room: "svc" }, pr1: { x: 330, y: 510, px: 765, py: 250, room: "svc" },
   bn1: { x: 500, y: 510, px: 480, py: 455, room: "bench" }, bn2: { x: 630, y: 580, px: 740, py: 455, room: "bench" },
   mgr: { x: 760, y: 510, px: 440, py: 655, room: "office" }, fin: { x: 890, y: 580, px: 650, py: 655, room: "office" }, pr3: { x: 1020, y: 510, px: 860, py: 655, room: "office" }

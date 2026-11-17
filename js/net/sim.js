@@ -490,9 +490,9 @@ export class Sim {
     return this.arpBlock(peerNode, on, peerMac, peerIp) || this.arpBlock(on, peerNode, this.macOf(o), ip);
   }
   /* what's behind a switch port: every device whose frames come into the switch by it, with the VLAN they come in on (null without a link) */
-  behindPort(id, n) {
+  behindPort(id, n, edgesOf) {
     const k = +n.split("/")[1], p = k > 24 ? "SFP" + (k - 24) : String(k), c0 = this.cableAt(id, p); if (!c0 || !this.cableUp(c0)) return null;
-    const e = this.edges(), own = function (v) { const s = this.swNode(v); return !!s && s.dev === id; }.bind(this), seen = new Set(), out = [], macs = new Set();
+    const e = edgesOf ? edgesOf() : this.edges(), own = function (v) { const s = this.swNode(v); return !!s && s.dev === id; }.bind(this), seen = new Set(), out = [], macs = new Set();
     for (const ed of e) {
       const m = ed[2]; if (!m) continue;
       const mine = m.ea.dev === id && m.ea.port === p ? 0 : m.eb.dev === id && m.eb.port === p ? 1 : -1; if (mine < 0) continue;
@@ -510,20 +510,21 @@ export class Sim {
      configuration when sticky) up to its limit; one more is a violation, which shuts the port (err-disabled) in shutdown mode. A
      port that loses its link forgets what it learned without sticking */
   portSecurity() {
+    let E = null; const edgesOf = function () { return E || (E = this.edges()); }.bind(this);   /* the links worked out once a pass, and again only after a port is shut for a violation */
     for (const id in this.d) {
       const x = this.d[id]; if (x.kind !== "mswitch" || !this.on(id)) continue;
       const sw = x.sw;
       for (const n in sw.ports) {
         const P = sw.ports[n].ps; if (!P || !P.on) continue;
         const run = psRunOf(sw, n); if (run.err) continue;
-        const macs = this.behindPort(id, n); if (!macs) { run.dyn = []; continue; }
+        const macs = this.behindPort(id, n, edgesOf); if (!macs) { run.dyn = []; continue; }
         run.seen = run.seen || [];
         for (const m of macs) {
           if (P.macs.some(function (k) { return k.mac === m.mac; }) || run.dyn.some(function (k) { return k.mac === m.mac; })) continue;
           if (P.macs.length + run.dyn.length < P.max) { if (P.sticky) P.macs.push({ mac: m.mac, sticky: true }); else run.dyn.push({ mac: m.mac, vlan: m.vlan }); continue; }
           if (run.seen.indexOf(m.mac) < 0) { run.viol++; run.seen.push(m.mac); }
           run.last = { mac: m.mac, vlan: m.vlan };
-          if (P.viol === "shutdown") { run.err = true; break; }
+          if (P.viol === "shutdown") { run.err = true; E = null; break; }
         }
       }
     }

@@ -3792,6 +3792,31 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
   drawings, all the same; the comparison calibrated on CP-J1, where the 2F switch moved: all 8 different); the plants for CP-J5,
   CP-J6, equal-cost paths, the far port and the virtual address, all caught.
 
+- **CP-J7, a new floor end to end, built 17 November 2026 on `save/level4-campus`** (the owner, 17 November 2026: "Keep building,
+  do the new floor next"; objectives read that day, Network+ V9 unchanged):
+  - **The fourth floor** (`js/net/campus.js`): the 4F closet and the training room (`CAMPUS_FLOORS`, `CAMPUS_RUN`, `CAMPUS_ROOM_BOX`,
+    the room names); the training VLAN per set (`TRAIN_V`: 60, 160, 235; `plan.train`), the 4F access switch in its box from the
+    factory, its place fixed in the 4F closet (`acc4`, `plan.sw.acc4`, its uplinks `plan.up.acc4` to each distribution switch's port
+    4), two training PCs (`tr1`, `tr2`, `plan.desks4`) from a stream of their own (seed ^ 0x4f4f), so every other part of the campus
+    is drawn as before. CP-J7's start takes the PCs out of their boxes; the switch stays in its.
+  - **CP-J7** (`js/build/campus.js`), 13 lines: racked and uplinked (in its box, no uplink, the wrong ports, a port shut); set up as
+    every switch (name, secret, console, SSH, management address, gateway); the VLAN on three switches; the trunks (not a trunk, still
+    negotiating, the native VLAN, the training or management VLAN left off a hop, the bundle between the distribution switches without
+    it); its spanning-tree root (left to the defaults, the 4F switch has the lowest address and wins; switch 2; no backup); its gateway
+    by standby, switch 1 active; the edge router's pool (none, the default router, DNS, nothing kept back); both relays; the desk ports
+    locked down as every desk here, the spares parked; the PCs online (no address, not in OSPF); the floor surviving switch 1 (on a
+    copy); everyone else working; saved (met at the start: a switch from its box has nothing unsaved). Worked from the console: your
+    laptop carried to the 4F closet, then back to the data room.
+  - **The drawings:** the logical diagram can't grow wider without shrinking every name (it scales to its column), so the access row is
+    four across the same width, staggered (1F and 3F up, 2F and 4F down), names to the right; the desks on two rows lower down; the
+    diagram taller (`-44 -26 1150 820`). Your laptop's spot moved up by the provider; carried to the 4F closet it has a spot beside the
+    new switch (`alt.c4`). The floor plan has a fourth band (`20 20 970 975`), and the 2F and 3F closets are wider (to 260), leaving the
+    4F switch's riser runs a corridor past the switches below. Every campus work order's drawings changed with it and were measured
+    again.
+  - **Found on the way:** a hint said "169.254", which the help check read as VLAN 254 on the campuses where that's the management
+    VLAN; it names the address type instead.
+  - **Checks so far:** CP-J7's wrong ways (25) and other right ways; its walk-through meets every line; the drive and drawings running.
+
 ## Objectives
 
 Read from the owner's "All updated Objectives" Google Doc

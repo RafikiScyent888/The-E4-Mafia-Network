@@ -108,10 +108,10 @@ NODE += [("SB-13: a list put back unsaved counts", 'js/tickets/business.js', '  
  ("SB-13: a hint names the access-group command", 'js/tickets/business.js', '"Face it the way it meets what the guests send."', '"Face it in with ip access-group, the way it meets what the guests send."'),
  ("SB-13: any failed ping proves the department's fix", 'js/tickets/business.js', 'inNet(f.ip, D.net, D.len) && f.kind === "blocked";', 'inNet(f.ip, D.net, D.len) && !f.replies;')]
 PAGE += [
- ("SB-14: the label printer left off the floor plan", 'js/desk/draw.js', ', printer2: "Label printer" };', ' };'),
- ("SB-14: the label printer has no device button", 'js/desk/app.js', '"dpc2", "printer", "printer2", "msw"', '"dpc2", "printer", "msw"'),
+ ("SB-14: the label printer left off the floor plan", 'js/desk/draw.js', ', printer2: "Label printer", intruder: "Unknown laptop" };', ', intruder: "Unknown laptop" };'),
+ ("SB-14: the label printer has no device button", 'js/desk/app.js', '"dpc2", "printer", "printer2", "intruder", "msw"', '"dpc2", "printer", "intruder", "msw"'),
  ("SB-14: the router's ARP table never flips", 'js/net/sim.js', 'const last = o.length > 1 && cache[ip] && o.some(function (k) { return this.macOf(k) === cache[ip]; }, this) ? cache[ip] : this.macOf(o[0]);', 'const last = this.macOf(o[0]);'),
- ("SB-14: the counter's PC and printer left where they were, under the label printer", 'js/desk/draw.js', '  const usual = function (id) { if (LAY[id].lp && sim.d.printer2', '  const usual = function (id) { if (false && LAY[id].lp && sim.d.printer2')]
+ ("SB-14: the counter's PC and printer left where they were, under the label printer", 'js/desk/draw.js', '  const usual = function (id) { if (LAY[id].lp && extra &&', '  const usual = function (id) { if (false && LAY[id].lp && extra &&')]
 NODE += [("SB-14: the pool left lending the printer's address counts", 'js/tickets/business.js', ' && !lends(R, v.printer) && !lends(R.startup, v.printer)\n      && SB14.labelOk(sim, v)', '\n      && SB14.labelOk(sim, v)'),
  ("SB-14: a fixed address the pool can lend counts", 'js/tickets/business.js', 'return a.kind === "static" ? !lends(src, a.ip) : lends(src, a.ip, v.cid);', 'return a.kind === "static" ? true : lends(src, a.ip, v.cid);'),
  ("SB-14: a lease from a pool that's gone counts", 'js/tickets/business.js', 'return a.kind === "static" ? !lends(src, a.ip) : lends(src, a.ip, v.cid);', 'return a.kind === "static" ? !lends(src, a.ip) : true;'),

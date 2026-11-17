@@ -2296,6 +2296,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
     }
   }
   const step = async (p, a) => {
+    if (a.t === "place") return place(p, a.dev, a.room);   /* the 4F access switch out of its box, your laptop carried upstairs (CP-J7): the Place form */
     if (a.t === "lay") return lay(p, a.a.dev, a.a.port, a.b.dev, a.b.port);
     if (a.t === "pull") { const i = await p.evaluate((id) => window.__e4b.T.sim.net.cables.findIndex((c) => c.id === id), a.cable); check(i >= 0, "the cable to pull, " + a.cable + ", is in the runs table"); await p.click("#runs tbody tr:nth-child(" + (i + 1) + ") button"); await p.waitForTimeout(40); return; }
     if (a.t === "cmd" && a.cli) { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== "tech") await dev(p, "tech"); if (!(await p.$('.win-tabs button[aria-selected="true"]:text-is("Serial terminal")'))) await tab(p, "Serial terminal"); return type(p, a.line); }

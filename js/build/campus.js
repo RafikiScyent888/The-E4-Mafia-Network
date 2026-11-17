@@ -967,7 +967,7 @@ function saved7Causes(sim) { return ["acc4", "dist1", "dist2", "edge"].map(funct
 
 const CJ7 = {
   id: "CP-J7", level: "campus", title: "A new floor end to end: the training room on 4F, its switch from the box, its VLAN all the way to the internet",
-  already: ["works"],
+  already: ["works", "saved"],   /* a switch fresh from its box has nothing unsaved */
   start(seed) {
     const b = CJ6.start(seed), sim = b.sim;
     for (const a of CJ6.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }

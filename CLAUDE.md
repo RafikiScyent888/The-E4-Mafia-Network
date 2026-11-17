@@ -3750,9 +3750,32 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
     distribution pair (x 300 and 820). CP-J1 to CP-J4's drawings measured again on six campuses: all clear.
   - **Checks so far:** `tests/campus-jobs.test.js` CP-J5's wrong ways (17, each its own line and cause) and other right ways (one
     statement for every link, interfaces passive one at a time, router IDs, the relay by core switch 2's side, the old cable pulled);
-    the drive through the page on three campuses (OSPF neighbours and the two-path default over SSH, tracert through a core switch,
-    the renew relayed to the new address); 3 contrast states written; Node plants written (31 for CP-J5, equal-cost paths and the
-    far port), not yet run.
+    the drive through the page on three campuses (63 checks: OSPF neighbours and the two-path default over SSH, tracert through a core
+    switch, the renew relayed to the new address) and its drawings on six (36); its 3 contrast states pass (13,854 text runs); Node
+    plants for equal-cost paths and the far port all caught (one missed at first, a network two routers have: the test had no such
+    case; it does now), CP-J5's being run.
+- **CP-J6, the virtual gateway, built 17 November 2026 on `save/level4-campus`** (not live):
+  - Its start cables distribution switch 2's two links to the core (`coreCables`). **CP-J6** (`js/build/campus.js`), 10 lines:
+    distribution switch 2 routes, its links routed and up (ip routing off, still a switch port, address, shut, down); an OSPF
+    neighbour of both core switches (`nbrCausesFor(CORE6)`); every VLAN advertised, passive; its own interface on every VLAN (the
+    records give it the third address); distribution switch 1 off the gateway addresses (the second); one standby group per VLAN on
+    both, the gateway its virtual address (none on either, the two in different groups, the virtual address mistyped, a group not
+    numbered for its VLAN); distribution switch 1 active, and active again after a restart (tried on a copy: off, then on; without
+    preempt, or at the default priority, switch 2 keeps it); **if distribution switch 1 fails** (switched off on a copy of the network,
+    `copyOf`, so a check never changes the real one): switch 2 answers every gateway, at the right address, every PC stays online,
+    and DHCP is still relayed; everyone working; both saved. Worked from the console, switch 1 first so it's active before switch 2
+    joins.
+  - **The active switch answers at its virtual address from other networks too** (`routeL3`): a ping from the service desk to the
+    management VLAN's gateway got no reply, where the real thing answers.
+  - **A work order's start was slow:** each starts from the one before it done, so CP-J6 replays every earlier walk-through (4.7 s in
+    Node, past the drive's 5 s reload in the browser). Port security worked out the whole network's links again for every secured
+    port after every command; now once a pass (`portSecurity`, every level). CP-J6's start is 1.3 s.
+  - **The drawing:** distribution switch 2's port 2 (to the 2F access switch) landed where the 3F switch's link to distribution switch
+    1 crosses it. A port's name now tries the stretch nearer its device before giving up on other lines (`draw.js`), and the 2F
+    access switch sits at x 600 on the logical diagram.
+  - **Checks so far:** CP-J6's wrong ways (15) and other right ways (switch 2 first, then switch 1 taking over by preempt; other
+    priorities; preempt on both; interfaces passive one at a time); its drive's own checks pass (`show standby brief` on both switches
+    over SSH, the management VLAN's virtual gateway answering a ping); 3 contrast states written; Node plants written (20).
 
 ## Objectives
 

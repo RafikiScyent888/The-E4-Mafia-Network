@@ -7,7 +7,8 @@
      neither stop at 2WAY with each other, and are FULL with the DR and BDR;
    - each router's routes: the lowest-cost path to every network another router has in OSPF (the cost of each interface on the
      way out, then that router's own interface into the network); a default route originated by a router that has one, as an
-     external type 2 (its metric doesn't grow along the way).
+     external type 2 (its metric doesn't grow along the way). Equal-cost paths are all kept, up to four (the default
+     maximum-paths), each its own next hop: `paths`, lowest next hop first; `nh` and `iface` are the first.
    Nothing here knows the simulation or the command line. */
 const n4 = function (s) { return s.split(".").reduce(function (a, p) { return a * 256 + +p; }, 0); };
 const s4 = function (n) { return [24, 16, 8, 0].map(function (b) { return Math.floor(n / Math.pow(2, b)) % 256; }).join("."); };
@@ -21,7 +22,10 @@ const ridCmp = function (a, b) { return n4(a) - n4(b); };
 
 /* routers: { id: { rid, ifs: [{ name, ip, mask, area, cost, passive, mtu, pri, seg }], originate: bool (default-information
    originate with a default route of its own) } }. Returns { nbrs: { id: [{ rid, ip, iface, pri, state }] }, roles: { "id name":
-   "DR"|"BDR"|"DROTHER" }, routes: { id: [{ code, net, mask, nh, iface, metric }] }, dupRid: [ids] } */
+   "DR"|"BDR"|"DROTHER" }, routes: { id: [{ code, net, mask, nh, iface, metric, paths: [{ nh, iface }] }] }, dupRid: [ids] } */
+const MAXPATHS = 4;
+const addHops = function (into, hops) { hops.forEach(function (h) { if (!into.some(function (x) { return x.nh === h.nh; })) into.push(h); }); return into; };
+const byNh = function (a, b) { return n4(a.nh) - n4(b.nh); };
 export function solve(routers) {
   const ids = Object.keys(routers), out = { nbrs: {}, roles: {}, routes: {}, dupRid: [] };
   ids.forEach(function (id) { out.nbrs[id] = []; out.routes[id] = []; });
@@ -63,22 +67,30 @@ export function solve(routers) {
         if (f.passive || !f.seg) return;
         (segs[f.seg] || []).forEach(function (o) {
           if (o.id === u || !link(u, o.id, f.seg) || !hears({ id: u, f: f }, o)) return;
-          const d = dist[u] + (f.cost || 1);
-          if (dist[o.id] === undefined || d < dist[o.id] || (d === dist[o.id] && u === src && ridCmp(o.f.ip, first[o.id].nh) < 0)) { dist[o.id] = d; first[o.id] = u === src ? { nh: o.f.ip, iface: f.name } : first[u]; }
+          const d = dist[u] + (f.cost || 1), hops = u === src ? [{ nh: o.f.ip, iface: f.name }] : first[u];
+          /* a cheaper way replaces what was found; an equally cheap one adds its first hops (every router on the way is done before
+             the routers past it, so first[u] is complete when it's copied) */
+          if (dist[o.id] === undefined || d < dist[o.id]) { dist[o.id] = d; first[o.id] = hops.slice(); }
+          else if (d === dist[o.id]) addHops(first[o.id], hops);
         });
       });
     }
     const mine = routers[src].ifs.map(function (f) { return netOf(f.ip, f.mask) + "/" + f.mask; }), best = {};
+    let asbr = null;   /* the nearest router originating a default (an E2 route's metric is the same from every one; the nearest wins, ties share) */
     Object.keys(dist).forEach(function (x) {
       if (x === src) return;
       routers[x].ifs.forEach(function (f) {
         const key = netOf(f.ip, f.mask) + "/" + f.mask; if (mine.indexOf(key) >= 0) return;
         const m = dist[x] + (f.cost || 1);
-        if (!best[key] || m < best[key].metric) best[key] = { code: "O", net: netOf(f.ip, f.mask), mask: f.mask, nh: first[x].nh, iface: first[x].iface, metric: m };
+        if (!best[key] || m < best[key].metric) best[key] = { code: "O", net: netOf(f.ip, f.mask), mask: f.mask, metric: m, paths: first[x].slice() };
+        else if (m === best[key].metric) addHops(best[key].paths, first[x]);
       });
-      if (routers[x].originate && !best["0.0.0.0/0.0.0.0"]) best["0.0.0.0/0.0.0.0"] = { code: "O", ext: "E2", net: "0.0.0.0", mask: "0.0.0.0", nh: first[x].nh, iface: first[x].iface, metric: 1 };
+      if (routers[x].originate) {
+        if (!asbr || dist[x] < asbr.d) { asbr = { d: dist[x] }; best["0.0.0.0/0.0.0.0"] = { code: "O", ext: "E2", net: "0.0.0.0", mask: "0.0.0.0", metric: 1, paths: first[x].slice() }; }
+        else if (dist[x] === asbr.d) addHops(best["0.0.0.0/0.0.0.0"].paths, first[x]);
+      }
     });
-    out.routes[src] = Object.keys(best).map(function (k) { return best[k]; });
+    out.routes[src] = Object.keys(best).map(function (k) { const r = best[k]; r.paths = r.paths.sort(byNh).slice(0, MAXPATHS); r.nh = r.paths[0].nh; r.iface = r.paths[0].iface; return r; });
   });
   return out;
 }

@@ -228,6 +228,9 @@ export class Sim {
       const c = this.panelEnd(c0) ? this.viaPanel(c0) : c0; if (!c) continue;   /* patched through a panel: the device beyond it */
       const me = c.a.dev === id ? c.a : c.b, far = c.a.dev === id ? c.b : c.a, fd = this.d[far.dev];
       if (!/^\d+$/.test(me.port) || !me.seated || !far.seated || fd.kind === "jack" || c.cond === "crushed" || (c.length || 0) > COPPER_MAX || !this.on(far.dev) || !this.pairsMeet(c)) continue;
+      /* the far end's own port shut (another managed switch's, or a router's): no link here either, as the cable itself says */
+      if (fd.kind === "mswitch") { const fp = fd.sw.ports[swPort(far.port)]; if (!fp || fp.shutdown || errDisabled(fd.sw, swPort(far.port))) continue; }
+      if (fd.kind === "brouter") { const ph = RT_IF(far.port); if (!ph || fd.sw.ifs[ph].shutdown) continue; }
       const m = (fd.kind === "router" || fd.kind === "rogue" ? fd.mac : fd.ifaces ? fd.ifaces[0].mac : "02-00-5e-" + (hash(far.dev) >>> 0).toString(16).padStart(8, "0").slice(0, 6).replace(/(..)(..)(..)/, "$1-$2-$3")).replace(/-/g, "");
       L["GigabitEthernet0/" + me.port] = { lldp: this.cableUp(c0) ? this.lldpOf(this.viaInjectorEnd(c0, id) || far) : null, dtp: this.dtpOf(far), chan: this.chanOf(far), farDev: far.dev, mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n };
       if (fd.maxMbps) L["GigabitEthernet0/" + me.port].max = Math.min(L["GigabitEthernet0/" + me.port].max, fd.maxMbps);
@@ -487,9 +490,9 @@ export class Sim {
     return this.arpBlock(peerNode, on, peerMac, peerIp) || this.arpBlock(on, peerNode, this.macOf(o), ip);
   }
   /* what's behind a switch port: every device whose frames come into the switch by it, with the VLAN they come in on (null without a link) */
-  behindPort(id, n) {
+  behindPort(id, n, edgesOf) {
     const k = +n.split("/")[1], p = k > 24 ? "SFP" + (k - 24) : String(k), c0 = this.cableAt(id, p); if (!c0 || !this.cableUp(c0)) return null;
-    const e = this.edges(), own = function (v) { const s = this.swNode(v); return !!s && s.dev === id; }.bind(this), seen = new Set(), out = [], macs = new Set();
+    const e = edgesOf ? edgesOf() : this.edges(), own = function (v) { const s = this.swNode(v); return !!s && s.dev === id; }.bind(this), seen = new Set(), out = [], macs = new Set();
     for (const ed of e) {
       const m = ed[2]; if (!m) continue;
       const mine = m.ea.dev === id && m.ea.port === p ? 0 : m.eb.dev === id && m.eb.port === p ? 1 : -1; if (mine < 0) continue;
@@ -507,20 +510,21 @@ export class Sim {
      configuration when sticky) up to its limit; one more is a violation, which shuts the port (err-disabled) in shutdown mode. A
      port that loses its link forgets what it learned without sticking */
   portSecurity() {
+    let E = null; const edgesOf = function () { return E || (E = this.edges()); }.bind(this);   /* the links worked out once a pass, and again only after a port is shut for a violation */
     for (const id in this.d) {
       const x = this.d[id]; if (x.kind !== "mswitch" || !this.on(id)) continue;
       const sw = x.sw;
       for (const n in sw.ports) {
         const P = sw.ports[n].ps; if (!P || !P.on) continue;
         const run = psRunOf(sw, n); if (run.err) continue;
-        const macs = this.behindPort(id, n); if (!macs) { run.dyn = []; continue; }
+        const macs = this.behindPort(id, n, edgesOf); if (!macs) { run.dyn = []; continue; }
         run.seen = run.seen || [];
         for (const m of macs) {
           if (P.macs.some(function (k) { return k.mac === m.mac; }) || run.dyn.some(function (k) { return k.mac === m.mac; })) continue;
           if (P.macs.length + run.dyn.length < P.max) { if (P.sticky) P.macs.push({ mac: m.mac, sticky: true }); else run.dyn.push({ mac: m.mac, vlan: m.vlan }); continue; }
           if (run.seen.indexOf(m.mac) < 0) { run.viol++; run.seen.push(m.mac); }
           run.last = { mac: m.mac, vlan: m.vlan };
-          if (P.viol === "shutdown") { run.err = true; break; }
+          if (P.viol === "shutdown") { run.err = true; E = null; break; }
         }
       }
     }
@@ -916,13 +920,15 @@ export class Sim {
         }); });
         return out.sort(function (p, q2) { return p.iface < q2.iface ? -1 : p.iface > q2.iface ? 1 : p.grp - q2.grp; });
       }
-      if (k === "ospf") {
-        const R = self.ospfAll(), me = R.routers[id]; if (!me) return null;
-        const nb = R.nbrs[id] || [];
-        return { rid: me.rid, nbrs: nb, ifs: me.ifs.map(function (f) { const on = nb.filter(function (q) { return q.iface === f.name; }); return { name: f.name, ip: f.ip, mask: f.mask, area: f.area, cost: f.cost, passive: f.passive, role: R.roles[id + " " + f.name] || null, nbrs: on.length, full: on.filter(function (q) { return /^FULL/.test(q.state); }).length }; }) };
-      }
+      if (k === "ospf") return self.ospfLive(id);
       return null;
     };
+  }
+  /* what OSPF has settled, as a switch's or router's show commands print it */
+  ospfLive(id) {
+    const self = this, R = self.ospfAll(), me = R.routers[id]; if (!me) return null;
+    const nb = R.nbrs[id] || [];
+    return { rid: me.rid, nbrs: nb, ifs: me.ifs.map(function (f) { const on = nb.filter(function (q) { return q.iface === f.name; }); return { name: f.name, ip: f.ip, mask: f.mask, area: f.area, cost: f.cost, passive: f.passive, role: R.roles[id + " " + f.name] || null, nbrs: on.length, full: on.filter(function (q) { return /^FULL/.test(q.state); }).length }; }) };
   }
 
   /* ------------------------------------------------------------ the layer 3 switches (Level 4, the campus: swcli.js, l3.js) */
@@ -995,7 +1001,8 @@ export class Sim {
      and what the protocol settles on; kept until a switch or a cable changes */
   ospfAll() {
     const ids = Object.keys(this.d).filter(function (id) { const x = this.d[id]; return x.kind === "mswitch" && x.sw.os === "l3switch" && x.sw.ospf && x.sw.routing && this.on(id); }, this);
-    const sig = JSON.stringify(Object.keys(this.d).filter(function (id) { return this.d[id].kind === "mswitch"; }, this).map(function (id) { const w = this.d[id].sw; return [id, this.on(id), w.ports, w.svis, w.ospf, w.routes, w.routing, w.vlans, w.pcs, w.stp, w.vlan1]; }, this)) + JSON.stringify(this.net.cables);
+    const brs = Object.keys(this.d).filter(function (id) { const x = this.d[id]; return x.kind === "brouter" && x.sw.ospf && this.on(id); }, this);   /* a business router running OSPF (the campus's edge router, Level 4) */
+    const sig = JSON.stringify(Object.keys(this.d).filter(function (id) { return this.d[id].kind === "mswitch"; }, this).map(function (id) { const w = this.d[id].sw; return [id, this.on(id), w.ports, w.svis, w.ospf, w.routes, w.routing, w.vlans, w.pcs, w.stp, w.vlan1]; }, this)) + JSON.stringify(brs.map(function (id) { const w = this.d[id].sw, wan = this.rtWan(id); return [id, w.ifs, w.subs, w.ospf, w.routes, wan && wan.lease]; }, this)) + JSON.stringify(this.net.cables);
     if (this._ospf && this._ospf.sig === sig) return this._ospf.res;
     const routers = {}, segs = {};
     const segOf = function (node) { if (segs[node]) return segs[node]; const D = [...this.domain(node)].sort(), k = D[0]; D.forEach(function (n) { segs[n] = k; }); return k; }.bind(this);
@@ -1010,6 +1017,18 @@ export class Sim {
       }, this);
       const rid = O.rid || up.map(function (f) { return f.ip; }).sort(function (a, b) { return ip2n(b) - ip2n(a); })[0] || "0.0.0.0";
       const def = !!O.originate && l3Table(view, []).some(function (t) { return t.code === "S" && t.net === "0.0.0.0" && t.mask === "0.0.0.0"; });
+      routers[id] = { rid: rid, ifs: ifs, originate: def };
+    }, this);
+    brs.forEach(function (id) {   /* the router: its interfaces up with an address, matched to its network statements; a default it has of its own (the provider's, by DHCP, or one typed) to originate */
+      const r = this.d[id].sw, O = r.ospf, R = this.rtView(id), live = this.rtLive(id), bare = function (k, n) { return k === "learned" ? null : live(k, n); }, ifs = [], up = [];
+      RT.allIfs(R).forEach(function (n) {
+        const a = RT.addrOf(R, n, bare); if (!a || RT.rtStatus(R, n)[1] !== "up") return; up.push(a.ip);
+        const st = O.nets.find(function (x) { return ospfMatch(a.ip, x.net, x.wild); }); if (!st) return;
+        const rec = n.indexOf(".") > 0 ? r.subs[n] : r.ifs[n], mbps = rec.speed && rec.speed !== "auto" ? +rec.speed : 1000;
+        ifs.push({ name: n, ip: a.ip, mask: a.mask, area: st.area, cost: rec.ospfCost || ospfCost(mbps, O.refBw), passive: ospfPassive(O, n), mtu: rec.mtu || 1500, pri: rec.ospfPri, seg: segOf(this.rtNode(id, n)) });
+      }, this);
+      const rid = O.rid || up.sort(function (a, b) { return ip2n(b) - ip2n(a); })[0] || "0.0.0.0";
+      const def = !!O.originate && RT.routes(R, bare).some(function (t) { return t.code === "S*"; });
       routers[id] = { rid: rid, ifs: ifs, originate: def };
     }, this);
     const res = ospfSolve(routers); res.routers = routers;
@@ -1027,8 +1046,8 @@ export class Sim {
     while (routers < 16) {
       if (seen.indexOf(cur) >= 0) return Object.assign({ fail: "no-reply", hops: hops.slice(), why: "loop", routers: routers }, base);   /* round in a circle until the TTL runs out */
       seen.push(cur); routers++;
-      const V = this.l3View(cur), mine = l3Ifs(V).find(function (f) { return f.up && f.ip === dst; });
-      if (mine) {   /* one of this switch's own addresses */
+      const V = this.l3View(cur), mine = l3Ifs(V).find(function (f) { return f.up && f.ip === dst; }) || (this.hsrpVips(cur).some(function (o) { return o.vip === dst; }) ? { vip: true } : null);
+      if (mine) {   /* one of this switch's own addresses, or a virtual address it's active for (the active router answers there too) */
         if (routers > 1 && !oneWay) { const r = this.routeFromL3(cur, a.ip, proto, true); if (r.fail || !(r.local || r.routed)) return Object.assign({ fail: "no-reply", hops: hops.slice(), why: "no way back", routers: routers }, base); }
         return Object.assign(routers === 1 ? { local: true } : { routed: true }, { owner: [cur], next: dst, hops: hops.concat(routers === 1 ? [] : [dst]), routers: routers - 1 }, base);
       }
@@ -1106,6 +1125,8 @@ export class Sim {
       if (k === "clear-nat") { x.xlate = []; return null; }
       if (k === "clear-dhcp") { x.leases = []; return null; }
       if (k === "clear-hits") { x.hits = {}; return null; }
+      if (k === "learned") return self.learned(id);   /* what OSPF learned (Level 4) */
+      if (k === "ospf") return self.ospfLive(id);
       return null;
     };
   }

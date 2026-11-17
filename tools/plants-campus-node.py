@@ -159,7 +159,8 @@ for P in PLANTS:
     for f in files: shutil.copy(f, f + ".plant-bak")
     for f, a, b in edits: src = open(f).read(); open(f, "w").write(src.replace(a, b))
     try:
-        r = subprocess.run(["node", "--test"] + TESTS, capture_output=True, text=True, timeout=600)
+        pat = ["--test-name-pattern=" + os.environ["NAMEPAT"]] if os.environ.get("NAMEPAT") else []   # NAMEPAT="CP-J5": only the tests named so
+        r = subprocess.run(["node", "--test"] + pat + TESTS, capture_output=True, text=True, timeout=1800)
         fails = [l for l in r.stdout.splitlines() if l.startswith("not ok")]
         print(("CAUGHT" if r.returncode else "MISSED") + " · " + name + " · " + str(len(fails)) + " failing" + ("" if not fails else ": " + fails[0][:150]), flush=True)
         if not r.returncode: bad = 1

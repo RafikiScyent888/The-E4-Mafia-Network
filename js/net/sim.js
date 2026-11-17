@@ -214,7 +214,8 @@ export class Sim {
   chanOf(end) { const x = end && this.d[end.dev]; if (!x || x.kind !== "mswitch") return null; const p = x.sw.ports[swPort(end.port)]; return p && p.chan ? { group: p.chan.group, mode: p.chan.mode } : null; }
   /* what each of a managed switch's ports sees at the far end of its cable, worked out without changing anything
      (a check must never change the network: a saved job has to replay exactly) */
-  switchLinks(id) {
+  switchLinks(id) { return this.leased("sl|" + id, function () { return this.switchLinks0(id); }); }   /* kept for a pass (until a lease changes: an access point advertises its own) */
+  switchLinks0(id) {
     const x = this.d[id]; if (!x || x.kind !== "mswitch") return {};
     const L = {};
     /* each SFP slot with a module in it: what the switch reads from the module, and whether light comes back */
@@ -374,9 +375,13 @@ export class Sim {
   /* the links worked out once for a whole computation that can't change them (a route, the DHCP servers a device hears, a standby
      election, OSPF's segments, the DHCP pass after a change): each of those asked for them again and again, and a campus work
      order's start, which replays every earlier one, spent seconds on it (17 November 2026) */
-  withEdges(f) { if (this._emOn) return f.call(this); this._emOn = true; this._em = null; this._emK = {}; try { return f.call(this); } finally { this._emOn = false; this._em = null; this._emK = null; } }
+  withEdges(f) { if (this._emOn) return f.call(this); this._emOn = true; this._em = null; this._emK = {}; this._emL = null; try { return f.call(this); } finally { this._emOn = false; this._em = null; this._emK = null; this._emL = null; } }
   /* within such a computation, spanning tree, standby and OSPF can't change either: each kept for its length, not fingerprinted again */
-  edgesChanged() { if (this._emOn) { this._em = null; this._emK = {}; } }   /* a port shut mid-pass (port security, BPDU guard): worked out again */
+  edgesChanged() { if (this._emOn) { this._em = null; this._emK = {}; this._emL = null; } }   /* a port shut mid-pass (port security, BPDU guard): worked out again */
+  /* a switch's view of its links, and a relay's way to its helper, kept for the pass like the rest, but dropped whenever a lease changes
+     (an access point advertises its leased address over LLDP; a route's ARP finds whoever holds an address) */
+  leased(k, f) { if (!this._emOn) return f.call(this); const m = this._emL || (this._emL = {}); if (!(k in m)) m[k] = f.call(this); return m[k]; }
+  leaseChanged() { if (this._emOn) this._emL = null; }
   scoped(k, f) { if (!this._emOn) return f.call(this); if (!(k in this._emK)) this._emK[k] = f.call(this); return this._emK[k]; }   /* worked out the first time it's asked for */
   edges() {
     if (this._emOn && this._em) return this._em;
@@ -631,13 +636,17 @@ export class Sim {
         const m = /^Vlan(\d+)$/.exec(f.name), rec = m ? (+m[1] === 1 ? sw.vlan1 : sw.svis[m[1]]) : sw.ports[f.name];
         if (!f.up || !f.ip || !rec || !rec.helpers || !dom.has(this.l3Node(sid, f.name))) return;
         rec.helpers.forEach(function (h) {
-          const there = this.routeFromL3(sid, h, { proto: "udp", port: 67, sport: 67 }), rid = there && !there.fail && (there.local || there.routed) && there.owner ? there.owner.find(function (o) { return this.d[o].kind === "brouter"; }, this) : null;
-          if (!rid || !this.on(rid)) return;
-          const R = this.rtView(rid), live = this.rtLive(rid), at = RT.allIfs(R).find(function (n) { const x = RT.addrOf(R, n, live); return x && x.ip === h && RT.rtStatus(R, n)[1] === "up"; });
-          if (!at || !RT.poolFor(R, f.ip, f.mask)) return;
-          const back = this.routeFromRouter(rid, f.ip, { proto: "udp", port: 67, sport: 67 });
-          if (back.fail || !(back.local || back.routed) || !(back.owner || []).some(function (o) { return o === sid; })) return;
-          out.push(rid + "@relay|" + sid + "|" + f.name + "|" + h);
+          /* the way to the helper and back is the same whoever is asking: kept for the pass (until a lease changes) */
+          const k = this.leased("relay|" + sid + "|" + f.name + "|" + f.ip + "|" + f.mask + "|" + h, function () {
+            const there = this.routeFromL3(sid, h, { proto: "udp", port: 67, sport: 67 }), rid = there && !there.fail && (there.local || there.routed) && there.owner ? there.owner.find(function (o) { return this.d[o].kind === "brouter"; }, this) : null;
+            if (!rid || !this.on(rid)) return null;
+            const R = this.rtView(rid), live = this.rtLive(rid), at = RT.allIfs(R).find(function (n) { const x = RT.addrOf(R, n, live); return x && x.ip === h && RT.rtStatus(R, n)[1] === "up"; });
+            if (!at || !RT.poolFor(R, f.ip, f.mask)) return null;
+            const back = this.routeFromRouter(rid, f.ip, { proto: "udp", port: 67, sport: 67 });
+            if (back.fail || !(back.local || back.routed) || !(back.owner || []).some(function (o) { return o === sid; })) return null;
+            return rid + "@relay|" + sid + "|" + f.name + "|" + h;
+          });
+          if (k) out.push(k);
         }, this);
       }, this);
     }
@@ -698,7 +707,8 @@ export class Sim {
     return null;
   }
   /* a client asks for an address (DORA); returns what happened */
-  dhcp(id, why) {
+  dhcp(id, why) { try { return this.dhcp0(id, why); } finally { this.leaseChanged(); } }   /* a lease given, renewed or lost: what was kept for the pass is worked out again */
+  dhcp0(id, why) {
     const x = this.d[id], f = x.ifaces[0];
     if (f.cfg.mode === "static") return { result: "static" };
     if (!this.hasLink(id)) return { result: "media" };
@@ -732,6 +742,7 @@ export class Sim {
     f.lease = { ip: o.ip, mask: P.mask, gw: P.router[0] || null, dns: P.dns.slice(), server: a.ip, obtained: this.n, hours: P.lease === "infinite" ? 0 : P.lease[0] * 24 + (P.lease[1] || 0), domain: P.domain || null };
   }
   release(id) {
+    this.leaseChanged();
     const f = this.d[id].ifaces[0], m = dotMac(f.mac);
     for (const sid in this.d) if (this.d[sid].kind === "mswitch" && this.d[sid].sw.snoopBind) this.d[sid].sw.snoopBind = this.d[sid].sw.snoopBind.filter(function (b) { return b.mac !== m; });
     for (const rid in this.d) if (this.d[rid].kind === "brouter" && this.d[rid].leases) this.d[rid].leases = this.d[rid].leases.filter(function (l) { return l.mac !== f.mac; });

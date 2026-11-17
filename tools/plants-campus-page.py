@@ -12,6 +12,9 @@ PLANTS = [
  ("the campus's work orders left out of build mode", "CP-J1", "js/build/app.js", "const ALL = JOBS.concat(OFFICE_JOBS, BUSINESS_JOBS, CAMPUS_JOBS);", "const ALL = JOBS.concat(OFFICE_JOBS, BUSINESS_JOBS);"),
  ("the MSW-3900X's borrowed model passed off as its own", "CP-J2", "js/net/physical.js", '  if (model === "msw" && x.sw && x.sw.os === "l3switch") says.unshift(', '  if (false) says.unshift('),
  ("a campus desk PC without its Physical tab", "CP-J2", "js/net/physical.js", 'bpc: "pc", sd1: "pc", hd1: "pc",', 'bpc: "pc", hd1: "pc",'),
+ ("the training PCs without buttons (CP-J7)", "CP-J7", "js/build/app.js", '"tr1", "tr2", "tech"];', '"tech"];'),
+ ("the 4F switch on the 4F closet's name on the floor plan (run with PLANJOB=CP-J7)", "plans", "js/net/campus.js", 'acc4: { x: 860, y: 470, lab: "right", px: 115, py: 855, room: "c4" }', 'acc4: { x: 860, y: 470, lab: "right", px: 115, py: 790, room: "c4" }'),
+ ("the 4F switch on the 3F switch's spot on the logical diagram (run with PLANJOB=CP-J7)", "plans", "js/net/campus.js", 'acc4: { x: 860, y: 470, lab: "right", px: 115, py: 855, room: "c4" }', 'acc4: { x: 640, y: 420, lab: "right", px: 115, py: 855, room: "c4" }'),
  ("the bars' height measured only at load (a long title wrapped, the columns under it run off the screen)", "CP-J4", "js/build/app.js", 'if (window.ResizeObserver) new ResizeObserver(chromeH).observe(document.querySelector(".chrome"));', ''),
 ]
 only = sys.argv[1:]

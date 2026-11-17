@@ -129,7 +129,7 @@ export function drawLogical(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "i-");
   const ids = ["isp", "modem", "router", "rtr", "tv", "switch", "msw", "meet", "bsw", "mpc", "mgr", "tech", "pc", "bpc", "hire", "printer", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "cinj1", "cam1", "cinj2", "cam2", "dpc1", "dpc2"].concat(campus(sim) ? ["edge", "core1", "core2", "dist1", "dist2", "acc1", "acc2", "acc3", "acc4", "sd1", "hd1", "pr1", "bn1", "bn2", "fin", "pr3", "tr1", "tr2"] : []).filter(function (id) { return shown(sim, id) && !sim.d[id].undocumented; });
   /* the business with its cameras (SB-J5) is drawn taller: their injectors and cameras get rows of their own */
-  svg.setAttribute("viewBox", campus(sim) ? "-44 -26 1150 790" : sim.net.site === "business" && (shown(sim, "dpc1") || shown(sim, "dpc2")) ? "-180 -26 1016 " + CAM_H : "-6 -26 836 " + (sim.net.site === "business" && sim.d.cam1 ? CAM_H : 546));   /* the department's PCs (SB-J10), once out of their boxes, get a column of their own left of the back switch */
+  svg.setAttribute("viewBox", campus(sim) ? "-44 -26 1150 820" : sim.net.site === "business" && (shown(sim, "dpc1") || shown(sim, "dpc2")) ? "-180 -26 1016 " + CAM_H : "-6 -26 836 " + (sim.net.site === "business" && sim.d.cam1 ? CAM_H : 546));   /* the department's PCs (SB-J10), once out of their boxes, get a column of their own left of the back switch */
   const P = {}; ids.forEach(function (id) { P[id] = pos(sim, id); });
   if (P.injector && P.injector2) Object.assign(P.injector2, { x: 520, y: 190 });   /* both injectors out of the van: the second one moves up out of the way */
   const below = function (id) { return !P[id].lab || P[id].lab === "below"; };
@@ -432,7 +432,7 @@ function businessNames(sim) {
    closet and management. The provider's line comes in on the data room's wall, beside the modem */
 function campusRooms() {
   const B = CAMPUS_ROOM_BOX, r = function (k) { const b = B[k]; return '<rect class="room" x="' + b[0] + '" y="' + b[1] + '" width="' + (b[2] - b[0]) + '" height="' + (b[3] - b[1]) + '"/>'; };
-  return r("data") + r("svc") + r("c2") + r("bench") + r("c3") + r("office") + r("c4") + r("train") + '<path class="door" d="M560 160v40M220 470v40M220 670v40M330 870v40"/><rect class="plate" x="26" y="98" width="14" height="24"/>';
+  return r("data") + r("svc") + r("c2") + r("bench") + r("c3") + r("office") + r("c4") + r("train") + '<path class="door" d="M560 160v40M260 470v40M260 670v40M330 870v40"/><rect class="plate" x="26" y="98" width="14" height="24"/>';
 }
 function campusNames(sim) {
   const N = sim.net.roomNames, B = CAMPUS_ROOM_BOX, up = function (k) { return String(N[k] || "").toUpperCase().replace(/&/g, "&amp;").replace(/'/g, "&#39;"); };

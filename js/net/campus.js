@@ -39,13 +39,13 @@ export const CAMPUS_LAYOUT = {
   tech: { x: 10, y: 240, px: 120, py: 195, room: "data", alt: { c4: { x: 1040, y: 270, px: 265, py: 855 } } },   /* carried to the 4F closet (work order 7): beside the new switch on both drawings */
   /* the access row in four (the fourth floor, work order 7), in the same width (a wider diagram would shrink every name on it):
      staggered, 1F and 3F up, 2F and 4F down, so no two names share a line; the desks on two rows under them */
-  acc1: { x: 100, y: 380, lab: "right", px: 460, py: 280, room: "data" }, acc2: { x: 370, y: 440, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 630, y: 380, lab: "right", px: 115, py: 655, room: "c3" }, acc4: { x: 860, y: 440, lab: "right", px: 115, py: 855, room: "c4" },
-  sd1: { x: 60, y: 560, px: 650, py: 120, room: "svc" }, hd1: { x: 150, y: 670, px: 880, py: 120, room: "svc" }, pr1: { x: 250, y: 560, px: 765, py: 250, room: "svc" },
-  bn1: { x: 345, y: 670, px: 480, py: 455, room: "bench" }, bn2: { x: 440, y: 560, px: 740, py: 455, room: "bench" },
-  mgr: { x: 545, y: 670, px: 440, py: 655, room: "office" }, fin: { x: 640, y: 560, px: 650, py: 655, room: "office" }, pr3: { x: 745, y: 670, px: 860, py: 655, room: "office" },
-  tr1: { x: 850, y: 560, px: 540, py: 855, room: "train" }, tr2: { x: 960, y: 670, px: 780, py: 855, room: "train" }
+  acc1: { x: 100, y: 410, lab: "right", px: 460, py: 280, room: "data" }, acc2: { x: 370, y: 470, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 630, y: 410, lab: "right", px: 115, py: 655, room: "c3" }, acc4: { x: 860, y: 470, lab: "right", px: 115, py: 855, room: "c4" },
+  sd1: { x: 60, y: 590, px: 650, py: 120, room: "svc" }, hd1: { x: 150, y: 700, px: 880, py: 120, room: "svc" }, pr1: { x: 250, y: 590, px: 765, py: 250, room: "svc" },
+  bn1: { x: 345, y: 700, px: 480, py: 455, room: "bench" }, bn2: { x: 440, y: 590, px: 740, py: 455, room: "bench" },
+  mgr: { x: 545, y: 700, px: 440, py: 655, room: "office" }, fin: { x: 640, y: 590, px: 650, py: 655, room: "office" }, pr3: { x: 745, y: 700, px: 860, py: 655, room: "office" },
+  tr1: { x: 800, y: 590, px: 540, py: 855, room: "train" }, tr2: { x: 960, y: 700, px: 780, py: 855, room: "train" }
 };
-export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 345], c2: [30, 365, 220, 545], bench: [220, 365, 980, 545], c3: [30, 565, 220, 745], office: [220, 565, 980, 745], c4: [30, 765, 330, 945], train: [330, 765, 980, 945] };
+export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 345], c2: [30, 365, 260, 545], bench: [260, 365, 980, 545], c3: [30, 565, 260, 745], office: [260, 565, 980, 745], c4: [30, 765, 330, 945], train: [330, 765, 980, 945] };
 const swMac = function (hi, lo) { return "00e0.4c" + hi.toString(16).padStart(2, "0") + "." + lo.toString(16).padStart(4, "0"); };
 const run = function (sw, lines) { const S = session(sw); ["", "enable", "configure terminal"].concat(lines, ["end", "copy running-config startup-config", ""]).forEach(function (l) { exec(S, l); }); return sw; };
 

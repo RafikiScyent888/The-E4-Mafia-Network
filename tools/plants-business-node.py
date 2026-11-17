@@ -30,7 +30,7 @@ PLANTS = [
  ("SB-J6: snooping never learns a binding", "js/net/sim.js", 'sw.snoopBind = (sw.snoopBind || []).filter(function (b) { return b.mac !== mac; }); sw.snoopBind.push(', 'sw.snoopBind = (sw.snoopBind || []).filter(function (b) { return b.mac !== mac; }); [].push('),
  ("SB-J6: ARP inspection ignores a trusted port", "js/net/sim.js", 'if (!sw.dai || sw.dai.vlans.indexOf(h.vlan) < 0 || !h.port || (sw.ports[h.port] && sw.ports[h.port].atrust)) continue;', 'if (!sw.dai || sw.dai.vlans.indexOf(h.vlan) < 0 || !h.port) continue;'),
  ("SB-J6: ARP inspection never drops anything", "js/net/sim.js", '  anyDai() { for (const id in this.d)', '  anyDai() { return false; for (const id in this.d)'),
- ("SB-J6: a port security violation never shuts the port", "js/net/sim.js", 'if (P.viol === "shutdown") { run.err = true; break; }', 'if (P.viol === "shutdown") { break; }'),
+ ("SB-J6: a port security violation never shuts the port", "js/net/sim.js", 'if (P.viol === "shutdown") { run.err = true; E = null; this.edgesChanged(); break; }', 'if (P.viol === "shutdown") { break; }'),
  ("SB-J6: shut and opened, an err-disabled port stays down", "js/net/swcli.js", 'S.sw.ports[n].shutdown = true; if (S.sw.psRun && S.sw.psRun[n]) S.sw.psRun[n].err = false; }', 'S.sw.ports[n].shutdown = true; }'),
  ("SB-J6: the remote lines' access list never checked", "js/net/cmd.js", "const name = x.sw.vty.acl, a = sim.addr(id); if (!name", "const name = null, a = sim.addr(id); if (!name"),
  ("SB-J6: no lldp transmit on a port does nothing", "js/net/rtcli.js", "return r.lldp !== false && !(f && f.lldpTx === false); }", "return r.lldp !== false; }"),

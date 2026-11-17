@@ -1584,7 +1584,7 @@ if (!process.env.ONLY || process.env.ONLY === "office") {
 }
 
 /* the small business complete (16 November 2026: its 10 work orders and 15 tickets all built, SB-15 the last): with every ticket
-   solved and every work order but the last done, finishing the last one finishes Level 3; the campus is still being built */
+   solved and every work order but the last done, finishing the last one finishes Level 3 and opens the campus (Level 4, stage 1) */
 if (!process.env.ONLY || process.env.ONLY === "business" || process.env.ONLY === "tickets-business") {
   const { LEVELS } = await import("../js/desk/levels.js");
   const net = { t: {}, solved: Object.fromEntries(LEVELS[0].tickets.concat(LEVELS[1].tickets, LEVELS[2].tickets).map((id) => [id, 1])) };
@@ -1604,11 +1604,11 @@ if (!process.env.ONLY || process.env.ONLY === "business" || process.env.ONLY ===
     await p.evaluate((id) => { const c = window.__e4b; c.openJob(id, true, 2026); const J = c.T; J.def.solve(J.v, J.sim).forEach((a) => c.act(a)); }, lastJob);
     await p.click("#doCheck"); await p.waitForTimeout(150);   /* the real button: it's what counts a job done */
     const box = await p.$eval("#check", (n) => n.textContent);
-    check(/Level 3 finished/.test(box) && /Campus is still being built/.test(box) && !/on the way|so far/.test(box), tag + lastJob + "'s done box says Level 3 is finished and the campus is still being built (" + box.slice(box.indexOf("Level 3"), box.indexOf("Level 3") + 70) + ")");
+    check(/Level 3 finished/.test(box) && /The campus is open: level 4/.test(box) && !/on the way|so far|still being built/.test(box), tag + lastJob + "'s done box says Level 3 is finished and the campus is open (" + box.slice(box.indexOf("Level 3"), box.indexOf("Level 3") + 70) + ")");
     await p.goto(base + "index.html"); await p.waitForTimeout(350);
     const L3 = await p.$eval('#left [data-level="3"]', (n) => n.textContent), L4 = await p.$eval('#left [data-level="4"]', (n) => n.textContent);
     check(/Finished: 15 of 15 tickets, 10 of 10 work orders/.test(L3), tag + "Level 3 says finished, 15 of 15 tickets and 10 of 10 work orders (" + L3 + ")");
-    check(/built later/.test(L4), tag + "Level 4 says it's built later (" + L4 + ")");
+    check(L4 === "Level 4 · Campus0 of " + LEVELS[3].jobs.length + " work orders done · " + LEVELS[3].coming && !/built later/.test(L4) && !(await p.$eval('#left [data-level="4"]', (n) => n.parentNode.classList.contains("locked"))), tag + "Level 4 is open, counts its work orders, and says more are on the way (" + L4 + ")");
   } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
   await ctx.close();
 }

@@ -201,7 +201,8 @@ export function drawLogical(svg, sim, o) {
         const dots = painted();
         const plate = function () { let b; try { b = t.getBBox(); } catch (er) { return null; } return b.width ? { x: b.x - 4, y: b.y - 2, width: b.width + 8, height: b.height + 4 } : null; };
         const dotAt = function (q) { const r = l.up ? 7 : 9.5; return { x: q[0] - r, y: q[1] - r, w: 2 * r, h: 2 * r }; };
-        const onDot = function (q) { const pb = plate(); return !!pb && (ov(pb, dotAt(q)) || dots.some(function (z) { return ov(pb, z); })); };
+        const grow = function (z) { const g = z.w > 15 ? DOT_GAP : 0; return { x: z.x - g, y: z.y - g, w: z.w + 2 * g, h: z.h + 2 * g }; };   /* a diamond (19 across as painted) */
+        const onDot = function (q) { const pb = plate(); return !!pb && (ov(pb, dotAt(q)) || dots.some(function (z) { return ov(pb, grow(z)); })); };   /* its own dot sits beside it by design: the gap is from other cables' dots */
         const put = function (o, flip) {
           const qx = D.x + dx2 * o, qy = D.y + dy2 * o; let tx, ty, anc;
           if (flip === "on") { t.setAttribute("text-anchor", "middle"); for (let s = 20; s <= 80; s += 4) { t.setAttribute("x", qx + dx2 * s); t.setAttribute("y", qy + dy2 * s + 5); if (!onDot([qx, qy])) break; } return [qx, qy]; }   /* on its own line just past its dot, on its plate, like a label on the cable */
@@ -209,7 +210,7 @@ export function drawLogical(svg, sim, o) {
           else { let side = Math.abs(dx2) < 0.2 ? 1 : Math.sign(dx2); if (flip) side = -side; tx = qx + side * 18; ty = qy + 5; anc = side > 0 ? "start" : "end"; }
           t.setAttribute("x", tx); t.setAttribute("y", ty); t.setAttribute("text-anchor", anc); return [qx, qy];
         };
-        const clear = function (q) { let b; try { b = t.getBBox(); } catch (er) { return true; } if (!b.width) return true; const d = dotAt(q), db = { x: d.x - 4, y: d.y - 2, width: d.w + 8, height: d.h + 4 }; return !onLabel(q[0], q[1]) && b.x >= -4 && b.x + b.width <= 828 && !boxes.some(function (z) { return ov(b, z); }) && !placed.some(function (z) { return ov(b, z) || ov(db, z); }) && !tiles.some(function (z) { return ov(b, z); }) && !onDot(q) && !onDots(q[0], q[1], l.up) && (!strict || (!dotOnLine(q[0], q[1]) && !onLine({ x: b.x + 1, y: b.y + 1, width: b.width - 2, height: b.height - 2 }))); };
+        const clear = function (q) { let b; try { b = t.getBBox(); } catch (er) { return true; } if (!b.width) return true; const d = dotAt(q), gg = l.up ? 0 : DOT_GAP, db = { x: d.x - 4 - gg, y: d.y - 2 - gg, width: d.w + 8 + 2 * gg, height: d.h + 4 + 2 * gg }; return !onLabel(q[0], q[1]) && b.x >= -4 && b.x + b.width <= 828 && !boxes.some(function (z) { return ov(b, z); }) && !placed.some(function (z) { return ov(b, z) || ov(db, z); }) && !tiles.some(function (z) { return ov(b, z); }) && !onDot(q) && !onDots(q[0], q[1], l.up) && (!strict || (!dotOnLine(q[0], q[1]) && !onLine({ x: b.x + 1, y: b.y + 1, width: b.width - 2, height: b.height - 2 }))); };
         let at = null, strict = true;
         /* first clear of every other cable's line too, in its own half of its line; where lines crowd too close for that (three meeting at
            a switch's corner), clear of every name, tile and dot as before; and where a short line's half is all taken (its dot on the
@@ -232,6 +233,10 @@ export function drawLogical(svg, sim, o) {
   plates(svg, ".nl, .ns, .pl");
 }
 
+/* a dead link's diamond never touches another port name's plate (18 November 2026): on a phone, where the diagram is drawn small, the
+   diamond touching "Gi0/2"'s plate bled into the name's own pixels (6.47:1, CP-J7 on campus 4242). It keeps this much clear of every
+   plate (only the diamond: the round dots sit as close on every level and measure clean) */
+const DOT_GAP = 4;
 /* the house: rooms, devices, and the cable runs as they really are */
 const RUNS = {
   "c-coax": ["M722 38 C 706 66 676 92 652 108"],

@@ -27,25 +27,36 @@ const VLAN_SETS = [
 ];
 /* the training floor's VLAN (work order 7, a new floor end to end), one per set: like the others, its number is its subnet's third octet */
 const TRAIN_V = [60, 160, 235];
+/* the Training Annex's VLANs (work order 8), one pair per set: the classroom and the Annex's own management network. Behind a routed
+   link they're the Annex's alone, but each still gets a subnet of its own, its number its third octet */
+const ANNEX_V = [{ cls: 70, mgmt: 71 }, { cls: 170, mgmt: 171 }, { cls: 236, mgmt: 237 }];
 const NAMES = { svc: "SERVICE-DESK", bench: "BENCH", office: "OFFICE", servers: "SERVERS", printers: "PRINTERS", mgmt: "MGMT", native: "NATIVE-UNUSED", parking: "PARKING" };
 /* the rooms, floor by floor, and the cable runs between them (metres; the riser carries the uplinks up the building) */
-export const CAMPUS_FLOORS = { data: 1, svc: 1, c2: 2, bench: 2, c3: 3, office: 3, c4: 4, train: 4 };   /* the fourth floor, the training room (work order 7) */
-export const CAMPUS_RUN = { data: { svc: 22, c2: 38, bench: 52, c3: 54, office: 68, c4: 70, train: 84 }, svc: { c2: 50, bench: 60, c3: 66, office: 76, c4: 82, train: 92 }, c2: { bench: 18, c3: 26, office: 40, c4: 34, train: 48 }, bench: { c3: 40, office: 48, c4: 52, train: 58 }, c3: { office: 16, c4: 18, train: 32 }, office: { c4: 30, train: 40 }, c4: { train: 16 } };
+export const CAMPUS_FLOORS = { data: 1, svc: 1, c2: 2, bench: 2, c3: 3, office: 3, c4: 4, train: 4, acomms: "A", class: "A" };   /* the fourth floor, the training room (work order 7); the Annex across the car park (work order 8) */
+export const CAMPUS_RUN = { data: { svc: 22, c2: 38, bench: 52, c3: 54, office: 68, c4: 70, train: 84 }, svc: { c2: 50, bench: 60, c3: 66, office: 76, c4: 82, train: 92 }, c2: { bench: 18, c3: 26, office: 40, c4: 34, train: 48 }, bench: { c3: 40, office: 48, c4: 52, train: 58 }, c3: { office: 16, c4: 18, train: 32 }, office: { c4: 30, train: 40 }, c4: { train: 16 },
+  /* the Training Annex, across the car park (work order 8): every run from the main building there goes out through the duct, well past copper's 100 m */
+  acomms: { data: 185, svc: 195, c2: 210, bench: 220, c3: 225, office: 235, c4: 240, train: 250, class: 14 }, class: { data: 196, svc: 206, c2: 221, bench: 231, c3: 236, office: 246, c4: 251, train: 261 } };
+/* the fibre a run between two rooms is laid on, where it isn't the office's OM2 multimode: the duct to the Annex carries OS2 single-mode */
+export const CAMPUS_FIBRE = { "acomms|data": { fiber: "SMF", jacket: "OS2 9/125 µm SINGLE-MODE", extra: 0 } };
 /* the logical diagram (three tiers, the provider at the top) and the floor plan (three floors, one band each) */
 export const CAMPUS_LAYOUT = {
   isp: { x: 10, y: 40 }, modem: { x: 210, y: 40, px: 120, py: 110, room: "data" }, edge: { x: 560, y: 40, lab: "right", px: 290, py: 110, room: "data" },
   core1: { x: 300, y: 150, lab: "left", px: 460, py: 110, room: "data" }, core2: { x: 820, y: 150, lab: "right", px: 460, py: 195, room: "data" },
   dist1: { x: 380, y: 270, lab: "left", px: 290, py: 195, room: "data" }, dist2: { x: 740, y: 270, lab: "right", px: 120, py: 280, room: "data" },
-  tech: { x: 30, y: 240, px: 120, py: 195, room: "data", alt: { c4: { x: 1040, y: 270, px: 265, py: 855 } } },   /* carried to the 4F closet (work order 7): beside the new switch on both drawings */
+  tech: { x: 30, y: 240, px: 120, py: 195, room: "data", alt: { c4: { x: 1040, y: 270, px: 265, py: 855 }, acomms: { x: 120, y: 1100, px: 190, py: 1150 } } },   /* carried to the Annex's comms room (work order 8): under the Annex core, in its block */   /* carried to the 4F closet (work order 7): beside the new switch on both drawings */
   /* the access row in four (the fourth floor, work order 7), in the same width (a wider diagram would shrink every name on it):
      staggered, 1F and 3F up, 2F and 4F down, so no two names share a line; the desks on two rows under them */
   acc1: { x: 100, y: 410, lab: "right", px: 460, py: 280, room: "data" }, acc2: { x: 370, y: 470, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 630, y: 410, lab: "right", px: 115, py: 655, room: "c3" }, acc4: { x: 860, y: 470, lab: "right", px: 115, py: 855, room: "c4" },
   sd1: { x: 60, y: 590, px: 650, py: 120, room: "svc" }, hd1: { x: 150, y: 700, px: 880, py: 120, room: "svc" }, pr1: { x: 250, y: 590, px: 765, py: 250, room: "svc" },
   bn1: { x: 345, y: 700, px: 480, py: 455, room: "bench" }, bn2: { x: 440, y: 590, px: 740, py: 455, room: "bench" },
   mgr: { x: 545, y: 700, px: 440, py: 655, room: "office" }, fin: { x: 640, y: 590, px: 650, py: 655, room: "office" }, pr3: { x: 745, y: 700, px: 860, py: 655, room: "office" },
-  tr1: { x: 815, y: 590, px: 540, py: 855, room: "train" }, tr2: { x: 960, y: 700, px: 780, py: 855, room: "train" }
+  tr1: { x: 815, y: 590, px: 540, py: 855, room: "train" }, tr2: { x: 960, y: 700, px: 780, py: 855, room: "train" },
+  /* the Training Annex (work order 8): on the logical diagram a block of its own under the main building (the fibre between them drawn as
+     a labelled stub at each end, as a diagram of two buildings shows it); on the floor plan its own band under the main building */
+  anxc: { x: 120, y: 960, lab: "right", px: 115, py: 1065, room: "acomms" }, anxa: { x: 380, y: 1100, px: 265, py: 1065, room: "acomms" },
+  cl1: { x: 620, y: 1020, px: 540, py: 1075, room: "class" }, cl2: { x: 840, y: 1100, px: 780, py: 1075, room: "class" }
 };
-export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 345], c2: [30, 365, 260, 545], bench: [260, 365, 980, 545], c3: [30, 565, 260, 745], office: [260, 565, 980, 745], c4: [30, 765, 330, 945], train: [330, 765, 980, 945] };
+export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 345], c2: [30, 365, 260, 545], bench: [260, 365, 980, 545], c3: [30, 565, 260, 745], office: [260, 565, 980, 745], c4: [30, 765, 330, 945], train: [330, 765, 980, 945], acomms: [30, 985, 330, 1205], class: [330, 985, 980, 1205] };   /* the Annex's band, below the main building (work order 8) */
 const swMac = function (hi, lo) { return "00e0.4c" + hi.toString(16).padStart(2, "0") + "." + lo.toString(16).padStart(4, "0"); };
 const run = function (sw, lines) { const S = session(sw); ["", "enable", "configure terminal"].concat(lines, ["end", "copy running-config startup-config", ""]).forEach(function (l) { exec(S, l); }); return sw; };
 
@@ -100,6 +111,14 @@ export function makeCampus(seed) {
     /* the fourth floor (work order 7): the training VLAN, the 4F access switch, its desks */
     train: { id: TV, name: "TRAINING", net: net24(TV), gw: ip(TV, 1) }, desks4: { "1": ["tr1", "train"], "2": ["tr2", "train"] }
   };
+  /* the Training Annex (work order 8): a collapsed core, one layer 3 switch as core and distribution, an access switch for the classroom.
+     The fibre from core switch 2's SFP1 to the Annex core's SFP1 is a routed link, the next /30 of the core's block after its seven;
+     the Annex core is its classroom's gateway and its own management network's (on the first address of each) */
+  const AV = ANNEX_V[VLAN_SETS.indexOf(V)], lk = "10." + b + ".255.";
+  plan.annex = { cls: { id: AV.cls, name: "CLASSROOM", net: net24(AV.cls), gw: ip(AV.cls, 1) }, mgmt: { id: AV.mgmt, name: "ANNEX-MGMT", net: net24(AV.mgmt), gw: ip(AV.mgmt, 1) },
+    core: { host: "RIT-ANX-CORE", ip: ip(AV.mgmt, 1) }, acc: { host: "RIT-ANX-ACC", ip: ip(AV.mgmt, 11) },
+    link: { hq: "core2", hqPort: "SFP1", hqIf: "GigabitEthernet0/25", anxPort: "SFP1", anxIf: "GigabitEthernet0/25", net: lk + "32", hqIp: lk + "33", anxIp: lk + "34", mask: "255.255.255.252", hqDesc: "ANNEX-FIBRE", anxDesc: "HQ-CORE2" },
+    up: { core: "1", acc: "24" }, desks: { "1": ["cl1", "cls"], "2": ["cl2", "cls"] } };
   plan.sw.acc4 = { host: "RIT-ACC-4F", ip: ip(V.mgmt, 14) };
   const all = Object.keys(V).filter(function (k) { return k !== "native" && k !== "parking"; }).map(function (k) { return V[k]; }).sort(function (x, y) { return x - y; });
   const vlanLines = Object.keys(V).flatMap(function (k) { return ["vlan " + V[k], "name " + NAMES[k], "exit"]; });
@@ -145,6 +164,10 @@ export function makeCampus(seed) {
   };
   const r2 = rng(seed ^ 0x4f4f);   /* the training floor's PCs (work order 7): their own stream, so every other part of the campus is drawn as before */
   ["tr1", "tr2"].forEach(function (id, i) { dev[id] = { id: id, kind: "pc", label: "Training PC " + (i + 1), sub: "DHCP", on: true, boxed: true, os: "windows", user: i ? "trainee" : "trainer", host: "RIT-TRAINING-PC-" + (i + 1), ifaces: nic(r2) }; });
+  const r3 = rng(seed ^ 0xa11e);   /* the Annex's classroom PCs (work order 8): their own stream too */
+  dev.anxc = { id: "anxc", kind: "mswitch", label: "Annex core switch", sub: "MSW-3900X", on: true, boxed: true, fixed: ["acomms", "in the Annex's comms room, in its rack"], mac: swMac(0x60, 0x0001), sw: newSwitch({ l3: true, mac: swMac(0x60, 0x0001) }), sfp: { SFP1: null, SFP2: null, SFP3: null, SFP4: null } };
+  dev.anxa = { id: "anxa", kind: "mswitch", label: "Annex access switch", sub: "MSW-2800G", on: true, boxed: true, fixed: ["acomms", "in the Annex's comms room, in its rack"], mac: swMac(0x10, 0x0606), sw: newSwitch({ mac: swMac(0x10, 0x0606) }) };
+  ["cl1", "cl2"].forEach(function (id, i) { dev[id] = { id: id, kind: "pc", label: "Classroom PC " + (i + 1), sub: "DHCP", on: true, boxed: true, os: "windows", user: i ? "student" : "instructor", host: "RIT-CLASSROOM-PC-" + (i + 1), ifaces: nic(r3) }; });
   const cab = function (id, a, ap, b2, bp, len) { return { id: id, kind: "cat6", a: { dev: a, port: ap, seated: true }, b: { dev: b2, port: bp, seated: true }, cond: "good", length: len }; };
   const rooms = {}; Object.keys(CAMPUS_LAYOUT).forEach(function (id) { if (CAMPUS_LAYOUT[id].room) rooms[id] = CAMPUS_LAYOUT[id].room; });   /* the provider (on the logical diagram only) has no room */
   const len = function (a, b2) { const A = rooms[a], B = rooms[b2]; return A === B ? 3 : (CAMPUS_RUN[A] && CAMPUS_RUN[A][B]) || (CAMPUS_RUN[B] && CAMPUS_RUN[B][A]) || 40; };
@@ -157,7 +180,7 @@ export function makeCampus(seed) {
     seed: seed, site: "campus", client: { name: "Rafiki's IT Services", street: "HQ", manager: "Rafiki", tag: plan.tag }, mask: plan.mask, plan: plan,
     isp: { up: true, outage: false, plan: 1000, gw: "198.51.100.1", core: "203.0.113.1", dns: plan.dns.slice(), wanIp: "198.51.100." + r.int(20, 240), mask: "255.255.255.0" },
     devices: dev, cables: cables, neighbours: [], ports: {}, rooms: rooms,
-    roomNames: { data: "Data room (1F)", svc: "Service desk (1F)", c2: "2F closet", bench: "Technicians' bench (2F)", c3: "3F closet", office: "Management (3F)", c4: "4F closet", train: "Training room (4F)" }, floors: CAMPUS_FLOORS, runs: CAMPUS_RUN,
+    roomNames: { data: "Data room (1F)", svc: "Service desk (1F)", c2: "2F closet", bench: "Technicians' bench (2F)", c3: "3F closet", office: "Management (3F)", c4: "4F closet", train: "Training room (4F)", acomms: "Annex comms room", class: "Classroom (Annex)" }, floors: CAMPUS_FLOORS, runs: CAMPUS_RUN, fibre: CAMPUS_FIBRE,
     extra: { build: true }
   };
 }

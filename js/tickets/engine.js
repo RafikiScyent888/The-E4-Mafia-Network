@@ -27,6 +27,7 @@ export function open(def, seed) {
     built = null; s = (Math.imul(s, 2654435761) + 7) >>> 0;
   }
   if (!built) throw new Error(def.id + ": the fault would not show on any seed");
+  if (built.sim.bump) built.sim.bump();   /* the fault was planted straight into the network: the first pass after it runs */
   const opts = rng(hash(def.id + "/opts/" + s)).shuffle(def.options(built.v, built.sim));
   return { def: def, seed: s, sim: built.sim, v: built.v, opts: opts, reds: [], struck: [], wrong: 0, rung: 0, diagnosed: false, fixed: false, proven: false, solved: false, evidence: [], net: [], fixHint: 0, notes: "", partial: null };
 }

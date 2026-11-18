@@ -86,13 +86,29 @@ export function cliSession(sim, id, win) {
 /* whether the next thing typed in a terminal is a password (not shown as it's typed) */
 export function secretNext(sim, id, win) { const st = sim.cli && sim.cli[keyOf(id, win)]; return !!(st && (st.auth && st.auth.secret || st.S && (st.S.mode === "login" || (st.S.pending && /^(enable|login)$/.test(st.S.pending.kind))))); }
 
+/* what a pass of the links reads that a command can change: every switch's and router's configuration (not its links, its uptime or its
+   saved copy), every device's interfaces (its address, its lease), and each console's mode (a DHCP pool still being typed holds back
+   the retries). Compared before and after a line: a line that changed none of it (enable, exit, show, a password) needs no pass */
+const PRINT_SKIP = { links: 1, uptime: 1, startup: 1 };
+function netPrint(sim) {
+  let s = "";
+  for (const id in sim.d) {
+    const x = sim.d[id], top = x.sw;
+    if (top) s += id + JSON.stringify(top, function (k, v) { return this === top && PRINT_SKIP[k] ? undefined : v; });
+    if (x.ifaces) s += JSON.stringify(x.ifaces);
+    s += x.on === false ? "0" : x.boxed ? "b" : "1";
+  }
+  const cli = sim.cli || {}; for (const k in cli) { const st = cli[k]; s += "|" + k + ":" + (st && st.S ? st.S.mode : "") + (st && st.auth ? "a" : ""); }
+  return s;
+}
 /* run a command line on a device (win: your laptop's Command Prompt, not its serial terminal): returns { out, facts, clear } */
 export function exec(sim, id, line, win) {
   sim.apply(win ? { t: "cmd", dev: id, line: line, win: true } : { t: "cmd", dev: id, line: line });
-  const x = sim.d[id], raw = String(line == null ? "" : line), k = keyOf(id, win), before = sim.links();
+  const x = sim.d[id], raw = String(line == null ? "" : line), k = keyOf(id, win), before = sim.links(), v0 = sim.ver || 0, p0 = netPrint(sim);
   const st = sim.cli && sim.cli[k];
   const r = x.kind === "techlaptop" && !win ? serial(sim, id, raw) : st && (st.auth || st.S) ? remote(sim, id, raw, k) : run(sim, id, raw.trim(), k);
-  sim.relink(before);   /* a switch port brought up (or shut) by that line: whatever is cabled to it gets its link, and asks for an address */
+  if (sim.bump && ((sim.ver || 0) !== v0 || netPrint(sim) !== p0)) sim.bump();   /* the line changed something the links read: the pass runs */
+  if (sim.relinkIfChanged) sim.relinkIfChanged(before); else sim.relink(before);   /* a switch port brought up (or shut) by that line: whatever is cabled to it gets its link, and asks for an address */
   return r;
 }
 

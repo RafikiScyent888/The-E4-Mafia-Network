@@ -375,6 +375,10 @@ export class Sim {
   /* the links worked out once for a whole computation that can't change them (a route, the DHCP servers a device hears, a standby
      election, OSPF's segments, the DHCP pass after a change): each of those asked for them again and again, and a campus work
      order's start, which replays every earlier one, spent seconds on it (17 November 2026) */
+  /* something changed that the next pass of the links would read (an action, a command, a lease): counted, so a pass with nothing new to
+     read can be skipped (18 November 2026). Anything that changes the network outside an action or a command bumps it too (a work order's
+     or a ticket's start) */
+  bump() { this.ver = (this.ver || 0) + 1; }
   withEdges(f) { if (this._emOn) return f.call(this); this._emOn = true; this._em = null; this._emK = {}; this._emL = null; try { return f.call(this); } finally { this._emOn = false; this._em = null; this._emK = null; this._emL = null; } }
   /* within such a computation, spanning tree, standby and OSPF can't change either: each kept for its length, not fingerprinted again */
   edgesChanged() { if (this._emOn) { this._em = null; this._emK = {}; this._emL = null; } }   /* a port shut mid-pass (port security, BPDU guard): worked out again */
@@ -707,7 +711,7 @@ export class Sim {
     return null;
   }
   /* a client asks for an address (DORA); returns what happened */
-  dhcp(id, why) { try { return this.dhcp0(id, why); } finally { this.leaseChanged(); } }   /* a lease given, renewed or lost: what was kept for the pass is worked out again */
+  dhcp(id, why) { try { return this.dhcp0(id, why); } finally { this.leaseChanged(); this.bump(); } }   /* a lease given, renewed or lost: what was kept for the pass is worked out again */
   dhcp0(id, why) {
     const x = this.d[id], f = x.ifaces[0];
     if (f.cfg.mode === "static") return { result: "static" };
@@ -742,7 +746,7 @@ export class Sim {
     f.lease = { ip: o.ip, mask: P.mask, gw: P.router[0] || null, dns: P.dns.slice(), server: a.ip, obtained: this.n, hours: P.lease === "infinite" ? 0 : P.lease[0] * 24 + (P.lease[1] || 0), domain: P.domain || null };
   }
   release(id) {
-    this.leaseChanged();
+    this.leaseChanged(); this.bump();
     const f = this.d[id].ifaces[0], m = dotMac(f.mac);
     for (const sid in this.d) if (this.d[sid].kind === "mswitch" && this.d[sid].sw.snoopBind) this.d[sid].sw.snoopBind = this.d[sid].sw.snoopBind.filter(function (b) { return b.mac !== m; });
     for (const rid in this.d) if (this.d[rid].kind === "brouter" && this.d[rid].leases) this.d[rid].leases = this.d[rid].leases.filter(function (l) { return l.mac !== f.mac; });
@@ -756,6 +760,7 @@ export class Sim {
   }
   /* after something changes physically, clients whose link came up ask again */
   relink(before) { return this.withEdges(function () { return this.relink0(before); }); }   /* the whole pass on one set of links, worked out again only if it shuts a port */
+  relinkIfChanged(before) { if (this._rlv === (this.ver || 0)) return; return this.relink(before); }   /* after a command: nothing changed since the last pass, so another would change nothing */   /* the whole pass on one set of links, worked out again only if it shuts a port */
   relink0(before) {
     this.snoopTidy(); this.portSecurity(); this.bpduGuard(); this.hsrpTick();
     /* a DHCP pool still being typed (a console in its dhcp-config mode): a device asks now and then, not on every line, so it doesn't
@@ -769,6 +774,7 @@ export class Sim {
          router in after the switch still gets everyone an address. The tickets keep the moment frozen. */
       else if (now && this.net.extra.build && f.apipa && !f.lease && !poolOpen && this.dhcpServers(id).length) this.dhcp(id, "retry");
     } });   /* a lease changes no link: the links are worked out once for the pass */
+    this._rlv = this.ver || 0;   /* what this pass saw: a command's turn with nothing changed since skips the next */
   }
   links() { const o = {}; for (const id in this.d) if (this.d[id].ifaces) o[id] = this.hasLink(id); return o; }
 
@@ -1299,6 +1305,10 @@ export class Sim {
   /* ------------------------------------------------------------ actions: every change goes through here */
   apply(act) {
     this.n++;
+    /* a command's turn (cmd.js runs the line itself, then works the links out): nothing has changed since the last pass, so another
+       pass would change nothing (each step of it settles in one pass), and the campus's work orders replay hundreds of these */
+    if (act.t === "cmd" && this._rlv === (this.ver || 0)) { this.log.push(act); return { ok: true }; }
+    if (act.t !== "cmd") this.bump();
     const before = this.links();
     let res = null;
     const barred = this.cabinetBars(act);
@@ -1512,8 +1522,11 @@ export class Sim {
     if (sa) {   /* the fibre's LC plug goes into a module: a slot with none takes no fibre */
       const empty = [[A, a], [B, b]].find(function (e) { return !(e[0].sfp && e[0].sfp[e[1].port]); });
       if (empty) return { ok: false, errs: ["Put a module in the " + empty[0].label + "'s " + empty[1].port + " first: the fibre's LC plug goes into the module"] };
-      const nf = (this.net.extra.runs = (this.net.extra.runs || 0) + 1), flen = runLength(this.net.rooms[a.dev], this.net.rooms[b.dev], this.net) + (this.net.rooms[a.dev] === this.net.rooms[b.dev] ? 0 : 9);   /* the run in the wall goes the long way round, past the lift's motor room */
-      const fc = { id: "c-fibre-" + nf, kind: "fibre", fiber: "MMF", jacket: "OM2 50/125 µm MULTIMODE", polarity: "ab", a: { dev: a.dev, port: a.port, seated: true }, b: { dev: b.dev, port: b.port, seated: true }, length: flen };
+      /* the fibre in the wall between those two rooms: the office's OM2 multimode, the long way round past the lift's motor room, unless the
+         site's records say otherwise (the campus's duct to the Annex carries OS2 single-mode, work order 8) */
+      const ra = this.net.rooms[a.dev], rb = this.net.rooms[b.dev], F = (this.net.fibre || {})[[ra, rb].sort().join("|")] || null;
+      const nf = (this.net.extra.runs = (this.net.extra.runs || 0) + 1), flen = runLength(ra, rb, this.net) + (F ? F.extra : ra === rb ? 0 : 9);
+      const fc = { id: "c-fibre-" + nf, kind: "fibre", fiber: F ? F.fiber : "MMF", jacket: F ? F.jacket : "OM2 50/125 µm MULTIMODE", polarity: "ab", a: { dev: a.dev, port: a.port, seated: true }, b: { dev: b.dev, port: b.port, seated: true }, length: flen };
       this.net.cables.push(fc);
       return { ok: true, cable: fc.id, length: flen };
     }

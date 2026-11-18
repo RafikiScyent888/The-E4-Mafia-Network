@@ -1,8 +1,8 @@
 /* Level 4 build mode: the campus's work orders (Rafiki's HQ; the plan approved 16 November 2026: "Yes to the level 4 plans,
    build it out"). Each starts from the campus as the one before it left it. Every line is an ordered list of causes, as on
    the other levels: the first one really there is what the check saw, everything before it is ruled out by the network. */
-import { makeCampus, coreLinks, installCore, coreCables } from "../net/campus.js";
-import { Sim } from "../net/sim.js";
+import { makeCampus, coreLinks, installCore, coreCables, CAMPUS_RUN } from "../net/campus.js";
+import { Sim, SFP_MODULES, runLength } from "../net/sim.js";
 import { errDisabled, dotMac, unsaved, chanState, carries, l3Ifs, l3Route, pwOk } from "../net/swcli.js";
 import * as RT from "../net/rtcli.js";
 import { exec } from "../net/cmd.js";
@@ -133,7 +133,7 @@ const CJ1 = {
 /* the VLANs in use (the ones with addresses), as the records list them; each has its own spanning tree */
 const USED = ["svc", "bench", "office", "servers", "printers", "mgmt"];
 const DISTS = [["dist1", "distribution switch 1"], ["dist2", "distribution switch 2"]];
-const said = function (sim, id) { return id === "dist1" || id === "dist2" ? DISTS.find(function (d) { return d[0] === id; })[1] : name(sim, id); };
+const said = function (sim, id) { return id === "dist1" || id === "dist2" ? DISTS.find(function (d) { return d[0] === id; })[1] : id === "anxc" ? "the Annex core switch" : id === "anxa" ? "the Annex access switch" : name(sim, id); };   /* the Annex's switches (work order 8) as said mid-sentence */
 const cmpBid = function (a, b) { return a.prio - b.prio || (a.mac < b.mac ? -1 : a.mac > b.mac ? 1 : 0); };
 /* each VLAN in use: its root, and each switch's bridge ID in it */
 function trees(sim, v) {
@@ -484,10 +484,14 @@ const nbrCausesFor = function (pick) { return function (sim, v) {
   const ofIf = function (id, n) { const r = R.routers[id]; return r ? r.ifs.find(function (f) { return f.name === n; }) : null; };
   const full = function (l) { const A = endOf(l, l.a), Bn = endOf(l, l.b); return (R.nbrs[l.a] || []).some(function (x) { return x.ip === Bn.ip && /^FULL/.test(x.state); }) && (R.nbrs[l.b] || []).some(function (x) { return x.ip === A.ip && /^FULL/.test(x.state); }); };
   const l = L.find(function (k) { return !full(k); }) || L[0], ends = [l.a, l.b].map(function (id) { const e = endOf(l, id), n = ifName(id, e.port); return { id: id, n: n, g: gi(n), f: ofIf(id, n) }; });
-  const noProc = ends.find(function (e) { return !runsOspf(sim, e.id); }), noNet = ends.find(function (e) { return runsOspf(sim, e.id) && !e.f; }), pas = ends.find(function (e) { return e.f && e.f.passive; });
+  /* an interface that's down isn't in OSPF at all: the link itself first (the Annex's fibre with the wrong modules, CP-J8; a core port shut) */
+  const ifUp = function (id, n) { if (id === "edge") return RT.rtStatus(sim.rtView("edge"), n)[1] === "up"; return l3Ifs(sim.l3View(id)).some(function (f) { return f.name === n && f.up; }); };
+  const noProc = ends.find(function (e) { return !runsOspf(sim, e.id); }), down = ends.find(function (e) { return runsOspf(sim, e.id) && !e.f && !ifUp(e.id, e.n); });
+  const noNet = ends.find(function (e) { return runsOspf(sim, e.id) && !e.f; }), pas = ends.find(function (e) { return e.f && e.f.passive; });
   const both = ends[0].f && ends[1].f, link = Cap(sayOf(sim, l.a)) + " and " + sayOf(sim, l.b);
   return [C("proc", !!noProc, (noProc ? Cap(sayOf(sim, noProc.id)) : "A router") + " doesn't run OSPF", "Every router in the core runs OSPF.", noProc ? "show ip protocols on " + sayOf(sim, noProc.id) + ": nothing." : ""),
-    C("net", !noProc && !!noNet, (noNet ? Cap(sayOf(sim, noNet.id)) + "'s link to " + sayOf(sim, noNet.id === l.a ? l.b : l.a) + " (" + noNet.g + ")" : "A link") + " isn't in OSPF: none of its network statements covers that interface's address", "Every link of the core is in OSPF at both ends.", noNet ? "show ip ospf interface brief on " + sayOf(sim, noNet.id) + ": " + noNet.g + " missing." : ""),
+    C("down", !noProc && !!down, link + " can't be neighbours: the link between them is down at " + (down ? sayOf(sim, down.id) + " (" + down.g + ")" : "one end"), "The link is up at both ends.", down ? "show ip interface brief on " + sayOf(sim, down.id) + ": " + down.g + " down." : ""),
+    C("net", !noProc && !down && !!noNet, (noNet ? Cap(sayOf(sim, noNet.id)) + "'s link to " + sayOf(sim, noNet.id === l.a ? l.b : l.a) + " (" + noNet.g + ")" : "A link") + " isn't in OSPF: none of its network statements covers that interface's address", "Every link of the core is in OSPF at both ends.", noNet ? "show ip ospf interface brief on " + sayOf(sim, noNet.id) + ": " + noNet.g + " missing." : ""),
     C("passive", !noProc && !noNet && !!pas, (pas ? Cap(sayOf(sim, pas.id)) + "'s link to " + sayOf(sim, pas.id === l.a ? l.b : l.a) + " (" + pas.g + ")" : "A link") + " is passive: it advertises the link but never says hello across it, so no neighbour forms", "No link of the core is passive.", pas ? "show ip protocols on " + sayOf(sim, pas.id) + ": Passive Interface(s): " + pas.n + "." : ""),
     C("area", !!both && !pas && ends[0].f.area !== ends[1].f.area, link + " have the link in different areas", "Both ends in area 0.", both ? "show ip ospf interface brief on each: area " + ends[0].f.area + " and " + ends[1].f.area + "." : ""),
     C("mtu", !!both && !pas && ends[0].f.area === ends[1].f.area && (ends[0].f.mtu || 1500) !== (ends[1].f.mtu || 1500), link + " disagree about the link's MTU: they hear each other but never get past EXSTART", "Both ends the same MTU.", "show ip ospf neighbor: EXSTART."),
@@ -1088,4 +1092,274 @@ const CJ7 = {
   summary() { return ["The fourth floor is part of the campus: the 4F access switch is set up as every switch here and uplinked to both distribution switches.", "The training VLAN runs from the desk ports up both uplinks and across the bundle; distribution switch 1 is its root and its active gateway, switch 2 stands by.", "The edge router hands out its addresses through both distribution switches' relays, and the floor stays online if distribution switch 1 fails."]; }
 };
 
-export const CAMPUS_JOBS = [CJ1, CJ2, CJ3, CJ4, CJ5, CJ6, CJ7];
+/* ------------------------------------------------------------ CP-J8, the Training Annex on a collapsed core */
+/* the Annex across the car park: a layer 3 switch as its core and distribution in one, an access switch for the classroom, joined to the
+   main building by single-mode fibre into core switch 2, routed and in OSPF (the plan approved 16 November 2026) */
+const AN = function (v) { return v.plan.annex; };
+const annexLink = function (p) { const L = p.annex.link; return { id: "annex", a: L.hq, ap: "25", b: "anxc", bp: "25", ia: L.hqIp, ib: L.anxIp, mask: L.mask }; };
+const theA = function (id) { return id === "anxc" ? "the Annex core switch" : "the Annex access switch"; };
+function rack8Causes(sim, v) {
+  const A = AN(v), c = cableBetween(sim, "anxa", "anxc"), right = !!c && endAt(c, "anxa") === A.up.acc && endAt(c, "anxc") === A.up.core, up = !!c && sim.cableUp(c);
+  const boxed = sim.d.anxc.boxed || sim.d.anxa.boxed;
+  return [C("core", !!sim.d.anxc.boxed, "The Annex core switch is still in its box", "It's racked in the Annex's comms room.", "The work order's van list: the Annex core switch, in its box."),
+    C("acc", !!sim.d.anxa.boxed, "The Annex access switch is still in its box", "It's racked beside the core.", "The van list: the Annex access switch, in its box."),
+    C("none", !boxed && !c, "The Annex access switch has no uplink to the Annex core", "It's uplinked to the core.", "The Cable runs table: nothing between the two Annex switches."),
+    C("ports", !!c && !right, "The uplink isn't on the ports the records give it (the access switch's port " + A.up.acc + " to the core's port " + A.up.core + ")", "It's on the records' ports.", "The Cable runs table: the uplink's two ends."),
+    C("down", !!c && right && !up, "The uplink has no link: a port at one end is shut", "It has a link.", "The Cable runs table: No link; show interfaces status on each Annex switch.")];
+}
+/* the fibre between the buildings: single-mode modules in the records' slots, the run plugged in, both ports open */
+function fibre8Causes(sim, v) {
+  const L = AN(v).link, H = sim.d[L.hq], X = sim.d.anxc, mh = H.sfp && H.sfp[L.hqPort], ma = X.sfp && X.sfp[L.anxPort];
+  const f = sim.net.cables.find(function (c) { return c.kind === "fibre" && [c.a.dev, c.b.dev].indexOf("anxc") >= 0 && [c.a.dev, c.b.dev].indexOf(L.hq) >= 0; }) || null;
+  const right = !!f && [[f.a, f.b], [f.b, f.a]].some(function (e) { return e[0].dev === L.hq && e[0].port === L.hqPort && e[1].port === L.anxPort; });
+  const copper = sim.net.cables.find(function (c) { return c.kind === "cat6" && [c.a, c.b].some(function (e) { return sim.net.rooms[e.dev] === "acomms" || sim.net.rooms[e.dev] === "class"; }) && [c.a, c.b].some(function (e) { const r = sim.net.rooms[e.dev]; return r && r !== "acomms" && r !== "class"; }); }) || null;
+  const mods = [mh, ma].filter(Boolean).map(function (m) { return SFP_MODULES[m]; }), plus = mods.some(function (m) { return m.rate !== 1000; }), mm = mods.some(function (m) { return m.fiber !== "SMF"; });
+  const shutH = H.sw.ports[L.hqIf].shutdown, shutA = !X.boxed && X.sw.ports[L.anxIf].shutdown, noMod = !mh ? "core switch 2" : !ma ? "the Annex core switch" : null;
+  return [C("boxed", !!X.boxed, "The Annex core switch is still in its box", "It's racked.", "The van list: the Annex core switch, in its box."),
+    C("copper", !X.boxed && !f && !!copper, "A copper cable joins the buildings: at " + (copper ? copper.length : "") + " m it's far past copper's 100 m, so it never links", "The buildings are joined by the fibre.", "The Cable runs table: a " + (copper ? copper.length : "") + " m run, No link."),
+    C("nomod", !X.boxed && !f && !copper && !!noMod, "There's no module in " + (noMod || "") + "'s SFP1: the fibre's LC plug goes into a module", "Both slots have modules.", "The Physical tab of " + (noMod || "") + ": SFP1 empty."),
+    C("none", !X.boxed && !f && !copper && !noMod, "The fibre between the buildings isn't plugged in", "It's plugged in at both ends.", "The Cable runs table: no fibre run."),
+    C("slots", !!f && !right, "The fibre isn't in the slots the records give it (core switch 2's SFP1 to the Annex core's SFP1)", "It's in the records' slots.", "The Cable runs table: the fibre's two ends."),
+    C("plus", !!f && right && plus, "A 10 Gb/s SFP+ module is in a 1 Gb/s SFP slot: the switch won't run it", "Both modules run at 1 Gb/s.", "show interfaces transceiver on the switch with it: unsupported."),
+    C("mmf", !!f && right && !plus && mm, "A multimode module is on the single-mode run: the light it sends is the wrong kind for that fibre", "Both modules are single-mode, as the run is.", "Look at the plug at each end: the module's label, and the jacket's print."),
+    C("shut", !!f && right && !plus && !mm && (shutH || shutA), "The fibre's port is shut on " + (shutH ? "core switch 2" : "the Annex core switch"), "Both ports are open.", "show interfaces status on " + (shutH ? "core switch 2" : "the Annex core switch") + ": Gi0/25 disabled."),
+    C("down", !!f && right && !plus && !mm && !shutH && !shutA && !sim.cableUp(f), "The fibre has no link", "It has a link.", "The Cable runs table: No link.")];
+}
+/* each Annex switch set up as every switch here; the core is the Annex's management gateway on its first address, the access switch
+   managed on the records' address with that gateway */
+function base8For(id) { return function (sim, v) {
+  const p = v.plan, A = AN(v), w = sim.d[id].sw, rec = id === "anxc" ? A.core : A.acc, m = (w.svis || {})[A.mgmt.id], u = (w.users || {})[p.user], who = theA(id), Who = Cap(who);
+  const out = [C("name", w.hostname !== rec.host, Who + " isn't named as the records say", "Its name is the records'.", "The prompt says " + w.hostname + "."),
+    C("secret", !w.enableSecret || !pwOk(w.enableSecret, p.secret), "Its enable secret isn't the campus's", "Its enable secret is the campus's.", "show running-config: " + (w.enableSecret ? "an enable secret, not the campus's" : "no enable secret") + "."),
+    C("console", !w.con.password || !pwOk(w.con.password, p.console) || w.con.login !== "password", "Its console doesn't ask for the campus's console password", "The console asks for it.", "show running-config: line con 0."),
+    C("ssh", !w.domain || !(w.rsa >= 768) || !u || !pwOk(u, p.userPw) || w.vty.login !== "local" || w.vty.transport !== "ssh", "Its remote logins aren't SSH only with the campus's local user (a domain, keys, the user, login local, transport input ssh)", "SSH only, with the campus's user.", "show running-config: line vty 0 15, the username, ip domain-name."),
+    C("mgmt", !m || m.ip !== rec.ip || m.mask !== p.mask || !!m.shutdown, "It has no address on the Annex's management VLAN, as the records give it", "Its management address is the records'.", "show ip interface brief: Vlan" + A.mgmt.id + " " + (m && m.ip || "missing") + ".")];
+  if (id === "anxa") out.push(C("gw", w.gateway !== A.mgmt.gw, "Its default gateway isn't the Annex core's management address: it can't answer anything off its own network", "Its default gateway is the Annex core.", "show running-config: ip default-gateway " + (w.gateway || "missing") + "."));
+  else out.push(C("routing", !w.routing, "Routing is off on the Annex core switch: it can't route between its networks and the fibre", "Routing is on.", "show ip route on the Annex core switch: the default gateway, not a routing table."));
+  return out;
+}; }
+/* the routed link over the fibre: both ends routed ports on the records' /30, described */
+function link8Causes(sim, v) {
+  const L = AN(v).link, H = sim.d[L.hq].sw.ports[L.hqIf], X = sim.d.anxc.sw.ports[L.anxIf];
+  const end = function (P, ip, desc, who, g) { return [C(who + "sw", !P.routed, Cap(who === "hq" ? "core switch 2" : "the Annex core switch") + "'s fibre port is still a switch port: the link between the buildings is routed, as every core link is", "Both ends are routed ports.", "show running-config: interface " + g + " has no 'no switchport'."),
+    C(who + "ip", !!P.routed && (P.ip !== ip || P.mask !== L.mask), Cap(who === "hq" ? "core switch 2" : "the Annex core switch") + "'s fibre port isn't on the records' address", "Both ends are on the records' addresses.", "show ip interface brief: " + g + " " + (P.ip || "unassigned") + "."),
+    C(who + "desc", !!P.routed && P.ip === ip && String(P.desc || "").toUpperCase() !== desc, Cap(who === "hq" ? "core switch 2" : "the Annex core switch") + "'s fibre port isn't described as the records say", "Both ends are described.", "show interfaces status: " + g + "'s name.")]; };
+  return end(H, L.hqIp, L.hqDesc, "hq", "Gi0/25").concat(end(X, L.anxIp, L.anxDesc, "anx", "Gi0/25"));
+}
+const nbr8Causes = nbrCausesFor(function (p) { return [annexLink(p)]; });
+/* the Annex's two VLANs on both its switches */
+function vlan8Causes(sim, v) {
+  const A = AN(v), want = [A.cls, A.mgmt], miss = [], bad = [];
+  ["anxc", "anxa"].forEach(function (id) { want.forEach(function (q) { const x = (sim.d[id].sw.vlans || {})[q.id]; if (!x) miss.push([id, q]); else if (String(x.name).toUpperCase() !== q.name) bad.push([id, q]); }); });
+  return [C("none", miss.length > 0, miss.length ? "VLAN " + miss[0][1].id + " (" + miss[0][1].name + ") doesn't exist on " + theA(miss[0][0]) : "", "Both VLANs exist on both Annex switches.", miss.length ? "show vlan brief on " + theA(miss[0][0]) + "." : ""),
+    C("name", !miss.length && bad.length > 0, bad.length ? "VLAN " + bad[0][1].id + " on " + theA(bad[0][0]) + " isn't named as the records say" : "", "Named as the records say.", bad.length ? "show vlan brief on " + theA(bad[0][0]) + "." : "")];
+}
+/* the uplink between the Annex's switches: a trunk as the campus's are, carrying the classroom and the Annex's management VLANs */
+function trunk8Causes(sim, v) {
+  const p = v.plan, A = AN(v), N = p.vlans.native.id, ends = [{ id: "anxc", n: "GigabitEthernet0/" + A.up.core, far: { id: "anxa", n: "GigabitEthernet0/" + A.up.acc } }, { id: "anxa", n: "GigabitEthernet0/" + A.up.acc, far: { id: "anxc", n: "GigabitEthernet0/" + A.up.core } }];
+  const P = function (e) { return sim.d[e.id].sw.ports[e.n]; }, cr = function (e) { const f = P(e.far); return carries(Object.assign({}, sim.d[e.id].sw, { links: sim.switchLinks(e.id) }), e.n, { mode: f.mode, nonegotiate: f.nonegotiate }); };
+  const who = function (e) { return e ? Cap(theA(e.id)) + "'s port " + e.n.split("/")[1] : ""; };
+  const notTrunk = ends.find(function (e) { return P(e).routed || P(e).mode !== "trunk"; }), neg = ends.find(function (e) { return P(e).mode === "trunk" && !P(e).nonegotiate; }), nat = ends.find(function (e) { return P(e).native !== N; });
+  const noC = ends.find(function (e) { return cr(e).tagged.indexOf(A.cls.id) < 0; }), noM = ends.find(function (e) { return cr(e).tagged.indexOf(A.mgmt.id) < 0; });
+  return [C("mode", !!notTrunk, who(notTrunk) + " isn't a trunk", "Both ends are trunks.", "show interfaces trunk on " + (notTrunk ? theA(notTrunk.id) : "") + "."),
+    C("dtp", !notTrunk && !!neg, who(neg) + " is a trunk but still negotiates (DTP): the campus's trunks don't", "Neither end negotiates.", "show interfaces " + (neg ? "gi0/" + neg.n.split("/")[1] : "") + " switchport: Negotiation of Trunking: On."),
+    C("native", !notTrunk && !!nat, who(nat) + "'s native VLAN isn't the campus's unused one", "Both ends' native VLAN is the campus's unused one.", "show interfaces trunk: native " + (nat ? P(nat).native : "") + "."),
+    C("cls", !notTrunk && !nat && !!noC, who(noC) + " doesn't carry the classroom VLAN", "Both ends carry it.", "show interfaces trunk: VLAN " + A.cls.id + " not allowed."),
+    C("mgmt", !notTrunk && !nat && !noC && !!noM, who(noM) + " doesn't carry the Annex's management VLAN: the access switch can't be managed over it", "Both ends carry it.", "show interfaces trunk: VLAN " + A.mgmt.id + " not allowed.")];
+}
+/* the classroom's gateway on the Annex core, and both its networks in OSPF, passive, so the main building learns the way to them */
+function gw8Causes(sim, v) {
+  const A = AN(v), r = (sim.d.anxc.sw.svis || {})[A.cls.id] || null, up = l3Ifs(sim.l3View("anxc")).some(function (f) { return f.name === "Vlan" + A.cls.id && f.up; });
+  const X = sim.ospfAll().routers.anxc, inO = function (q) { return X && X.ifs.find(function (f) { return f.name === "Vlan" + q.id; }); };
+  const noadv = [A.cls, A.mgmt].find(function (q) { return !inO(q); }), hello = [A.cls, A.mgmt].find(function (q) { const f = inO(q); return f && !f.passive; });
+  return [C("svi", !r || r.ip !== A.cls.gw || r.mask !== v.plan.mask, "The classroom VLAN has no interface on the Annex core on its gateway address (the first)", "Its gateway is the Annex core's interface.", "show ip interface brief on the Annex core switch: Vlan" + A.cls.id + "."),
+    C("down", !!r && r.ip === A.cls.gw && !up, "The classroom VLAN's interface on the Annex core is down: no port that's up carries the VLAN", "It's up.", "show ip interface brief on the Annex core switch: Vlan" + A.cls.id + " down."),
+    C("noadv", !!r && up && !!noadv, "VLAN " + (noadv ? noadv.id + " (" + noadv.name + ")" : "") + " isn't in OSPF on the Annex core: nothing in the main building learns the way to it", "Both of the Annex's networks are in OSPF.", "show ip ospf interface brief on the Annex core switch."),
+    C("hello", !!r && up && !noadv && !!hello, "VLAN " + (hello ? hello.id : "") + "'s interface sends OSPF hellos to the classroom: anything there that answers could feed the campus routes", "Both are passive.", "show ip protocols on the Annex core switch: Passive Interface(s).")];
+}
+/* the edge router's pool for the classroom, and the Annex core relaying the classroom's requests to it */
+function pool8Causes(sim, v) { return pool4Causes(sim, Object.assign({}, v, { plan: Object.assign({}, v.plan, { train: AN(v).cls }) })).map(function (c) { c.text = c.text.replace(/the training (network|pool)/g, "the classroom $1").replace(/The training pool/g, "The classroom pool"); return c; }); }
+function relay8Causes(sim, v) {
+  const A = AN(v), R = sim.rtView("edge"), live = sim.rtLive("edge"), mine = RT.allIfs(R).map(function (n) { const a = RT.addrOf(R, n, live); return a && RT.rtStatus(R, n)[1] === "up" ? a.ip : null; }).filter(Boolean);
+  const r = (sim.d.anxc.sw.svis || {})[A.cls.id], h = (r && r.helpers) || [];
+  return [C("none", !h.length, "The Annex core doesn't relay the classroom's DHCP requests", "It relays them.", "show running-config on the Annex core switch: interface Vlan" + A.cls.id + " has no ip helper-address."),
+    C("wrong", h.length > 0 && !h.some(function (x) { return mine.indexOf(x) >= 0; }), "It relays them to an address where the edge router doesn't answer", "It relays to the edge router.", "show running-config on the Annex core switch: its ip helper-address.")];
+}
+/* the classroom's desks on the Annex access switch, locked down as every desk here */
+function desk8Causes(sim, v) {
+  const p = v.plan, A = AN(v), D = A.desks, w = sim.d.anxa.sw, rows = Object.keys(D).map(function (port) { const dev = D[port][0], n = "GigabitEthernet0/" + port, c = cableBetween(sim, "anxa", dev); return { port: port, n: n, dev: dev, p: w.ports[n], c: c, right: !!c && endAt(c, "anxa") === port }; });
+  const none = rows.find(function (r) { return !r.c; }), wrong = rows.find(function (r) { return r.c && !r.right; }), mode = rows.find(function (r) { return r.right && (r.p.mode !== "access" || r.p.access !== A.cls.id); });
+  const ps = rows.find(function (r) { const P = psRead(r.p); return r.right && (!P.on || P.max !== 1 || P.viol !== "shutdown" || !P.sticky); }), edge = rows.find(function (r) { return r.right && !(r.p.stp && r.p.stp.portfast && r.p.stp.bpduguard); });
+  const desc = rows.find(function (r) { return r.right && String(r.p.desc).toUpperCase() !== (r.dev.toUpperCase() + "-" + A.cls.name); });
+  const used = rows.map(function (r) { return +r.port; }).concat([+A.up.acc]), open = []; for (let k = 1; k <= 24; k++) if (used.indexOf(k) < 0) { const q = w.ports["GigabitEthernet0/" + k]; if (!q.shutdown || q.access !== p.vlans.parking.id) open.push(k); }
+  const nm = function (r) { return r ? name(sim, r.dev) : ""; };
+  return [C("cable", !!none, "The " + nm(none) + " has no cable to the Annex access switch", "Each classroom PC is cabled to its port.", "The Cable runs table: nothing from the " + nm(none) + "."),
+    C("port", !none && !!wrong, "The " + nm(wrong) + " isn't on the port the records give it (port " + (wrong ? wrong.port : "") + ")", "Each is on its records' port.", "The Cable runs table: the " + nm(wrong) + "'s run."),
+    C("vlan", !none && !wrong && !!mode, "The " + nm(mode) + "'s port isn't an access port in the classroom VLAN", "Each is an access port in it.", "show interfaces status on the Annex access switch: Gi0/" + (mode ? mode.port : "") + "."),
+    C("ps", !none && !wrong && !mode && !!ps, "The " + nm(ps) + "'s port isn't locked down as every desk here is (port security: one device, sticky, shut down on a violation)", "Each has port security as the campus does.", "show port-security interface gi0/" + (ps ? ps.port : "") + " on the Annex access switch."),
+    C("edge", !none && !wrong && !mode && !ps && !!edge, "The " + nm(edge) + "'s port isn't an edge port with BPDU guard", "Each is an edge port with BPDU guard.", "show running-config on the Annex access switch: interface gi0/" + (edge ? edge.port : "") + "."),
+    C("desc", !none && !wrong && !mode && !ps && !edge && !!desc, "The " + nm(desc) + "'s port isn't described as the records say", "Each is described as the records say.", "show interfaces status on the Annex access switch: Gi0/" + (desc ? desc.port : "") + "'s name."),
+    C("spare", open.length > 0, "A spare port on the Annex access switch is open or out of the parking VLAN (port " + (open[0] || "") + ")", "Every spare port is parked and shut.", "show interfaces status on the Annex access switch: Gi0/" + (open[0] || "") + ".")];
+}
+/* the classroom PCs: addresses in the classroom network, online */
+function online8Causes(sim, v) {
+  const A = AN(v), pcs = ["cl1", "cl2"], a = function (id) { return sim.addr(id); }, pre = A.cls.net.split(".").slice(0, 3).join(".");
+  const apipa = pcs.find(function (id) { const x = a(id); return !x || !x.ip || /^169\.254\./.test(x.ip); }), other = pcs.find(function (id) { const x = a(id); return x && x.ip && !/^169\.254\./.test(x.ip) && x.ip.split(".").slice(0, 3).join(".") !== pre; });
+  const off = pcs.find(function (id) { return !sim.route(id, "8.8.8.8").internet; }), X = sim.ospfAll().routers.anxc, noadv = !(X && X.ifs.some(function (f) { return f.name === "Vlan" + A.cls.id; }));
+  const nm = function (id) { return id ? name(sim, id) : ""; };
+  return [C("apipa", !!apipa, "The " + nm(apipa) + " has no address from DHCP (169.254: it asked and nobody answered)", "Both have addresses from the classroom pool.", "ipconfig on the " + nm(apipa) + ": Autoconfiguration IPv4 Address 169.254..."),
+    C("net", !apipa && !!other, "The " + nm(other) + " has an address, but not in the classroom network", "Both are in the classroom network.", "ipconfig on the " + nm(other) + "."),
+    C("noadv", !apipa && !other && !!off && noadv, "The classroom network isn't in OSPF: the main building doesn't know the way back to it", "It's advertised.", "show ip route on the edge router: no " + A.cls.net + "."),
+    C("off", !apipa && !other && !!off && !noadv, "The " + nm(off) + " can't reach the internet", "Both are online.", off ? "ping 8.8.8.8 from the " + nm(off) + ": no reply." : "")];
+}
+/* the Annex's switches managed from the main building, as every switch here is: the service desk reaches both */
+function manage8Causes(sim, v) {
+  const A = AN(v), ok = function (ip) { const r = sim.route("sd1", ip); return !r.fail && !!(r.local || r.routed); };
+  return [C("core", !ok(A.core.ip), "The service desk PC gets no answer from the Annex core switch's management address", "The Annex core answers from the service desk.", "ping " + "the Annex core's management address from the service desk PC: no reply."),
+    C("acc", ok(A.core.ip) && !ok(A.acc.ip), "The service desk PC reaches the Annex core but not the Annex access switch: its management address, its gateway, or the VLAN on the uplink", "Both answer.", "ping the Annex access switch's management address from the service desk PC: no reply.")];
+}
+function saved8Causes(sim) { return ["anxc", "anxa", "core2", "edge"].map(function (id) { const who = id === "anxc" || id === "anxa" ? theA(id) : sayOf(sim, id); return C("unsaved-" + id, unsaved(sim.d[id].sw), Cap(who) + " hasn't been saved: a power cut takes the changes away", "All four are saved.", "show startup-config on " + who + ": it's not what's running."); }); }
+
+const CJ8 = {
+  id: "CP-J8", level: "campus", title: "The Training Annex: a collapsed core across the car park, joined by single-mode fibre, routed and in OSPF",
+  already: ["works", "saved"],   /* switches fresh from their boxes have nothing unsaved */
+  start(seed) {
+    const b = CJ7.start(seed), sim = b.sim;
+    for (const a of CJ7.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    ["cl1", "cl2"].forEach(function (id) { delete sim.d[id].boxed; });   /* the classroom's PCs are at their desks; both Annex switches are still in their boxes */
+    sim.d.core2.sfp = { SFP1: null, SFP2: null, SFP3: null, SFP4: null };   /* core switch 2's fibre slots, empty: the duct's fibre lands there */
+    sim.cli = {};
+    return { sim: sim, v: Object.assign({}, b.v, { runs: sim.net.extra.runs || 0 }) };
+  },
+  brief() { return { quote: "The Training Annex across the car park is ours now. The installers have pulled single-mode fibre through the duct from the data room to the Annex's comms room, and both switches for it are in their boxes there. Make it a little campus of its own, one core switch doing the lot, but tied into ours: the classroom gets its addresses from the edge router like everyone else, and I want to manage those switches from the service desk.", from: "Rafiki, owner" }; },
+  mason: "Two buildings, one routing domain. Get the light across first, then the routed link and its neighbours, then build the Annex inside out: its VLANs, its uplink, its gateway, the pool and the relay, the desks. Test from a classroom PC at the end.",
+  limits: function (v) {
+    const p = v.plan, A = AN(v), L = A.link;
+    return ["The Annex core switch: " + A.core.host + " (MSW-3900X), locked as every switch here (enable secret " + p.secret + ", console password " + p.console + ", SSH only with the user " + p.user + ", password " + p.userPw + ", domain " + p.domain + "), routing on, managed at " + A.core.ip + ": the gateway of the Annex's management VLAN. The Annex access switch: " + A.acc.host + " (MSW-2800G), locked the same way, managed at " + A.acc.ip + ", its gateway the core. Both start from the factory: reach them on the console.",
+      "The fibre: OS2 single-mode through the duct, " + runLength("data", "acomms", { runs: CAMPUS_RUN }) + " m, from core switch 2's SFP1 (Gi0/25) to the Annex core's SFP1 (Gi0/25). The van has 1000BASE-SX, 1000BASE-LX and 10GBASE-SR modules. A routed link on " + L.net + "/30: core switch 2 " + L.hqIp + ", described " + L.hqDesc + "; the Annex core " + L.anxIp + ", described " + L.anxDesc + ". OSPF area 0, as the core is; the Annex core's own networks advertised and passive.",
+      "The Annex's VLANs: " + A.cls.id + " named " + A.cls.name + " (" + A.cls.net + "/24, gateway " + A.cls.gw + " on the Annex core), and " + A.mgmt.id + " named " + A.mgmt.name + " (" + A.mgmt.net + "/24). The access switch's port " + A.up.acc + " to the core's port " + A.up.core + ": a trunk as the campus's are, native VLAN " + p.vlans.native.id + " (" + p.vlans.native.name + "), no negotiation, carrying both. The edge router hands out the classroom's addresses (the first " + p.excl + " kept back, the campus's DNS); the Annex core relays the requests to the same edge router address as every other relay here.",
+      "The desks: Classroom PC 1 on port 1, Classroom PC 2 on port 2, each an access port in the classroom VLAN, described CL1-" + A.cls.name + " and CL2-" + A.cls.name + ", locked down as every desk here. Every spare port on both Annex switches parked in VLAN " + p.vlans.parking.id + " and shut.",
+      "Your laptop's console cable is 1.8 m: carry it to the Annex's comms room for its switches, and back to the data room for core switch 2 and the edge router."];
+  },
+  reqs: [
+    { id: "rack", text: "Both Annex switches are racked in the Annex's comms room, the access switch uplinked to the core as the records say", causes: rack8Causes,
+      ok: function () { return "Both Annex switches are racked; the access switch's uplink is on the records' ports, with a link."; },
+      rung1: function () { return "The Cable runs table, and the van list."; },
+      rung2: function () { return "Unpacking comes before cabling: a switch in its box has no ports to plug into."; } },
+    { id: "fibre", text: "The fibre between the buildings is up: core switch 2's SFP1 to the Annex core's SFP1", causes: fibre8Causes,
+      ok: function () { return "The fibre is up: single-mode modules at both ends, the run plugged in, both ports open."; },
+      rung1: function () { return "The Physical tab of each switch at the fibre's ends, and the Cable runs table."; },
+      rung2: function () { return "A fibre link needs the same kind of light at both ends, the kind the fibre is made for, in slots that can run it; and copper stops at a hundred metres."; } },
+    { id: "core", text: "The Annex core switch is set up as every switch here, routing on, managed on the Annex's management VLAN", causes: base8For("anxc"),
+      ok: function () { return "The Annex core is named, locked, SSH only, routing, managed on its management VLAN."; },
+      rung1: function () { return "show running-config on the Annex core switch, against the records."; },
+      rung2: function () { return "A switch fresh from the factory has none of this; a layer 3 switch also routes only once it's told to."; } },
+    { id: "acc", text: "The Annex access switch is set up as every switch here, managed on the Annex's management VLAN", causes: base8For("anxa"),
+      ok: function () { return "The Annex access switch is named, locked, SSH only, managed, its gateway the core."; },
+      rung1: function () { return "show running-config on the Annex access switch, against the records."; },
+      rung2: function () { return "A switch that doesn't route answers from off its own network only through its default gateway."; } },
+    { id: "link", text: "The link over the fibre is routed at both ends, on the records' addresses", causes: link8Causes,
+      ok: function () { return "Both ends of the fibre are routed ports on the records' addresses, described."; },
+      rung1: function () { return "show ip interface brief and show interfaces status at both ends of the fibre."; },
+      rung2: function () { return "Every link between the campus's routers is routed: a port gets an address only once it stops being a switch port."; } },
+    { id: "ospf", text: "Core switch 2 and the Annex core are OSPF neighbours across the fibre", causes: nbr8Causes,
+      ok: function () { return "Core switch 2 and the Annex core are FULL across the fibre."; },
+      rung1: function () { return "show ip ospf neighbor and show ip ospf interface brief at both ends."; },
+      rung2: function () { return "Two routers become neighbours only on an interface both have in OSPF, in the same area, neither passive."; } },
+    { id: "vlans", text: "The classroom VLAN and the Annex's management VLAN exist on both Annex switches, named as the records say", causes: vlan8Causes,
+      ok: function () { return "Both VLANs exist and are named on both Annex switches."; },
+      rung1: function () { return "show vlan brief on each Annex switch."; },
+      rung2: function () { return "Behind a routed link the Annex's VLANs are its own: they exist only where they've been made."; } },
+    { id: "trunk", text: "The uplink between the Annex's switches is a trunk as the campus's are, carrying both its VLANs", causes: trunk8Causes,
+      ok: function () { return "The uplink trunks as the campus's do and carries both VLANs."; },
+      rung1: function () { return "show interfaces trunk on each Annex switch."; },
+      rung2: function () { return "A trunk carries only the VLANs its allowed list names, at both ends."; } },
+    { id: "gw", text: "The classroom's gateway is on the Annex core, and both the Annex's networks are in OSPF, passive", causes: gw8Causes,
+      ok: function () { return "The classroom's gateway is the Annex core's interface; both networks are advertised, passive."; },
+      rung1: function () { return "show ip interface brief and show ip protocols on the Annex core switch."; },
+      rung2: function () { return "A network the main building should reach has to be in OSPF; an interface facing desks says no hellos."; } },
+    { id: "pool", text: "The edge router hands out addresses for the classroom network, as for the other VLANs", causes: pool8Causes,
+      ok: function () { return "The edge router has a pool for the classroom: its default router the gateway, the campus's DNS, the first addresses kept back."; },
+      rung1: function () { return "show ip dhcp pool and the pools in show running-config on the edge router."; },
+      rung2: function () { return "A pool hands out what it's told: the network, the default router, the DNS servers; addresses kept for the gateway and the gear are excluded first."; } },
+    { id: "relay", text: "The Annex core relays the classroom's DHCP requests to the edge router", causes: relay8Causes,
+      ok: function () { return "The Annex core relays the classroom's requests to the edge router."; },
+      rung1: function () { return "The classroom VLAN interface's lines in show running-config on the Annex core switch."; },
+      rung2: function () { return "A request for an address is a broadcast: it stops at the classroom's gateway unless the gateway relays it."; } },
+    { id: "desks", text: "Each classroom PC is on its port, locked down as every desk here; the spare ports parked and shut", causes: desk8Causes,
+      ok: function () { return "Both classroom PCs on their ports, locked down, described; the spares parked and shut."; },
+      rung1: function () { return "show interfaces status and show port-security on the Annex access switch."; },
+      rung2: function () { return "Every desk port on this campus is set up the same way, in either building."; } },
+    { id: "online", text: "Both classroom PCs have addresses in the classroom network and reach the internet", causes: online8Causes,
+      ok: function () { return "Both classroom PCs are online with addresses from the classroom pool."; },
+      rung1: function () { return "ipconfig /all then ping 8.8.8.8 on each classroom PC; tracert if a ping fails."; },
+      rung2: function () { return "A PC that gave itself an automatic private (APIPA) address asked and nobody answered: follow the request from the desk to the pool, and the reply back."; } },
+    { id: "manage", text: "Both Annex switches answer from the service desk, as every switch here does", causes: manage8Causes,
+      ok: function () { return "The service desk PC reaches both Annex switches."; },
+      rung1: function () { return "ping each Annex switch's management address from the service desk PC; tracert if one fails."; },
+      rung2: function () { return "A reply has to find its way back too: the main building learns the Annex's networks only through OSPF."; } },
+    { id: "works", text: "Everyone else still works: every PC online, both printers and every switch answering", causes: reachCauses,
+      ok: function () { return "Every PC is online; both printers and every switch answer."; },
+      rung1: function () { return "ping 8.8.8.8 from each PC; the printers and the switches from the service desk."; },
+      rung2: function () { return "A change on a core switch is a change for every network behind it."; } },
+    { id: "saved", text: "Both Annex switches, core switch 2 and the edge router are saved", causes: saved8Causes,
+      ok: function () { return "All four are saved."; }, rung1: function () { return "show startup-config against show running-config on each."; }, rung2: function () { return "Only what's saved survives a power cut."; } }
+  ],
+  solve(v, sim) {
+    const p = v.plan, A = AN(v), L = A.link, relay = coreLinks(p)[0].ia, b = p.vlans.svc.net.split(".")[1], out = [], n = sim ? sim.net.extra.runs || 0 : v.runs || 0;
+    let k = 0; const lay = function (a, b2) { k++; out.push({ t: "lay", a: a, b: b2 }); return n + k; };
+    const c = function (l) { out.push({ t: "cmd", dev: "tech", line: l, cli: true }); };
+    const login = function () { [""].concat([p.console, "enable", p.secret, "configure terminal"]).forEach(c); };
+    const save = function () { c("end"); c("copy running-config startup-config"); c(""); };
+    const fresh = function (host) { ["", "enable", "configure terminal", "hostname " + host, "enable secret " + p.secret, "line console 0", "password " + p.console, "login", "exit", "ip domain-name " + p.domain, "username " + p.user + " secret " + p.userPw, "crypto key generate rsa modulus 2048", "line vty 0 15", "login local", "transport input ssh", "exit"].forEach(c); };
+    const vlans = function () { [[A.cls.id, A.cls.name], [A.mgmt.id, A.mgmt.name], [p.vlans.native.id, p.vlans.native.name], [p.vlans.parking.id, p.vlans.parking.name]].forEach(function (q) { c("vlan " + q[0]); c("name " + q[1]); c("exit"); }); };
+    const trunk = function () { c("switchport trunk native vlan " + p.vlans.native.id); c("switchport trunk allowed vlan " + A.cls.id + "," + A.mgmt.id); c("switchport mode trunk"); c("switchport nonegotiate"); };
+    let con = 0; const consoleTo = function (dev) { if (con) out.push({ t: "pull", cable: "c-console-" + con }); con = lay({ dev: "tech", port: "USB-C" }, { dev: dev, port: "CONSOLE" }); };
+    /* unpack and cable: the modules, the fibre, the uplink, the desks */
+    out.push({ t: "place", dev: "anxc", room: "acomms" }, { t: "place", dev: "anxa", room: "acomms" });
+    out.push({ t: "sfp", dev: L.hq, slot: L.hqPort, type: "1000BASE-LX" }, { t: "sfp", dev: "anxc", slot: L.anxPort, type: "1000BASE-LX" });
+    lay({ dev: L.hq, port: L.hqPort }, { dev: "anxc", port: L.anxPort });
+    lay({ dev: "anxa", port: A.up.acc }, { dev: "anxc", port: A.up.core });
+    Object.keys(A.desks).forEach(function (port) { lay({ dev: A.desks[port][0], port: "NIC" }, { dev: "anxa", port: port }); });
+    /* the Annex core from the factory */
+    out.push({ t: "place", dev: "tech", room: "acomms" }); consoleTo("anxc");
+    fresh(A.core.host); c("ip routing"); vlans();
+    c("interface gi0/25"); c("description " + L.anxDesc); c("no switchport"); c("ip address " + L.anxIp + " " + L.mask); c("no shutdown"); c("exit");
+    c("interface gi0/" + A.up.core); c("description ANX-ACCESS"); trunk(); c("exit");
+    c("interface vlan " + A.mgmt.id); c("ip address " + A.core.ip + " " + p.mask); c("no shutdown"); c("exit");
+    c("interface vlan " + A.cls.id); c("ip address " + A.cls.gw + " " + p.mask); c("ip helper-address " + relay); c("no shutdown"); c("exit");
+    c("router ospf 1"); c("network 10." + b + ".0.0 0.0.255.255 area 0"); c("passive-interface default"); c("no passive-interface gi0/25"); c("exit");
+    c("interface range gi0/2 - 24 , gi0/26 - 28"); c("switchport access vlan " + p.vlans.parking.id); c("shutdown"); c("exit");
+    save();
+    /* the Annex access switch from the factory */
+    consoleTo("anxa");
+    fresh(A.acc.host); vlans();
+    c("interface gi0/" + A.up.acc); c("description ANX-CORE"); trunk(); c("exit");
+    c("interface vlan " + A.mgmt.id); c("ip address " + A.acc.ip + " " + p.mask); c("no shutdown"); c("exit"); c("ip default-gateway " + A.mgmt.gw);
+    Object.keys(A.desks).forEach(function (port) { const d = A.desks[port][0]; c("interface gi0/" + port); c("description " + d.toUpperCase() + "-" + A.cls.name); c("switchport mode access"); c("switchport access vlan " + A.cls.id); c("switchport port-security"); c("switchport port-security maximum 1"); c("switchport port-security mac-address sticky"); c("switchport port-security violation shutdown"); c("spanning-tree portfast"); c("spanning-tree bpduguard enable"); c("exit"); });
+    c("interface range gi0/3 - 23"); c("switchport mode access"); c("switchport access vlan " + p.vlans.parking.id); c("shutdown"); c("exit");
+    c("interface range gi0/25 - 28"); c("shutdown"); c("exit");
+    save();
+    /* back to the data room: core switch 2's end of the fibre, then the edge router's pool */
+    out.push({ t: "pull", cable: "c-console-" + con }); con = 0; out.push({ t: "place", dev: "tech", room: "data" });
+    consoleTo(L.hq); login();
+    c("interface gi0/25"); c("description " + L.hqDesc); c("no switchport"); c("ip address " + L.hqIp + " " + L.mask); c("no shutdown"); c("exit");
+    save();
+    consoleTo("edge"); login();
+    c("ip dhcp excluded-address " + A.cls.gw + " " + A.cls.gw.replace(/\.1$/, "." + p.excl)); c("ip dhcp pool " + A.cls.name); c("network " + A.cls.net + " " + p.mask); c("default-router " + A.cls.gw); c("dns-server " + p.dns.join(" ")); c("exit");
+    save();
+    out.push({ t: "pull", cable: "c-console-" + con });
+    ["cl1", "cl2"].forEach(function (id) { out.push({ t: "cmd", dev: id, line: "ipconfig /renew" }); });
+    return out;
+  },
+  answer(v) {
+    const p = v.plan, A = AN(v), L = A.link, b = p.vlans.svc.net.split(".")[1];
+    return ["Place both Annex switches in the Annex's comms room. Put a 1000BASE-LX module in core switch 2's SFP1 and in the Annex core's SFP1 (the run is single-mode) and lay the fibre between them; lay the access switch's port " + A.up.acc + " to the core's port " + A.up.core + ", and each classroom PC to its port.",
+      "Carry your laptop to the Annex's comms room and console into the Annex core: the name and locks, ip routing, VLANs " + A.cls.id + " and " + A.mgmt.id + " (and the native and parking VLANs); gi0/25 no switchport, ip address " + L.anxIp + " " + L.mask + "; gi0/" + A.up.core + " a trunk as the campus's; interface vlan " + A.mgmt.id + " " + A.core.ip + "; interface vlan " + A.cls.id + " " + A.cls.gw + " with ip helper-address; router ospf 1, network 10." + b + ".0.0 0.0.255.255 area 0, passive-interface default, no passive-interface gi0/25; the spares parked and shut; save.",
+      "The Annex access switch: the name and locks, the VLANs, gi0/" + A.up.acc + " the trunk, interface vlan " + A.mgmt.id + " " + A.acc.ip + ", ip default-gateway " + A.mgmt.gw + "; desk ports 1 and 2 as every desk here; the spares parked and shut; save.",
+      "Back in the data room, core switch 2: interface gi0/25, no switchport, ip address " + L.hqIp + " " + L.mask + ", no shutdown; save. The edge router: the excluded addresses and a pool " + A.cls.name + " for " + A.cls.net + " with default-router " + A.cls.gw + " and the campus's DNS; save. Then ipconfig /renew on each classroom PC."];
+  },
+  summary() { return ["The Training Annex is a collapsed core of its own: one layer 3 switch routes its classroom and management networks, an access switch serves the desks.", "Single-mode fibre joins it to core switch 2: a routed link, OSPF neighbours across it, the Annex's networks advertised to the whole campus.", "The classroom's addresses come from the edge router through the Annex core's relay, and both Annex switches are managed from the service desk."]; }
+};
+
+export const CAMPUS_JOBS = [CJ1, CJ2, CJ3, CJ4, CJ5, CJ6, CJ7, CJ8];

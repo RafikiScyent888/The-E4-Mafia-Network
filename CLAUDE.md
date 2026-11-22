@@ -141,10 +141,15 @@ The owner, 10 November 2026: "create a save point here." Where everything stands
   router, the statics and the old link retired) and CP-J6 (distribution switch 2 joins, every gateway shared by standby). With them,
   for every level: a switch port facing a shut port now says notconnect; port security works the links out once a pass (a campus
   work order opens in about a second, not five). See the CP-J5 and CP-J6 notes in "Level 4, the campus" below.
-- **Next, in the owner's order:** the rest of Level 4 (re-sized by the owner's rule: a new floor end to end and the Training Annex
-  first, needing nothing new from the engine; then jumbo frames and the central DHCP server, which need the rack server's model and
-  a Linux command line; then the 15 tickets), then Level 5 (Enterprise); each new piece has its objectives shown and its details
-  talked out before it's built.
+- **Level 4, CP-J7, live 22 November 2026:** a new floor end to end (the fourth floor's training room: its access switch from the box,
+  its VLAN on three switches and the bundle, its spanning-tree root, its gateway by standby, the edge router's pool and both relays, the
+  desks locked down, the floor surviving distribution switch 1). With it, for every level: a work order's reload about twice as fast
+  (each switch's VLAN settings fixed once, its links and a relay's way to its helper kept for a pass), and a dead link's diamond kept
+  clear of other port names (on a phone it bled into "Gi0/2", 6.47:1). See the CP-J7 notes in "Level 4, the campus" below.
+- **Next, in the owner's order:** the rest of Level 4: the Training Annex (CP-J8, built on `save/level4-annex`, worktree
+  `/home/user/e4-anx`, its checks running), then jumbo frames and the central DHCP server (they need the rack server's model and a
+  Linux command line), then the 15 tickets; then Level 5 (Enterprise). The owner, 17 November 2026: "Please keep building it all out.
+  We will come back and make changes once I go through it." 
 - **The container was rebuilt on 15 November 2026:** the worktrees were made again from the pushed branches, and the browser
   is now Chromium 1243 (`/opt/pw-browsers/chromium`): run the drive, AAA and models tools with `CHROME=/opt/pw-browsers/chromium`.
 - **SB-14 and SB-15 are built** on `save/level3-sb14` and `save/level3-sb15` (worktrees `/home/user/e4-sb14`, `/home/user/e4-sb15`;
@@ -3791,6 +3796,50 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
   diagram compared under the live and the new drawing code (home, office and business, start and done, two seeds, both fonts: 240
   drawings, all the same; the comparison calibrated on CP-J1, where the 2F switch moved: all 8 different); the plants for CP-J5,
   CP-J6, equal-cost paths, the far port and the virtual address, all caught.
+
+- **CP-J7, a new floor end to end, built 17 November 2026 on `save/level4-campus`** (the owner, 17 November 2026: "Keep building,
+  do the new floor next"; objectives read that day, Network+ V9 unchanged):
+  - **The fourth floor** (`js/net/campus.js`): the 4F closet and the training room (`CAMPUS_FLOORS`, `CAMPUS_RUN`, `CAMPUS_ROOM_BOX`,
+    the room names); the training VLAN per set (`TRAIN_V`: 60, 160, 235; `plan.train`), the 4F access switch in its box from the
+    factory, its place fixed in the 4F closet (`acc4`, `plan.sw.acc4`, its uplinks `plan.up.acc4` to each distribution switch's port
+    4), two training PCs (`tr1`, `tr2`, `plan.desks4`) from a stream of their own (seed ^ 0x4f4f), so every other part of the campus
+    is drawn as before. CP-J7's start takes the PCs out of their boxes; the switch stays in its.
+  - **CP-J7** (`js/build/campus.js`), 13 lines: racked and uplinked (in its box, no uplink, the wrong ports, a port shut); set up as
+    every switch (name, secret, console, SSH, management address, gateway); the VLAN on three switches; the trunks (not a trunk, still
+    negotiating, the native VLAN, the training or management VLAN left off a hop, the bundle between the distribution switches without
+    it); its spanning-tree root (left to the defaults, the 4F switch has the lowest address and wins; switch 2; no backup); its gateway
+    by standby, switch 1 active; the edge router's pool (none, the default router, DNS, nothing kept back); both relays; the desk ports
+    locked down as every desk here, the spares parked; the PCs online (no address, not in OSPF); the floor surviving switch 1 (on a
+    copy); everyone else working; saved (met at the start: a switch from its box has nothing unsaved). Worked from the console: your
+    laptop carried to the 4F closet, then back to the data room.
+  - **The drawings:** the logical diagram can't grow wider without shrinking every name (it scales to its column), so the access row is
+    four across the same width, staggered (1F and 3F up, 2F and 4F down), names to the right; the desks on two rows lower down; the
+    diagram taller (`-44 -26 1150 820`). Your laptop's spot moved up by the provider; carried to the 4F closet it has a spot beside the
+    new switch (`alt.c4`). The floor plan has a fourth band (`20 20 970 975`), and the 2F and 3F closets are wider (to 260), leaving the
+    4F switch's riser runs a corridor past the switches below. Every campus work order's drawings changed with it and were measured
+    again.
+  - **Found on the way:** a hint said "169.254", which the help check read as VLAN 254 on the campuses where that's the management
+    VLAN; it names the address type instead.
+  - **Faster, for every level** (a campus work order's reload replays every step; CP-J7's took 7.6 s, past the drive's 5 s limit):
+    - the links worked out once per computation that can't change them (`withEdges`), and spanning tree, standby and OSPF with them
+      (`scoped`); worked out again when a port is shut mid-pass (`edgesChanged`); the console's duplicate-address look once a session;
+    - a switch's VLAN settings fixed once per configuration (`fix` in `js/net/swcli.js`, a WeakSet; any of its four settings missing
+      again, as a test strips them in place, and it runs in full);
+    - within one pass a switch's view of its links (`switchLinks`) and a relay's way to its helper kept (`leased`), and dropped when a
+      lease changes (`dhcp`, `release`) or a port shuts.
+    - CP-J7 in Node: its start 2.2 s to 1.5 s, its 163 steps replayed 3.1 s to 1.4 s; the browser's reload 7.6 s to 2.7 s. The same
+      output and network after every step as before, on every office, business and campus work order, three seeds each (3,816 steps).
+  - **A dead link's diamond kept clear of other port names** (`DOT_GAP` in `js/desk/draw.js`): on a phone the diagram is drawn small,
+    and the edge router's shut link's diamond, touching "Gi0/2"'s plate, bled into the name's pixels (6.47:1, CP-J7 done on campus
+    4242: AAA caught it). Only the diamond keeps the 4-unit gap: the round dots sit as close on every level and measure clean. No
+    drawing on the home, office or business levels moved (240 compared, names and dots).
+  - **Checks before going live** (on the tree that went live): `npm test` 591 of 591; the full drive 7,061 checks (every level), then `ONLY=campus` 605 on the tree with the
+    diamond fix; AAA on painted pixels, all 28 campus and levels states, 101,772 text runs; every office, business and
+    campus work order replayed step by step against the code before the speed-up, the same output and network after every step;
+    `node tools/models.mjs` 202 of 202;
+    plants: CP-J7's 31 Node plants, the 11 on the code the speed-up touched (the relay, a far end shut, the standby address, SB-J6's
+    port security, re-aimed), the 3 on the speed-up's own guards (two missed until `tests/links-far.test.js` held the kept links to
+    a port shut or a lease changed mid-pass), the 12 campus page plants (three new for CP-J7), every one caught.
 
 ## Objectives
 

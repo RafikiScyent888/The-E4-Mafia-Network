@@ -2296,6 +2296,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
     }
   }
   const step = async (p, a) => {
+    if (a.t === "place") return place(p, a.dev, a.room);   /* the 4F access switch out of its box, your laptop carried upstairs (CP-J7): the Place form */
     if (a.t === "lay") return lay(p, a.a.dev, a.a.port, a.b.dev, a.b.port);
     if (a.t === "pull") { const i = await p.evaluate((id) => window.__e4b.T.sim.net.cables.findIndex((c) => c.id === id), a.cable); check(i >= 0, "the cable to pull, " + a.cable + ", is in the runs table"); await p.click("#runs tbody tr:nth-child(" + (i + 1) + ") button"); await p.waitForTimeout(40); return; }
     if (a.t === "cmd" && a.cli) { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== "tech") await dev(p, "tech"); if (!(await p.$('.win-tabs button[aria-selected="true"]:text-is("Serial terminal")'))) await tab(p, "Serial terminal"); return type(p, a.line); }
@@ -2311,7 +2312,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
       const plan = await BJ(p, () => window.__e4b.T.sim.net.plan);
       check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed && /Level 4 · Campus/.test(await p.$eval("#labtitle", (n) => n.textContent)), tag + "opens the job on the campus asked for, under Level 4 · Campus");
       const lim = await p.$eval(".limits", (n) => n.textContent);
-      check([plan.secret].concat(job === "CP-J4" ? [plan.console, plan.vlans.mgmt.gw] : job === "CP-J5" ? [plan.console, plan.sw.core1.host, plan.sw.core2.host] : job === "CP-J6" ? [plan.console, plan.sw.dist1.ip, plan.sw.dist2.ip] : [plan.user, plan.userPw]).every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the campus's records the job needs");
+      check([plan.secret].concat(job === "CP-J4" ? [plan.console, plan.vlans.mgmt.gw] : job === "CP-J5" ? [plan.console, plan.sw.core1.host, plan.sw.core2.host] : job === "CP-J6" ? [plan.console, plan.sw.dist1.ip, plan.sw.dist2.ip] : job === "CP-J7" ? [plan.console, plan.userPw, plan.sw.acc4.host, plan.sw.acc4.ip, plan.train.name] : [plan.user, plan.userPw]).every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the campus's records the job needs");
       await checkJob(p);
       check((await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do");
       const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
@@ -2352,6 +2353,15 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
         check(ids.every((V) => new RegExp("Vl" + V.id + "\\s+" + V.id + "\\s+110 P Active\\s+local\\s+" + V.gw.replace(/\.1$/, ".3").replace(/\./g, "\\.") + "\\s+" + V.gw.replace(/\./g, "\\.")).test(b1)), tag + "show standby brief on distribution switch 1: every VLAN's group Active, priority 110 with preempt, switch 2 standby, the gateway the virtual address");
         check(ids.every((V) => new RegExp("Vl" + V.id + "\\s+" + V.id + "\\s+100\\s+Standby").test(b2)), tag + "show standby brief on distribution switch 2: Standby in every group");
         await step(p, { t: "cmd", dev: "sd1", line: "ping " + plan.vlans.mgmt.gw }); check(new RegExp("Reply from " + plan.vlans.mgmt.gw.replace(/\./g, "\\.")).test(await term(p)), tag + "the management VLAN's gateway, a virtual address, answers a ping from the service desk");
+      }
+      if (job === "CP-J7") {   /* the new floor from its desks: an address in the training network, out through a distribution switch; the 4F switch over SSH */
+        const T = plan.train, b = plan.vlans.svc.net.split(".")[1];
+        await step(p, { t: "cmd", dev: "tr1", line: "ipconfig" }); check(re("10." + b + "." + T.id + ".").test(await term(p)), tag + "Training PC 1 has an address in the training network");
+        await step(p, { t: "cmd", dev: "tr1", line: "tracert -d 8.8.8.8" }); const tt = (await term(p)).split("tracert").pop();
+        check(re(T.gw).test(tt) && /10\.\d+\.255\.(17|21)\b/.test(tt) && /Trace complete/.test(tt), tag + "tracert from Training PC 1: its gateway, a core switch, out to the internet");
+        const o = await ssh(p, plan, plan.sw.acc4.ip, ["show interfaces trunk", "show port-security"]), tr = o.slice(o.lastIndexOf("show interfaces trunk"), o.lastIndexOf("show port-security")), ps = o.slice(o.lastIndexOf("show port-security"));
+        check(new RegExp("Gi0/23\\s+on \\(no DTP\\)\\s+802\\.1q\\s+trunking\\s+" + plan.vlans.native.id).test(tr) && new RegExp("Gi0/24\\s+on \\(no DTP\\)\\s+802\\.1q\\s+trunking").test(tr) && new RegExp("Gi0/23\\s+" + T.id + "," + plan.vlans.mgmt.id).test(tr), tag + "show interfaces trunk on the 4F access switch, over SSH: both uplinks trunking, the training VLAN allowed");
+        check(/Gi0\/1\s+1\s+1\s+0\s+Shutdown/.test(ps) && /Gi0\/2\s+1\s+1\s+0\s+Shutdown/.test(ps), tag + "show port-security on the 4F access switch: both desk ports secured, one device each, shut down on a violation");
       }
       if (job === "CP-J4" && seed === 11) {   /* the bars over a long title, easier reading's font in: the sticky columns sit under them (16 November 2026: their height was measured only at load) */
         await p.click("#dys"); await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(250);

@@ -151,8 +151,14 @@ The owner, 10 November 2026: "create a save point here." Where everything stands
   with the fibre a labelled stub at each end, on the floor plan its own band and the duct's route. With it, for every level: a pass of
   the links skipped after a command that changed nothing (every earlier work order replays the same, step by step), and the OSPF lines'
   new first cause, the link itself down. See the CP-J8 notes in "Level 4, the campus" below.
-- **Next, in the owner's order:** the rest of Level 4: jumbo frames and the central DHCP server (they need the rack server's model and a
-  Linux command line), then the 15 tickets; then Level 5 (Enterprise). The owner, 17 November 2026: "Please keep building it all out.
+- **Level 4, CP-J9, live 22 November 2026:** jumbo frames for the backup network: two Linux rack servers (the file server in the data room,
+  the backup server for the 2F closet), each with two ports, a backup VLAN of its own across four switches, `system mtu jumbo` saved and put
+  into effect by a reload, each server's backup port at 9000 in its netplan file, a 9000-byte ping that mustn't be cut up passing both
+  ways, and still passing with distribution switch 1 off. With it, for every level: a Linux command line on a server (its console, SSH from
+  a desk PC, sudo, `ip`, `ping`, `ethtool`, netplan, reboot), MTU and jumbo frames in the simulation (giants, a receiver's drops). The rack
+  server has no 3D model: it waits for the owner's photographs. See the CP-J9 notes in "Level 4, the campus" below.
+- **Next, in the owner's order:** the rest of Level 4: the central DHCP server (it needs a file editor on the server's command line), then
+  the 15 tickets; then Level 5 (Enterprise). The owner, 17 November 2026: "Please keep building it all out.
   We will come back and make changes once I go through it." 
 - **The container was rebuilt on 15 November 2026:** the worktrees were made again from the pushed branches, and the browser
   is now Chromium 1243 (`/opt/pw-browsers/chromium`): run the drive, AAA and models tools with `CHROME=/opt/pw-browsers/chromium`.
@@ -3898,6 +3904,73 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
     slots). Page plants: CP-J8's six (the block, the classroom PCs' buttons, the Annex's band, the duct's route, the switches'
     addresses: missed until the drive checked them, then caught; the duct along a wall, caught by the reworked wall rule) and the
     three re-aimed, all caught.
+- **CP-J9, jumbo frames for the backup network, built 22 November 2026 on `save/level4-jumbo`** (worktree `/home/user/e4-jmb`; the owner,
+  17 November 2026: "Please keep building it all out. We will come back and make changes once I go through it."; objectives read 22 November
+  2026, Network+ V9 unchanged: "Switching technologies: VLANs, interface configuration, spanning tree, MTU, and jumbo frames"; also
+  "Network services: DHCP" for the next one, and "Disaster recovery" for the backup on another floor). Built smaller first: CP-J9 before the
+  central DHCP server, which needs a file editor on the server too.
+  - **The rack servers** (`js/net/campus.js`): the file server (`fsrv`, `rit-files`) in the data room and the backup server (`bksrv`,
+    `rit-backup`) for the 2F closet, a copy kept on another floor (both `kind: "server"`, Linux). Each has two ports: `eno1` on the servers
+    VLAN (its gateway the VLAN's), `eno2` on the backup network (no gateway), every port MTU 1500 from the supplier; their netplan file in
+    `lx.netplan`. The backup network (`plan.backup`: `BACKUP_V` 80, 180, 238, named BACKUP, 10.b.V.0/24, not routed); the servers' records
+    (`plan.srv`: the user and password, each server's addresses, its switch and ports, 5 and 6 on the 1F and 2F access switches). Both in their
+    boxes from a stream of their own (seed ^ 0x5e4f), so every earlier part of the campus is drawn as before. CP-J9's start puts the file server
+    in (`fileServer`: out of its box, both cables in, the 1F switch's port 5 set up for it in the servers VLAN, logged in first: the switch is
+    locked by then).
+  - **The Linux command line** (`js/net/linux.js`, pure over the simulation; `tests/campus-jumbo.test.js`): the server's own console (its login
+    prompt, `Login incorrect`, the message of the day) or SSH from a desk PC (`ssh user@address` in `cmd.js`; three wrong passwords, `Permission
+    denied (publickey,password)`); bash's prompt; `sudo` asking once a session (`Sorry, try again.`, three tries), `sudo -i` and exit; `ip a`,
+    `ip -br a`, `ip link`, `ip -s link show eno2` (RX errors), `ip route` (`linkdown`), `ip link set dev eno2 mtu 9000` (root only:
+    `RTNETLINK answers: Operation not permitted`; 68 to 9216, the card's range); `ping` Linux's way (`-c`, `-s`, `-M do`, `-I`; without `-c` it's
+    stopped after four, `^C`; `local error: message too long, mtu=1500`, `Frag needed and DF set`, `Destination Host Unreachable`; a Windows PC's
+    firewall drops it); `ethtool`; `cat` and `ls` (the netplan file is root's only, as on Ubuntu 24.04); `netplan get`, `netplan set
+    ethernets.eno2.mtu=9000` (the file only), `netplan apply`; `reboot` (it comes back with its netplan file: what `ip link` alone set is gone;
+    over SSH, `closed by remote host`); a restart from the Physical tab the same. What it doesn't take (`ip addr add`, `ip link set ... down`) it
+    says so in plain words. `help` lists it all.
+  - **The simulation** (`js/net/sim.js`): a server's second port is a node of its own (`nodeOf`), never bridged to its first; its own address,
+    hardware address and link (`ifAddr`, `ifNode`, `ifFor`, `addrIn`, `macOf(id, ip)`); a packet leaves by the port on its destination's network.
+    **MTU and jumbo frames** (`sized`, which changes nothing): a packet over the sending port's MTU is cut up, or refused with the don't-fragment
+    bit; across layer 2 nothing can cut it, so the first switch whose MTU it's over drops it, counted as a giant on the port it came in by
+    (`giant`, `giantsAt`; the ping counts them, the check never does), and a receiver whose MTU it's over drops it too (RX errors); the echo comes
+    back the same size and has to fit the same way back; a gateway with the don't-fragment bit says it needs fragmenting.
+  - **The switches** (`js/net/swcli.js`, both models): `system mtu jumbo <1500-9198>` with the real message ("will not take effect until the
+    next reload"), `no system mtu jumbo`, in the running configuration and saved like the rest (`jumbo`); in effect from the next reload
+    (`jumboRun`; a reload or a power cut starts it from what was saved); `show system mtu` (with "On next reload" while it waits); `show
+    interfaces` gives the MTU in effect and its giants.
+  - **CP-J9** (`js/build/campus.js`), 14 lines: the backup server racked and cabled (in its box, a port with no cable, on the wrong port); the
+    backup VLAN on all four switches it crosses, named; the trunks it crosses carrying it, both ends, and the bundle; its spanning-tree root
+    distribution switch 1, switch 2 next (left to the defaults the 2F access switch's lower address wins); the servers' four switch ports (shut,
+    the wrong VLAN, not an edge port with BPDU guard, described); the backup server on the servers network; the two servers reaching each other
+    on the backup network; every switch on the way passing jumbo frames, in effect now (none set, set below 9000, set but waiting for a reload);
+    each server's eno2 at 9000 and its eno1 left at 1500; a 9000-byte packet both ways without being cut up (what `ping -M do -s 8972` shows:
+    refused at the sender, dropped at a switch, dropped at the receiver); kept over a restart (each server's netplan file, each switch's saved
+    configuration); still running, jumbo and all, with distribution switch 1 off (on a copy); everyone else working; the four switches saved.
+    The records give the switches' passwords and the servers' login. Worked from the console in the data room and the 2F closet, each switch
+    saved then reloaded in the maintenance window; then each server's own console.
+  - **The page:** a server has a Console tab (the rack's keyboard and screen: every line goes to it, an empty one too) and a Physical tab
+    listing its cables, saying its 3D model waits for photographs of a real one (`noModel`): **the rack server's model needs the owner's
+    photographs**, asked for on 15 November 2026. **The drawings:** on the logical diagram each server straight below its access switch on a
+    row of its own, the 1F and 2F desks stepping aside for their lanes once the file server is in (`srv` in `CAMPUS_LAYOUT`); on the floor plan
+    the data room drawn wider (taking room the service desk had spare, its three devices moved along) and the 2F closet wider, the file server
+    beside the 1F access switch, the backup server beside the 2F one (`campusBox`, `srvIn`); your laptop, carried there, takes the
+    closet's first clear place (a spot of its own beside the backup server was tried and dropped: with the closet wider it changed nothing
+    any check could see).
+    Every earlier campus work order's two drawings are the same markup as on `main` (96 compared: eight work orders, three campuses, start and
+    done, both fonts).
+  - **Known, not fixed:** part way through a work order, with your laptop on a distribution switch's console, its CONSOLE label can touch that
+    switch's name on the logical diagram. CP-J7's drawings on `main` do the same; only the start and the finish are held to the drawing rule.
+    CP-J9's own part way (your laptop on the 2F switch's console) is held to it: the drive measures the floor plan there, in both fonts.
+  - **Checks, on its tree:** `npm test` 603 of 603 (`tests/campus-jumbo.test.js` 7: the console and sudo, `ip`, netplan and a reboot, two
+    nodes a server, giants and a receiver's drops, the switches' jumbo MTU on both models, SSH to a server; in `tests/campus-jobs.test.js`
+    CP-J9's 22 tempting wrong ways each failing its own line for its own cause, and its other right ways); the CP-J9 drive 64 and its
+    drawings on six campuses 36; the full drive 7,278 (run alone: run beside the contrast sweep, SB-J5 stopped on a
+    click that timed out, and passed on its own); the models 202; AAA on the 36 campus and levels states (5 new), 150,989 text runs;
+    every earlier campus work order's two drawings the same markup as `main`'s (96, eight work orders, three campuses, start and done, both
+    fonts; the comparison shown to fail with the wider rooms planted on a campus still without its file server: 24 of 24 different).
+    Plants, all caught: Node 13 on the engine (jumbo, servers, Linux) and 31 on CP-J9's causes; page 7 (the servers without buttons, a
+    server without its Console tab, the servers off the logical diagram, the Physical tab silent about the model, the 2F closet and the data
+    room not widened, the desks not stepping aside). The full unit run caught a hint saying "20 of IP header" on a campus with a VLAN 20
+    (the rule: no hint names a VLAN's number): rung 2 now says it in words.
 
 ## Objectives
 

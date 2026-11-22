@@ -8,7 +8,7 @@ import { portName as printedPort, SFP_MODULES } from "./sim.js";
 const STILL = { pc: "pc", laptop: "laptop", intruder: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc", bpc: "pc", sd1: "pc", hd1: "pc", bn1: "pc", bn2: "pc", fin: "pc", pr1: "printer", pr3: "printer" };   /* the business's back PC (the treatment room's, the kitchen's) too; the office's back office (SO-04) and the manager's PC (SO-08): the same housings */
 
 export function tabsFor(sim, id) {
-  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" || k === "brouter" || k === "techlaptop" || k === "patchpanel" || k === "jack" || k === "bap" || k === "dcam" || k === "cabinet" ? [["physical", "Physical"]] : [];   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
+  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" || k === "brouter" || k === "techlaptop" || k === "patchpanel" || k === "jack" || k === "bap" || k === "dcam" || k === "cabinet" || k === "server" ? [["physical", "Physical"]] : [];   /* a rack server (work order 9): its ports and cables, its 3D model to come */   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
   const T = {
     pc: [["cmd", "Command Prompt"], ["settings", "Network settings"], ["printers", "Printers"], ["browser", "Web browser"]],   /* a business PC's browser: how the ceiling access point's page is reached */
     laptop: [["cmd", "Command Prompt"], ["wifi", "Wi-Fi"]],
@@ -24,7 +24,8 @@ export function tabsFor(sim, id) {
     tv: [["net", "Network status"]],
     mesh: [["status", "Status"]],
     phone: sim.d[id].cell ? [["wifi", "Wi-Fi"], ["browser", "Web browser"]] : [["wifi", "Wi-Fi"]],   /* the manager's own phone (SB-J5): on mobile data, with a browser */
-    isp: [["about", "About"]]
+    isp: [["about", "About"]],
+    server: [["cmd", "Console"]]   /* a rack server's own console, on the rack's keyboard and screen (work order 9) */
   }[k] || [];
   return T.filter(function (t) { return (t[0] !== "printers" || !!sim.d[id].printer) && (t[0] !== "browser" || sim.net.site === "business"); }).concat(P).map(function (t) { return { key: t[0], title: t[1] }; });
 }
@@ -159,7 +160,7 @@ export function page(sim, id, key, opts) {
     }
     const inj = x.kind === "injector" ? { power: !!x.power, std: x.std, swap: !sim.net.extra.build } : null;   /* in a build house the right injector comes out of the van, not a swap */
     const free = x.kind === "patchpanel" ? Array.from({ length: 24 }, function (_, i) { return String(i + 1); }).filter(function (p) { return !sim.cableAt(id, p); }) : null;   /* front ports a cord can move to */
-    return { kind: "physical", still: STILL[id] ? "assets/stills/" + STILL[id] + ".jpg" : null, label: x.label, cables: cables, restart: x.kind !== "injector" && x.kind !== "patchpanel" && x.kind !== "jack", injector: inj, probe: x.kind === "patchpanel", freePorts: free,
+    return { kind: "physical", still: STILL[id] ? "assets/stills/" + STILL[id] + ".jpg" : null, label: x.label, cables: cables, noModel: x.kind === "server" ? "This rack server's 3D model is still to be built: it waits for photographs of a real one. Its two network ports, port 1 (eno1) and port 2 (eno2), are on its back; their cables are listed here." : null, restart: x.kind !== "injector" && x.kind !== "patchpanel" && x.kind !== "jack", injector: inj, probe: x.kind === "patchpanel", freePorts: free,
       /* each SFP slot with a module, and the modules from the van; in build mode an empty slot too, and the van carries a 10 Gb/s SFP+ module as well (SO-J10) */
       sfp: x.kind === "mswitch" ? Object.keys(x.sfp || {}).filter(function (k) { return x.sfp[k] || sim.net.extra.build; }).map(function (k) { return { slot: k, type: x.sfp[k] || null, label: x.sfp[k] ? SFP_MODULES[x.sfp[k]].label : "empty, no module in it", swaps: (sim.net.extra.build ? ["1000BASE-SX", "1000BASE-LX", "10GBASE-SR"] : ["1000BASE-SX", "1000BASE-LX"]).filter(function (t) { return t !== x.sfp[k]; }) }; }) : null,
       facts: { page: id + "-physical", rogue: id === "rogue", injector: inj, camera: id === "camera" ? sim.on("camera") : undefined } };

@@ -23,7 +23,7 @@ import { cableMap } from "../desk/cablemapui.js";
 const KEY = "e4-build-v1";
 const ALL = JOBS.concat(OFFICE_JOBS, BUSINESS_JOBS, CAMPUS_JOBS);   /* every level's work orders */
 const DEFS = {}; ALL.forEach(function (d) { DEFS[d.id] = d; });
-const ORDER = ["modem", "router", "rtr", "switch", "pp", "msw", "bsw", "cab", "pc", "mgr", "bpc", "dpc1", "dpc2", "hire", "printer", "mpc", "ojack", "mjack", "tv", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "cinj1", "cam1", "cinj2", "cam2", "mphone", "edge", "core1", "core2", "dist1", "dist2", "acc1", "acc2", "acc3", "acc4", "sd1", "hd1", "pr1", "bn1", "bn2", "fin", "pr3", "tr1", "tr2", "anxc", "anxa", "cl1", "cl2", "tech"];   /* the campus's after the business's */
+const ORDER = ["modem", "router", "rtr", "switch", "pp", "msw", "bsw", "cab", "pc", "mgr", "bpc", "dpc1", "dpc2", "hire", "printer", "mpc", "ojack", "mjack", "tv", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "cinj1", "cam1", "cinj2", "cam2", "mphone", "edge", "core1", "core2", "dist1", "dist2", "acc1", "acc2", "acc3", "acc4", "sd1", "hd1", "pr1", "bn1", "bn2", "fin", "pr3", "tr1", "tr2", "anxc", "anxa", "cl1", "cl2", "fsrv", "bksrv", "tech"];   /* the campus's after the business's */
 const ROOM_ORDER = ["living", "office", "kitchen", "garage", "upstairs", "landing", "porch"];
 /* the site's own rooms, names and fixed places: a house, the small office or the small business */
 const roomsOf = function (sim) { return sim.net.roomNames ? Object.keys(sim.net.roomNames) : ROOM_ORDER; };

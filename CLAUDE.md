@@ -141,10 +141,15 @@ The owner, 10 November 2026: "create a save point here." Where everything stands
   router, the statics and the old link retired) and CP-J6 (distribution switch 2 joins, every gateway shared by standby). With them,
   for every level: a switch port facing a shut port now says notconnect; port security works the links out once a pass (a campus
   work order opens in about a second, not five). See the CP-J5 and CP-J6 notes in "Level 4, the campus" below.
-- **Next, in the owner's order:** the rest of Level 4 (re-sized by the owner's rule: a new floor end to end and the Training Annex
-  first, needing nothing new from the engine; then jumbo frames and the central DHCP server, which need the rack server's model and
-  a Linux command line; then the 15 tickets), then Level 5 (Enterprise); each new piece has its objectives shown and its details
-  talked out before it's built.
+- **Level 4, CP-J7, live 22 November 2026:** a new floor end to end (the fourth floor's training room: its access switch from the box,
+  its VLAN on three switches and the bundle, its spanning-tree root, its gateway by standby, the edge router's pool and both relays, the
+  desks locked down, the floor surviving distribution switch 1). With it, for every level: a work order's reload about twice as fast
+  (each switch's VLAN settings fixed once, its links and a relay's way to its helper kept for a pass), and a dead link's diamond kept
+  clear of other port names (on a phone it bled into "Gi0/2", 6.47:1). See the CP-J7 notes in "Level 4, the campus" below.
+- **Next, in the owner's order:** the rest of Level 4: the Training Annex (CP-J8, built on `save/level4-annex`, worktree
+  `/home/user/e4-anx`, its checks running), then jumbo frames and the central DHCP server (they need the rack server's model and a
+  Linux command line), then the 15 tickets; then Level 5 (Enterprise). The owner, 17 November 2026: "Please keep building it all out.
+  We will come back and make changes once I go through it." 
 - **The container was rebuilt on 15 November 2026:** the worktrees were made again from the pushed branches, and the browser
   is now Chromium 1243 (`/opt/pw-browsers/chromium`): run the drive, AAA and models tools with `CHROME=/opt/pw-browsers/chromium`.
 - **SB-14 and SB-15 are built** on `save/level3-sb14` and `save/level3-sb15` (worktrees `/home/user/e4-sb14`, `/home/user/e4-sb15`;
@@ -3824,8 +3829,18 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
       lease changes (`dhcp`, `release`) or a port shuts.
     - CP-J7 in Node: its start 2.2 s to 1.5 s, its 163 steps replayed 3.1 s to 1.4 s; the browser's reload 7.6 s to 2.7 s. The same
       output and network after every step as before, on every office, business and campus work order, three seeds each (3,816 steps).
-  - **Checks so far:** CP-J7's wrong ways (25) and other right ways; its walk-through meets every line; `ONLY=campus JOB=CP-J7` 60
-    checks (three campuses, the reload inside the limit).
+  - **A dead link's diamond kept clear of other port names** (`DOT_GAP` in `js/desk/draw.js`): on a phone the diagram is drawn small,
+    and the edge router's shut link's diamond, touching "Gi0/2"'s plate, bled into the name's pixels (6.47:1, CP-J7 done on campus
+    4242: AAA caught it). Only the diamond keeps the 4-unit gap: the round dots sit as close on every level and measure clean. No
+    drawing on the home, office or business levels moved (240 compared, names and dots).
+  - **Checks before going live** (on the tree that went live): `npm test` 589 of 589 (the unit suite on the sped-up code; the two
+    kept-links tests added after it pass); the full drive 7,061 checks (every level), then `ONLY=campus` 605 on the tree with the
+    diamond fix; AAA on painted pixels, all 28 campus and levels states, 101,772 text runs; every office, business and
+    campus work order replayed step by step against the code before the speed-up, the same output and network after every step;
+    `node tools/models.mjs` 202 of 202;
+    plants: CP-J7's 31 Node plants, the 11 on the code the speed-up touched (the relay, a far end shut, the standby address, SB-J6's
+    port security, re-aimed), the 3 on the speed-up's own guards (two missed until `tests/links-far.test.js` held the kept links to
+    a port shut or a lease changed mid-pass), the 12 campus page plants (three new for CP-J7), every one caught.
 
 ## Objectives
 

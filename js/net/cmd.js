@@ -3,6 +3,7 @@
    exec() records the command as an action first, so a saved ticket replays
    exactly (renew and release change state; pings draw from the same random
    source on replay). */
+import * as LX from "./linux.js";
 import { isIp, isApipa, isLoopback, sameSubnet, hash, pad, lpad } from "./util.js";
 import * as SW from "./swcli.js";
 import * as RT from "./rtcli.js";
@@ -25,7 +26,7 @@ export const HELP = [
   ["netsh interface ipv4 set address name=\"Ethernet\" static <address> <mask> [gateway]", "give the wired adapter a fixed address by hand (source=dhcp to go back to automatic)"],
   ["getmac", "show this computer's hardware address"],
   ["hostname", "show this computer's name"],
-  ["ssh <user>@<address>", "log in to a switch's command line over the network (SSH, encrypted)"],
+  ["ssh <user>@<address>", "log in to a switch's, router's or server's command line over the network (SSH, encrypted)"],
   ["ssh-keygen -R <address>", "forget a host's remembered SSH key (its line in known_hosts)"],
   ["telnet <address>", "log in to a switch's command line with Telnet (not encrypted)"],
   ["dir <folder>", "list the files in a folder (your laptop: dir C:\\TFTP-Root)"],
@@ -71,8 +72,10 @@ const keyOf = function (id, win) { return win ? id + "/win" : id; };
    on its console cable, or a computer's SSH or Telnet session), or the question it's waiting for (a password) */
 export function prompt(sim, id, win) {
   const x = sim.d[id], st = sim.cli && sim.cli[keyOf(id, win)];
+  if (x.kind === "server" && !win) return LX.lxPrompt(sim, id, st && st.lx);   /* a server's own console (work order 9): its login prompt, then bash's */
   if (x.kind === "techlaptop" && !win) return st && consoleTarget(sim, id) === st.sw ? (st.prompt != null ? st.prompt : SW.promptOf(st.S)) : "";
   if (st && st.auth) return st.ask;
+  if (st && st.lx) return LX.lxPrompt(sim, st.lxDev, st.lx);   /* logged in to a server over SSH */
   if (st && st.S) return st.prompt != null ? st.prompt : SW.promptOf(st.S);
   return "C:\\Users\\" + (x.user || "user") + ">";
 }
@@ -84,7 +87,7 @@ export function cliSession(sim, id, win) {
   return st.S;
 }
 /* whether the next thing typed in a terminal is a password (not shown as it's typed) */
-export function secretNext(sim, id, win) { const st = sim.cli && sim.cli[keyOf(id, win)]; return !!(st && (st.auth && st.auth.secret || st.S && (st.S.mode === "login" || (st.S.pending && /^(enable|login)$/.test(st.S.pending.kind))))); }
+export function secretNext(sim, id, win) { const st = sim.cli && sim.cli[keyOf(id, win)]; return !!(st && (st.auth && st.auth.secret || (st.lx && LX.lxSecret(st.lx)) || st.S && (st.S.mode === "login" || (st.S.pending && /^(enable|login)$/.test(st.S.pending.kind))))); }
 
 /* what a pass of the links reads that a command can change: every switch's and router's configuration (not its links, its uptime or its
    saved copy), every device's interfaces (its address, its lease), and each console's mode (a DHCP pool still being typed holds back
@@ -106,7 +109,7 @@ export function exec(sim, id, line, win) {
   sim.apply(win ? { t: "cmd", dev: id, line: line, win: true } : { t: "cmd", dev: id, line: line });
   const x = sim.d[id], raw = String(line == null ? "" : line), k = keyOf(id, win), before = sim.links(), v0 = sim.ver || 0, p0 = netPrint(sim);
   const st = sim.cli && sim.cli[k];
-  const r = x.kind === "techlaptop" && !win ? serial(sim, id, raw) : st && (st.auth || st.S) ? remote(sim, id, raw, k) : run(sim, id, raw.trim(), k);
+  const r = x.kind === "server" && !win ? lxConsole(sim, id, raw) : x.kind === "techlaptop" && !win ? serial(sim, id, raw) : st && (st.auth || st.S || st.lx) ? remote(sim, id, raw, k) : run(sim, id, raw.trim(), k);
   if (sim.bump && ((sim.ver || 0) !== v0 || netPrint(sim) !== p0)) sim.bump();   /* the line changed something the links read: the pass runs */
   if (sim.relinkIfChanged) sim.relinkIfChanged(before); else sim.relink(before);   /* a switch port brought up (or shut) by that line: whatever is cabled to it gets its link, and asks for an address */
   return r;
@@ -187,7 +190,36 @@ function serial(sim, id, raw) {
   const tl = sim.d[tgt].kind === "mswitch" ? trunkLog(sim, tgt) : [], tk = tl.join("|"); if (tl.length && st.dtp !== tk) { st.dtp = tk; r.out = r.out.concat(tl); }   /* a port that became a trunk with a device that asked (SB-15): once a session */
   return { out: lines(r.out), facts: { cmd: "serial", dev: id, on: tgt, connected: true, mode: st.S.mode, line: raw.trim(), out: r.out.join("\n"), asked: !!r.secret }, secret: !!r.secret, cli: true, keep: r.keep };   /* asked: the switch is asking for a password next */
 }
+/* a server's own console (work order 9): its keyboard and screen in the rack. Every line goes to it, an empty one too */
+function lxConsole(sim, id, raw) {
+  sim.cli = sim.cli || {};
+  const st = sim.cli[id] || (sim.cli[id] = { lxDev: id, via: "console", lx: LX.lxStart("console") });
+  if (!sim.on(id)) return { out: "(The server's screen is dark: it's off.)\n", facts: { cmd: "console", dev: id, on: false }, cli: true };
+  const r = LX.lxExec(sim, id, st.lx, raw);
+  return { out: r.clear ? "" : lines(r.out), clear: !!r.clear, facts: Object.assign({ cmd: "console", dev: id, on: id, line: String(raw).trim(), out: r.out.join("\n") }, r.facts || {}, { console: true }), secret: !!r.secret, cli: true };
+}
+/* logged in to a server over SSH (work order 9): its password, then bash */
+function lxRemote(sim, id, raw, k) {
+  const st = sim.cli[k], x = sim.d[st.lxDev];
+  if (st.auth) {
+    const A = st.auth;
+    if ((x.lx.users || {})[A.user] === raw) {
+      st.auth = null; st.ask = null; st.lx = LX.lxStart("ssh", A.user); x.lastFrom = (sim.addr(id) || {}).ip;
+      return { out: lines(LX.motd(sim, st.lxDev)), facts: { cmd: "ssh", dev: id, login: true, host: st.host, user: A.user, on: st.lxDev }, cli: true };
+    }
+    A.tries++;
+    if (A.tries >= 3) { delete sim.cli[k]; return { out: A.user + "@" + st.host + ": Permission denied (publickey,password).\n", facts: { cmd: "ssh", dev: id, login: false, denied: true, user: A.user } }; }
+    return { out: "Permission denied, please try again.\n", facts: { cmd: "ssh", dev: id, denied: true, user: A.user }, secret: true, cli: true };
+  }
+  const rt = sim.on(st.lxDev) ? sim.route(id, st.host) : null;   /* the server gone, or the way to it: the session drops */
+  if (!rt || !(rt.local || rt.routed)) { delete sim.cli[k]; return { out: "client_loop: send disconnect: Connection reset\n", facts: { cmd: "ssh", dev: id, closed: true } }; }
+  const r = LX.lxExec(sim, st.lxDev, st.lx, raw);
+  const facts = Object.assign({ cmd: "ssh", dev: id, on: st.lxDev, line: String(raw).trim(), out: r.out.join("\n") }, r.facts || {});
+  if (r.closed) { delete sim.cli[k]; return { out: lines(r.out) + (r.closedBy === "remote" ? "Connection to " + st.host + " closed by remote host.\n" : "") + "Connection to " + st.host + " closed.\n", facts: Object.assign(facts, { closed: true }) }; }
+  return { out: r.clear ? "" : lines(r.out), clear: !!r.clear, facts: facts, secret: !!r.secret, cli: true };
+}
 function remote(sim, id, raw, k) {
+  if (sim.cli[k].lxDev) return lxRemote(sim, id, raw, k);
   const st = sim.cli[k], sw = sim.d[st.sw];
   if (st.auth) {   /* the password (or user name) the remote end asked for */
     const A = st.auth;
@@ -269,6 +301,10 @@ function ssh(sim, id, args, k) {
   if (rt.fail === "no-link" || rt.fail === "no-route") return { out: "ssh: connect to host " + host + " port 22: Network is unreachable\n", facts: Object.assign(facts, { ok: false, why: "unreachable" }) };
   if (rt.fail || !(rt.local || rt.routed)) return { out: "ssh: connect to host " + host + " port 22: Connection timed out\n", facts: Object.assign(facts, { ok: false, why: "timeout" }) };
   const who = rt.local ? sim.turn(id, host, rt.owner) : rt.owner[0], x = sim.d[who];   /* two devices on one address take turns (on this computer's own network: across the router, the router's ARP decides) */
+  if (x.kind === "server") {   /* a rack server (work order 9): OpenSSH on it, a password login */
+    sim.cli = sim.cli || {}; sim.cli[k || id] = { lxDev: who, via: "ssh", host: host, auth: { step: "pass", user: user, tries: 0, secret: true }, ask: user + "@" + host + "'s password: " };
+    return { out: "", facts: Object.assign(facts, { ok: true, asked: true, server: true }), secret: true, cli: true };
+  }
   if (x.kind !== "mswitch" && x.kind !== "brouter") return { out: x.kind === "pc" || x.kind === "laptop" ? "ssh: connect to host " + host + " port 22: Connection timed out\n" : "ssh: connect to host " + host + " port 22: Connection refused\n", facts: Object.assign(facts, { ok: false, why: "no-ssh" }) };
   const v = x.sw.vty;
   if (!x.sw.rsa || !/^(ssh|all)$/.test(v.transport)) return { out: "ssh: connect to host " + host + " port 22: Connection refused\n", facts: Object.assign(facts, { ok: false, why: "refused" }) };

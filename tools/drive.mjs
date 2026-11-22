@@ -2302,6 +2302,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
     if (a.t === "place") return place(p, a.dev, a.room);   /* the 4F access switch out of its box, your laptop carried upstairs (CP-J7): the Place form */
     if (a.t === "lay") return lay(p, a.a.dev, a.a.port, a.b.dev, a.b.port);
     if (a.t === "sfp") { await dev(p, a.dev); await tab(p, "Physical"); await p.click('.acts:has-text("' + a.slot + ':") button:has-text("in a ' + a.type + ' module")'); await p.waitForTimeout(80); return; }   /* a module from the van, on the switch's Physical tab (CP-J8) */
+    if (a.t === "cmd" && a.cli && (a.dev === "fsrv" || a.dev === "bksrv")) { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== a.dev) { await dev(p, a.dev); await tab(p, "Console"); } return type(p, a.line); }   /* a rack server's own console (CP-J9) */
     if (a.t === "pull") { const i = await p.evaluate((id) => window.__e4b.T.sim.net.cables.findIndex((c) => c.id === id), a.cable); check(i >= 0, "the cable to pull, " + a.cable + ", is in the runs table"); await p.click("#runs tbody tr:nth-child(" + (i + 1) + ") button"); await p.waitForTimeout(40); return; }
     if (a.t === "cmd" && a.cli) { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== "tech") await dev(p, "tech"); if (!(await p.$('.win-tabs button[aria-selected="true"]:text-is("Serial terminal")'))) await tab(p, "Serial terminal"); return type(p, a.line); }
     if (a.t === "cmd") { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== a.dev) { await dev(p, a.dev); await tab(p, "Command Prompt"); } return type(p, a.line); }
@@ -2316,11 +2317,17 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
       const plan = await BJ(p, () => window.__e4b.T.sim.net.plan);
       check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed && /Level 4 · Campus/.test(await p.$eval("#labtitle", (n) => n.textContent)), tag + "opens the job on the campus asked for, under Level 4 · Campus");
       const lim = await p.$eval(".limits", (n) => n.textContent);
-      check([plan.secret].concat(job === "CP-J4" ? [plan.console, plan.vlans.mgmt.gw] : job === "CP-J5" ? [plan.console, plan.sw.core1.host, plan.sw.core2.host] : job === "CP-J6" ? [plan.console, plan.sw.dist1.ip, plan.sw.dist2.ip] : job === "CP-J7" ? [plan.console, plan.userPw, plan.sw.acc4.host, plan.sw.acc4.ip, plan.train.name] : job === "CP-J8" ? [plan.console, plan.userPw, plan.annex.core.host, plan.annex.acc.host, plan.annex.acc.ip, plan.annex.link.hqIp, plan.annex.link.anxIp, plan.annex.cls.gw, plan.annex.cls.name] : [plan.user, plan.userPw]).every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the campus's records the job needs");
+      check([plan.secret].concat(job === "CP-J4" ? [plan.console, plan.vlans.mgmt.gw] : job === "CP-J5" ? [plan.console, plan.sw.core1.host, plan.sw.core2.host] : job === "CP-J6" ? [plan.console, plan.sw.dist1.ip, plan.sw.dist2.ip] : job === "CP-J7" ? [plan.console, plan.userPw, plan.sw.acc4.host, plan.sw.acc4.ip, plan.train.name] : job === "CP-J8" ? [plan.console, plan.userPw, plan.annex.core.host, plan.annex.acc.host, plan.annex.acc.ip, plan.annex.link.hqIp, plan.annex.link.anxIp, plan.annex.cls.gw, plan.annex.cls.name] : job === "CP-J9" ? [plan.console, plan.srv.user, plan.srv.pw, plan.srv.bksrv.host, plan.srv.bksrv.ip, plan.srv.bksrv.bip, plan.srv.fsrv.bip, plan.backup.name, "BKSRV-BACKUP", "8972"] : [plan.user, plan.userPw]).every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the campus's records the job needs");
       await checkJob(p);
       check((await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do");
       const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
-      for (const a of sol) await step(p, a);
+      for (const a of sol) {
+        await step(p, a);
+        if (job === "CP-J9" && a.t === "lay" && a.b.dev === "acc2" && a.b.port === "CONSOLE") {   /* part way: your laptop carried to the 2F closet, on the 2F switch's console, the floor plan clear */
+          await p.click("#vPhy"); await p.waitForTimeout(60); const mp = await labelsClear(p, "plan"); check(mp.n > 0 && !mp.out.length, tag + "part way, your laptop in the 2F closet: the floor plan's names clear" + (mp.out.length ? " (" + mp.out.join("; ") + ")" : ""));
+          await planBothFonts(p, tag + "part way, your laptop in the 2F closet");
+        }
+      }
       check(!/% Invalid|% Incomplete|% Ambiguous|Permission denied|Connection refused/.test(await term(p)), tag + "no line was refused");
       const t = await checkJob(p), n = await BJ(p, () => window.__e4b.T.def.reqs.length);
       check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
@@ -2385,6 +2392,21 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
         const rooms = await p.evaluate(() => [...document.querySelectorAll("#plan text.rl")].map((t) => t.textContent)), duct = await p.evaluate(() => [...document.querySelectorAll("#plan path.run-fib")].map((x) => x.getAttribute("d")).join(" | "));
         check(rooms.indexOf("ANNEX COMMS ROOM") >= 0 && rooms.indexOf("CLASSROOM (ANNEX)") >= 0 && rooms.some((r) => /THE TRAINING ANNEX/.test(r)), tag + "the floor plan: the Annex's band under the main building, its two rooms and its caption");
         check(/L 215 \d+ L 215 975 L 370 975 /.test(duct), tag + "the floor plan: the fibre down the riser and out through the duct, as the installers pulled it (" + duct.slice(0, 80) + ")");
+      }
+      if (job === "CP-J9") {   /* the backup network from the servers: over SSH from the service desk to the backup server, its MTU and a big ping that mustn't be cut up; the jumbo MTU on distribution switch 2; the servers on both drawings, the rack server's Physical tab */
+        const S = plan.srv, sv = async (lines) => { for (const l of ["ssh " + S.user + "@" + S.bksrv.ip, S.pw].concat(lines)) await step(p, { t: "cmd", dev: "sd1", line: l }); const out = await term(p); await step(p, { t: "cmd", dev: "sd1", line: "exit" }); return out; };
+        const o = await sv(["ip link show eno2", "ping -M do -s 8972 -c 3 " + S.fsrv.bip]), lk = o.slice(o.lastIndexOf("ip link show eno2")), pg = o.slice(o.lastIndexOf("ping -M do"));
+        check(/eno2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9000/.test(lk), tag + "ip link show eno2 on the backup server, over SSH from the service desk: up, MTU 9000");
+        check(/8972\(9000\) bytes of data/.test(pg) && /8980 bytes from/.test(pg) && /3 packets transmitted, 3 received, 0% packet loss/.test(pg), tag + "ping -M do -s 8972 from the backup server to the file server's backup address: every one back, whole");
+        const o2 = await ssh(p, plan, plan.sw.dist2.ip, ["show system mtu", "show interfaces gi0/" + plan.up.acc2]), sm = o2.slice(o2.lastIndexOf("show system mtu"));
+        check(/System Jumbo MTU size is 9000 bytes/.test(sm) && !/On next reload/.test(sm.split("show interfaces")[0]) && /MTU 9000 bytes/.test(sm), tag + "show system mtu on distribution switch 2, over SSH: the jumbo MTU 9000 in effect, nothing waiting; its port to the 2F switch at MTU 9000");
+        await p.click("#vLog"); await p.waitForTimeout(80);
+        const subs = await p.evaluate(() => [...document.querySelectorAll("#net text.ns")].map((t) => t.textContent)), names = await p.evaluate(() => [...document.querySelectorAll("#net text.nl")].map((t) => t.textContent));
+        check(names.indexOf("File server") >= 0 && names.indexOf("Backup server") >= 0 && subs.indexOf(S.fsrv.ip) >= 0 && subs.indexOf(S.bksrv.ip) >= 0, tag + "the logical diagram: both servers, each under its address");
+        await p.click("#vPhy"); await p.waitForTimeout(80);
+        const pnames = await p.evaluate(() => [...document.querySelectorAll("#plan text")].map((t) => t.textContent));
+        check(pnames.indexOf("File server") >= 0 && pnames.indexOf("Backup server") >= 0, tag + "the floor plan: the file server in the data room, the backup server in the 2F closet");
+        if (seed === 11) { await dev(p, "bksrv"); await tab(p, "Physical"); await p.waitForTimeout(200); const pt = await p.$eval(".win-body", (n) => n.textContent); check(/3D model is still to be built: it waits for photographs/.test(pt) && /port 2 \(eno2\)/.test(pt), tag + "the backup server's Physical tab: its cables, and its 3D model waiting for photographs, said so"); }
       }
       if (job === "CP-J4" && seed === 11) {   /* the bars over a long title, easier reading's font in: the sticky columns sit under them (16 November 2026: their height was measured only at load) */
         await p.click("#dys"); await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(250);

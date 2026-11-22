@@ -116,12 +116,15 @@ const planRunsClear = (p) => p.evaluate(() => {
   const rooms = [...svg.querySelectorAll("text.rl")].map((t) => { const pl = t.previousElementSibling && t.previousElementSibling.classList.contains("lpbg") ? t.previousElementSibling : t; return { t, b: box(pl) }; });
   svg.querySelectorAll("path[data-ends]").forEach((pa) => {
     runs++; const ends = pa.dataset.ends.split(" "), L = pa.getTotalLength(), M = pa.getScreenCTM(), k = Math.hypot(M.a, M.b), hit = new Set();
-    let along = 0;
     for (let s = 0; s <= 80; s++) { const d = L * s / 80, q = pa.getPointAtLength(d), pt = new DOMPoint(q.x, q.y).matrixTransform(M);
       TB.forEach((o) => { if (ends.indexOf(o.d) < 0 && inside(pt, o.b)) hit.add(o.d + "'s tile"); });
       NB.forEach((o) => { if (o.d && ends.indexOf(o.d) < 0 && inside(pt, o.b)) hit.add('"' + o.t.textContent + '"'); });
-      rooms.forEach((o) => { if (inside(pt, o.b)) hit.add("the room name \"" + o.t.textContent + '"'); });
-      if (d > 30 && d < L - 30 && walls.some((w) => (w.v ? Math.abs(pt.x - w.at) < 4 * k && pt.y > w.a && pt.y < w.z : Math.abs(pt.y - w.at) < 4 * k && pt.x > w.a && pt.x < w.z))) along += L / 80; }
+      rooms.forEach((o) => { if (inside(pt, o.b)) hit.add("the room name \"" + o.t.textContent + '"'); }); }
+    /* the longest stretch beside a wall, sampled every 4 units (18 November 2026): it was every sample near any wall added up, 80 samples
+       whatever the run's length, so the Annex's 1,600-unit duct counted every floor it crossed as 20 units along a wall (108 in all) */
+    let along = 0, cur = 0; const N = Math.max(80, Math.ceil(L / 4));
+    for (let s = 0; s <= N; s++) { const d = L * s / N, q = pa.getPointAtLength(d), pt = new DOMPoint(q.x, q.y).matrixTransform(M);
+      if (d > 30 && d < L - 30 && walls.some((w) => (w.v ? Math.abs(pt.x - w.at) < 4 * k && pt.y > w.a && pt.y < w.z : Math.abs(pt.y - w.at) < 4 * k && pt.x > w.a && pt.x < w.z))) { cur += L / N; if (cur > along) along = cur; } else cur = 0; }
     hit.forEach((h) => out.push(ends.join("-") + " run under " + h));
     if (along > 80) out.push(ends.join("-") + " run along a wall for " + Math.round(along) + " units"); });
   return { runs: runs, out: out };
@@ -2298,6 +2301,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
   const step = async (p, a) => {
     if (a.t === "place") return place(p, a.dev, a.room);   /* the 4F access switch out of its box, your laptop carried upstairs (CP-J7): the Place form */
     if (a.t === "lay") return lay(p, a.a.dev, a.a.port, a.b.dev, a.b.port);
+    if (a.t === "sfp") { await dev(p, a.dev); await tab(p, "Physical"); await p.click('.acts:has-text("' + a.slot + ':") button:has-text("in a ' + a.type + ' module")'); await p.waitForTimeout(80); return; }   /* a module from the van, on the switch's Physical tab (CP-J8) */
     if (a.t === "pull") { const i = await p.evaluate((id) => window.__e4b.T.sim.net.cables.findIndex((c) => c.id === id), a.cable); check(i >= 0, "the cable to pull, " + a.cable + ", is in the runs table"); await p.click("#runs tbody tr:nth-child(" + (i + 1) + ") button"); await p.waitForTimeout(40); return; }
     if (a.t === "cmd" && a.cli) { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== "tech") await dev(p, "tech"); if (!(await p.$('.win-tabs button[aria-selected="true"]:text-is("Serial terminal")'))) await tab(p, "Serial terminal"); return type(p, a.line); }
     if (a.t === "cmd") { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== a.dev) { await dev(p, a.dev); await tab(p, "Command Prompt"); } return type(p, a.line); }
@@ -2312,7 +2316,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
       const plan = await BJ(p, () => window.__e4b.T.sim.net.plan);
       check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed && /Level 4 · Campus/.test(await p.$eval("#labtitle", (n) => n.textContent)), tag + "opens the job on the campus asked for, under Level 4 · Campus");
       const lim = await p.$eval(".limits", (n) => n.textContent);
-      check([plan.secret].concat(job === "CP-J4" ? [plan.console, plan.vlans.mgmt.gw] : job === "CP-J5" ? [plan.console, plan.sw.core1.host, plan.sw.core2.host] : job === "CP-J6" ? [plan.console, plan.sw.dist1.ip, plan.sw.dist2.ip] : job === "CP-J7" ? [plan.console, plan.userPw, plan.sw.acc4.host, plan.sw.acc4.ip, plan.train.name] : [plan.user, plan.userPw]).every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the campus's records the job needs");
+      check([plan.secret].concat(job === "CP-J4" ? [plan.console, plan.vlans.mgmt.gw] : job === "CP-J5" ? [plan.console, plan.sw.core1.host, plan.sw.core2.host] : job === "CP-J6" ? [plan.console, plan.sw.dist1.ip, plan.sw.dist2.ip] : job === "CP-J7" ? [plan.console, plan.userPw, plan.sw.acc4.host, plan.sw.acc4.ip, plan.train.name] : job === "CP-J8" ? [plan.console, plan.userPw, plan.annex.core.host, plan.annex.acc.host, plan.annex.acc.ip, plan.annex.link.hqIp, plan.annex.link.anxIp, plan.annex.cls.gw, plan.annex.cls.name] : [plan.user, plan.userPw]).every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the campus's records the job needs");
       await checkJob(p);
       check((await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do");
       const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
@@ -2362,6 +2366,23 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
         const o = await ssh(p, plan, plan.sw.acc4.ip, ["show interfaces trunk", "show port-security"]), tr = o.slice(o.lastIndexOf("show interfaces trunk"), o.lastIndexOf("show port-security")), ps = o.slice(o.lastIndexOf("show port-security"));
         check(new RegExp("Gi0/23\\s+on \\(no DTP\\)\\s+802\\.1q\\s+trunking\\s+" + plan.vlans.native.id).test(tr) && new RegExp("Gi0/24\\s+on \\(no DTP\\)\\s+802\\.1q\\s+trunking").test(tr) && new RegExp("Gi0/23\\s+" + T.id + "," + plan.vlans.mgmt.id).test(tr), tag + "show interfaces trunk on the 4F access switch, over SSH: both uplinks trunking, the training VLAN allowed");
         check(/Gi0\/1\s+1\s+1\s+0\s+Shutdown/.test(ps) && /Gi0\/2\s+1\s+1\s+0\s+Shutdown/.test(ps), tag + "show port-security on the 4F access switch: both desk ports secured, one device each, shut down on a violation");
+      }
+      if (job === "CP-J8") {   /* the Annex from a classroom desk, across the fibre; OSPF across it at core switch 2; the access switch from the service desk; the fibre's stubs on the diagram */
+        const A = plan.annex, b = plan.vlans.svc.net.split(".")[1];
+        await step(p, { t: "cmd", dev: "cl1", line: "ipconfig" }); check(re("10." + b + "." + A.cls.id + ".").test(await term(p)), tag + "Classroom PC 1 has an address in the classroom network");
+        await step(p, { t: "cmd", dev: "cl1", line: "tracert -d 8.8.8.8" }); const tt = (await term(p)).split("tracert").pop();
+        check(re(A.cls.gw).test(tt) && re(A.link.hqIp).test(tt) && /Trace complete/.test(tt), tag + "tracert from Classroom PC 1: its gateway on the Annex core, then core switch 2 across the fibre, out to the internet");
+        const o = await ssh(p, plan, A.link.hqIp, ["show ip ospf neighbor"]), nb = o.slice(o.lastIndexOf("show ip ospf neighbor"));
+        check(nb.split("\n").some((l) => l.indexOf(A.link.anxIp) >= 0 && /FULL/.test(l)), tag + "show ip ospf neighbor on core switch 2, over SSH from the service desk: the Annex core, FULL across the fibre");
+        const o2 = await ssh(p, plan, A.acc.ip, ["show interfaces trunk"]), tr = o2.slice(o2.lastIndexOf("show interfaces trunk"));
+        check(new RegExp("Gi0/" + A.up.acc + "\\s+on \\(no DTP\\)\\s+802\\.1q\\s+trunking\\s+" + plan.vlans.native.id).test(tr) && new RegExp("Gi0/" + A.up.acc + "\\s+" + A.cls.id + "[-,]" + A.mgmt.id).test(tr), tag + "show interfaces trunk on the Annex access switch, over SSH from the service desk: its uplink a trunk, native VLAN " + plan.vlans.native.id + ", the classroom and its management VLAN");
+        await p.click("#vLog"); await p.waitForTimeout(80);
+        const tags = await p.evaluate(() => [...document.querySelectorAll("#net text.pl")].map((t) => t.textContent));
+        check(tags.indexOf("To the Annex core switch") >= 0 && tags.indexOf("To core switch 2") >= 0 && !!(await p.$("#net rect.zone")), tag + "the logical diagram: the Annex in a block of its own, the fibre a stub at each end saying where it goes");
+        await p.click("#vPhy"); await p.waitForTimeout(80);
+        const rooms = await p.evaluate(() => [...document.querySelectorAll("#plan text.rl")].map((t) => t.textContent)), duct = await p.evaluate(() => [...document.querySelectorAll("#plan path.run-fib")].map((x) => x.getAttribute("d")).join(" | "));
+        check(rooms.indexOf("ANNEX COMMS ROOM") >= 0 && rooms.indexOf("CLASSROOM (ANNEX)") >= 0 && rooms.some((r) => /THE TRAINING ANNEX/.test(r)), tag + "the floor plan: the Annex's band under the main building, its two rooms and its caption");
+        check(/L 215 \d+ L 215 975 L 370 975 /.test(duct), tag + "the floor plan: the fibre down the riser and out through the duct, as the installers pulled it (" + duct.slice(0, 80) + ")");
       }
       if (job === "CP-J4" && seed === 11) {   /* the bars over a long title, easier reading's font in: the sticky columns sit under them (16 November 2026: their height was measured only at load) */
         await p.click("#dys"); await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(250);

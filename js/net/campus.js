@@ -43,7 +43,7 @@ export const CAMPUS_LAYOUT = {
   isp: { x: 10, y: 40 }, modem: { x: 210, y: 40, px: 120, py: 110, room: "data" }, edge: { x: 560, y: 40, lab: "right", px: 290, py: 110, room: "data" },
   core1: { x: 300, y: 150, lab: "left", px: 460, py: 110, room: "data" }, core2: { x: 820, y: 150, lab: "right", px: 460, py: 195, room: "data" },
   dist1: { x: 380, y: 270, lab: "left", px: 290, py: 195, room: "data" }, dist2: { x: 740, y: 270, lab: "right", px: 120, py: 280, room: "data" },
-  tech: { x: 30, y: 240, px: 120, py: 195, room: "data", alt: { c4: { x: 1040, y: 270, px: 265, py: 855 }, acomms: { x: 120, y: 1100, px: 190, py: 1150 } } },   /* carried to the Annex's comms room (work order 8): under the Annex core, in its block */   /* carried to the 4F closet (work order 7): beside the new switch on both drawings */
+  tech: { x: 30, y: 240, px: 120, py: 195, room: "data", alt: { c4: { x: 1040, y: 270, px: 265, py: 855 }, acomms: { x: 120, y: 1100, px: 320, py: 1100 } } },   /* carried to the Annex's comms room (work order 8): under the Annex core, in its block */   /* carried to the 4F closet (work order 7): beside the new switch on both drawings */
   /* the access row in four (the fourth floor, work order 7), in the same width (a wider diagram would shrink every name on it):
      staggered, 1F and 3F up, 2F and 4F down, so no two names share a line; the desks on two rows under them */
   acc1: { x: 100, y: 410, lab: "right", px: 460, py: 280, room: "data" }, acc2: { x: 370, y: 470, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 630, y: 410, lab: "right", px: 115, py: 655, room: "c3" }, acc4: { x: 860, y: 470, lab: "right", px: 115, py: 855, room: "c4" },
@@ -53,10 +53,10 @@ export const CAMPUS_LAYOUT = {
   tr1: { x: 815, y: 590, px: 540, py: 855, room: "train" }, tr2: { x: 960, y: 700, px: 780, py: 855, room: "train" },
   /* the Training Annex (work order 8): on the logical diagram a block of its own under the main building (the fibre between them drawn as
      a labelled stub at each end, as a diagram of two buildings shows it); on the floor plan its own band under the main building */
-  anxc: { x: 120, y: 960, lab: "right", px: 115, py: 1065, room: "acomms" }, anxa: { x: 380, y: 1100, px: 265, py: 1065, room: "acomms" },
+  anxc: { x: 120, y: 960, lab: "right", px: 150, py: 1055, room: "acomms" }, anxa: { x: 380, y: 1100, px: 150, py: 1145, room: "acomms" },
   cl1: { x: 620, y: 1020, px: 540, py: 1075, room: "class" }, cl2: { x: 840, y: 1100, px: 780, py: 1075, room: "class" }
 };
-export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 345], c2: [30, 365, 260, 545], bench: [260, 365, 980, 545], c3: [30, 565, 260, 745], office: [260, 565, 980, 745], c4: [30, 765, 330, 945], train: [330, 765, 980, 945], acomms: [30, 985, 330, 1205], class: [330, 985, 980, 1205] };   /* the Annex's band, below the main building (work order 8) */
+export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 345], c2: [30, 365, 260, 545], bench: [260, 365, 980, 545], c3: [30, 565, 260, 745], office: [260, 565, 980, 745], c4: [30, 765, 330, 945], train: [330, 765, 980, 945], acomms: [30, 985, 400, 1205], class: [400, 985, 980, 1205] };   /* the Annex's band, below the main building (work order 8) */
 const swMac = function (hi, lo) { return "00e0.4c" + hi.toString(16).padStart(2, "0") + "." + lo.toString(16).padStart(4, "0"); };
 const run = function (sw, lines) { const S = session(sw); ["", "enable", "configure terminal"].concat(lines, ["end", "copy running-config startup-config", ""]).forEach(function (l) { exec(S, l); }); return sw; };
 

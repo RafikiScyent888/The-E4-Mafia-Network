@@ -2,7 +2,7 @@
 # Run it in a throwaway copy of the checkout, never in the real one:   python3 tools/plants-campus-node.py [name ...]
 import subprocess, shutil, sys, os
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-TESTS = ["tests/links-far.test.js", "tests/campus-l3.test.js", "tests/campus-sim.test.js", "tests/campus-lag.test.js", "tests/campus-stp.test.js", "tests/campus-ospf.test.js", "tests/campus-hsrp.test.js", "tests/campus-site.test.js", "tests/campus-jobs.test.js", "tests/campus-edge.test.js"]
+TESTS = ["tests/campus-jumbo.test.js", "tests/links-far.test.js", "tests/campus-l3.test.js", "tests/campus-sim.test.js", "tests/campus-lag.test.js", "tests/campus-stp.test.js", "tests/campus-ospf.test.js", "tests/campus-hsrp.test.js", "tests/campus-site.test.js", "tests/campus-jobs.test.js", "tests/campus-edge.test.js"]
 if os.environ.get("TESTS"): TESTS = os.environ["TESTS"].split()   # TESTS="tests/campus-edge.test.js": a narrower run (SEEDS=4 shortens the work orders' tests too)
 PLANTS = [
  ("a routed port still carries its VLANs", "js/net/swcli.js", '  if (sw.ports[n].routed) return { mode: "routed", untagged: null, tagged: [] };', ''),
@@ -226,6 +226,50 @@ PLANTS = [
  ('CP-J7: the 4F switch unsaved passes', 'js/build/campus.js', 'function saved7Causes(sim) { return ["acc4", "dist1", "dist2", "edge"].map(function (id) { return C("unsaved-" + id, unsaved(sim.d[id].sw),', 'function saved7Causes(sim) { return ["acc4", "dist1", "dist2", "edge"].map(function (id) { return C("unsaved-" + id, false,'),
  ('CP-J7: its start leaves the training PCs in their boxes', 'js/build/campus.js', '    ["tr1", "tr2"].forEach(function (id) { delete sim.d[id].boxed; });', ''),
  ('CP-J7: a hint names the training VLAN', 'js/build/campus.js', 'rung1: function () { return "show vlan brief on each of the three."; },', 'rung1: function (v) { return "show vlan " + v.plan.train.id; },'),
+ ("JUMBO: a frame over a switch's MTU passes", 'js/net/sim.js', '    const pass = function (a, b, len) { const P = this.l2Path(a, b) || []; for (const h of P) if (len > this.swMtu(h.dev)) return { dev: h.dev, port: h.port }; return null; }.bind(this);', '    const pass = function (a, b, len) { return null; }.bind(this);'),
+ ("JUMBO: the receiver's MTU never checked", 'js/net/sim.js', '      if (piece > rmtu) return { ok: false, why: "receiver", at: { dev: who }, rt: rt, who: who };', ''),
+ ("JUMBO: the don't-fragment bit ignored at the sender", 'js/net/sim.js', '    if (size > mtu && df) return { ok: false, why: "local", mtu: mtu };', ''),
+ ("JUMBO: a check counts giants (it changes the network)", 'js/net/sim.js', '      const go = pass(from, to, piece); if (go) return { ok: false, why: "giant", at: go, rt: rt, who: who };', '      const go = pass(from, to, piece); if (go) { this.giant(go, 1); return { ok: false, why: "giant", at: go, rt: rt, who: who }; }'),
+ ("JUMBO: the jumbo MTU in effect at once, no reload", 'js/net/swcli.js', '  const v = +a[0]; if (v === 1500) delete S.sw.jumbo; else S.sw.jumbo = v;', '  const v = +a[0]; if (v === 1500) delete S.sw.jumbo; else S.sw.jumbo = v; S.sw.jumboRun = v;'),
+ ("JUMBO: an unsaved jumbo MTU survives a reload", 'js/net/swcli.js', '"svis", "snoop", "dai", "pcs", "stp", "jumbo"];', '"svis", "snoop", "dai", "pcs", "stp"];'),
+ ("JUMBO: giants never counted", 'js/net/linux.js', '  if (r.why === "giant" && r.at && r.at.port) sim.giant(r.at, n);', ''),
+ ("SERVER: its second port bridged to its first", 'js/net/sim.js', ' ? dev + ":" + port : dev; }   /* a server\'s second port (work order 9)', ' ? dev : dev; }   /* a server\'s second port (work order 9)'),
+ ("LINUX: ip link set without sudo", 'js/net/linux.js', '    if (!root) return ["RTNETLINK answers: Operation not permitted"];', ''),
+ ("LINUX: a reboot keeps what ip link set", 'js/net/linux.js', 'export function reboot(sim, id) { applyNetplan(sim, id);', 'export function reboot(sim, id) {'),
+ ("LINUX: netplan set puts it into effect at once", 'js/net/linux.js', '  N[k[1]].mtu = +v; return [];', '  N[k[1]].mtu = +v; applyNetplan(sim, id); return [];'),
+ ("LINUX: a wrong sudo password accepted", 'js/net/linux.js', '    if ((x.lx.users || {})[st.user] === line) { st.mode = "shell"; st.tries = 0; st.sudoOk = true;', '    if (true) { st.mode = "shell"; st.tries = 0; st.sudoOk = true;'),
+ ("LINUX: SSH to a server takes any password", 'js/net/cmd.js', '    if ((x.lx.users || {})[A.user] === raw) {', '    if (true) {'),
+ ('CP-J9: its start leaves the file server in its box', 'js/build/campus.js', '    fileServer(sim.net);   /* the file server in the data room since last month; the backup server is in its box */', ''),
+ ('CP-J9: the backup server on the wrong port passes', 'js/build/campus.js', '    C("ports", !x.boxed && !none && !!wrong, "The backup server\'s "', '    C("ports", false, "The backup server\'s "'),
+ ('CP-J9: a backup server port with no cable passes', 'js/build/campus.js', '    C("none", !x.boxed && !!none, "The backup server\'s "', '    C("none", false, "The backup server\'s "'),
+ ('CP-J9: the backup VLAN missing on a switch passes', 'js/build/campus.js', '  return [C("none", !!miss, "The backup VLAN doesn\'t exist on "', '  return [C("none", false, "The backup VLAN doesn\'t exist on "'),
+ ('CP-J9: the backup VLAN misnamed passes', 'js/build/campus.js', '    C("name", !miss && !!misname, "The backup VLAN on "', '    C("name", false, "The backup VLAN on "'),
+ ('CP-J9: an uplink without the backup VLAN passes', 'js/build/campus.js', '  return [C("trunk", !!no, who(no) + " doesn\'t carry the backup VLAN"', '  return [C("trunk", false, who(no) + " doesn\'t carry the backup VLAN"'),
+ ('CP-J9: the bundle without the backup VLAN passes', 'js/build/campus.js', '    C("bundle", !no && !!po, "The bundle between the distribution switches doesn\'t carry the backup VLAN', '    C("bundle", false, "The bundle between the distribution switches doesn\'t carry the backup VLAN'),
+ ('CP-J9: an access switch the backup root passes', 'js/build/campus.js', '    C("access", r === "acc1" || r === "acc2",', '    C("access", false,'),
+ ('CP-J9: switch 2 the backup root passes', 'js/build/campus.js', '    C("dist2", r === "dist2", "Distribution switch 2 is the backup VLAN\'s root', '    C("dist2", false, "Distribution switch 2 is the backup VLAN\'s root'),
+ ('CP-J9: no second in line for the backup VLAN passes', 'js/build/campus.js', '    C("backup", r === "dist1" && t.second !== "dist2",', '    C("backup", false,'),
+ ("CP-J9: a server's port left shut passes", 'js/build/campus.js', '  return [C("shut", !!shut, Cap(at(shut)) + " is shut"', '  return [C("shut", false, Cap(at(shut)) + " is shut"'),
+ ("CP-J9: a server's port in the wrong VLAN passes", 'js/build/campus.js', '    C("vlan", !shut && !!vl, Cap(at(vl))', '    C("vlan", false, Cap(at(vl))'),
+ ("CP-J9: a server's port not an edge port passes", 'js/build/campus.js', '    C("edge", !shut && !vl && !!edge, Cap(at(edge))', '    C("edge", false, Cap(at(edge))'),
+ ("CP-J9: a server's port described off the records passes", 'js/build/campus.js', '    C("desc", !shut && !vl && !edge && !!desc, Cap(at(desc))', '    C("desc", false, Cap(at(desc))'),
+ ("CP-J9: the backup server's own port without a link passes", 'js/build/campus.js', '  return [C("link", link, "The backup server\'s port 1 (eno1) has no link"', '  return [C("link", false, "The backup server\'s port 1 (eno1) has no link"'),
+ ("CP-J9: a backup port without a link passes", 'js/build/campus.js', '  return [C("link", !!down, Cap(srv9(down)) + "\'s port 2 (eno2) has no link"', '  return [C("link", false, Cap(srv9(down)) + "\'s port 2 (eno2) has no link"'),
+ ("CP-J9: the backup ports out of reach of each other pass", 'js/build/campus.js', '    C("way", !!way, "The servers\' backup ports can\'t reach each other', '    C("way", false, "The servers\' backup ports can\'t reach each other'),
+ ('CP-J9: a switch left at 1500 passes', 'js/build/campus.js', '  return [C("none", !!f && set === 1500,', '  return [C("none", false,'),
+ ('CP-J9: a jumbo MTU below 9000 passes', 'js/build/campus.js', '    C("small", !!f && set > 1500 && set < BK_MTU,', '    C("small", false,'),
+ ('CP-J9: a jumbo MTU waiting for a reload passes', 'js/build/campus.js', '    C("wait", !!f && set >= BK_MTU,', '    C("wait", false,'),
+ ("CP-J9: a backup port left at 1500 passes", 'js/build/campus.js', '  return [C("eno2", !!bad, Cap(srv9(bad))', '  return [C("eno2", false, Cap(srv9(bad))'),
+ ("CP-J9: a server's own port made jumbo passes", 'js/build/campus.js', '    C("eno1", !bad && !!one, Cap(srv9(one))', '    C("eno1", false, Cap(srv9(one))'),
+ ('CP-J9: a sender refusing the big ping passes', 'js/build/campus.js', '  return [C("local", r.why === "local",', '  return [C("local", false,'),
+ ('CP-J9: a switch dropping the big ping passes', 'js/build/campus.js', '    C("giant", r.why === "giant",', '    C("giant", false,'),
+ ('CP-J9: a receiver dropping the big ping passes', 'js/build/campus.js', '    C("recv", r.why === "receiver" || r.why === "sender",', '    C("recv", false,'),
+ ("CP-J9: an MTU not in the netplan file passes", 'js/build/campus.js', '  return [C("netplan", !!np, Cap(srv9(np))', '  return [C("netplan", false, Cap(srv9(np))'),
+ ("CP-J9: a switch's jumbo MTU not saved passes", 'js/build/campus.js', '    C("switch", !np && !!sw, Cap(sw ? sw9(sim, sw) : "")', '    C("switch", false, Cap(sw ? sw9(sim, sw) : "")'),
+ ('CP-J9: no way through switch 2 passes', 'js/build/campus.js', '  return [C("way", !!way, "With distribution switch 1 off, the servers can\'t reach each other', '  return [C("way", false, "With distribution switch 1 off, the servers can\'t reach each other'),
+ ('CP-J9: switch 2 dropping jumbo frames passes', 'js/build/campus.js', '    C("big", !!big, "With distribution switch 1 off, "', '    C("big", false, "With distribution switch 1 off, "'),
+ ('CP-J9: a switch left unsaved passes', 'js/build/campus.js', 'function saved9Causes(sim) { return BK_ON.map(function (id) { return C("unsaved-" + id, unsaved(sim.d[id].sw),', 'function saved9Causes(sim) { return BK_ON.map(function (id) { return C("unsaved-" + id, false,'),
+ ('CP-J9: a hint names the backup VLAN', 'js/build/campus.js', 'rung1: function () { return "show vlan brief on each of the four."; },', 'rung1: function (v) { return "show vlan " + v.plan.backup.id; },'),
 ]
 only = sys.argv[1:]
 bad = 0

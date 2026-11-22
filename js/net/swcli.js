@@ -84,7 +84,7 @@ export function errDisabled(sw, n) { return !!(sw.psRun && sw.psRun[n] && sw.psR
 export function psOf(p) { return p.ps || (p.ps = { on: false, max: 1, viol: "shutdown", sticky: false, macs: [] }); }
 /* a MAC address as the switch writes it: aaaa.bbbb.cccc */
 export function dotMac(m) { const h = String(m || "").replace(/[^0-9a-f]/gi, "").toLowerCase(); return h.length === 12 ? h.slice(0, 4) + "." + h.slice(4, 8) + "." + h.slice(8) : null; }
-const CONFIG_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "vlan1", "gateway", "ports", "banner", "vlans", "svis", "snoop", "dai", "pcs", "stp"];   /* keyGen: which set of RSA keys it holds (each crypto key generate makes a new one) */
+const CONFIG_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "vlan1", "gateway", "ports", "banner", "vlans", "svis", "snoop", "dai", "pcs", "stp", "jumbo"];   /* jumbo: the system jumbo MTU set (work order 9); it takes effect at the next reload (jumboRun) */   /* keyGen: which set of RSA keys it holds (each crypto key generate makes a new one) */
 /* each kind of device with this command line (this switch; the business router, rtcli.js) registers what's its own: its
    command tree, its prompts, what its configuration is made of, a factory-fresh one, and how its configuration reads */
 const OS = {};
@@ -97,6 +97,7 @@ export function reload(sw, why) {
   const base = sw.startup ? clone(sw.startup) : snapshot(osOf(sw).fresh());
   osOf(sw).keys.forEach(function (k) { sw[k] = base[k]; });
   sw.uptime = "0 minutes"; sw.uptimeFixed = null; sw.restart = why || "reload";
+  if (sw.jumbo) sw.jumboRun = sw.jumbo; else delete sw.jumboRun;   /* the jumbo MTU it starts with: what was saved (work order 9) */
   sw.psRun = {}; sw.snoopBind = [];   /* what it learned as it ran (port security's addresses, err-disabled ports, snooping's bindings) is gone */   /* show version says what brought it back: a power cut, or the reload command */
 }
 
@@ -215,6 +216,21 @@ function mismatchCounters(p, l) {
   return d.me === "half" ? { late: 37 * t + 11, collisions: 412 * t + 90, outErr: 37 * t + 11 } : { crc: 53 * t + 7, inErr: 61 * t + 9, runts: 8 * t + 2 };
 }
 
+/* ------------------------------------------------------------ the system jumbo MTU (Level 4, work order 9) */
+/* system mtu jumbo: the largest frame the gigabit ports pass, for the jumbo frames a backup network sends. As on the real thing,
+   the new size waits for the next reload (and, like the rest of the configuration, for being saved before it) */
+const JUMBO_LATER = "Changes to the system jumbo MTU will not take effect until the next reload is done";
+function jumboCmd(S, a) {
+  if (!a.length) return ["% Incomplete command."];
+  if (!/^\d+$/.test(a[0]) || +a[0] < 1500 || +a[0] > 9198) return ["% Invalid input detected at '^' marker."];
+  const v = +a[0]; if (v === 1500) delete S.sw.jumbo; else S.sw.jumbo = v;
+  return (S.sw.jumboRun || 1500) === v ? [] : [JUMBO_LATER];
+}
+function systemMtu(sw) {
+  const run = sw.jumboRun || 1500, next = sw.jumbo || 1500;
+  return ["System MTU size is 1500 bytes", "System Jumbo MTU size is " + run + " bytes"].concat(next !== run ? ["On next reload, System Jumbo MTU will be " + next + " bytes"] : [], ["Routing MTU size is 1500 bytes"]);
+}
+
 const SHOW = [
   ["spanning-tree", "Spanning tree topology", function (S, a) { return stpShow(S, a); }, { sub: [["vlan", "VLAN Switch Spanning Trees"]] }],
   ["etherchannel", "EtherChannel information", [["summary", "One-line summary per channel-group", function (S) { return chanSummary(S.sw); }]]],
@@ -249,6 +265,7 @@ const SHOW = [
     return psTable(S.sw);
   }, { sub: [["interface", "Show secure interface"], ["address", "Show secure address"]] }],
   ["inventory", "Physical inventory: the chassis and its modules", function (S) { return inventory(S.sw); }],
+  ["system", "Show the system settings", [["mtu", "Display the system MTU settings", function (S) { return systemMtu(S.sw); }]]],
   ["lldp", "LLDP information (neighbour discovery)", [["neighbors", "LLDP neighbor entries", function (S, a) { return lldpTable(S.sw, a[0] && /^d/i.test(a[0])); }, { sub: [["detail", "Show detailed information: each neighbour's management address"]] }]]],
   ["crypto", "Encryption module", [["key", "Show long term public keys", [["mypubkey", "Show the switch's own public keys", [["rsa", "Show its RSA keys", function (S) {
     const sw = S.sw; if (!sw.rsa) return ["% No RSA keys: none have been generated."];
@@ -267,7 +284,7 @@ const EXEC_USER = [
   }],
   ["exit", "Exit from the EXEC", function (S) { return logout(S); }],
   ["logout", "Exit from the EXEC", function (S) { return logout(S); }],
-  ["show", "Show running system information", SHOW.filter(function (c) { return ["version", "clock", "history", "users", "ip", "interfaces"].indexOf(c[0]) >= 0; })],
+  ["show", "Show running system information", SHOW.filter(function (c) { return ["version", "clock", "history", "users", "ip", "interfaces", "system"].indexOf(c[0]) >= 0; })],
   ["ping", "Send echo messages", function (S, a) { return pingOut(S, a); }]
 ];
 const EXEC_PRIV = [
@@ -332,6 +349,7 @@ const CONFIG = [
     S.pending = { kind: "modulus" }; return ["The name for the keys will be: " + S.sw.hostname + "." + S.sw.domain, "Choose the size of the key modulus in the range of 360 to 4096 for your", "  General Purpose Keys. Choosing a key modulus greater than 512 may take", "  a few minutes.", "", "How many bits in the modulus [512]: "];
   }]]]]]]],
   ["service", "Modify use of network based services", [["password-encryption", "Encrypt system passwords", function (S) { S.sw.encrypt = true; return []; }]]],
+  ["system", "System parameters", [["mtu", "Set the system MTU", [["jumbo", "Set the jumbo MTU for the gigabit ports", function (S, a) { return jumboCmd(S, a); }, { sub: [["<1500-9198>", "Jumbo MTU size in bytes"]] }]]]]],
   ["spanning-tree", "Spanning Tree Subsystem", [
     ["mode", "Spanning tree operating mode", [["rapid-pvst", "Per-Vlan rapid spanning tree mode", function (S) { stpOf(S.sw).mode = "rapid-pvst"; return []; }], ["pvst", "Per-Vlan spanning tree mode", function (S) { stpOf(S.sw).mode = "pvst"; return []; }]]],
     ["vlan", "VLAN Switch Spanning Tree", function (S, a) { return stpVlanCmd(S, a, false); }, { sub: [["WORD", "vlan range, example: 1,3-5,7,9-11"]] }]]],
@@ -356,6 +374,7 @@ const CONFIG = [
       delete S.sw.svis[f.vlan]; return [];
     }],
     ["service", "Modify use of network based services", [["password-encryption", "Encrypt system passwords", function (S) { S.sw.encrypt = false; return []; }]]],
+    ["system", "System parameters", [["mtu", "Set the system MTU", [["jumbo", "Set the jumbo MTU for the gigabit ports", function (S) { const was = S.sw.jumbo; delete S.sw.jumbo; return was && was !== 1500 ? [JUMBO_LATER] : []; }]]]]],
     ["banner", "Define a login banner", [["motd", "Set Message of the Day banner", function (S) { S.sw.banner = null; return []; }]]]
   ]],
   ["end", "Exit from configure mode", function (S) { S.mode = "priv"; return []; }],
@@ -640,6 +659,7 @@ function runningConfig(sw, startup) {
   if (sw.enablePassword) L.push("enable password " + pw(sw.enablePassword));
   Object.keys(sw.users).forEach(function (u) { L.push("username " + u + " secret " + pw(sw.users[u], "secret")); });
   if (sw.enableSecret || sw.enablePassword || Object.keys(sw.users).length) L.push("!");
+  if (sw.jumbo) L.push("system mtu jumbo " + sw.jumbo, "!");
   if (sw.domain) L.push("ip domain-name " + sw.domain, "!");
   if (sw.routing) L.push("ip routing", "!");
   if (sw.stp) { if (sw.stp.mode === "pvst") L.push("spanning-tree mode pvst"); Object.keys(sw.stp.prio || {}).map(Number).sort(function (a, b) { return a - b; }).forEach(function (v) { L.push("spanning-tree vlan " + v + " priority " + sw.stp.prio[v]); }); if (sw.stp.mode === "pvst" || Object.keys(sw.stp.prio || {}).length) L.push("!"); }
@@ -783,12 +803,12 @@ function ifDetail(sw, n) {
   const L = [n + " is " + st[0] + ", line protocol is " + st[1] + (up ? " (connected)" : p.shutdown ? " (disabled)" : errDisabled(sw, n) ? " (err-disabled)" : " (notconnect)"),
     "  Hardware is Gigabit Ethernet, address is " + sw.mac + " (bia " + sw.mac + ")"];
   if (p.desc) L.push("  Description: " + p.desc);
-  L.push("  MTU 1500 bytes, BW " + (up ? ng.speed * 1000 : 1000000) + " Kbit/sec, DLY 10 usec,",
+  L.push("  MTU " + (sw.jumboRun || 1500) + " bytes, BW " + (up ? ng.speed * 1000 : 1000000) + " Kbit/sec, DLY 10 usec,",
     "  " + (up ? (ng.duplex === "full" ? "Full" : "Half") + "-duplex, " + ng.speed + "Mb/s" : "Auto-duplex, Auto-speed") + ", media type is " + (p.sfp ? "SFP" : "10/100/1000BaseTX"),
     "  5 minute input rate " + (up ? c.rate || 2000 : 0) + " bits/sec, " + (up ? 3 : 0) + " packets/sec",
     "     " + (c.input || (up ? 182311 : 0)) + " packets input, " + (c.inbytes || (up ? 22740118 : 0)) + " bytes, 0 no buffer",
-    "     " + (c.runts || 0) + " runts, 0 giants, 0 throttles",
-    "     " + (c.inErr || 0) + " input errors, " + (c.crc || 0) + " CRC, 0 frame, 0 overrun, 0 ignored",
+    "     " + (c.runts || 0) + " runts, " + ((l && l.giants) || 0) + " giants, 0 throttles",
+    "     " + ((c.inErr || 0) + ((l && l.giants) || 0)) + " input errors, " + (c.crc || 0) + " CRC, 0 frame, 0 overrun, 0 ignored",
     "     " + (c.output || (up ? 161840 : 0)) + " packets output, " + (c.outbytes || (up ? 19008214 : 0)) + " bytes, 0 underruns",
     "     " + (c.outErr || 0) + " output errors, " + (c.collisions || 0) + " collisions, 0 interface resets",
     "     0 babbles, " + (c.late || 0) + " late collision, 0 deferred");
@@ -1204,7 +1224,7 @@ function standbyShow(S) {
 const L3_OSPF_SHOW = [["ospf", "OSPF information", [["neighbor", "Neighbor list", function (S) { return ospfShow(S, "neighbor"); }], ["interface", "Interface information", [["brief", "Brief summary of interfaces", function (S) { return ospfShow(S, "brief"); }]]]]], ["protocols", "IP routing protocol process parameters and statistics", function (S) { return ospfShow(S, "protocols"); }]];
 const L3_SHOW = addTo(SHOW, ["ip"], [["route", "IP routing table", function (S, a) { const T = l3Table(S.sw, (S.live && S.live("learned")) || []); if (a[0] && !/^o/i.test(a[0])) return OSPF_INVALID; return routeLines(a[0] ? T.filter(function (t) { return t.code === "O"; }) : T, S.sw.routing, S.sw.gateway); }, { sub: [["ospf", "Open Shortest Path First (OSPF)"]] }]].concat(L3_OSPF_SHOW)).concat([["standby", "Hot standby protocol information", [["brief", "Brief output", function (S) { return standbyShow(S); }]], { bare: function (S) { return standbyShow(S); } }]]);
 const showIn = function (list, show) { return alter(list, ["show"], function (e) { e[2] = show; }); };
-const L3_USER = showIn(EXEC_USER, L3_SHOW.filter(function (c) { return ["version", "clock", "history", "users", "ip", "interfaces"].indexOf(c[0]) >= 0; }));
+const L3_USER = showIn(EXEC_USER, L3_SHOW.filter(function (c) { return ["version", "clock", "history", "users", "ip", "interfaces", "system"].indexOf(c[0]) >= 0; }));
 const L3_PRIV = showIn(EXEC_PRIV, L3_SHOW);
 let L3_CONFIG = addTo(CONFIG, ["ip"], [
   ["routing", "Enable IP routing", function (S) { S.sw.routing = true; return []; }],

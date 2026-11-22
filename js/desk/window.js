@@ -34,17 +34,18 @@ export function focusCmd(id, win) { const t = terms[win ? id + "/win" : id]; if 
 
 /* your laptop's serial terminal: what a terminal program shows when it opens the USB serial adapter's port */
 const SERIAL_INTRO = "Serial terminal · COM3 (the USB serial adapter) · 9600 baud, 8 data bits, no parity, 1 stop bit, no flow control.\nWhat the switch or router on the other end of the console cable sends shows here. Press Enter to wake its console.\n\n";
+const SERVER_INTRO = "The server's own console, on the rack's keyboard and screen. Log in with the user name and password in the records; type help once you're in.\n\n";   /* a rack server (work order 9) */
 function cmdPane(id, ctx, win) {
   const key = win ? id + "/win" : id, W = win ? { win: true } : {};
   let t = terms[key];
-  const sim = function () { return ctx.T.sim; }, serialDev = sim().d[id].kind === "techlaptop" && !win, name = sim().d[id].label;
+  const sim = function () { return ctx.T.sim; }, serialDev = sim().d[id].kind === "techlaptop" && !win, lxDev = sim().d[id].kind === "server" && !win, name = sim().d[id].label;
   if (!t) {
     const out = el("pre", { "aria-live": "polite" });
-    out.textContent = serialDev ? SERIAL_INTRO : "Type help to see the commands you can use here.\n\n";
+    out.textContent = serialDev ? SERIAL_INTRO : lxDev ? SERVER_INTRO : "Type help to see the commands you can use here.\n\n";
     const input = el("input", { class: "cmdin", type: "text", autocomplete: "off", autocapitalize: "off", spellcheck: "false", "aria-label": "Command for the " + name });
     const label = el("span", { class: "prompt", "aria-hidden": "true" }, prompt(sim(), id, win));
     const line = el("div", { class: "line" }, label, input);
-    const node = el("div", { class: "term", role: "log", "aria-label": name + (serialDev ? " serial terminal" : " Command Prompt"), onclick: function (e) { if (!window.getSelection().toString()) input.focus({ preventScroll: true }); } }, out, line);
+    const node = el("div", { class: "term", role: "log", "aria-label": name + (serialDev ? " serial terminal" : lxDev ? " console" : " Command Prompt"), onclick: function (e) { if (!window.getSelection().toString()) input.focus({ preventScroll: true }); } }, out, line);
     /* the prompt says where you are and which mode you're in; a password asked for isn't shown as it's typed */
     const sync = function () {
       const s = secretNext(sim(), id, win); label.textContent = prompt(sim(), id, win); input.type = s ? "password" : "text";
@@ -55,7 +56,7 @@ function cmdPane(id, ctx, win) {
       const S = cliSession(sim(), id, win);   /* on a switch's command line, ready for a command: ? and Tab work as they do there */
       if (e.key === "Enter") {
         const v = input.value, hide = input.type === "password"; input.value = "";
-        const sw = serialDev || !!(sim().cli && sim().cli[key]);   /* talking to a switch: every line goes to it, an empty one too (it wakes the console) */
+        const sw = serialDev || lxDev || !!(sim().cli && sim().cli[key]);   /* talking to a switch: every line goes to it, an empty one too (it wakes the console) */
         if (v.trim() && !hide) { t.hist.push(v); } t.hi = t.hist.length;
         out.textContent += prompt(sim(), id, win) + (hide ? "" : v) + "\n";
         if (v.trim() || sw) {
@@ -364,6 +365,7 @@ function physicalPane(id, P, ctx, rerender) {
   const wrap = el("div", { class: "phys" });
   const S = physicalState(ctx.T.sim, id);
   if (S) wrap.appendChild(modelFigure(S, P));
+  else if (P.noModel) wrap.appendChild(el("p", { class: "note" }, P.noModel));   /* a device whose model waits for photographs (a rack server) says so */
   const ul = el("ul", { class: "cabs" });
   physLog[id] = physLog[id] || {};
   P.cables.forEach(function (c) {

@@ -30,6 +30,10 @@ const TRAIN_V = [60, 160, 235];
 /* the Training Annex's VLANs (work order 8), one pair per set: the classroom and the Annex's own management network. Behind a routed
    link they're the Annex's alone, but each still gets a subnet of its own, its number its third octet */
 const ANNEX_V = [{ cls: 70, mgmt: 71 }, { cls: 170, mgmt: 171 }, { cls: 236, mgmt: 237 }];
+/* the backup network (work order 9), one per set: the servers' second ports, for the nightly backup in jumbo frames. Not routed: its frames
+   stay on layer 2, server to server, so it has no gateway; like the others, its number is its subnet's third octet */
+const BACKUP_V = [80, 180, 238];
+const SRV_USERS = ["sysadmin", "srvadmin", "opsadmin"], SRV_PW = ["Rack!Files26", "Backup#Night9", "Tape*Vault31"];
 const NAMES = { svc: "SERVICE-DESK", bench: "BENCH", office: "OFFICE", servers: "SERVERS", printers: "PRINTERS", mgmt: "MGMT", native: "NATIVE-UNUSED", parking: "PARKING" };
 /* the rooms, floor by floor, and the cable runs between them (metres; the riser carries the uplinks up the building) */
 export const CAMPUS_FLOORS = { data: 1, svc: 1, c2: 2, bench: 2, c3: 3, office: 3, c4: 4, train: 4, acomms: "A", class: "A" };   /* the fourth floor, the training room (work order 7); the Annex across the car park (work order 8) */
@@ -47,14 +51,17 @@ export const CAMPUS_LAYOUT = {
   /* the access row in four (the fourth floor, work order 7), in the same width (a wider diagram would shrink every name on it):
      staggered, 1F and 3F up, 2F and 4F down, so no two names share a line; the desks on two rows under them */
   acc1: { x: 100, y: 410, lab: "right", px: 460, py: 280, room: "data" }, acc2: { x: 370, y: 470, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 630, y: 410, lab: "right", px: 115, py: 655, room: "c3" }, acc4: { x: 860, y: 470, lab: "right", px: 115, py: 855, room: "c4" },
-  sd1: { x: 60, y: 590, px: 650, py: 120, room: "svc" }, hd1: { x: 150, y: 700, px: 880, py: 120, room: "svc" }, pr1: { x: 250, y: 590, px: 765, py: 250, room: "svc" },
-  bn1: { x: 345, y: 700, px: 480, py: 455, room: "bench" }, bn2: { x: 440, y: 590, px: 740, py: 455, room: "bench" },
-  mgr: { x: 545, y: 700, px: 440, py: 655, room: "office" }, fin: { x: 640, y: 590, px: 650, py: 655, room: "office" }, pr3: { x: 745, y: 700, px: 860, py: 655, room: "office" },
+  sd1: { x: 60, y: 590, px: 650, py: 120, room: "svc", srv: { x: 165, px: 750, py: 120 } }, hd1: { x: 150, y: 700, px: 880, py: 120, room: "svc", srv: { x: 95, px: 905, py: 120 } }, pr1: { x: 250, y: 590, px: 765, py: 250, room: "svc", srv: { x: 302, px: 840, py: 250 } },   /* srv: once the file server is in, the data room is drawn wider (work order 9) */
+  bn1: { x: 345, y: 700, px: 480, py: 455, room: "bench", srv: { x: 432, px: 565 } },   /* srv: on the logical diagram the 1F and 2F desks step aside for the servers' lanes down to their row (work order 9) */ bn2: { x: 440, y: 590, px: 740, py: 455, room: "bench", srv: { x: 495 } },
+  mgr: { x: 545, y: 700, px: 440, py: 655, room: "office", srv: { x: 565 } }, fin: { x: 640, y: 590, px: 650, py: 655, room: "office" }, pr3: { x: 745, y: 700, px: 860, py: 655, room: "office" },
   tr1: { x: 815, y: 590, px: 540, py: 855, room: "train" }, tr2: { x: 960, y: 700, px: 780, py: 855, room: "train" },
   /* the Training Annex (work order 8): on the logical diagram a block of its own under the main building (the fibre between them drawn as
      a labelled stub at each end, as a diagram of two buildings shows it); on the floor plan its own band under the main building */
   anxc: { x: 120, y: 960, lab: "right", px: 150, py: 1055, room: "acomms" }, anxa: { x: 380, y: 1100, px: 150, py: 1145, room: "acomms" },
-  cl1: { x: 620, y: 1020, px: 540, py: 1075, room: "class" }, cl2: { x: 840, y: 1100, px: 780, py: 1075, room: "class" }
+  cl1: { x: 620, y: 1020, px: 540, py: 1075, room: "class" }, cl2: { x: 840, y: 1100, px: 780, py: 1075, room: "class" },
+  /* the rack servers (work order 9): on the logical diagram a row of their own under the desks, each below its access switch; on the floor
+     plan the file server in the data room, the backup server in the 2F closet beside its switch */
+  fsrv: { x: 0, y: 810, lab: "right", px: 600, py: 280, room: "data" }, bksrv: { x: 370, y: 810, lab: "right", px: 290, py: 455, room: "c2" }
 };
 export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 345], c2: [30, 365, 260, 545], bench: [260, 365, 980, 545], c3: [30, 565, 260, 745], office: [260, 565, 980, 745], c4: [30, 765, 330, 945], train: [330, 765, 980, 945], acomms: [30, 985, 400, 1205], class: [400, 985, 980, 1205] };   /* the Annex's band, below the main building (work order 8) */
 const swMac = function (hi, lo) { return "00e0.4c" + hi.toString(16).padStart(2, "0") + "." + lo.toString(16).padStart(4, "0"); };
@@ -94,6 +101,17 @@ export function coreCables(net, cable) {
   coreLinks(net.plan).filter(cable || function () { return true; }).forEach(function (l) { if (!net.cables.some(function (c) { return c.id === l.id; })) net.cables.push({ id: l.id, kind: "cat6", a: { dev: l.a, port: l.ap, seated: true }, b: { dev: l.b, port: l.bp, seated: true }, cond: "good", length: 2 }); });
 }
 
+/* the file server as CP-J9 finds it (work order 9): racked in the data room since last month, its port 1 on the 1F access switch's port 5 (an
+   access port in the servers VLAN, an edge port with BPDU guard, described), its port 2's cable in port 6, parked and shut: nothing for it
+   to carry yet */
+export function fileServer(net) {
+  const plan = net.plan, S = plan.srv.fsrv, x = net.devices.fsrv, acc = net.devices[S.sw].sw;
+  delete x.boxed;
+  ["eno1", "eno2"].forEach(function (n) { const id = "c-fsrv-" + n; if (!net.cables.some(function (c) { return c.id === id; })) net.cables.push({ id: id, kind: "cat6", a: { dev: "fsrv", port: n, seated: true }, b: { dev: S.sw, port: S.ports[n], seated: true }, cond: "good", length: 3 }); });
+  const S2 = session(acc);   /* the 1F access switch is locked by now: log in first */
+  ["", plan.console, "enable", plan.secret, "configure terminal", "interface gi0/" + S.ports.eno1, "description FSRV-" + plan.vlans.servers.name, "switchport mode access", "switchport access vlan " + plan.vlans.servers.id, "spanning-tree portfast", "spanning-tree bpduguard enable", "no shutdown", "end", "copy running-config startup-config", "", "exit"].forEach(function (l) { exec(S2, l); });
+  return x;
+}
 export function makeCampus(seed) {
   const r = rng(seed ^ 0x4c41), V = VLAN_SETS[r.int(0, VLAN_SETS.length - 1)], b = r.pick([16, 27, 38, 49, 63]), TV = TRAIN_V[VLAN_SETS.indexOf(V)];
   const net24 = function (v) { return "10." + b + "." + v + ".0"; }, ip = function (v, h) { return "10." + b + "." + v + "." + h; };
@@ -120,6 +138,14 @@ export function makeCampus(seed) {
     link: { hq: "core2", hqPort: "SFP1", hqIf: "GigabitEthernet0/25", anxPort: "SFP1", anxIf: "GigabitEthernet0/25", net: lk + "32", hqIp: lk + "33", anxIp: lk + "34", mask: "255.255.255.252", hqDesc: "ANNEX-FIBRE", anxDesc: "HQ-CORE2" },
     up: { core: "1", acc: "24" }, desks: { "1": ["cl1", "cls"], "2": ["cl2", "cls"] } };
   plan.sw.acc4 = { host: "RIT-ACC-4F", ip: ip(V.mgmt, 14) };
+  /* the servers and the backup network (work order 9): the file server in the data room, on the 1F access switch; the backup server, a copy
+     kept on another floor, in the 2F closet on the 2F access switch. Each server's port 1 (eno1) on the servers VLAN, its port 2 (eno2) on the
+     backup network. Their own stream, so every other part of the campus is drawn as before */
+  const BV = BACKUP_V[VLAN_SETS.indexOf(V)], r4 = rng(seed ^ 0x5e4f);
+  plan.backup = { id: BV, name: "BACKUP", net: net24(BV), mtu: 9000 };
+  plan.srv = { user: r4.pick(SRV_USERS), pw: r4.pick(SRV_PW),
+    fsrv: { host: "rit-files", ip: ip(V.servers, 10), bip: ip(BV, 10), sw: "acc1", ports: { eno1: "5", eno2: "6" } },
+    bksrv: { host: "rit-backup", ip: ip(V.servers, 11), bip: ip(BV, 11), sw: "acc2", ports: { eno1: "5", eno2: "6" } } };
   const all = Object.keys(V).filter(function (k) { return k !== "native" && k !== "parking"; }).map(function (k) { return V[k]; }).sort(function (x, y) { return x - y; });
   const vlanLines = Object.keys(V).flatMap(function (k) { return ["vlan " + V[k], "name " + NAMES[k], "exit"]; });
   const lock = function (host) { return lockLines(plan, host); };
@@ -168,6 +194,17 @@ export function makeCampus(seed) {
   dev.anxc = { id: "anxc", kind: "mswitch", label: "Annex core switch", sub: "MSW-3900X", on: true, boxed: true, fixed: ["acomms", "in the Annex's comms room, in its rack"], mac: swMac(0x60, 0x0001), sw: newSwitch({ l3: true, mac: swMac(0x60, 0x0001) }), sfp: { SFP1: null, SFP2: null, SFP3: null, SFP4: null } };
   dev.anxa = { id: "anxa", kind: "mswitch", label: "Annex access switch", sub: "MSW-2800G", on: true, boxed: true, fixed: ["acomms", "in the Annex's comms room, in its rack"], mac: swMac(0x10, 0x0606), sw: newSwitch({ mac: swMac(0x10, 0x0606) }) };
   ["cl1", "cl2"].forEach(function (id, i) { dev[id] = { id: id, kind: "pc", label: "Classroom PC " + (i + 1), sub: "DHCP", on: true, boxed: true, os: "windows", user: i ? "student" : "instructor", host: "RIT-CLASSROOM-PC-" + (i + 1), ifaces: nic(r3) }; });
+  /* the rack servers (work order 9), in their boxes: each with two ports, set up by the supplier from the records (eno1 on the servers VLAN with
+     its gateway, eno2 on the backup network with none), every port at the standard MTU, 1500 */
+  const server = function (id, label, room, where) {
+    const S = plan.srv[id], np = { eno1: { addr: S.ip + "/24", gw: vl.servers.gw, dns: plan.dns.slice() }, eno2: { addr: S.bip + "/24" } };
+    const f = function (n, cfg) { return { name: n, type: "eth", port: n, mac: mac(r4), desc: "Gigabit Ethernet port " + n.slice(-1), cfg: cfg, lease: null, apipa: null, mtu: 1500 }; };
+    return { id: id, kind: "server", label: label, sub: S.ip, on: true, boxed: true, os: "linux", host: S.host, fixed: [room, where],
+      ifaces: [f("eno1", { mode: "static", ip: S.ip, mask: plan.mask, gw: vl.servers.gw, dns: plan.dns.slice() }), f("eno2", { mode: "static", ip: S.bip, mask: plan.mask })],
+      lx: { users: { [plan.srv.user]: plan.srv.pw }, netplan: np } };
+  };
+  dev.fsrv = server("fsrv", "File server", "data", "in the data room's rack");
+  dev.bksrv = server("bksrv", "Backup server", "c2", "in the 2F closet's rack, on its shelf");
   const cab = function (id, a, ap, b2, bp, len) { return { id: id, kind: "cat6", a: { dev: a, port: ap, seated: true }, b: { dev: b2, port: bp, seated: true }, cond: "good", length: len }; };
   const rooms = {}; Object.keys(CAMPUS_LAYOUT).forEach(function (id) { if (CAMPUS_LAYOUT[id].room) rooms[id] = CAMPUS_LAYOUT[id].room; });   /* the provider (on the logical diagram only) has no room */
   const len = function (a, b2) { const A = rooms[a], B = rooms[b2]; return A === B ? 3 : (CAMPUS_RUN[A] && CAMPUS_RUN[A][B]) || (CAMPUS_RUN[B] && CAMPUS_RUN[B][A]) || 40; };

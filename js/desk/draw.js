@@ -48,10 +48,15 @@ const SITES = {
 };
 const siteOf = function (sim) { return SITES[sim.net.site] || null; };
 /* a device's icon: by its id on the older sites, by what it is on the campus (its devices are named by floor) */
-const KIND_ICON = { pc: "pc", printer: "printer", brouter: "brouter", modem: "modem", techlaptop: "laptop", isp: "cloud" };
+const KIND_ICON = { pc: "pc", printer: "printer", brouter: "brouter", modem: "modem", techlaptop: "laptop", isp: "cloud", server: "server" };   /* the rack servers (work order 9) */
 const iconOf = function (sim, id) { const x = sim.d[id]; if (sim.net.site === "campus") return x.kind === "mswitch" ? (x.sw && x.sw.os === "l3switch" ? "l3switch" : "mswitch") : KIND_ICON[x.kind] || ICON_OF[id]; return ICON_OF[id]; };
 const campus = function (sim) { return sim.net.site === "campus"; };
 /* the Training Annex (work order 8) is on the floor plan once anything of it is out of its box: before then the plan is the main building's */
+/* the servers (work order 9): once the file server is in the data room, that room is drawn wider (the service desk has room to spare), and so is the
+   2F closet, where the backup server goes, so each server sits beside its switch, clear of the runs the earlier floor plans already route (every
+   earlier work order's plan stays exactly as it was) */
+const srvIn = function (sim, id) { return !!(sim && sim.d && sim.d[id] && !sim.d[id].boxed); };
+const campusBox = function (sim) { const B = Object.assign({}, CAMPUS_ROOM_BOX); if (srvIn(sim, "fsrv")) Object.assign(B, { data: [30, 30, 660, 345], svc: [660, 30, 980, 345], c2: [30, 365, 490, 545], bench: [490, 365, 980, 545] }); return B; };   /* the 2F closet too, with room for your laptop beside the backup server */
 const annexOn = function (sim) { return campus(sim) && ["anxc", "anxa", "cl1", "cl2"].some(function (id) { return sim.d[id] && !sim.d[id].boxed; }); };
 const office = function (sim) { return !!siteOf(sim); };   /* a site of its own (the office, the business), not a house */
 const layOf = function (sim) { return office(sim) ? siteOf(sim).layout : LAYOUT; };
@@ -60,6 +65,7 @@ function pos(sim, id) {
   const L = Object.assign({}, layOf(sim)[id]);
   if (sim.net.site === "business" && sim.d.cam1 && L.cams) Object.assign(L, L.cams);   /* the cameras' job (SB-J5) draws some devices elsewhere, to give the cameras room */
   if (sim.net.site === "business" && sim.net.roomNames.dept && L.dept) Object.assign(L, L.dept);   /* and the department's room (SB-J10) moves the back switch along its wall */
+  if (campus(sim) && L.srv && srvIn(sim, "fsrv")) Object.assign(L, L.srv);   /* the service desk's devices along, once the data room is drawn wider (work order 9) */
   if (office(sim)) { const alt = L.alt && L.alt[sim.net.rooms[id]]; if (alt && alt.x != null) Object.assign(L, { x: alt.x, y: alt.y, lab: alt.lab || L.lab }); return L; }   /* a device carried to another room can sit elsewhere on the diagram too (your laptop at the back office's switch) */
   if (id === "laptop" && sim.net.rooms.laptop === "living") Object.assign(L, { x: 770, y: 150, px: 610, py: 235 });
   if (id === "laptop" && sim.net.rooms.laptop === "kitchen") Object.assign(L, { px: 640, py: 360 });
@@ -70,7 +76,7 @@ function pos(sim, id) {
 /* a build house's upstairs is the back bedroom and the landing at the top of the stairs, drawn taller in the space below */
 const ROOM_BOX = { office: [30, 30, 420, 300], living: [420, 30, 760, 300], garage: [30, 300, 420, 520], kitchen: [420, 300, 760, 520], upstairs: [790, 30, 980, 200], landing: [790, 200, 980, 330], porch: [764, 340, 990, 490] };
 function planSpots(sim, ids) {
-  const out = {}, taken = [], LAY = layOf(sim), BOX = office(sim) ? siteOf(sim).box : ROOM_BOX;
+  const out = {}, taken = [], LAY = layOf(sim), BOX = campus(sim) ? campusBox(sim) : office(sim) ? siteOf(sim).box : ROOM_BOX;
   if (!sim.net.extra.build && sim.net.site !== "business") { for (const id of ids) { const p = pos(sim, id); out[id] = { px: p.px, py: p.py }; } return out; }   /* the tickets' houses and offices are drawn exactly as laid out; a business ticket starts from the work orders done, each device where they put it, so it's drawn as they draw it (your laptop in the back room, on the back switch's console) */
   const off = office(sim);
   const box = function (x, y) { return [x - 44, y - 26, x + 44, y + 54]; };
@@ -129,7 +135,7 @@ export function linksOf(sim) {
 
 export function drawLogical(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "i-");
-  const ids = ["isp", "modem", "router", "rtr", "tv", "switch", "msw", "meet", "bsw", "mpc", "mgr", "tech", "pc", "bpc", "hire", "printer", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "cinj1", "cam1", "cinj2", "cam2", "dpc1", "dpc2"].concat(campus(sim) ? ["edge", "core1", "core2", "dist1", "dist2", "acc1", "acc2", "acc3", "acc4", "sd1", "hd1", "pr1", "bn1", "bn2", "fin", "pr3", "tr1", "tr2", "anxc", "anxa", "cl1", "cl2"] : []).filter(function (id) { return shown(sim, id) && !sim.d[id].undocumented; });
+  const ids = ["isp", "modem", "router", "rtr", "tv", "switch", "msw", "meet", "bsw", "mpc", "mgr", "tech", "pc", "bpc", "hire", "printer", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "cinj1", "cam1", "cinj2", "cam2", "dpc1", "dpc2"].concat(campus(sim) ? ["edge", "core1", "core2", "dist1", "dist2", "acc1", "acc2", "acc3", "acc4", "sd1", "hd1", "pr1", "bn1", "bn2", "fin", "pr3", "tr1", "tr2", "anxc", "anxa", "cl1", "cl2", "fsrv", "bksrv"] : []).filter(function (id) { return shown(sim, id) && !sim.d[id].undocumented; });
   /* the business with its cameras (SB-J5) is drawn taller: their injectors and cameras get rows of their own */
   svg.setAttribute("viewBox", campus(sim) ? "-44 -26 1150 " + (annexOn(sim) ? 1210 : 820) : sim.net.site === "business" && (shown(sim, "dpc1") || shown(sim, "dpc2")) ? "-180 -26 1016 " + CAM_H : "-6 -26 836 " + (sim.net.site === "business" && sim.d.cam1 ? CAM_H : 546));   /* the department's PCs (SB-J10), once out of their boxes, get a column of their own left of the back switch */
   const P = {}; ids.forEach(function (id) { P[id] = pos(sim, id); });
@@ -467,11 +473,11 @@ function businessNames(sim) {
 /* the campus (Rafiki's HQ): four floors, one band each (the fourth, the training room, since work order 7): 1F the data room and the service desk, 2F its closet and the bench, 3F its
    closet and management. The provider's line comes in on the data room's wall, beside the modem */
 function campusRooms(sim) {
-  const B = CAMPUS_ROOM_BOX, r = function (k) { const b = B[k]; return '<rect class="room" x="' + b[0] + '" y="' + b[1] + '" width="' + (b[2] - b[0]) + '" height="' + (b[3] - b[1]) + '"/>'; };
-  return r("data") + r("svc") + r("c2") + r("bench") + r("c3") + r("office") + r("c4") + r("train") + (sim && annexOn(sim) ? r("acomms") + r("class") : "") + '<path class="door" d="M560 160v40M260 470v40M260 670v40M330 870v40' + (sim && annexOn(sim) ? "M400 1090v40" : "") + '"/><rect class="plate" x="26" y="98" width="14" height="24"/>';
+  const B = campusBox(sim), r = function (k) { const b = B[k]; return '<rect class="room" x="' + b[0] + '" y="' + b[1] + '" width="' + (b[2] - b[0]) + '" height="' + (b[3] - b[1]) + '"/>'; };
+  return r("data") + r("svc") + r("c2") + r("bench") + r("c3") + r("office") + r("c4") + r("train") + (sim && annexOn(sim) ? r("acomms") + r("class") : "") + '<path class="door" d="M' + B.data[2] + ' 160v40M' + B.c2[2] + ' 470v40M260 670v40M330 870v40' + (sim && annexOn(sim) ? "M400 1090v40" : "") + '"/><rect class="plate" x="26" y="98" width="14" height="24"/>';
 }
 function campusNames(sim) {
-  const N = sim.net.roomNames, B = CAMPUS_ROOM_BOX, up = function (k) { return String(N[k] || "").toUpperCase().replace(/&/g, "&amp;").replace(/'/g, "&#39;"); };
+  const N = sim.net.roomNames, B = campusBox(sim), up = function (k) { return String(N[k] || "").toUpperCase().replace(/&/g, "&amp;").replace(/'/g, "&#39;"); };
   return ["data", "svc", "c2", "bench", "c3", "office", "c4", "train"].concat(annexOn(sim) ? ["acomms", "class"] : []).map(function (k) { return '<text class="rl" x="' + (B[k][0] + 16) + '" y="' + (B[k][1] + 30) + '">' + up(k) + "</text>"; }).join("") + (annexOn(sim) ? '<text class="rl" x="560" y="972">THE TRAINING ANNEX, ACROSS THE CAR PARK</text>' : "");
 }
 function officeNames() {

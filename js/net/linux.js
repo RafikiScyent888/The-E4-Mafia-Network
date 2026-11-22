@@ -4,6 +4,7 @@
    (read it, set a port's MTU in it, apply it), and reboot. What `ip link set ... mtu` changes is gone at the next reboot; what's
    in netplan stays, as on the real thing. Plain functions over the simulation, no page code: tested under Node. */
 import { isIp, sameSubnet, maskBits, broadcast, network, lpad, pad, hash } from "./util.js";
+import * as D from "./dhcpd.js";
 
 export const LX_HELP = [
   ["ip a  (ip addr, ip -br a)", "this server's ports, their state, MTU and addresses"],
@@ -19,9 +20,22 @@ export const LX_HELP = [
   ["sudo netplan apply", "put the file's settings into effect now"],
   ["sudo reboot", "restart the server (it comes back with what's in its netplan file)"],
   ["hostname, whoami, uname -a", "who and where you are"],
+  ["ls <folder>, cat <file>", "list a folder, show a file"],
+  ["sudo nano <file>", "edit a file (Ctrl+O writes it out, Ctrl+X leaves the editor)"],
   ["sudo -i", "a root shell (exit to leave it)"],
   ["clear", "clear the screen"],
   ["exit  (logout)", "log out"]
+];
+/* on a server with the DHCP server installed (work order 10) */
+export const LX_HELP_DHCP = [
+  ["sudo nano /etc/dhcp/dhcpd.conf", "the DHCP server's settings: its subnets, ranges, options, reservations"],
+  ["sudo nano /etc/default/isc-dhcp-server", "which ports it serves on (INTERFACESv4)"],
+  ["dhcpd -t -cf /etc/dhcp/dhcpd.conf", "check the settings file without starting anything"],
+  ["sudo systemctl restart isc-dhcp-server", "start it again with the file as it is now (start, stop too)"],
+  ["sudo systemctl enable isc-dhcp-server", "start it at every boot (disable to stop that; --now starts it too)"],
+  ["systemctl status isc-dhcp-server", "running or not, since when, and its last messages"],
+  ["journalctl -u isc-dhcp-server", "everything it has said (-n 20 for the last twenty lines)"],
+  ["dhcp-lease-list", "the addresses it has handed out, to whom"]
 ];
 export const NETPLAN_FILE = "/etc/netplan/50-cloud-init.yaml";
 const MAX_MTU = 9216, MIN_MTU = 68;
@@ -33,6 +47,7 @@ export function lxPrompt(sim, id, st) {
   if (!st || st.mode === "login") return h + " login: ";
   if (st.mode === "pass") return "Password: ";
   if (st.mode === "sudo") return "[sudo] password for " + st.user + ": ";
+  if (st.edit) return "";
   return (st.root ? "root" : st.user) + "@" + h + ":~" + (st.root ? "# " : "$ ");
 }
 export function lxSecret(st) { return !!st && (st.mode === "pass" || st.mode === "sudo"); }
@@ -42,8 +57,9 @@ export function motd(sim, id) {
 }
 
 /* one line typed to the server: returns { out: [lines], closed, clear, facts } */
-export function lxExec(sim, id, st, raw) {
+export function lxExec(sim, id, st, raw, text) {
   const x = sim.d[id], line = String(raw == null ? "" : raw);
+  if (st.edit) return editKey(sim, id, st, line, text);
   if (st.mode === "login") { const u = line.trim(); if (!u) return { out: [] }; st.user = u; st.mode = "pass"; return { out: [], secret: true }; }
   if (st.mode === "pass") {
     if ((x.lx.users || {})[st.user] === line) { st.mode = "shell"; st.tries = 0; st.root = false; st.sudoOk = false; return { out: motd(sim, id), facts: { cmd: "login", dev: id, user: st.user, ok: true } }; }
@@ -77,7 +93,7 @@ function run(sim, id, st, line, root) {
       return done(["logout"], { closed: true, facts: { logout: true } });
     }
     case "clear": return done([], { clear: true });
-    case "help": return done(["Commands you can use on this server:", ""].concat(LX_HELP.map(function (h) { return "  " + pad(h[0], 40) + h[1]; })));
+    case "help": return done(["Commands you can use on this server:", ""].concat(LX_HELP.concat(x.lx.dhcpd ? LX_HELP_DHCP : []).map(function (h) { return "  " + pad(h[0], 40) + h[1]; })));
     case "hostname": return done([x.host]);
     case "whoami": return done([root ? "root" : st.user]);
     case "uname": return done([args[0] === "-a" ? "Linux " + x.host + " 6.8.0-49-generic #49-Ubuntu SMP PREEMPT_DYNAMIC Mon Nov  4 02:06:24 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux" : "Linux"]);
@@ -87,10 +103,17 @@ function run(sim, id, st, line, root) {
     case "cat": return done(cat(sim, id, args, root));
     case "ls": return done(ls(sim, id, args, root));
     case "netplan": return done(netplan(sim, id, args, root), { facts: { netplan: args[0] || "" } });
+    case "nano": case "vi": case "vim": case "editor": return nano(sim, id, st, args, root, c, facts);
+    case "systemctl": return done(systemctl(sim, id, args, root), { facts: { systemctl: args.filter(function (w) { return w[0] !== "-"; }).join(" ") } });
+    case "service": return done(args.length >= 2 ? systemctl(sim, id, [args[1], args[0]], root) : ["Usage: service < option > | --status-all | [ service_name [ command | --full-restart ] ]"]);
+    case "journalctl": return done(journalctl(sim, id, args));
+    case "dhcpd": return done(dhcpdCmd(sim, id, args));
+    case "dhcp-lease-list": return done(leaseList(sim, id));
     case "reboot": case "shutdown": {
       if (c === "shutdown" && !(args[0] === "-r")) return done(["(This server stays on: it's in use. To restart it: sudo reboot)"]);
       if (!root) return done(["Failed to set wall message, ignoring: Interactive authentication required.", "Call to Reboot failed: Interactive authentication required."]);
       reboot(sim, id);
+      st.edit = null;
       if (st.via === "console") { st.mode = "login"; st.user = null; st.root = false; st.sudoOk = false; return done(["", "Broadcast message from root@" + x.host + " on pts/1 (Sun 2026-11-22 10:42:07 UTC):", "", "The system will reboot now!", "", "[  OK  ] Stopped target network.target - Network.", "[  OK  ] Reached target reboot.target - System Reboot.", "", "Ubuntu 24.04.1 LTS " + x.host + " tty1", ""], { facts: { reboot: true } }); }
       return done([], { closed: true, closedBy: "remote", facts: { reboot: true } });
     }
@@ -200,6 +223,8 @@ function cat(sim, id, a, root) {
   return a.reduce(function (out, f) {
     if (f === NETPLAN_FILE) return out.concat(root ? netplanText(x) : ["cat: " + f + ": Permission denied"]);
     if (f === "/etc/hostname") return out.concat([x.host]);
+    const t = fileText(sim, id, f); if (t != null) return out.concat(t.replace(/\n$/, "").split("\n"));
+    if (x.lx.dhcpd && /^\/etc\/(dhcp|default)\/?$/.test(f)) return out.concat(["cat: " + f + ": Is a directory"]);
     if (f === "/etc/os-release") return out.concat(['PRETTY_NAME="Ubuntu 24.04.1 LTS"', 'NAME="Ubuntu"', 'VERSION_ID="24.04"', 'VERSION="24.04.1 LTS (Noble Numbat)"']);
     return out.concat(["cat: " + f + ": No such file or directory"]);
   }, []);
@@ -207,6 +232,9 @@ function cat(sim, id, a, root) {
 function ls(sim, id, a, root) {
   const long = a.some(function (w) { return /^-[a-zA-Z]*l/.test(w); }), dir = a.filter(function (w) { return w[0] !== "-"; })[0] || "~";
   if (dir === "/etc/netplan" || dir === "/etc/netplan/") return long ? ["total 4", "-rw------- 1 root root " + netplanText(sim.d[id]).join("\n").length + " Nov 20 16:20 50-cloud-init.yaml"] : ["50-cloud-init.yaml"];
+  const D0 = sim.d[id].lx.dhcpd;
+  if (D0 && (dir === "/etc/dhcp" || dir === "/etc/dhcp/")) return long ? ["total 12", "drwxr-xr-x 2 root root 4096 Nov 20 16:24 ddns-keys", "-rw-r--r-- 1 root root " + fileText(sim, id, D.CONF).length + " " + stamp(sim, id, D.CONF) + " dhcpd.conf", "-rw-r--r-- 1 root root 1735 Nov 20 16:24 dhcpd6.conf"] : ["ddns-keys  dhcpd.conf  dhcpd6.conf"];
+  if (D0 && (dir === D.CONF || dir === D.DEFAULTS)) return [long ? "-rw-r--r-- 1 root root " + fileText(sim, id, dir).length + " " + stamp(sim, id, dir) + " " + dir : dir];
   if (dir === "~" || dir === "." || dir === "/home/" + (sim.d[id].lx && Object.keys(sim.d[id].lx.users)[0])) return [];
   if (dir === NETPLAN_FILE) return [long ? "-rw------- 1 root root " + netplanText(sim.d[id]).join("\n").length + " Nov 20 16:20 " + NETPLAN_FILE : NETPLAN_FILE];
   return ["ls: cannot access '" + dir + "': No such file or directory"];
@@ -246,7 +274,10 @@ export function applyNetplan(sim, id) {
   if (sim.bump) sim.bump();
 }
 /* a restart: it comes back with what's in its netplan file (an MTU set only with ip link is gone) */
-export function reboot(sim, id) { applyNetplan(sim, id); const x = sim.d[id]; x.boots = (x.boots || 0) + 1; }
+export function reboot(sim, id) {
+  applyNetplan(sim, id); const x = sim.d[id]; x.boots = (x.boots || 0) + 1;
+  const S = x.lx.dhcpd; if (S) { if (S.state === "active") dhcpdStop(sim, id); if (S.enabled) dhcpdStart(sim, id); }   /* a service enabled starts at boot; one that isn't stays off */
+}
 
 /* ------------------------------------------------------------ ping, Linux's */
 function ping(sim, id, a, facts) {
@@ -293,4 +324,162 @@ function ping(sim, id, a, facts) {
   if (times.length) { const mn = Math.min.apply(null, times), mx = Math.max.apply(null, times), av = times.reduce(function (s, v) { return s + v; }, 0) / times.length, md = Math.sqrt(times.reduce(function (s, v) { return s + (v - av) * (v - av); }, 0) / times.length); L.push("rtt min/avg/max/mdev = " + [mn, av, mx, md].map(function (v) { return v.toFixed(3); }).join("/") + " ms"); }
   Object.assign(facts, { sent: n, replies: got, ok: got > 0, why: r.ok ? (fw ? "firewall" : "ok") : r.why, at: r.at || null, beyond: got > 0 && who !== id, local: !!rt.local });
   return { out: L, facts: facts };
+}
+
+/* ------------------------------------------------------------ files, the editor (work order 10) */
+/* a file the server holds as text: the DHCP server's two files, the leases file it writes, anything written with the editor */
+function fileText(sim, id, path) {
+  const x = sim.d[id], F = x.lx.files || {};
+  if (path === D.LEASES && x.lx.dhcpd) return leasesText(sim, id);
+  return F[path] ? F[path].text : null;
+}
+function stamp(sim, id, path) { const F = sim.d[id].lx.files || {}; return F[path] && F[path].at ? F[path].at : "Nov 20 16:24"; }
+const nLines = function (t) { const L = String(t).split("\n"); if (L.length && L[L.length - 1] === "") L.pop(); return L.length; };
+/* the clock in the server's logs: Sunday morning, moving on a few seconds with everything done */
+function clock(sim) { const s = 10 * 3600 + 42 * 60 + 7 + (sim.n || 0) * 3, two = function (v) { return (v < 10 ? "0" : "") + v; }; return { day: "Nov 22", hms: two(Math.floor(s / 3600) % 24) + ":" + two(Math.floor(s / 60) % 60) + ":" + two(s % 60), s: s }; }
+export function editState(st) {
+  const E = st && st.edit; if (!E) return null;
+  return { path: E.path, text: E.text, ro: !E.root, isNew: !!E.isNew, status: E.status || "" };
+}
+function nano(sim, id, st, args, root, c, facts) {
+  if (c === "vi" || c === "vim") return { out: ["(The editor on this console is nano: sudo nano <file>. Ctrl+O writes the file out, Ctrl+X leaves.)"], facts: facts };
+  const path = args.filter(function (w) { return w[0] !== "-" && w[0] !== "+"; }).pop();
+  if (!path) return { out: ["(Name the file to edit: sudo nano /etc/dhcp/dhcpd.conf)"], facts: facts };
+  if (path === NETPLAN_FILE) return { out: ["(This server's netplan file is changed with sudo netplan set here: sudo netplan set ethernets.eno2.mtu=9000.)"], facts: facts };
+  if (/^\/etc\/(dhcp|default|netplan)\/?$/.test(path) || /\/$/.test(path)) return { out: ["(" + path + " is a folder: name a file in it, such as /etc/dhcp/dhcpd.conf)"], facts: facts };
+  if (path === D.LEASES) return { out: ["(" + D.LEASES + " is written by the DHCP server itself: read it with cat, or dhcp-lease-list)"], facts: facts };
+  const t = fileText(sim, id, path), isNew = t == null;
+  st.edit = { path: path, root: !!root, text: isNew ? "" : t, isNew: isNew };
+  st.edit.status = isNew ? "[ New File ]" : !root && /^\/etc\//.test(path) ? "[ File '" + path + "' is unwritable ]" : "[ Read " + nLines(t) + " lines ]";
+  if (!root && !/^\/etc\//.test(path)) st.edit.root = true;   /* a file of your own, in your home folder */
+  return { out: [], edit: editState(st), facts: Object.assign(facts, { nano: path, ro: !st.edit.root }) };
+}
+/* the editor's keys: ^O writes the text out (as root, or it's refused), ^X leaves; anything else is typing, which stays in the editor */
+function editKey(sim, id, st, line, text) {
+  const E = st.edit, facts = { cmd: "nano", dev: id, linux: true, path: E.path };
+  if (line === "^O") {
+    if (text == null) return { out: [], edit: editState(st), facts: facts };
+    if (!E.root) { E.status = "[ Error writing " + E.path + ": Permission denied ]"; return { out: [], edit: editState(st), facts: Object.assign(facts, { write: E.path, ok: false }) }; }
+    const x = sim.d[id], F = x.lx.files || (x.lx.files = {}), k = clock(sim);
+    F[E.path] = { text: String(text), at: k.day + " " + k.hms.slice(0, 5) }; E.text = String(text); E.isNew = false;
+    E.status = "[ Wrote " + nLines(text) + " line" + (nLines(text) === 1 ? "" : "s") + " ]";
+    if (sim.bump) sim.bump();
+    return { out: [], edit: editState(st), facts: Object.assign(facts, { write: E.path, ok: true }) };
+  }
+  if (line === "^X") { st.edit = null; return { out: [], facts: Object.assign(facts, { nanoExit: true }) }; }
+  return { out: [], edit: editState(st), facts: facts };
+}
+
+/* ------------------------------------------------------------ the DHCP server's service */
+const UNIT_FILE = "/usr/lib/systemd/system/isc-dhcp-server.service";
+function journal(sim, id, who, lines) { const x = sim.d[id], J = x.lx.dhcpd.journal, k = clock(sim); lines.forEach(function (l) { J.push(k.day + " " + k.hms + " " + x.host + " " + who + ": " + l); }); if (J.length > 400) J.splice(0, J.length - 400); }
+function ifacesOf(sim, id) { return sim.d[id].ifaces.map(function (f) { return { name: f.name, ip: f.cfg && f.cfg.ip, mask: f.cfg && f.cfg.mask, mac: f.mac }; }); }
+/* start dhcpd as systemd does: Started at once (it runs in the foreground), then whatever dhcpd says, and if it exits, the failure */
+export function dhcpdStart(sim, id) {
+  const x = sim.d[id], S = x.lx.dhcpd, F = x.lx.files || {};
+  S.pid = (S.pid || 2190) + 7 + (hash(id + S.pid) % 5);
+  const r = D.start((F[D.CONF] || {}).text || "", (F[D.DEFAULTS] || {}).text || "", ifacesOf(sim, id)), k = clock(sim);
+  journal(sim, id, "systemd[1]", ["Started isc-dhcp-server.service - ISC DHCP IPv4 server."]);
+  journal(sim, id, "dhcpd[" + S.pid + "]", r.log);
+  if (r.ok) { S.state = "active"; S.run = { conf: r.conf, listen: r.listen, file: (F[D.CONF] || {}).text || "", defaults: (F[D.DEFAULTS] || {}).text || "" }; }
+  else { S.state = "failed"; S.run = null; journal(sim, id, "systemd[1]", ["isc-dhcp-server.service: Main process exited, code=exited, status=1/FAILURE", "isc-dhcp-server.service: Failed with result 'exit-code'."]); }
+  S.since = k; S.why = r.why || null;
+  changed(sim); return r;
+}
+function dhcpdStop(sim, id) {
+  const S = sim.d[id].lx.dhcpd;
+  if (S.state === "active") { journal(sim, id, "systemd[1]", ["Stopping isc-dhcp-server.service - ISC DHCP IPv4 server..."]); journal(sim, id, "dhcpd[" + S.pid + "]", ["Received signal 15, initiating shutdown."]); journal(sim, id, "systemd[1]", ["isc-dhcp-server.service: Deactivated successfully.", "Stopped isc-dhcp-server.service - ISC DHCP IPv4 server."]); S.state = "inactive"; S.since = clock(sim); }
+  S.run = null; changed(sim);
+}
+function changed(sim) { if (sim.leaseChanged) sim.leaseChanged(); if (sim.bump) sim.bump(); }
+function ago(sim, k) { const d = Math.max(1, clock(sim).s - (k ? k.s : 0)); return d >= 86400 ? Math.floor(d / 86400) + " day" + (d >= 172800 ? "s" : "") + " " + Math.floor(d % 86400 / 3600) + "h ago" : d >= 3600 ? Math.floor(d / 3600) + "h " + Math.floor(d % 3600 / 60) + "min ago" : d < 60 ? d + "s ago" : Math.floor(d / 60) + "min " + (d % 60) + "s ago"; }
+function systemctl(sim, id, a, root) {
+  const x = sim.d[id], S = x.lx.dhcpd, opts = a.filter(function (w) { return w[0] === "-"; }), w = a.filter(function (q) { return q[0] !== "-"; }), verb = w[0] || "", unit0 = w[1] || "", unit = unit0.replace(/\.service$/, "");
+  if (!verb) return ["(systemctl lists every service on a real server; here: systemctl status isc-dhcp-server)"];
+  if (verb === "daemon-reload") return root ? [] : ["Failed to reload daemon: Interactive authentication required."];
+  if (!/^(status|start|stop|restart|enable|disable|is-active|is-enabled|is-failed|reload|try-restart|reload-or-restart)$/.test(verb)) return ["Unknown command verb '" + verb + "'."];
+  if (!unit) return verb === "status" ? ["(systemctl status lists every service on a real server; name one: systemctl status isc-dhcp-server)"] : ["Too few arguments."];
+  if (unit !== D.UNIT || !S) return verb === "status" ? ["Unit " + unit + ".service could not be found."] : /^is-/.test(verb) ? [verb === "is-enabled" ? "Failed to get unit file state for " + unit + ".service: No such file or directory" : "inactive"] : ["Failed to " + verb + " " + unit + ".service: Unit " + unit + ".service not found."];
+  const now = opts.indexOf("--now") >= 0;
+  if (verb === "status") return status(sim, id);
+  if (verb === "is-active") return [S.state];
+  if (verb === "is-failed") return [S.state === "failed" ? "failed" : S.state];
+  if (verb === "is-enabled") return [S.enabled ? "enabled" : "disabled"];
+  if (!root) return ["Failed to " + verb + " " + unit + ".service: Interactive authentication required.", "See system logs and 'systemctl status " + unit + ".service' for details."];
+  if (verb === "reload") return ["Failed to reload " + unit + ".service: Job type reload is not applicable for unit " + unit + ".service."];
+  if (verb === "start") { if (S.state !== "active") dhcpdStart(sim, id); return []; }
+  if (verb === "stop") { dhcpdStop(sim, id); return []; }
+  if (verb === "restart" || verb === "reload-or-restart" || (verb === "try-restart" && S.state === "active")) { dhcpdStop(sim, id); dhcpdStart(sim, id); return []; }
+  if (verb === "try-restart") return [];
+  const sync = ["Synchronizing state of " + unit + ".service with SysV service script with /usr/lib/systemd/systemd-sysv-install.", "Executing: /usr/lib/systemd/systemd-sysv-install " + verb + " " + unit];
+  if (verb === "enable") { const out = sync.concat(S.enabled ? [] : ["Created symlink /etc/systemd/system/multi-user.target.wants/" + unit + ".service → " + UNIT_FILE + "."]); S.enabled = true; if (now && S.state !== "active") dhcpdStart(sim, id); changed(sim); return out; }
+  const out = sync.concat(S.enabled ? ["Removed \"/etc/systemd/system/multi-user.target.wants/" + unit + ".service\"."] : []); S.enabled = false; if (now) dhcpdStop(sim, id); changed(sim); return out;
+}
+function status(sim, id) {
+  const x = sim.d[id], S = x.lx.dhcpd, up = S.state === "active", failed = S.state === "failed", k = S.since;
+  const when = k ? "since " + (k.day === "Nov 20" ? "Fri 2026-11-20 " : "Sun 2026-11-22 ") + k.hms + " UTC; " + ago(sim, k) : "";
+  const L = [(failed ? "× " : up ? "● " : "○ ") + "isc-dhcp-server.service - ISC DHCP IPv4 server", "     Loaded: loaded (" + UNIT_FILE + "; " + (S.enabled ? "enabled" : "disabled") + "; preset: enabled)",
+    "     Active: " + (up ? "active (running) " + when : failed ? "failed (Result: exit-code) " + when : "inactive (dead)" + (k ? " " + when : "")), "       Docs: man:dhcpd(8)"];
+  if (up) L.push("   Main PID: " + S.pid + " (dhcpd)", "      Tasks: 1 (limit: 38149)", "     Memory: 4.6M (peak: 4.9M)", "        CPU: 14ms", "     CGroup: /system.slice/isc-dhcp-server.service", "             └─" + S.pid + " dhcpd -user dhcpd -group dhcpd -f -4 -pf /run/dhcp-server/dhcpd.pid -cf " + D.CONF + (S.run.listen.length ? " " + D.interfacesOf((x.lx.files[D.DEFAULTS] || {}).text).join(" ") : ""));
+  if (failed) L.push("    Process: " + S.pid + " ExecStart=/bin/sh -ec CONFIG_FILE=/etc/dhcp/dhcpd.conf; [ -e \"$CONFIG_FILE\" ]; exec dhcpd -user dhcpd -group dhcpd -f -4 -pf /run/dhcp-server/dhcpd.pid -cf $CONFIG_FILE $INTERFACESv4 (code=exited, status=1/FAILURE)", "   Main PID: " + S.pid + " (code=exited, status=1/FAILURE)", "        CPU: 11ms");
+  const J = S.journal.slice(-10); return J.length ? L.concat([""], J) : L;
+}
+function journalctl(sim, id, a) {
+  const x = sim.d[id], S = x.lx.dhcpd; let unit = null, n = 0;
+  for (let i = 0; i < a.length; i++) {
+    const w = a[i];
+    if (w === "-u" || w === "--unit") unit = a[++i];
+    else if (/^--unit=/.test(w)) unit = w.slice(7);
+    else if (/^-[a-z]*u$/.test(w)) unit = a[++i];
+    else if (/^-[a-z]*u./.test(w)) unit = w.slice(w.indexOf("u") + 1);
+    else if (w === "-n" || w === "--lines") n = parseInt(a[++i], 10) || 10;
+    else if (/^-n\d+$/.test(w)) n = +w.slice(2);
+  }
+  if (unit) unit = unit.replace(/\.service$/, "");
+  if (!S || (unit && unit !== D.UNIT)) return ["-- No entries --"];
+  const J = S.journal; return J.length ? (n ? J.slice(-n) : J.slice(-200)) : ["-- No entries --"];
+}
+function dhcpdCmd(sim, id, a) {
+  const x = sim.d[id]; if (!x.lx.dhcpd) return ["dhcpd: command not found"];
+  if (a.indexOf("-t") < 0 && a.indexOf("-T") < 0) return ["(The DHCP server runs as a service here: sudo systemctl start isc-dhcp-server. To check the file: dhcpd -t -cf " + D.CONF + ")"];
+  const i = a.indexOf("-cf"), path = i >= 0 ? a[i + 1] : D.CONF, t = fileText(sim, id, path || "");
+  if (t == null) return D.BANNER.concat(["Can't open " + (path || "") + ": No such file or directory", "", "exiting."]);
+  return D.test(t, path).out;
+}
+/* the leases file and dhcp-lease-list: what the running server has handed out */
+const two = function (v) { return (v < 10 ? "0" : "") + v; };
+function when(s) { const d = Math.floor(s / 86400), r = s % 86400; return "2026/11/" + two(22 + d) + " " + two(Math.floor(r / 3600)) + ":" + two(Math.floor(r / 60) % 60) + ":" + two(r % 60); }
+function leasesText(sim, id) {
+  const S = sim.d[id].lx.dhcpd, L = ["# The format of this file is documented in the dhcpd.leases(5) manual page.", "# This lease file was written by isc-dhcp-4.4.3-P1", "", "# authoring-byte-order entry is generated, DO NOT DELETE", "authoring-byte-order little-endian;", ""];
+  (S.leases || []).forEach(function (l) { L.push("lease " + l.ip + " {", "  starts 0 " + when(l.start) + ";", "  ends " + (l.end >= 86400 * 2 ? 1 : 0) + " " + when(l.end) + ";", "  cltt 0 " + when(l.start) + ";", "  binding state " + (l.released ? "free" : "active") + ";", "  next binding state free;", "  rewind binding state free;", "  hardware ethernet " + D.macNorm(l.mac) + ";", "  client-hostname \"" + l.host + "\";", "}"); });
+  return L.join("\n") + "\n";
+}
+function leaseList(sim, id) {
+  const S = sim.d[id].lx.dhcpd; if (!S) return ["dhcp-lease-list: command not found"];
+  const act = (S.leases || []).filter(function (l) { return !l.released; });
+  return ["To get manufacturer names please download http://standards.ieee.org/regauth/oui/oui.txt to /usr/local/etc/oui.txt", "Reading leases from " + D.LEASES, "MAC                IP              hostname       valid until         manufacturer        ", "==============================================================================================="].concat(act.map(function (l) { return pad(D.macNorm(l.mac), 19) + pad(l.ip, 16) + pad(l.host.slice(0, 14), 15) + when(l.end).replace(/\//g, "-") + " -NA-"; }));
+}
+/* a relay's request reaching the server: it's heard only by a running dhcpd listening on the port that holds the address relayed to */
+export function dhcpdHears(sim, id, helper) {
+  const x = sim.d[id], S = x && x.lx && x.lx.dhcpd; if (!S || S.state !== "active" || !S.run || !sim.on(id)) return false;
+  const f = x.ifaces.find(function (g) { return g.cfg && g.cfg.ip === helper; }); return !!f && S.run.listen.indexOf(f.name) >= 0;
+}
+export function dhcpdPick(sim, id, giaddr, mac, inUse) { const S = sim.d[id].lx.dhcpd; return D.pick(S.run.conf, giaddr, mac, (S.leases || []).filter(function (l) { return !l.released; }), inUse); }
+/* the exchange in the server's log, and the lease it records: what the client is given (its mask, default router, DNS servers, lease time) */
+export function dhcpdLease(sim, id, giaddr, client, o) {
+  const x = sim.d[id], S = x.lx.dhcpd, m = D.macNorm(client.mac), h = client.host, srvIp = sim.ifAddr(id, 0).ip, k = clock(sim);
+  (o.abandoned || []).forEach(function (ip) { journal(sim, id, "dhcpd[" + S.pid + "]", ["Abandoning IP address " + ip + ": pinged before offer"]); });
+  journal(sim, id, "dhcpd[" + S.pid + "]", ["DHCPDISCOVER from " + m + " via " + giaddr, "DHCPOFFER on " + o.ip + " to " + m + " (" + h + ") via " + giaddr, "DHCPREQUEST for " + o.ip + " (" + srvIp + ") from " + m + " (" + h + ") via " + giaddr, "DHCPACK on " + o.ip + " to " + m + " (" + h + ") via " + giaddr]);
+  const op = D.leaseOpts(S.run.conf, o.sub, o.host);
+  S.leases = (S.leases || []).filter(function (l) { return D.macNorm(l.mac) !== m && l.ip !== o.ip; });
+  S.leases.push({ ip: o.ip, mac: m, host: h, start: k.s, end: k.s + op.secs, via: giaddr });
+  return { ip: o.ip, mask: op.mask, gw: op.routers[0] || null, dns: op.dns, server: srvIp, hours: op.secs / 3600, domain: op.domain };
+}
+export function dhcpdRefused(sim, id, giaddr, mac, o) {
+  const S = sim.d[id].lx.dhcpd, m = D.macNorm(mac);
+  journal(sim, id, "dhcpd[" + S.pid + "]", (o.abandoned || []).map(function (ip) { return "Abandoning IP address " + ip + ": pinged before offer"; }).concat(["DHCPDISCOVER from " + m + " via " + giaddr + ": " + (o.why === "segment" ? "unknown network segment" : "network " + o.sub.net + "/" + maskBits(o.sub.mask) + ": no free leases")]));
+}
+export function dhcpdRelease(sim, id, mac) {
+  const S = sim.d[id].lx.dhcpd, m = D.macNorm(mac), l = (S.leases || []).find(function (q) { return D.macNorm(q.mac) === m && !q.released; }); if (!l) return;
+  l.released = true; if (S.pid) journal(sim, id, "dhcpd[" + S.pid + "]", ["DHCPRELEASE of " + l.ip + " from " + m + " (" + l.host + ") via " + l.via + " (found)"]);
 }

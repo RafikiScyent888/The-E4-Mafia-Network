@@ -3,7 +3,7 @@
    is open. Every change goes through ctx.act, so the ticket sees it. */
 import { el } from "./store.js";
 import { tabsFor, page } from "../net/pages.js";
-import { prompt, cliSession, secretNext } from "../net/cmd.js";
+import { prompt, cliSession, secretNext, editingOf } from "../net/cmd.js";
 import { complete } from "../net/swcli.js";
 import { physicalState } from "../net/physical.js";
 
@@ -51,7 +51,8 @@ function cmdPane(id, ctx, win) {
       const s = secretNext(sim(), id, win); label.textContent = prompt(sim(), id, win); input.type = s ? "password" : "text";
       input.setAttribute("aria-label", s ? "Password, not shown as you type" : "Command for the " + name);
     };
-    t = terms[key] = { node: node, out: out, input: input, hist: [], hi: 0, sync: sync };
+    t = terms[key] = { node: node, out: out, input: input, line: line, hist: [], hi: 0, sync: sync };
+    t.nano = nanoBox(t, id, ctx, W, win, sync);
     input.addEventListener("keydown", function (e) {
       const S = cliSession(sim(), id, win);   /* on a switch's command line, ready for a command: ? and Tab work as they do there */
       if (e.key === "Enter") {
@@ -63,6 +64,7 @@ function cmdPane(id, ctx, win) {
           const r = ctx.act(Object.assign(sw ? { t: "cmd", dev: id, line: v, cli: true } : { t: "cmd", dev: id, line: v }, W));
           if (r && r.clear) out.textContent = "";
           else if (r) out.textContent += (r.out || "") + (r.cli || r.serial ? "" : "\n");   /* a switch puts no blank line before its next prompt; Windows does */
+          if (r && r.edit) t.nano.open(r.edit);   /* nano opened a file (work order 10) */
         }
         sync();
         node.scrollTop = node.scrollHeight;
@@ -80,7 +82,63 @@ function cmdPane(id, ctx, win) {
     });
   }
   t.sync();   /* the network may have changed since (a power cut, a cable pulled): the prompt says where it is now */
+  const E = editingOf(ctx.T.sim, id, win); if (E && !t.nano.isOpen()) t.nano.open(E); else if (!E && t.nano.isOpen()) t.nano.close();   /* the editor still open on the server, or gone with it (a reboot) */
   return t.node;
+}
+
+/* nano, the server's text editor (work order 10): it takes the place of the prompt while a file is open. ^O writes the file out (nano asks
+   for the file name; Enter keeps it), ^X leaves (asking first if there are changes not written). Each write and the leaving are lines sent
+   to the server, so they're done, undone and replayed like any other; what's typed in the editor stays here until it's written out. */
+function nanoBox(t, id, ctx, W, win, sync) {
+  const keyBtn = function (k, label, cls, fn, sc) { return el("button", { type: "button", class: "nano-key " + cls, "aria-keyshortcuts": sc, onclick: fn }, el("kbd", null, k), " " + label); };
+  const path = el("span", { class: "nano-path" }), mod = el("span", { class: "nano-mod" });
+  const head = el("div", { class: "nano-head", "aria-hidden": "true" }, el("span", null, "GNU nano 7.2"), path, mod);
+  const ta = el("textarea", { class: "nano-text", spellcheck: "false", autocapitalize: "off", autocomplete: "off", rows: "12", wrap: "off" });
+  const status = el("p", { class: "nano-status", role: "status" });
+  const askText = el("span", { class: "nano-q" }), askBtns = el("span", { class: "nano-a" });
+  const ask = el("div", { class: "nano-ask" }, askText, askBtns);
+  const keys = el("div", { class: "nano-keys" }, keyBtn("^O", "Write Out", "nano-write", function () { askWrite(false); }, "Control+O"), keyBtn("^X", "Exit", "nano-exit", function () { exit(); }, "Control+X"));
+  const box = el("div", { class: "nano", role: "group" }, head, ta, status, ask, keys);
+  let S = null;   /* { path, saved, ro } while a file is open */
+  const send = function (line, text) { const a = Object.assign({ t: "cmd", dev: id, line: line, cli: true }, W); if (text != null) a.text = text; return ctx.act(a); };
+  const modified = function () { return !!S && ta.value !== S.saved; };
+  const paint = function () { mod.textContent = modified() ? "Modified" : ""; };
+  const hideAsk = function () { ask.hidden = true; askText.textContent = ""; askBtns.textContent = ""; };
+  const asking = function (q, opts) {
+    askText.textContent = q; askBtns.textContent = "";
+    opts.forEach(function (o) { askBtns.appendChild(keyBtn(o[0], o[1], o[2], function () { hideAsk(); o[3](); ta.focus({ preventScroll: true }); }, o[4])); });
+    ask.hidden = false; const first = askBtns.querySelector("button"); if (first) { first.focus({ preventScroll: true }); box.scrollIntoView({ block: "nearest" }); }   /* the question and its answers on screen */
+  };
+  const write = function (then) {
+    const r = send("^O", ta.value); const e = r && r.edit; status.textContent = e ? e.status : "";
+    const ok = !!(r && r.facts && r.facts.ok); if (ok) S.saved = ta.value; paint();
+    if (ok && then) then();
+  };
+  const askWrite = function (then) { asking("File Name to Write: " + S.path, [["Enter", "Write it", "nano-ok", function () { write(then); }, "Enter"], ["^C", "Cancel", "nano-cancel", function () { status.textContent = "[ Cancelled ]"; }, "Control+C"]]); };
+  const leave = function () { send("^X"); close(); sync(); t.input.focus({ preventScroll: true }); t.node.scrollTop = t.node.scrollHeight; };
+  const exit = function () {
+    if (!modified()) return leave();
+    asking("Save modified buffer?", [["Y", "Yes", "nano-yes", function () { askWrite(leave); }, "Y"], ["N", "No", "nano-no", leave, "N"], ["^C", "Cancel", "nano-cancel", function () { status.textContent = ""; }, "Control+C"]]);
+  };
+  const close = function () { S = null; box.remove(); t.line.hidden = false; t.out.hidden = false; t.node.classList.remove("editing"); hideAsk(); };   /* the screen as it was, as nano leaves it */
+  ta.addEventListener("input", paint);
+  box.addEventListener("keydown", function (e) {
+    const k = e.key.toLowerCase();
+    if (e.ctrlKey && k === "o") { e.preventDefault(); askWrite(false); }
+    else if (e.ctrlKey && k === "x") { e.preventDefault(); exit(); }
+    else if (!ask.hidden && (e.key === "Escape" || (e.ctrlKey && k === "c"))) { e.preventDefault(); const c = askBtns.querySelector(".nano-cancel"); if (c) c.click(); }
+    else if (!ask.hidden && e.target === ta && e.key === "Enter") { e.preventDefault(); const b = askBtns.querySelector("button"); if (b) b.click(); }
+  });
+  hideAsk();
+  return {
+    open: function (E) {
+      S = { path: E.path, saved: E.text, ro: E.ro }; path.textContent = E.path; ta.value = E.text; status.textContent = E.status || "";
+      ta.setAttribute("aria-label", "Editing " + E.path + " in nano" + (E.ro ? ", which you can't write to as yourself" : "") + ". Ctrl+O writes it out, Ctrl+X leaves.");
+      box.setAttribute("aria-label", "nano, editing " + E.path);
+      paint(); hideAsk(); t.line.hidden = true; t.out.hidden = true; t.node.classList.add("editing"); t.node.scrollTop = 0; t.node.appendChild(box); ta.focus({ preventScroll: true }); ta.setSelectionRange(0, 0); ta.scrollTop = 0;
+    },
+    close: close, isOpen: function () { return !!S; }
+  };
 }
 
 function pagePane(id, key, ctx, rerender) {

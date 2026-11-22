@@ -14,6 +14,7 @@
 import { rng, mac } from "./util.js";
 import { newSwitch, session, exec } from "./swcli.js";
 import { newRouter } from "./rtcli.js";
+import * as DH from "./dhcpd.js";
 
 const SECRETS = ["Core!Riser7", "Dist#Uplink4", "Bench*Floor22", "Riser&Fibre9", "Data!Room31", "Tier3#Mgmt8"];
 const CONSOLES = ["Console#HQ5", "Serial!Rack2", "Blue*Line44", "Con0!Desk9"];
@@ -112,6 +113,19 @@ export function fileServer(net) {
   ["", plan.console, "enable", plan.secret, "configure terminal", "interface gi0/" + S.ports.eno1, "description FSRV-" + plan.vlans.servers.name, "switchport mode access", "switchport access vlan " + plan.vlans.servers.id, "spanning-tree portfast", "spanning-tree bpduguard enable", "no shutdown", "end", "copy running-config startup-config", "", "exit"].forEach(function (l) { exec(S2, l); });
   return x;
 }
+/* the central DHCP server (work order 10): isc-dhcp-server put on the file server by the installer last month. Ubuntu starts a package's
+   service as it installs it; with nothing but the sample file it found no subnet to serve and stopped, and the installer disabled it until
+   it was set up. Its two files as the package left them; the journal of that first start */
+export function dhcpKit(net) {
+  const x = net.devices.fsrv, at = "Nov 20 16:24";
+  x.lx.files = Object.assign({}, x.lx.files, { [DH.CONF]: { text: DH.SAMPLE, at: at }, [DH.DEFAULTS]: { text: DH.DEFAULTS_TEXT, at: at } });
+  const r = DH.start(DH.SAMPLE, DH.DEFAULTS_TEXT, x.ifaces.map(function (f) { return { name: f.name, ip: f.cfg && f.cfg.ip, mask: f.cfg && f.cfg.mask, mac: f.mac }; }));
+  const st = function (t, who, l) { return "Nov 20 " + t + " " + x.host + " " + who + ": " + l; };
+  const J = [st("16:24:03", "systemd[1]", "Started isc-dhcp-server.service - ISC DHCP IPv4 server.")].concat(r.log.map(function (l) { return st("16:24:03", "dhcpd[1187]", l); }),
+    [st("16:24:03", "systemd[1]", "isc-dhcp-server.service: Main process exited, code=exited, status=1/FAILURE"), st("16:24:03", "systemd[1]", "isc-dhcp-server.service: Failed with result 'exit-code'.")]);
+  x.lx.dhcpd = { enabled: false, state: "failed", pid: 1187, run: null, leases: [], journal: J, since: { day: "Nov 20", hms: "16:24:03", s: -151440 } };
+  return x;
+}
 export function makeCampus(seed) {
   const r = rng(seed ^ 0x4c41), V = VLAN_SETS[r.int(0, VLAN_SETS.length - 1)], b = r.pick([16, 27, 38, 49, 63]), TV = TRAIN_V[VLAN_SETS.indexOf(V)];
   const net24 = function (v) { return "10." + b + "." + v + ".0"; }, ip = function (v, h) { return "10." + b + "." + v + "." + h; };
@@ -119,6 +133,7 @@ export function makeCampus(seed) {
   const plan = {
     tag: "RIT", domain: "rafiki-it.lan", secret: r.pick(SECRETS), console: r.pick(CONSOLES), user: r.pick(USERS), userPw: r.pick(USERPW), mask: "255.255.255.0",
     vlans: vl, dns: ["203.0.113.53", "203.0.113.54"], excl: 20,
+    dhcp: { resv: { dev: "hd1", ip: ip(V.svc, 15) }, lease: 86400 },   /* the central DHCP server's records (work order 10): the help desk PC's reservation, a day's lease */
     edge: { host: "RIT-EDGE", wan: "GigabitEthernet0/0", lan: "GigabitEthernet0/1" },
     sw: { dist1: { host: "RIT-DIST1", ip: ip(V.mgmt, 2) }, dist2: { host: "RIT-DIST2", ip: ip(V.mgmt, 3) }, acc1: { host: "RIT-ACC-1F", ip: ip(V.mgmt, 11) }, acc2: { host: "RIT-ACC-2F", ip: ip(V.mgmt, 12) }, acc3: { host: "RIT-ACC-3F", ip: ip(V.mgmt, 13) }, core1: { host: "RIT-CORE1" }, core2: { host: "RIT-CORE2" } },
     printers: { pr1: ip(V.printers, 10), pr3: ip(V.printers, 11) },

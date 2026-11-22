@@ -146,8 +146,12 @@ The owner, 10 November 2026: "create a save point here." Where everything stands
   desks locked down, the floor surviving distribution switch 1). With it, for every level: a work order's reload about twice as fast
   (each switch's VLAN settings fixed once, its links and a relay's way to its helper kept for a pass), and a dead link's diamond kept
   clear of other port names (on a phone it bled into "Gi0/2", 6.47:1). See the CP-J7 notes in "Level 4, the campus" below.
-- **Next, in the owner's order:** the rest of Level 4: the Training Annex (CP-J8, built on `save/level4-annex`, worktree
-  `/home/user/e4-anx`, its checks running), then jumbo frames and the central DHCP server (they need the rack server's model and a
+- **Level 4, CP-J8, live 22 November 2026:** the Training Annex on a collapsed core (one layer 3 switch as its core and distribution, an
+  access switch for the classroom, single-mode fibre into core switch 2, routed and in OSPF); on the logical diagram a block of its own
+  with the fibre a labelled stub at each end, on the floor plan its own band and the duct's route. With it, for every level: a pass of
+  the links skipped after a command that changed nothing (every earlier work order replays the same, step by step), and the OSPF lines'
+  new first cause, the link itself down. See the CP-J8 notes in "Level 4, the campus" below.
+- **Next, in the owner's order:** the rest of Level 4: jumbo frames and the central DHCP server (they need the rack server's model and a
   Linux command line), then the 15 tickets; then Level 5 (Enterprise). The owner, 17 November 2026: "Please keep building it all out.
   We will come back and make changes once I go through it." 
 - **The container was rebuilt on 15 November 2026:** the worktrees were made again from the pushed branches, and the browser
@@ -3840,6 +3844,60 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
     plants: CP-J7's 31 Node plants, the 11 on the code the speed-up touched (the relay, a far end shut, the standby address, SB-J6's
     port security, re-aimed), the 3 on the speed-up's own guards (two missed until `tests/links-far.test.js` held the kept links to
     a port shut or a lease changed mid-pass), the 12 campus page plants (three new for CP-J7), every one caught.
+- **CP-J8, the Training Annex on a collapsed core, built 18 to 22 November 2026 on `save/level4-annex`** (worktree
+  `/home/user/e4-anx`; the owner, 17 November 2026: "Please keep building it all out. We will come back and make changes once I go
+  through it."; objectives read 17 November 2026, Network+ V9 unchanged: "collapsed core", "fiber", "SC, LC", "OSPF", "VLANs",
+  "DHCP", "physical vs. logical diagrams", "transceiver mismatch"):
+  - **The Annex** (`js/net/campus.js`): across the car park, its two rooms (`acomms` the Annex comms room, `class` the classroom: in
+    `CAMPUS_FLOORS`, `CAMPUS_RUN`, at 185 m and more from the main building, past copper's 100 m, and `CAMPUS_ROOM_BOX`); its VLANs
+    per set (`ANNEX_V`: the classroom 70/170/236, its own management 71/171/237, each its subnet's third octet); `plan.annex` (the
+    core's and access switch's names and addresses, the link: core switch 2's SFP1 to the Annex core's SFP1 on the next /30 of the
+    core's block, `10.b.255.32/30`, each end described; the uplink, access port 24 to core port 1; the desks); the Annex core
+    (`anxc`, an MSW-3900X with four empty fibre slots) and access switch (`anxa`, an MSW-2800G) in their boxes, fixed in the comms
+    room, and the classroom's two PCs (`cl1`, `cl2`) from a stream of their own (seed ^ 0xa11e), so every other part of the campus is
+    drawn as before. `CAMPUS_FIBRE`: the duct to the Annex carries OS2 single-mode (`lay` in `js/net/sim.js` takes a fibre's type from
+    the rooms it joins; the office's OM2 multimode otherwise, as before). CP-J8's start takes the classroom PCs out of their boxes and
+    gives core switch 2 its fibre slots, so no earlier work order's pages or saved progress change.
+  - **CP-J8** (`js/build/campus.js`), 16 lines: racked and uplinked; the fibre up (in its box, copper across the car park, no module,
+    not plugged in, the wrong slots, an SFP+ in a 1 Gb/s slot, a multimode module on the single-mode run, a port shut); each Annex
+    switch set up as every switch here (the core with routing on, managed on the Annex's management VLAN as its gateway; the access
+    switch its gateway the core); the link routed at both ends on the records' addresses, described; OSPF neighbours across the
+    fibre (a new first cause for every core link: the link itself down, before "no network statement covers it": a down interface
+    isn't in OSPF at all); both VLANs on both Annex switches; the trunk between them; the classroom's gateway on the Annex core, both
+    its networks in OSPF and passive; the edge router's pool; the Annex core's relay; the desks locked down, the spares parked; the
+    classroom PCs online; both Annex switches answering from the service desk; everyone else working; saved.
+  - **The drawings:** the logical diagram can't take the Annex beside the main building (it would shrink every name), so the Annex is
+    a framed block of its own under it ("THE TRAINING ANNEX, ACROSS THE CAR PARK"), and a link between the two buildings (the fibre)
+    is drawn as a labelled stub at each end, "To the Annex core switch" at core switch 2 and "To core switch 2" at the Annex core, as
+    a diagram of two buildings shows it (`annexOn`, `ANNEX_Y`, `stubEnd`, `stubName` in `js/desk/draw.js`; the stubs' tags are port
+    names to the drawing checks). The floor plan gets a fifth band under the main building once anything of the Annex is out of its
+    box, and the duct's fibre a fixed route: down between the data room's names, along under them to the riser, down beside the
+    closets, out under the car park, in by the comms room's far wall (the run router's curves all crossed a room's name). The Annex
+    switches show their management addresses.
+  - **A pass skipped when nothing changed** (`js/net/cmd.js`, `js/net/sim.js`): each work order's start replays every earlier one, so
+    CP-J8 opened in 3 s. A pass of the links after a command now runs only if the command changed something a pass reads (every
+    switch's and router's configuration, every device's interfaces, each console's mode: `netPrint`, compared before and after), and
+    the pass a command's own action starts is skipped when nothing has changed since the last one (`ver`, `bump`, `relinkIfChanged`;
+    each step of a pass settles in one go, so a second changes nothing). `relink` itself is unchanged, for the starts that change the
+    network directly. Every earlier work order replays the same, output and network after every step (3,987 steps, three seeds).
+  - **The drive's wall rule** (`tools/drive.mjs`): it added up every sample near any wall, 80 samples whatever a run's length, so the
+    1,600-unit duct counted every floor it crossed as 20 units along a wall. It now takes the longest stretch beside a wall, sampled
+    every 4 units; its other tests keep their 80 samples. Calibrated with a plant laying the duct along the data room's wall.
+  - **Checks:** `npm test` 593 of 593 (CP-J8's wrong ways, 24, and other right ways: a statement per network, passive one interface at
+    a time, the trunk's list a line at a time, the relay to the edge router's other link; and a new test: the PCs waiting on a pool
+    get their addresses the moment it's finished being typed); `ONLY=campus JOB=CP-J8` 72 checks (three campuses: the classroom PC's
+    address and tracert across the fibre, OSPF FULL at core switch 2, the Annex access switch's trunk over SSH, the block and stubs,
+    each Annex switch under its address, the Annex's band and the duct's route, both drawings in both fonts, the reload);
+    `ONLY=campus JOB=plans` 288 (all eight work orders' drawings, start and done, six campuses, both fonts); the full drive 7,166
+    checks (every level); `node tools/models.mjs` 202 of 202; AAA on all 31 campus and
+    levels states, 120,705 text runs (CP-J8's three new); 240 diagrams on the other levels unchanged, names and dots. Plants: CP-J8's
+    20 Node plants and the pass-skip's first (a line that changed something given no pass), caught; the console's mode left out of
+    what a pass reads missed until the pool test above, then caught; two are defensive and unreachable today, as earlier unreachable
+    guards are kept: a lease that doesn't bump (a lease changes nothing a pass reads, and a command that gives one shows in the
+    print anyway) and a start that doesn't bump (no start changes anything a pass would act on: it unboxes uncabled PCs, adds empty
+    slots). Page plants: CP-J8's six (the block, the classroom PCs' buttons, the Annex's band, the duct's route, the switches'
+    addresses: missed until the drive checked them, then caught; the duct along a wall, caught by the reworked wall rule) and the
+    three re-aimed, all caught.
 
 ## Objectives
 

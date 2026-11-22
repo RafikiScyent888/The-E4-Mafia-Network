@@ -322,6 +322,68 @@ test("CP-J7: other right ways pass: priorities typed for the root, the bundle's 
   }
 });
 
+test("CP-J8: the tempting wrong ways each fail their own line for their own cause", () => {
+  const def = byId["CP-J8"];
+  for (const s of seeds("CP-J8").slice(0, 3)) {
+    const v = B.open(def, s).v, p = v.plan, A = p.annex, L = A.link, sol = def.solve(v), cause = (J, id) => { const r = line(J, id); return r.ok ? null : r.real.id; };
+    const on = (dev, from, to) => editOn(sol, dev, (l) => (l === from ? (to === null ? [] : [].concat(to)) : undefined)), drp = (dev, re) => editOn(sol, dev, (l) => (re.test(l) ? [] : undefined));
+    const mod = (dev, type) => sol.map((a) => (a.t === "sfp" && a.dev === dev ? Object.assign({}, a, { type: type }) : a));
+    let J = tryIt(def, s, sol.map((a) => (a.t === "lay" && a.a.dev === "anxa" && a.a.port === A.up.acc ? Object.assign({}, a, { a: { dev: "anxa", port: "23" } }) : a))); assert.equal(cause(J, "rack"), "ports", s + " the uplink on another port");
+    J = tryIt(def, s, mod(L.hq, "1000BASE-SX").map((a) => (a.t === "sfp" ? Object.assign({}, a, { type: "1000BASE-SX" }) : a))); assert.equal(cause(J, "fibre"), "mmf", s + " multimode modules on the single-mode run"); assert.equal(cause(J, "ospf"), "down");
+    J = tryIt(def, s, mod(L.hq, "10GBASE-SR")); assert.equal(cause(J, "fibre"), "plus", s + " an SFP+ in core switch 2's slot");
+    J = tryIt(def, s, sol.map((a) => (a.t === "lay" && a.a.dev === L.hq && a.a.port === L.hqPort ? { t: "lay", a: { dev: L.hq, port: "22" }, b: { dev: "anxc", port: "20" } } : a))); assert.equal(cause(J, "fibre"), "copper", s + " copper across the car park");
+    J = tryIt(def, s, editOn(sol, L.hq, (l) => (l === "no shutdown" ? [] : undefined))); assert.equal(cause(J, "fibre"), "shut", s + " core switch 2's fibre port left shut");
+    J = tryIt(def, s, on("anxc", "hostname " + A.core.host, "hostname RIT-ANNEX")); assert.equal(cause(J, "core"), "name", s + " the core named off the records");
+    J = tryIt(def, s, on("anxc", "ip routing", null)); assert.equal(cause(J, "core"), "routing", s + " routing left off"); assert.equal(cause(J, "ospf"), "proc");
+    J = tryIt(def, s, on("anxa", "ip default-gateway " + A.mgmt.gw, null)); assert.equal(cause(J, "acc"), "gw", s + " no default gateway"); assert.equal(cause(J, "manage"), "acc");
+    J = tryIt(def, s, drp(L.hq, /^no switchport$/)); assert.equal(cause(J, "link"), "hqsw", s + " core switch 2's end still a switch port");
+    J = tryIt(def, s, on("anxc", "ip address " + L.anxIp + " " + L.mask, "ip address " + L.anxIp.replace(/\.34$/, ".38") + " " + L.mask)); assert.equal(cause(J, "link"), "anxip", s + " the Annex end on the wrong address");
+    J = tryIt(def, s, on("anxc", "description " + L.anxDesc, "description FIBRE")); assert.equal(cause(J, "link"), "anxdesc", s + " the Annex end described off the records");
+    J = tryIt(def, s, on("anxc", "no passive-interface gi0/25", null)); assert.equal(cause(J, "ospf"), "passive", s + " the fibre left passive");
+    J = tryIt(def, s, editOn(sol, "anxc", (l) => (/^network .* area 0$/.test(l) ? [l.replace(/area 0$/, "area 1")] : undefined))); assert.equal(cause(J, "ospf"), "area", s + " the Annex in area 1");
+    J = tryIt(def, s, on("anxa", "name " + A.cls.name, "name CLASS")); assert.equal(cause(J, "vlans"), "name", s + " the classroom VLAN misnamed on the access switch");
+    J = tryIt(def, s, drp("anxa", /^switchport nonegotiate$/)); assert.equal(cause(J, "trunk"), "dtp", s + " the access switch's end still negotiating");
+    J = tryIt(def, s, editOn(sol, "anxc", (l) => (l === "switchport trunk allowed vlan " + A.cls.id + "," + A.mgmt.id ? ["switchport trunk allowed vlan " + A.cls.id] : undefined))); assert.equal(cause(J, "trunk"), "mgmt", s + " the management VLAN off the core's end"); assert.equal(cause(J, "manage"), "core", s + " no port carries it on the core: its own management interface goes down too");
+    J = tryIt(def, s, on("anxc", "ip address " + A.cls.gw + " " + p.mask, "ip address " + A.cls.gw.replace(/\.1$/, ".254") + " " + p.mask)); assert.equal(cause(J, "gw"), "svi", s + " the classroom's gateway on the wrong address");
+    J = tryIt(def, s, drp("anxc", /^(no )?passive-interface /)); assert.equal(cause(J, "gw"), "hello", s + " hellos to the classroom"); assert.ok(line(J, "ospf").ok, s + " the fibre's neighbours meanwhile");
+    J = tryIt(def, s, drp("edge", /^(ip dhcp pool|network |default-router|dns-server)/)); assert.equal(cause(J, "pool"), "none", s + " no pool"); assert.equal(cause(J, "online"), "apipa");
+    J = tryIt(def, s, drp("edge", /^ip dhcp excluded-address/)); assert.equal(cause(J, "pool"), "excl", s + " nothing kept back");
+    J = tryIt(def, s, drp("anxc", /^ip helper-address/)); assert.equal(cause(J, "relay"), "none", s + " no relay"); assert.equal(cause(J, "online"), "apipa");
+    J = tryIt(def, s, drp("anxa", /^switchport port-security/)); assert.equal(cause(J, "desks"), "ps", s + " the desks not locked down");
+    J = tryIt(def, s, on("anxa", "interface range gi0/3 - 23", "interface range gi0/5 - 23")); assert.equal(cause(J, "desks"), "spare", s + " spares 3 and 4 left open");
+    J = tryIt(def, s, drp("anxa", /^copy running-config/)); assert.equal(cause(J, "saved"), "unsaved-anxa", s + " the access switch unsaved");
+  }
+});
+
+test("CP-J8: other right ways pass: a network statement for each of the Annex's networks, interfaces passive one at a time, the trunk's list a line at a time, the relay to the edge router's other link", () => {
+  const def = byId["CP-J8"];
+  for (const s of seeds("CP-J8").slice(0, 2)) {
+    const v = B.open(def, s).v, p = v.plan, A = p.annex, L = A.link, sol = def.solve(v), b = p.vlans.svc.net.split(".")[1], other = coreLinks(p)[1].ia;
+    let acts = editOn(sol, "anxc", (l) => {
+      if (l === "network 10." + b + ".0.0 0.0.255.255 area 0") return ["network " + L.net + " 0.0.0.3 area 0", "network " + A.cls.net + " 0.0.0.255 area 0", "network " + A.mgmt.net + " 0.0.0.255 area 0"];
+      if (l === "passive-interface default") return ["passive-interface vlan " + A.cls.id, "passive-interface vlan " + A.mgmt.id];
+      if (l === "no passive-interface gi0/25") return [];
+      if (/^ip helper-address /.test(l)) return ["ip helper-address " + other];
+      return undefined;
+    });
+    acts = editOn(acts, "anxa", (l) => (l === "switchport trunk allowed vlan " + A.cls.id + "," + A.mgmt.id ? ["switchport trunk allowed vlan " + A.cls.id, "switchport trunk allowed vlan add " + A.mgmt.id] : undefined));
+    const J = tryIt(def, s, acts); const c = B.check(J); assert.ok(c.res.every((r) => r.ok), s + " " + c.res.filter((r) => !r.ok).map((r) => r.id + ": " + r.ev).join("; "));
+  }
+});
+
+test("the PCs waiting on a pool get their addresses the moment it's finished being typed: a console leaving the pool's mode starts a pass", () => {
+  const def = byId["CP-J8"];
+  for (const s of seeds("CP-J8").slice(0, 2)) {
+    const J = B.open(def, s), A = J.v.plan.annex, sol = def.solve(J.v, J.sim), seg = segOf(sol, "edge");
+    const at = seg.find((i) => sol[i].line === "exit" && /^dns-server /.test(sol[i - 1].line));
+    assert.ok(at > 0, s + " the pool's exit in the walk-through");
+    for (let i = 0; i < at; i++) B.act(J, sol[i]);
+    assert.ok(/^169\.254\./.test(J.sim.addr("cl1").ip), s + " still waiting while the pool is being typed");
+    B.act(J, sol[at]);
+    const ip = J.sim.addr("cl1").ip; assert.ok(ip.indexOf(A.cls.net.replace(/0$/, "")) === 0, s + " an address from the classroom pool as soon as the console leaves it: " + ip);
+  }
+});
+
 test("no help names a password, an address or a VLAN number; Mason's ladder climbs on a failing line", () => {
   for (const def of CAMPUS_JOBS) for (const s of seeds(def.id).slice(0, 3)) {
     const J = B.open(def, s), p = J.v.plan, b = p.vlans.svc.net.split(".")[1], secrets = [p.secret, p.console, p.userPw].concat(Object.values(p.sw).map((w) => w.ip).filter(Boolean), Object.values(p.vlans).flatMap((x) => [x.gw, x.net]).filter(Boolean), Object.values(p.printers), ["10." + b + ".255.", "10." + b + ".0.0"]);
@@ -329,6 +391,8 @@ test("no help names a password, an address or a VLAN number; Mason's ladder clim
     for (const x of secrets) assert.ok(words.indexOf(x) < 0, def.id + " help names " + x);
     for (const k of Object.keys(p.vlans)) assert.ok(!new RegExp("\\b" + p.vlans[k].id + "\\b").test(words), def.id + " help names VLAN " + p.vlans[k].id);
     assert.ok(!new RegExp("\\b" + p.train.id + "\\b").test(words) && words.indexOf(p.train.net) < 0 && words.indexOf(p.train.gw) < 0, def.id + " help names the training VLAN or its addresses");
+    const A = p.annex; for (const q of [A.cls, A.mgmt]) assert.ok(!new RegExp("\\b" + q.id + "\\b").test(words) && words.indexOf(q.net) < 0 && words.indexOf(q.gw) < 0, def.id + " help names an Annex VLAN or its addresses");
+    for (const x of [A.core.host, A.acc.host, A.acc.ip, A.link.hqIp, A.link.anxIp, A.link.net, A.link.hqDesc, A.link.anxDesc]) assert.ok(words.indexOf(x) < 0, def.id + " help names " + x);
     for (let i = 0; i < 5; i++) B.check(J);
     const m = B.mason(J); assert.ok(m && JSON.stringify(m).length > 20);
   }

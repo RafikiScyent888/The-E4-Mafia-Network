@@ -2379,6 +2379,8 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
         await p.click("#vLog"); await p.waitForTimeout(80);
         const tags = await p.evaluate(() => [...document.querySelectorAll("#net text.pl")].map((t) => t.textContent));
         check(tags.indexOf("To the Annex core switch") >= 0 && tags.indexOf("To core switch 2") >= 0 && !!(await p.$("#net rect.zone")), tag + "the logical diagram: the Annex in a block of its own, the fibre a stub at each end saying where it goes");
+        const subs = await p.evaluate(() => [...document.querySelectorAll("#net text.ns")].map((t) => t.textContent));
+        check(subs.indexOf(A.core.ip) >= 0 && subs.indexOf(A.acc.ip) >= 0, tag + "the logical diagram: each Annex switch under its management address (" + A.core.ip + ", " + A.acc.ip + ")");
         await p.click("#vPhy"); await p.waitForTimeout(80);
         const rooms = await p.evaluate(() => [...document.querySelectorAll("#plan text.rl")].map((t) => t.textContent)), duct = await p.evaluate(() => [...document.querySelectorAll("#plan path.run-fib")].map((x) => x.getAttribute("d")).join(" | "));
         check(rooms.indexOf("ANNEX COMMS ROOM") >= 0 && rooms.indexOf("CLASSROOM (ANNEX)") >= 0 && rooms.some((r) => /THE TRAINING ANNEX/.test(r)), tag + "the floor plan: the Annex's band under the main building, its two rooms and its caption");

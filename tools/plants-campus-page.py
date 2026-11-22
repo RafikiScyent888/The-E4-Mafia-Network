@@ -28,6 +28,11 @@ PLANTS = [
  ("the 2F closet not drawn wider for the backup server (run with PLANJOB=CP-J9)", "plans", "js/desk/draw.js", ', c2: [30, 365, 490, 545], bench: [490, 365, 980, 545] }); return B; };', ' }); return B; };'),
  ("the data room not drawn wider for the file server (run with PLANJOB=CP-J9)", "plans", "js/desk/draw.js", '{ data: [30, 30, 660, 345], svc: [660, 30, 980, 345], c2:', '{ c2:'),
  ("the desks not stepping aside for the servers (run with PLANJOB=CP-J9)", "plans", "js/desk/draw.js", '  if (campus(sim) && L.srv && srvIn(sim, "fsrv")) Object.assign(L, L.srv);', ''),
+ ("nano never opening on the page (CP-J10)", "CP-J10", "js/desk/window.js", "          if (r && r.edit) t.nano.open(r.edit);   /* nano opened a file (work order 10) */", ""),
+ ("nano drawn under the scrollback, not over the whole screen (CP-J10)", "CP-J10", "js/desk/window.js", "t.line.hidden = true; t.out.hidden = true; t.node.classList.add(\"editing\");", "t.line.hidden = true; t.node.classList.add(\"editing\");"),
+ ("nano's keys left below the terminal box's edge (CP-J10)", "CP-J10", "css/e4.css", ".term.editing { max-height: none; }", ".term.editing { }"),
+ ("nano leaving changes behind without asking (CP-J10)", "CP-J10", "js/desk/window.js", "    if (!modified()) return leave();", "    return leave();"),
+ ("nano saying nothing after a write (CP-J10)", "CP-J10", "js/desk/window.js", "const r = send(\"^O\", ta.value); const e = r && r.edit; status.textContent = e ? e.status : \"\";", "const r = send(\"^O\", ta.value); const e = r && r.edit; status.textContent = \"\";"),
  ("the bars' height measured only at load (a long title wrapped, the columns under it run off the screen)", "CP-J4", "js/build/app.js", 'if (window.ResizeObserver) new ResizeObserver(chromeH).observe(document.querySelector(".chrome"));', ''),
 ]
 only = sys.argv[1:]

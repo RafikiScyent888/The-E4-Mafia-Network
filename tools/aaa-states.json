@@ -1783,6 +1783,36 @@
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J9',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); document.getElementById('vPhy').click(); document.querySelector('#devtabs [data-d=bksrv]').click(); tab('Physical');"
  },
  {
+  "name": "campus: CP-J10 at the start, the first check, the file server's console: the DHCP server failed at install, its status and log",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J10',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const ta=()=>document.querySelector('.term .nano-text'); const key=(x)=>ta().dispatchEvent(new KeyboardEvent('keydown',{key:x,ctrlKey:true,bubbles:true})); c.check(); document.querySelector('#devtabs [data-d=fsrv]').click(); tab('Console'); ['',p.srv.user,p.srv.pw].forEach(l=>k(l)); ['systemctl status isc-dhcp-server'].forEach(l=>k(l));",
+  "wait": "(() => { const t = document.querySelector('.term'); return !!t && document.fonts.status === 'loaded' && Math.abs(t.scrollTop + t.clientHeight - t.scrollHeight) < 3; })()"
+ },
+ {
+  "name": "campus: CP-J10 part way, nano on the DHCP server's file with sudo, a change typed, leaving asks Save modified buffer?",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J10',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const ta=()=>document.querySelector('.term .nano-text'); const key=(x)=>ta().dispatchEvent(new KeyboardEvent('keydown',{key:x,ctrlKey:true,bubbles:true})); document.querySelector('#devtabs [data-d=fsrv]').click(); tab('Console'); ['',p.srv.user,p.srv.pw].forEach(l=>k(l)); k('sudo nano /etc/dhcp/dhcpd.conf'); k(p.srv.pw); ta().value += '\\n# a change'; ta().dispatchEvent(new Event('input')); key('x');",
+  "wait": "(() => !!document.querySelector('.term .nano') && document.fonts.status === 'loaded')()"
+ },
+ {
+  "name": "campus: CP-J10 part way, nano without sudo: the file unwritable, a write refused, File Name to Write asked again",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J10',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const ta=()=>document.querySelector('.term .nano-text'); const key=(x)=>ta().dispatchEvent(new KeyboardEvent('keydown',{key:x,ctrlKey:true,bubbles:true})); document.querySelector('#devtabs [data-d=fsrv]').click(); tab('Console'); ['',p.srv.user,p.srv.pw].forEach(l=>k(l)); k('nano /etc/dhcp/dhcpd.conf'); key('o'); document.querySelector('.term .nano-ok').click(); key('o');",
+  "wait": "(() => !!document.querySelector('.term .nano') && document.fonts.status === 'loaded')()"
+ },
+ {
+  "name": "campus: CP-J10 part way, the file written with a semicolon missing, dhcpd -t pointing at it, Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J10',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const ta=()=>document.querySelector('.term .nano-text'); const key=(x)=>ta().dispatchEvent(new KeyboardEvent('keydown',{key:x,ctrlKey:true,bubbles:true})); const t=J.def.solve(J.v,J.sim).find(a=>a.line==='^O'&&/subnet /.test(a.text||'')).text.replace('default-lease-time 86400;','default-lease-time 86400'); document.querySelector('#devtabs [data-d=fsrv]').click(); tab('Console'); ['',p.srv.user,p.srv.pw].forEach(l=>k(l)); k('sudo nano /etc/dhcp/dhcpd.conf'); k(p.srv.pw); ta().value=t; ta().dispatchEvent(new Event('input')); key('o'); document.querySelector('.term .nano-ok').click(); key('x'); k('dhcpd -t -cf /etc/dhcp/dhcpd.conf'); for(let i=0;i<5;i++) c.check();",
+  "wait": "(() => { const t = document.querySelector('.term'); return !!t && document.fonts.status === 'loaded' && Math.abs(t.scrollTop + t.clientHeight - t.scrollHeight) < 3; })()"
+ },
+ {
+  "name": "campus: CP-J10 done, every line met, the file server's console: the DHCP server running and enabled, every desk's lease",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J10',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const ta=()=>document.querySelector('.term .nano-text'); const key=(x)=>ta().dispatchEvent(new KeyboardEvent('keydown',{key:x,ctrlKey:true,bubbles:true})); J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); document.querySelector('#devtabs [data-d=fsrv]').click(); tab('Console'); ['systemctl status isc-dhcp-server','dhcp-lease-list'].forEach(l=>k(l));",
+  "wait": "(() => { const t = document.querySelector('.term'); return !!t && document.fonts.status === 'loaded' && Math.abs(t.scrollTop + t.clientHeight - t.scrollHeight) < 3; })()"
+ },
+ {
   "name": "levels: build, the campus's work orders (more on the way)",
   "page": "build.html",
   "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS.slice(0,3).flatMap(x=>x.tickets).map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS.slice(0,3).flatMap(x=>x.jobs).map(id=>[id,1]))})); window.__e4b.openJob('CP-J1',true,4242);})()",

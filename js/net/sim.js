@@ -9,7 +9,7 @@ import { reload as reloadSwitch, duplexEnds, carries, ownAddrs, psRunOf, errDisa
 import { solve as ospfSolve, wildMatch as ospfMatch, ifCost as ospfCost } from "./ospf.js";
 import { solve as stpSolve, costOf as stpCost } from "./stp.js";
 import * as RT from "./rtcli.js";
-import { applyNetplan } from "./linux.js";
+import { applyNetplan, reboot as rebootServer, dhcpdHears, dhcpdPick, dhcpdLease, dhcpdRefused, dhcpdRelease } from "./linux.js";
 
 /* each radio has its own hardware address: the 5 GHz one is the next number up */
 function bump(m) { const p = m.split("-"); p[5] = ((parseInt(p[5], 16) + 1) & 255).toString(16).padStart(2, "0"); return p.join("-"); }
@@ -701,8 +701,13 @@ export class Sim {
         rec.helpers.forEach(function (h) {
           /* the way to the helper and back is the same whoever is asking: kept for the pass (until a lease changes) */
           const k = this.leased("relay|" + sid + "|" + f.name + "|" + f.ip + "|" + f.mask + "|" + h, function () {
-            const there = this.routeFromL3(sid, h, { proto: "udp", port: 67, sport: 67 }), rid = there && !there.fail && (there.local || there.routed) && there.owner ? there.owner.find(function (o) { return this.d[o].kind === "brouter"; }, this) : null;
+            const there = this.routeFromL3(sid, h, { proto: "udp", port: 67, sport: 67 }), rid = there && !there.fail && (there.local || there.routed) && there.owner ? there.owner.find(function (o) { return this.d[o].kind === "brouter" || this.d[o].kind === "server"; }, this) : null;
             if (!rid || !this.on(rid)) return null;
+            if (this.d[rid].kind === "server") {   /* the central DHCP server (work order 10): dhcpd running, listening on the port with that address; its answer has to get back */
+              if (!dhcpdHears(this, rid, h)) return null;
+              const bk = this.route(rid, f.ip, { proto: "udp", port: 67, sport: 67 });
+              return !bk.fail && (bk.local || bk.routed) && (bk.owner || []).some(function (o) { return o === sid; }) ? rid + "@relay|" + sid + "|" + f.name + "|" + h : null;
+            }
             const R = this.rtView(rid), live = this.rtLive(rid), at = RT.allIfs(R).find(function (n) { const x = RT.addrOf(R, n, live); return x && x.ip === h && RT.rtStatus(R, n)[1] === "up"; });
             if (!at || !RT.poolFor(R, f.ip, f.mask)) return null;
             const back = this.routeFromRouter(rid, f.ip, { proto: "udp", port: 67, sport: 67 });
@@ -780,6 +785,14 @@ export class Sim {
     const wins = (this.net.extra && this.net.extra.rogueWins) || [];
     const order = servers.slice().sort(function (a, b) { const ra = this.srv(a).kind === "rogue", rb = this.srv(b).kind === "rogue"; return wins.indexOf(id) >= 0 ? (rb - ra) : (ra - rb); }.bind(this));   /* whoever answers first: a rogue server beats the router for the devices it is quicker to */
     for (const sid of order) {
+      if (sid.indexOf("@") > 0 && this.d[sid.split("@")[0]].kind === "server") {   /* the central DHCP server, through a relay (work order 10) */
+        const rl = this.relayOf(sid), rid = rl.rid, dom = this.domain(rl.node), me = this;
+        const o = dhcpdPick(this, rid, rl.giaddr.ip, f.mac, function (ip) { return me.owners(ip, dom).some(function (d) { const k = me.d[d]; return d !== id && !(k.ifaces && k.ifaces.some(function (g) { return g.mac === f.mac; })); }); });
+        if (!o.ip) { dhcpdRefused(this, rid, rl.giaddr.ip, f.mac, o); continue; }
+        const L = dhcpdLease(this, rid, rl.giaddr.ip, { mac: f.mac, host: x.host || x.label.replace(/\s+/g, "-").toUpperCase() }, o);
+        f.lease = { ip: L.ip, mask: L.mask, gw: L.gw, dns: L.dns.slice(), server: L.server, obtained: this.n, hours: L.hours, domain: L.domain };
+        ans = L.ip; server = sid; this.snoopLearn(id, sid, L.ip); break;
+      }
       if (sid.indexOf("@") > 0) { const o = this.rtOffer(sid, f.mac); if (o) { ans = o.ip; server = sid; this.rtLease(sid, x, f, o); this.snoopLearn(id, sid, o.ip); break; } continue; }
       const ip = this.offer(sid, f.mac, f.lease && f.lease.server === this.srv(sid).lan.ip ? f.lease.ip : null); if (ip) { ans = ip; server = sid; break; }
     }
@@ -809,6 +822,7 @@ export class Sim {
     const f = this.d[id].ifaces[0], m = dotMac(f.mac);
     for (const sid in this.d) if (this.d[sid].kind === "mswitch" && this.d[sid].sw.snoopBind) this.d[sid].sw.snoopBind = this.d[sid].sw.snoopBind.filter(function (b) { return b.mac !== m; });
     for (const rid in this.d) if (this.d[rid].kind === "brouter" && this.d[rid].leases) this.d[rid].leases = this.d[rid].leases.filter(function (l) { return l.mac !== f.mac; });
+    for (const sid in this.d) { const v = this.d[sid]; if (v.kind === "server" && v.lx && v.lx.dhcpd && f.lease && v.ifaces.some(function (g) { return g.cfg && g.cfg.ip === f.lease.server; })) dhcpdRelease(this, sid, f.mac); }   /* the central DHCP server marks it free (work order 10) */
     if (f.lease) { const s = Object.values(this.d).concat(this.d.router && this.d.router.guest ? [this.d.router.guest] : []).find(function (v) { return (v.kind === "router" || v.kind === "rogue") && v.lan.ip === f.lease.server; }); if (s) s.leases = s.leases.filter(function (l) { return l.mac !== f.mac; }); }
     f.lease = null; f.apipa = null;
   }
@@ -1382,7 +1396,7 @@ export class Sim {
         const x = this.d[act.dev];
         if (x.ifaces && x.ifaces[0].cfg.mode !== "static") { /* a restart asks for its address again */ }
         if (x.kind === "mswitch") { reloadSwitch(x.sw, "power-on"); for (const k in (this.cli || {})) if (this.cli[k].sw === act.dev) delete this.cli[k]; }   /* power off and on: only what was saved comes back; every login to it is dropped */
-        if (x.kind === "server") { applyNetplan(this, act.dev); for (const k in (this.cli || {})) if (this.cli[k].lxDev === act.dev) delete this.cli[k]; }   /* a server comes back with what's in its netplan file; every login to it is dropped (work order 9) */
+        if (x.kind === "server") { rebootServer(this, act.dev); for (const k in (this.cli || {})) if (this.cli[k].lxDev === act.dev) delete this.cli[k]; }   /* a server comes back with what's in its netplan file; every login to it is dropped (work order 9) */
         res = { ok: true, restarted: act.dev };
         break;
       }

@@ -3879,10 +3879,20 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
   - **The drive's wall rule** (`tools/drive.mjs`): it added up every sample near any wall, 80 samples whatever a run's length, so the
     1,600-unit duct counted every floor it crossed as 20 units along a wall. It now takes the longest stretch beside a wall, sampled
     every 4 units; its other tests keep their 80 samples. Calibrated with a plant laying the duct along the data room's wall.
-  - **Checks so far:** CP-J8's wrong ways (24) and other right ways (a statement per network, passive one interface at a time, the
-    trunk's list a line at a time, the relay to the edge router's other link); `ONLY=campus JOB=CP-J8` 69 checks (three campuses:
-    the classroom PC's address and tracert across the fibre, OSPF FULL at core switch 2, the Annex access switch's trunk over SSH,
-    the block and stubs, the Annex's band and the duct's route, both drawings in both fonts, the reload).
+  - **Checks:** `npm test` 593 of 593 (CP-J8's wrong ways, 24, and other right ways: a statement per network, passive one interface at
+    a time, the trunk's list a line at a time, the relay to the edge router's other link; and a new test: the PCs waiting on a pool
+    get their addresses the moment it's finished being typed); `ONLY=campus JOB=CP-J8` 72 checks (three campuses: the classroom PC's
+    address and tracert across the fibre, OSPF FULL at core switch 2, the Annex access switch's trunk over SSH, the block and stubs,
+    each Annex switch under its address, the Annex's band and the duct's route, both drawings in both fonts, the reload);
+    `ONLY=campus JOB=plans` 288 (all eight work orders' drawings, start and done, six campuses, both fonts); AAA on all 31 campus and
+    levels states, 120,705 text runs (CP-J8's three new); 240 diagrams on the other levels unchanged, names and dots. Plants: CP-J8's
+    20 Node plants and the pass-skip's first (a line that changed something given no pass), caught; the console's mode left out of
+    what a pass reads missed until the pool test above, then caught; two are defensive and unreachable today, as earlier unreachable
+    guards are kept: a lease that doesn't bump (a lease changes nothing a pass reads, and a command that gives one shows in the
+    print anyway) and a start that doesn't bump (no start changes anything a pass would act on: it unboxes uncabled PCs, adds empty
+    slots). Page plants: CP-J8's six (the block, the classroom PCs' buttons, the Annex's band, the duct's route, the switches'
+    addresses: missed until the drive checked them, then caught; the duct along a wall, caught by the reworked wall rule) and the
+    three re-aimed, all caught.
 
 ## Objectives
 

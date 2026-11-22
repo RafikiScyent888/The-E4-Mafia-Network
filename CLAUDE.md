@@ -3833,8 +3833,7 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
     and the edge router's shut link's diamond, touching "Gi0/2"'s plate, bled into the name's pixels (6.47:1, CP-J7 done on campus
     4242: AAA caught it). Only the diamond keeps the 4-unit gap: the round dots sit as close on every level and measure clean. No
     drawing on the home, office or business levels moved (240 compared, names and dots).
-  - **Checks before going live** (on the tree that went live): `npm test` 589 of 589 (the unit suite on the sped-up code; the two
-    kept-links tests added after it pass); the full drive 7,061 checks (every level), then `ONLY=campus` 605 on the tree with the
+  - **Checks before going live** (on the tree that went live): `npm test` 591 of 591; the full drive 7,061 checks (every level), then `ONLY=campus` 605 on the tree with the
     diamond fix; AAA on painted pixels, all 28 campus and levels states, 101,772 text runs; every office, business and
     campus work order replayed step by step against the code before the speed-up, the same output and network after every step;
     `node tools/models.mjs` 202 of 202;

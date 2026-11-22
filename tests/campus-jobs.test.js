@@ -371,6 +371,19 @@ test("CP-J8: other right ways pass: a network statement for each of the Annex's 
   }
 });
 
+test("the PCs waiting on a pool get their addresses the moment it's finished being typed: a console leaving the pool's mode starts a pass", () => {
+  const def = byId["CP-J8"];
+  for (const s of seeds("CP-J8").slice(0, 2)) {
+    const J = B.open(def, s), A = J.v.plan.annex, sol = def.solve(J.v, J.sim), seg = segOf(sol, "edge");
+    const at = seg.find((i) => sol[i].line === "exit" && /^dns-server /.test(sol[i - 1].line));
+    assert.ok(at > 0, s + " the pool's exit in the walk-through");
+    for (let i = 0; i < at; i++) B.act(J, sol[i]);
+    assert.ok(/^169\.254\./.test(J.sim.addr("cl1").ip), s + " still waiting while the pool is being typed");
+    B.act(J, sol[at]);
+    const ip = J.sim.addr("cl1").ip; assert.ok(ip.indexOf(A.cls.net.replace(/0$/, "")) === 0, s + " an address from the classroom pool as soon as the console leaves it: " + ip);
+  }
+});
+
 test("no help names a password, an address or a VLAN number; Mason's ladder climbs on a failing line", () => {
   for (const def of CAMPUS_JOBS) for (const s of seeds(def.id).slice(0, 3)) {
     const J = B.open(def, s), p = J.v.plan, b = p.vlans.svc.net.split(".")[1], secrets = [p.secret, p.console, p.userPw].concat(Object.values(p.sw).map((w) => w.ip).filter(Boolean), Object.values(p.vlans).flatMap((x) => [x.gw, x.net]).filter(Boolean), Object.values(p.printers), ["10." + b + ".255.", "10." + b + ".0.0"]);

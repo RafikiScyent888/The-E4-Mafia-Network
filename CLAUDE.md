@@ -146,8 +146,12 @@ The owner, 10 November 2026: "create a save point here." Where everything stands
   desks locked down, the floor surviving distribution switch 1). With it, for every level: a work order's reload about twice as fast
   (each switch's VLAN settings fixed once, its links and a relay's way to its helper kept for a pass), and a dead link's diamond kept
   clear of other port names (on a phone it bled into "Gi0/2", 6.47:1). See the CP-J7 notes in "Level 4, the campus" below.
-- **Next, in the owner's order:** the rest of Level 4: the Training Annex (CP-J8, built on `save/level4-annex`, worktree
-  `/home/user/e4-anx`, its checks running), then jumbo frames and the central DHCP server (they need the rack server's model and a
+- **Level 4, CP-J8, live 22 November 2026:** the Training Annex on a collapsed core (one layer 3 switch as its core and distribution, an
+  access switch for the classroom, single-mode fibre into core switch 2, routed and in OSPF); on the logical diagram a block of its own
+  with the fibre a labelled stub at each end, on the floor plan its own band and the duct's route. With it, for every level: a pass of
+  the links skipped after a command that changed nothing (every earlier work order replays the same, step by step), and the OSPF lines'
+  new first cause, the link itself down. See the CP-J8 notes in "Level 4, the campus" below.
+- **Next, in the owner's order:** the rest of Level 4: jumbo frames and the central DHCP server (they need the rack server's model and a
   Linux command line), then the 15 tickets; then Level 5 (Enterprise). The owner, 17 November 2026: "Please keep building it all out.
   We will come back and make changes once I go through it." 
 - **The container was rebuilt on 15 November 2026:** the worktrees were made again from the pushed branches, and the browser
@@ -3884,7 +3888,8 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
     get their addresses the moment it's finished being typed); `ONLY=campus JOB=CP-J8` 72 checks (three campuses: the classroom PC's
     address and tracert across the fibre, OSPF FULL at core switch 2, the Annex access switch's trunk over SSH, the block and stubs,
     each Annex switch under its address, the Annex's band and the duct's route, both drawings in both fonts, the reload);
-    `ONLY=campus JOB=plans` 288 (all eight work orders' drawings, start and done, six campuses, both fonts); AAA on all 31 campus and
+    `ONLY=campus JOB=plans` 288 (all eight work orders' drawings, start and done, six campuses, both fonts); the full drive 7,166
+    checks (every level); `node tools/models.mjs` 202 of 202; AAA on all 31 campus and
     levels states, 120,705 text runs (CP-J8's three new); 240 diagrams on the other levels unchanged, names and dots. Plants: CP-J8's
     20 Node plants and the pass-skip's first (a line that changed something given no pass), caught; the console's mode left out of
     what a pass reads missed until the pool test above, then caught; two are defensive and unreachable today, as earlier unreachable

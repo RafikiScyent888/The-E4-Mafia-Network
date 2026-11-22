@@ -1,7 +1,7 @@
 /* Level 4 build mode: the campus's work orders (Rafiki's HQ; the plan approved 16 November 2026: "Yes to the level 4 plans,
    build it out"). Each starts from the campus as the one before it left it. Every line is an ordered list of causes, as on
    the other levels: the first one really there is what the check saw, everything before it is ruled out by the network. */
-import { makeCampus, coreLinks, installCore, coreCables, CAMPUS_RUN } from "../net/campus.js";
+import { makeCampus, coreLinks, installCore, coreCables, fileServer, CAMPUS_RUN } from "../net/campus.js";
 import { Sim, SFP_MODULES, runLength } from "../net/sim.js";
 import { errDisabled, dotMac, unsaved, chanState, carries, l3Ifs, l3Route, pwOk } from "../net/swcli.js";
 import * as RT from "../net/rtcli.js";
@@ -1362,4 +1362,244 @@ const CJ8 = {
   summary() { return ["The Training Annex is a collapsed core of its own: one layer 3 switch routes its classroom and management networks, an access switch serves the desks.", "Single-mode fibre joins it to core switch 2: a routed link, OSPF neighbours across it, the Annex's networks advertised to the whole campus.", "The classroom's addresses come from the edge router through the Annex core's relay, and both Annex switches are managed from the service desk."]; }
 };
 
-export const CAMPUS_JOBS = [CJ1, CJ2, CJ3, CJ4, CJ5, CJ6, CJ7, CJ8];
+
+/* ------------------------------------------------------------ CP-J9, jumbo frames for the backup network */
+/* the backup server in the 2F closet and the file server in the data room, joined by a backup network of their own (a VLAN, not routed),
+   9000-byte frames all the way: each server's backup port (eno2), and every switch the VLAN crosses (both access switches, both
+   distribution switches). The switches' jumbo MTU takes effect at a reload: the work is done in the maintenance window */
+const SRVS = ["fsrv", "bksrv"];
+const BK_ON = ["acc1", "dist1", "dist2", "acc2"];
+const BK_MTU = 9000;
+const sw9 = function (sim, id) { return id === "acc1" ? "the 1F access switch" : id === "acc2" ? "the 2F access switch" : said(sim, id); };
+const srv9 = function (id) { return id === "fsrv" ? "the file server" : "the backup server"; };
+const nic9 = function (n) { return "port " + n.slice(-1) + " (" + n + ")"; };
+const other9 = function (id) { return id === "fsrv" ? "bksrv" : "fsrv"; };
+function rack9Causes(sim, v) {
+  const S = v.plan.srv.bksrv, x = sim.d.bksrv, rows = ["eno1", "eno2"].map(function (n) { const c = sim.cableAt("bksrv", n), far = c ? (c.a.dev === "bksrv" ? c.b : c.a) : null; return { n: n, c: c, right: !!far && far.dev === S.sw && far.port === S.ports[n] }; });
+  const none = rows.find(function (r) { return !r.c; }), wrong = rows.find(function (r) { return r.c && !r.right; });
+  return [C("boxed", !!x.boxed, "The backup server is still in its box", "It's racked in the 2F closet.", "The work order's van list: the backup server, in its box."),
+    C("none", !x.boxed && !!none, "The backup server's " + (none ? nic9(none.n) : "") + " has no cable", "Both its ports are cabled.", "The Cable runs table: nothing from the backup server's " + (none ? nic9(none.n) : "") + "."),
+    C("ports", !x.boxed && !none && !!wrong, "The backup server's " + (wrong ? nic9(wrong.n) : "") + " isn't on the port the records give it (the 2F access switch's port " + (wrong ? S.ports[wrong.n] : "") + ")", "Both are on the records' ports.", "The Cable runs table: the backup server's runs.")];
+}
+function vlan9Causes(sim, v) {
+  const B = v.plan.backup, miss = BK_ON.find(function (id) { return !(sim.d[id].sw.vlans || {})[B.id]; }), misname = BK_ON.find(function (id) { const q = (sim.d[id].sw.vlans || {})[B.id]; return q && String(q.name).toUpperCase() !== B.name; });
+  return [C("none", !!miss, "The backup VLAN doesn't exist on " + (miss ? sw9(sim, miss) : ""), "It exists on all four.", "show vlan brief on " + (miss ? sw9(sim, miss) : "") + ": no VLAN " + B.id + "."),
+    C("name", !miss && !!misname, "The backup VLAN on " + (misname ? sw9(sim, misname) : "") + " isn't named as the records say", "Named as the records say on all four.", "show vlan brief on " + (misname ? sw9(sim, misname) : "") + ".")];
+}
+/* the trunks it crosses: each access switch's two uplinks, both ends, and the bundle between the distribution switches */
+function trunk9Causes(sim, v) {
+  const p = v.plan, B = p.backup.id, ends = [];
+  ["acc1", "acc2"].forEach(function (a) { [["dist1", "23"], ["dist2", "24"]].forEach(function (u) { ends.push({ id: a, n: "GigabitEthernet0/" + u[1], far: { id: u[0], n: "GigabitEthernet0/" + p.up[a] } }, { id: u[0], n: "GigabitEthernet0/" + p.up[a], far: { id: a, n: "GigabitEthernet0/" + u[1] } }); }); });
+  const P = function (e) { return sim.d[e.id].sw.ports[e.n]; }, cr = function (e) { const f = P(e.far); return carries(Object.assign({}, sim.d[e.id].sw, { links: sim.switchLinks(e.id) }), e.n, { mode: f.mode, nonegotiate: f.nonegotiate }); };
+  const who = function (e) { return e ? sw9(sim, e.id) + "'s port " + e.n.split("/")[1] : ""; };
+  const no = ends.find(function (e) { return cr(e).tagged.indexOf(B) < 0; });
+  const inList = function (q) { return !!q && (q.allowed === "all" || String(q.allowed).split(",").some(function (r) { const m = /^(\d+)(?:-(\d+))?$/.exec(r.trim()); return m && B >= +m[1] && B <= +(m[2] || m[1]); })); };
+  const po = ["dist1", "dist2"].find(function (id) { const w = sim.d[id].sw, g = w.pcs && Object.keys(w.pcs)[0]; return !inList(g ? w.pcs[g] : w.ports["GigabitEthernet0/21"]); });
+  return [C("trunk", !!no, who(no) + " doesn't carry the backup VLAN", "Every uplink carries it at both ends.", "show interfaces trunk on " + (no ? sw9(sim, no.id) : "") + ": VLAN " + B + " not allowed on port " + (no ? no.n.split("/")[1] : "") + "."),
+    C("bundle", !no && !!po, "The bundle between the distribution switches doesn't carry the backup VLAN on " + (po ? said(sim, po) : "") + ": if the way up through one distribution switch goes, the other can't hand the frames across", "The bundle carries it.", "show interfaces trunk on " + (po ? said(sim, po) : "") + ": Po1, VLAN " + B + " not allowed.")];
+}
+/* a VLAN's spanning-tree root and the switch next in line */
+function rootOf(sim, vid) {
+  const all = sim.stpAll(), R = all[vid], root = R && R.result && R.result.root, sws = R ? R.sws : {};
+  const ids = Object.keys(sws), rootId = ids.find(function (id) { return sws[id].mac === (root && root.mac) && sws[id].prio === root.prio; }) || (ids.length ? ids.slice().sort(function (a, b) { return cmpBid(sws[a], sws[b]); })[0] : null);
+  return { rootId: rootId, second: ids.filter(function (id) { return id !== rootId; }).sort(function (a, b) { return cmpBid(sws[a], sws[b]); })[0] || null };
+}
+function stp9Causes(sim, v) {
+  const B = v.plan.backup.id, t = rootOf(sim, B), r = t.rootId;
+  return [C("nopath", !r, "The backup VLAN has no spanning tree: no switch carries it", "Distribution switch 1 is its root.", "show spanning-tree vlan " + B + ": not found."),
+    C("access", r === "acc1" || r === "acc2", (r ? Cap(sw9(sim, r)) : "An access switch") + " is the backup VLAN's spanning-tree root: left at the defaults, the switch with the lowest address wins", "Distribution switch 1 is its root.", "show spanning-tree vlan " + B + " on " + (r ? sw9(sim, r) : "") + ": This bridge is the root."),
+    C("dist2", r === "dist2", "Distribution switch 2 is the backup VLAN's root: every other VLAN's is switch 1", "Distribution switch 1 is its root.", "show spanning-tree vlan " + B + " on distribution switch 2: This bridge is the root."),
+    C("backup", r === "dist1" && t.second !== "dist2", "Distribution switch 1 is the root, but distribution switch 2 isn't next in line: if switch 1 goes, an access switch takes over", "Distribution switch 2 is the backup.", "show spanning-tree vlan " + B + " on distribution switch 2: its priority.")];
+}
+/* the servers' four switch ports: port 1 (eno1) in the servers VLAN, port 2 (eno2) in the backup VLAN, edge ports with BPDU guard, described, open */
+function ports9(sim, v) {
+  const p = v.plan, out = [];
+  SRVS.forEach(function (id) { const S = p.srv[id]; [["eno1", p.vlans.servers], ["eno2", p.backup]].forEach(function (q) { const n = "GigabitEthernet0/" + S.ports[q[0]]; out.push({ srv: id, nic: q[0], sw: S.sw, n: n, p: sim.d[S.sw].sw.ports[n], vlan: q[1], desc: id.toUpperCase() + "-" + q[1].name }); }); });
+  return out;
+}
+function port9Causes(sim, v) {
+  const rows = ports9(sim, v), at = function (r) { return r ? sw9(sim, r.sw) + "'s port " + r.n.split("/")[1] + " (" + srv9(r.srv) + "'s " + r.nic + ")" : ""; };
+  const shut = rows.find(function (r) { return r.p.shutdown || errDisabled(sim.d[r.sw].sw, r.n); }), vl = rows.find(function (r) { return r.p.mode !== "access" || r.p.access !== r.vlan.id; });
+  const edge = rows.find(function (r) { return !(r.p.stp && r.p.stp.portfast && r.p.stp.bpduguard); }), desc = rows.find(function (r) { return String(r.p.desc).toUpperCase() !== r.desc; });
+  return [C("shut", !!shut, Cap(at(shut)) + " is shut", "All four are open.", "show interfaces status on " + (shut ? sw9(sim, shut.sw) : "") + ": Gi0/" + (shut ? shut.n.split("/")[1] : "") + " disabled."),
+    C("vlan", !shut && !!vl, Cap(at(vl)) + " isn't an access port in the " + (vl ? (vl.nic === "eno1" ? "servers" : "backup") : "") + " VLAN", "Each is an access port in its VLAN.", "show interfaces status on " + (vl ? sw9(sim, vl.sw) : "") + ": Gi0/" + (vl ? vl.n.split("/")[1] : "") + "."),
+    C("edge", !shut && !vl && !!edge, Cap(at(edge)) + " isn't an edge port with BPDU guard, as every port facing one computer here is", "Each is an edge port with BPDU guard.", "show running-config on " + (edge ? sw9(sim, edge.sw) : "") + ": interface gi0/" + (edge ? edge.n.split("/")[1] : "") + "."),
+    C("desc", !shut && !vl && !edge && !!desc, Cap(at(desc)) + " isn't described as the records say", "Each is described as the records say.", "show interfaces status on " + (desc ? sw9(sim, desc.sw) : "") + ": Gi0/" + (desc ? desc.n.split("/")[1] : "") + "'s name.")];
+}
+const reach9 = function (sim, from, ip) { const r = sim.route(from, ip); return !r.fail && !!(r.local || r.routed); };
+function online9Causes(sim, v) {
+  const S = v.plan.srv, link = !sim.ifAddr("bksrv", 0);
+  const sd = !link && !reach9(sim, "sd1", S.bksrv.ip), fs = !link && !sd && !reach9(sim, "bksrv", S.fsrv.ip);
+  return [C("link", link, "The backup server's port 1 (eno1) has no link", "It has a link.", "ip a on the backup server: eno1 NO-CARRIER, state DOWN."),
+    C("sd", sd, "The service desk PC gets no answer from the backup server on the servers network", "The service desk reaches it.", "ping the backup server's address from the service desk PC: no reply."),
+    C("files", fs, "The backup server can't reach the file server on the servers network", "It reaches the file server.", "ping the file server's address from the backup server: no reply.")];
+}
+/* the backup network at the ordinary size, both ways */
+function bknet9Causes(sim, v) {
+  const S = v.plan.srv, down = SRVS.find(function (id) { return !sim.ifAddr(id, 1); });
+  const way = !down && SRVS.find(function (id) { return !sim.sized(id, S[other9(id)].bip, 84, false).ok; });
+  return [C("link", !!down, Cap(srv9(down)) + "'s port 2 (eno2) has no link", "Both backup ports have a link.", "ip a on " + srv9(down) + ": eno2 NO-CARRIER, state DOWN."),
+    C("way", !!way, "The servers' backup ports can't reach each other: the backup VLAN doesn't run all the way between them (a switch without it, a trunk that doesn't carry it, a port not in it)", "They reach each other.", "ping " + (way ? S[other9(way)].bip : "") + " from " + srv9(way) + ": no reply.")];
+}
+const jumboRun = function (sim, id) { return sim.d[id].sw.jumboRun || 1500; }, jumboSet = function (sim, id) { return sim.d[id].sw.jumbo || 1500; };
+function jumbo9Causes(sim, v) {
+  const f = BK_ON.find(function (id) { return jumboRun(sim, id) < BK_MTU; }), set = f ? jumboSet(sim, f) : 0;
+  return [C("none", !!f && set === 1500, Cap(f ? sw9(sim, f) : "") + " still passes only 1500-byte frames: no jumbo MTU set", "Every switch on the way passes jumbo frames.", "show system mtu on " + (f ? sw9(sim, f) : "") + ": System Jumbo MTU size is 1500 bytes."),
+    C("small", !!f && set > 1500 && set < BK_MTU, Cap(f ? sw9(sim, f) : "") + "'s jumbo MTU is set below " + BK_MTU + " bytes", "Every switch on the way takes " + BK_MTU + ".", "show system mtu on " + (f ? sw9(sim, f) : "") + "."),
+    C("wait", !!f && set >= BK_MTU, Cap(f ? sw9(sim, f) : "") + " has its jumbo MTU set, but it takes effect only at its next reload", "Every switch on the way has reloaded with it.", "show system mtu on " + (f ? sw9(sim, f) : "") + ": On next reload, System Jumbo MTU will be " + set + " bytes.")];
+}
+function mtu9Causes(sim, v) {
+  const m = function (id, j) { return sim.ifMtu(id, j); }, bad = SRVS.find(function (id) { return m(id, 1) !== BK_MTU; }), one = SRVS.find(function (id) { return m(id, 0) !== 1500; });
+  return [C("eno2", !!bad, Cap(srv9(bad)) + "'s backup port (eno2) has an MTU of " + (bad ? m(bad, 1) : "") + ", not " + BK_MTU, "Both backup ports are at " + BK_MTU + ".", "ip link show eno2 on " + srv9(bad) + ": mtu " + (bad ? m(bad, 1) : "") + "."),
+    C("eno1", !bad && !!one, Cap(srv9(one)) + "'s own port (eno1) has its MTU changed: the servers network, its gateway and its users stay at 1500", "Both servers' own ports stay at 1500.", "ip link show eno1 on " + srv9(one) + ": mtu " + (one ? m(one, 0) : "") + ".")];
+}
+/* a 9000-byte packet that mustn't be cut up, both ways: what ping -M do -s 8972 says */
+function big9Causes(sim, v) {
+  const S = v.plan.srv, rs = SRVS.map(function (id) { return { id: id, r: sim.sized(id, S[other9(id)].bip, BK_MTU, true) }; }), bad = rs.find(function (q) { return !q.r.ok; }), r = bad ? bad.r : {}, from = bad ? srv9(bad.id) : "", to = bad ? srv9(other9(bad.id)) : "";
+  const at = r.at && r.at.port ? sw9(sim, r.at.dev) : "";
+  return [C("local", r.why === "local", Cap(from) + " won't send it: its backup port's MTU is smaller (ping says message too long)", "Both send it whole.", "ping -M do -s 8972 from " + from + ": local error: message too long, mtu=" + (r.mtu || "") + "."),
+    C("giant", r.why === "giant", Cap(at) + " drops it on the way from " + from + ": it's over that switch's MTU", "No switch drops it.", "ping -M do -s 8972 from " + from + ": 100% packet loss; show interfaces " + (r.at && r.at.port ? r.at.port.replace("GigabitEthernet", "gi") : "") + " on " + at + ": giants."),
+    C("recv", r.why === "receiver" || r.why === "sender", Cap(r.why === "sender" ? from : to) + " drops it as it arrives: its backup port's MTU is smaller", "Both take it.", "ip -s link show eno2 on " + (r.why === "sender" ? from : to) + ": RX errors."),
+    C("other", !!bad && !/^(local|giant|receiver|sender)$/.test(r.why), "It doesn't get from " + from + " to " + to + " at all", "It gets through both ways.", "ping " + (bad ? S[other9(bad.id)].bip : "") + " from " + from + ": no reply.")];
+}
+/* what a restart keeps: each server's netplan file, each switch's saved configuration */
+function persist9Causes(sim, v) {
+  const np = SRVS.find(function (id) { const e = sim.d[id].lx.netplan.eno2; return !e || e.mtu !== BK_MTU; }), sw = BK_ON.find(function (id) { const st = sim.d[id].sw.startup; return !st || !(st.jumbo >= BK_MTU); });
+  return [C("netplan", !!np, Cap(srv9(np)) + "'s " + BK_MTU + " isn't in its netplan file: set with ip link alone, it's gone at the next reboot", "Both servers keep it in their netplan.", "sudo netplan get ethernets.eno2.mtu on " + srv9(np) + ": " + (np && sim.d[np].lx.netplan.eno2 && sim.d[np].lx.netplan.eno2.mtu || "null") + "."),
+    C("switch", !np && !!sw, Cap(sw ? sw9(sim, sw) : "") + "'s jumbo MTU isn't saved: at its next reload it starts at 1500 again", "Every switch has it saved.", "show startup-config on " + (sw ? sw9(sim, sw) : "") + ": no system mtu jumbo.")];
+}
+function fail9Causes(sim, v) {
+  const S = v.plan.srv, s2 = copyOf(sim); power(s2, "dist1", false);
+  const way = SRVS.find(function (id) { return !s2.sized(id, S[other9(id)].bip, 84, false).ok; }), big = !way && SRVS.find(function (id) { return !s2.sized(id, S[other9(id)].bip, BK_MTU, true).ok; });
+  return [C("way", !!way, "With distribution switch 1 off, the servers can't reach each other on the backup network: the way through distribution switch 2 is missing it (the VLAN, an uplink)", "They still reach each other.", "Picture distribution switch 1 off: show interfaces trunk and show vlan brief on distribution switch 2."),
+    C("big", !!big, "With distribution switch 1 off, " + BK_MTU + "-byte packets are dropped on the way through distribution switch 2", "Jumbo frames still get through.", "Picture distribution switch 1 off: show system mtu on distribution switch 2.")];
+}
+function saved9Causes(sim) { return BK_ON.map(function (id) { return C("unsaved-" + id, unsaved(sim.d[id].sw), Cap(sw9(sim, id)) + " hasn't been saved: a power cut takes the changes away", "All four are saved.", "show startup-config on " + sw9(sim, id) + ": it's not what's running."); }); }
+
+const CJ9 = {
+  id: "CP-J9", level: "campus", title: "Jumbo frames for the backup network: a backup server on another floor, 9000-byte frames all the way",
+  already: ["works", "saved"],
+  start(seed) {
+    const b = CJ8.start(seed), sim = b.sim;
+    for (const a of CJ8.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    fileServer(sim.net);   /* the file server in the data room since last month; the backup server is in its box */
+    sim.cli = {};
+    return { sim: sim, v: Object.assign({}, b.v, { runs: sim.net.extra.runs || 0 }) };
+  },
+  brief() { return { quote: "The file server's nightly backup runs past the morning now. We've bought a backup server and it's going in the 2F closet, so a fire in the data room can't take the files and their copy together. Give the two servers a backup network of their own, and make it jumbo: 9000-byte frames the whole way. Tonight's the maintenance window, so the switches can restart; nobody's networks change but the servers'.", from: "Rafiki, owner" }; },
+  mason: "Jumbo frames are all or nothing: every switch the backup VLAN crosses, and both servers' backup ports, or the big frames vanish on the way without a word. Build the backup network at the ordinary size first, then make it big, then prove it with a big ping that mustn't be cut up.",
+  limits: function (v) {
+    const p = v.plan, B = p.backup, S = p.srv;
+    return ["The backup server: " + S.bksrv.host + ", in its box; its place is the 2F closet's rack. Its port 1 (eno1) to the 2F access switch's port " + S.bksrv.ports.eno1 + ", its port 2 (eno2) to its port " + S.bksrv.ports.eno2 + ". The supplier set it up from the records: eno1 " + S.bksrv.ip + "/24 (gateway " + p.vlans.servers.gw + "), eno2 " + S.bksrv.bip + "/24 with no gateway. Log in as " + S.user + ", password " + S.pw + " (the same on both servers; sudo asks for it too).",
+      "The file server: " + S.fsrv.host + ", in the data room's rack: eno1 " + S.fsrv.ip + " on the 1F access switch's port " + S.fsrv.ports.eno1 + " (the servers VLAN), eno2 " + S.fsrv.bip + " cabled to its port " + S.fsrv.ports.eno2 + ".",
+      "The backup VLAN: " + B.id + ", named " + B.name + ", " + B.net + "/24. Not routed: no gateway, no interface on any switch. It runs from the 1F access switch up both its uplinks, across the bundle between the distribution switches, and down both the 2F access switch's uplinks; distribution switch 1 its spanning-tree root, switch 2 the backup.",
+      "The servers' switch ports: each server's port 1 an access port in the servers VLAN (" + p.vlans.servers.id + "), its port 2 an access port in the backup VLAN, each an edge port with BPDU guard, described FSRV-SERVERS, FSRV-BACKUP, BKSRV-SERVERS and BKSRV-BACKUP.",
+      "Jumbo frames: " + B.mtu + "-byte packets on the backup network. Each server's eno2 at MTU " + B.mtu + ", kept in its netplan file (" + "/etc/netplan/50-cloud-init.yaml" + "); every switch the backup VLAN crosses passing them (system mtu jumbo " + B.mtu + " or more: it takes effect at a reload, and tonight they can reload). Each server's eno1, and every other network, stays at 1500.",
+      "The test: from one server, ping -M do -s 8972 the other's backup address. 8972 bytes of data, 8 of ICMP header and 20 of IP header make " + B.mtu + "; -M do says it mustn't be cut up on the way.",
+      "The switches are locked as every switch here: enable secret " + p.secret + ", console password " + p.console + ", SSH with the user " + p.user + ", password " + p.userPw + ". Your laptop's console cable is 1.8 m: the 1F access switch and the distribution switches from the data room, the 2F access switch from the 2F closet. Each server's own console is on its tab."];
+  },
+  reqs: [
+    { id: "rack", text: "The backup server is racked in the 2F closet, its two ports cabled to the 2F access switch as the records say", causes: rack9Causes,
+      ok: function () { return "The backup server is racked; both its ports are on the records' ports."; },
+      rung1: function () { return "The Cable runs table, and the van list."; },
+      rung2: function () { return "A server's two ports go to two different switch ports: which is which matters, because each port is set up for its own network."; } },
+    { id: "vlan", text: "The backup VLAN exists, named as the records say, on every switch it crosses: both access switches and both distribution switches", causes: vlan9Causes,
+      ok: function () { return "The backup VLAN exists and is named on all four."; },
+      rung1: function () { return "show vlan brief on each of the four."; },
+      rung2: function () { return "A VLAN only exists on a switch it's been made on, even one that only passes it along."; } },
+    { id: "trunks", text: "The trunks it crosses carry it: both access switches' uplinks at both ends, and the bundle between the distribution switches", causes: trunk9Causes,
+      ok: function () { return "Every uplink on the way carries the backup VLAN at both ends; so does the bundle."; },
+      rung1: function () { return "show interfaces trunk on both access switches and both distribution switches."; },
+      rung2: function () { return "A trunk carries only the VLANs its allowed list names, at both ends: a VLAN left off any hop stops there."; } },
+    { id: "stp", text: "The backup VLAN's spanning-tree root is distribution switch 1, distribution switch 2 the backup", causes: stp9Causes,
+      ok: function () { return "Distribution switch 1 is the backup VLAN's root, switch 2 next in line."; },
+      rung1: function () { return "show spanning-tree vlan on the access switches and both distribution switches, for the backup VLAN."; },
+      rung2: function () { return "Every VLAN elects its own root; a new one, left at the defaults, goes to the lowest address, wherever that is."; } },
+    { id: "ports", text: "Each server's switch ports: port 1 in the servers VLAN, port 2 in the backup VLAN, edge ports with BPDU guard, described, open", causes: port9Causes,
+      ok: function () { return "All four server ports are open access ports in their VLANs, edge ports with BPDU guard, described."; },
+      rung1: function () { return "show interfaces status on both access switches, and their running configuration for those ports."; },
+      rung2: function () { return "Each of a server's two ports is on its own network: the switch port has to be in that network's VLAN."; } },
+    { id: "online", text: "The backup server is on the servers network: the service desk reaches it, and it reaches the file server", causes: online9Causes,
+      ok: function () { return "The backup server answers from the service desk, and reaches the file server."; },
+      rung1: function () { return "ip a and ip route on the backup server; ping it from the service desk PC."; },
+      rung2: function () { return "A server's address comes with it; what it needs from the network is a link, and the right VLAN on its switch port."; } },
+    { id: "bknet", text: "The two servers reach each other on the backup network", causes: bknet9Causes,
+      ok: function () { return "Each server reaches the other's backup address."; },
+      rung1: function () { return "ip a on each server, then ping the other's backup address."; },
+      rung2: function () { return "A network that isn't routed has no gateway to help: both ports have to be in the same VLAN, joined all the way at layer 2."; } },
+    { id: "jumbo", text: "Every switch the backup VLAN crosses passes jumbo frames, " + BK_MTU + " bytes or more, in effect now", causes: jumbo9Causes,
+      ok: function () { return "All four switches have reloaded with a jumbo MTU of " + BK_MTU + " or more."; },
+      rung1: function () { return "show system mtu on each of the four."; },
+      rung2: function () { return "A layer 2 switch can't cut a frame up: one too big for any switch on the way is simply dropped. And on these switches a new jumbo MTU waits for a reload."; } },
+    { id: "mtu", text: "Each server's backup port (eno2) has an MTU of " + BK_MTU + "; their own ports (eno1) stay at 1500", causes: mtu9Causes,
+      ok: function () { return "Both backup ports are at " + BK_MTU + "; both servers' own ports at 1500."; },
+      rung1: function () { return "ip link on each server."; },
+      rung2: function () { return "Both ends of a link have to agree on the largest packet: the computer at each end decides what it sends and what it takes."; } },
+    { id: "big", text: "A " + BK_MTU + "-byte packet crosses the backup network both ways without being cut up", causes: big9Causes,
+      ok: function () { return "ping -M do -s 8972 gets through both ways."; },
+      rung1: function () { return "ping -M do -s 8972 from each server to the other's backup address; show interfaces on the switches for giants."; },
+      rung2: function () { return "The data you ask ping for is only part of the packet: the ICMP header and the IP header go on top (eight bytes and twenty), and the whole packet has to fit the MTU of every port and switch on the way. With the don't-fragment bit, the first thing too small to pass it drops it."; } },
+    { id: "persist", text: "It survives a restart: each server keeps " + BK_MTU + " in its netplan file, and every switch has its jumbo MTU saved", causes: persist9Causes,
+      ok: function () { return "Both netplan files have it; all four switches have it saved."; },
+      rung1: function () { return "sudo netplan get ethernets.eno2.mtu on each server; show startup-config on each switch."; },
+      rung2: function () { return "What ip link sets lives until the next reboot; a server starts up from its netplan file, a switch from its saved configuration."; } },
+    { id: "fail", text: "If distribution switch 1 fails, the backup network still runs, jumbo frames and all", causes: fail9Causes,
+      ok: function () { return "With distribution switch 1 off, the backup network runs through switch 2, jumbo frames and all."; },
+      rung1: function () { return "Picture distribution switch 1 off: show vlan brief, show interfaces trunk and show system mtu on distribution switch 2."; },
+      rung2: function () { return "Spanning tree finds the other way round when a switch fails: that way has to be ready too, the VLAN and the size."; } },
+    { id: "works", text: "Everyone else still works: every PC online, both printers and every switch answering", causes: reachCauses,
+      ok: function () { return "Every PC is online; both printers and every switch answer."; },
+      rung1: function () { return "ping 8.8.8.8 from each PC; the printers and the switches from the service desk."; },
+      rung2: function () { return "A reload takes a switch away for a moment: everything should come back on its own, from what's saved."; } },
+    { id: "saved", text: "Both access switches and both distribution switches are saved", causes: saved9Causes,
+      ok: function () { return "All four are saved."; }, rung1: function () { return "show startup-config against show running-config on each."; }, rung2: function () { return "Only what's saved survives a power cut, or a reload."; } }
+  ],
+  solve(v, sim) {
+    const p = v.plan, B = p.backup, S = p.srv, out = [], n = sim ? sim.net.extra.runs || 0 : v.runs || 0;
+    let k = 0; const lay = function (a, b) { k++; out.push({ t: "lay", a: a, b: b }); return n + k; };
+    const c = function (l) { out.push({ t: "cmd", dev: "tech", line: l, cli: true }); };
+    const login = function () { [""].concat([p.console, "enable", p.secret, "configure terminal"]).forEach(c); };
+    const save = function () { c("end"); c("copy running-config startup-config"); c(""); };
+    const reload = function () { c("reload"); c(""); };   /* saved first, so it only asks to proceed */
+    let con = 0; const consoleTo = function (dev) { if (con) out.push({ t: "pull", cable: "c-console-" + con }); con = lay({ dev: "tech", port: "USB-C" }, { dev: dev, port: "CONSOLE" }); };
+    const vlan = function () { c("vlan " + B.id); c("name " + B.name); c("exit"); };
+    const port = function (id, nic, V) { c("interface gi0/" + S[id].ports[nic]); c("description " + id.toUpperCase() + "-" + V.name); c("switchport mode access"); c("switchport access vlan " + V.id); c("spanning-tree portfast"); c("spanning-tree bpduguard enable"); c("no shutdown"); c("exit"); };
+    /* rack the backup server and cable it */
+    out.push({ t: "place", dev: "bksrv", room: "c2" });
+    ["eno1", "eno2"].forEach(function (nic) { lay({ dev: "bksrv", port: nic }, { dev: S.bksrv.sw, port: S.bksrv.ports[nic] }); });
+    /* the 1F access switch: the VLAN, its uplinks, the file server's backup port, jumbo frames, then a reload */
+    consoleTo("acc1"); login(); vlan();
+    c("interface range gi0/23 - 24"); c("switchport trunk allowed vlan add " + B.id); c("exit");
+    port("fsrv", "eno2", B); c("system mtu jumbo " + B.mtu); save(); reload();
+    /* both distribution switches: the VLAN, the uplinks to the access switches, the bundle, the root, jumbo frames, a reload */
+    ["dist1", "dist2"].forEach(function (id, i) {
+      consoleTo(id); login(); vlan();
+      c("interface range gi0/" + p.up.acc1 + " - " + p.up.acc2); c("switchport trunk allowed vlan add " + B.id); c("exit");
+      c("interface port-channel 1"); c("switchport trunk allowed vlan add " + B.id); c("exit");
+      c("spanning-tree vlan " + B.id + " root " + (i ? "secondary" : "primary"));
+      c("system mtu jumbo " + B.mtu); save(); reload();
+    });
+    /* the 2F access switch, from the 2F closet */
+    out.push({ t: "pull", cable: "c-console-" + con }); con = 0; out.push({ t: "place", dev: "tech", room: "c2" });
+    consoleTo("acc2"); login(); vlan();
+    c("interface range gi0/23 - 24"); c("switchport trunk allowed vlan add " + B.id); c("exit");
+    port("bksrv", "eno1", p.vlans.servers); port("bksrv", "eno2", B); c("system mtu jumbo " + B.mtu); save(); reload();
+    out.push({ t: "pull", cable: "c-console-" + con }); out.push({ t: "place", dev: "tech", room: "data" });
+    /* each server: its backup port at 9000 in its netplan file, put into effect; then the big ping that mustn't be cut up */
+    SRVS.forEach(function (id) { const L = function (l) { out.push({ t: "cmd", dev: id, line: l, cli: true }); };
+      [""].concat([S.user, S.pw, "sudo netplan set ethernets.eno2.mtu=" + B.mtu, S.pw, "sudo netplan apply"]).forEach(L); });
+    out.push({ t: "cmd", dev: "fsrv", line: "ping -M do -s 8972 -c 4 " + S.bksrv.bip, cli: true });
+    return out;
+  },
+  answer(v) {
+    const p = v.plan, B = p.backup, S = p.srv;
+    return ["Place the backup server in the 2F closet; lay its port 1 (eno1) to the 2F access switch's port " + S.bksrv.ports.eno1 + " and its port 2 (eno2) to its port " + S.bksrv.ports.eno2 + ".",
+      "From the data room, console into the 1F access switch: vlan " + B.id + " (name " + B.name + "); gi0/23 - 24, switchport trunk allowed vlan add " + B.id + "; gi0/" + S.fsrv.ports.eno2 + " an access port in VLAN " + B.id + " (description FSRV-BACKUP, portfast, BPDU guard, no shutdown); system mtu jumbo " + B.mtu + "; save; reload.",
+      "Each distribution switch: vlan " + B.id + "; its ports to the access switches (gi0/" + p.up.acc1 + " - " + p.up.acc2 + ") and interface port-channel 1, switchport trunk allowed vlan add " + B.id + "; spanning-tree vlan " + B.id + " root primary (switch 1) or secondary (switch 2); system mtu jumbo " + B.mtu + "; save; reload.",
+      "From the 2F closet, the 2F access switch: the VLAN, the uplinks, gi0/" + S.bksrv.ports.eno1 + " in the servers VLAN (BKSRV-SERVERS) and gi0/" + S.bksrv.ports.eno2 + " in the backup VLAN (BKSRV-BACKUP), each an edge port with BPDU guard; system mtu jumbo " + B.mtu + "; save; reload.",
+      "On each server's console: log in, sudo netplan set ethernets.eno2.mtu=" + B.mtu + ", sudo netplan apply. Then from one server, ping -M do -s 8972 the other's backup address."];
+  },
+  summary() { return ["The backup server is racked in the 2F closet, on another floor from the files it copies, and on the servers network.", "The two servers have a backup network of their own: a VLAN from the 1F access switch, across both distribution switches, to the 2F access switch, with distribution switch 1 its root.", "It carries 9000-byte frames all the way: both servers' backup ports in their netplan files, every switch on the way reloaded with a jumbo MTU, and it still runs through distribution switch 2 if switch 1 fails."]; }
+};
+
+export const CAMPUS_JOBS = [CJ1, CJ2, CJ3, CJ4, CJ5, CJ6, CJ7, CJ8, CJ9];

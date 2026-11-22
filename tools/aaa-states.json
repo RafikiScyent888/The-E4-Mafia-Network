@@ -1755,6 +1755,34 @@
   "wait": "(() => { const t = document.querySelector('.term'); return !!t && document.fonts.status === 'loaded' && Math.abs(t.scrollTop + t.clientHeight - t.scrollHeight) < 3; })()"
  },
  {
+  "name": "campus: CP-J9 at the start, the file server in the data room on the floor plan, the first check",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J9',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); c.check(); document.getElementById('vPhy').click();"
+ },
+ {
+  "name": "campus: CP-J9 part way, your laptop on the 2F switch's console in the 2F closet, the jumbo MTU waiting for a reload, Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J9',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const sol=J.def.solve(J.v,J.sim), at=sol.findIndex((a)=>a.t==='lay'&&a.b.dev==='acc2'&&a.b.port==='CONSOLE'), sm=sol.findIndex((a,i)=>i>at&&a.line&&/^system mtu jumbo/.test(a.line)); sol.slice(0,sm+1).forEach(a=>c.act(a)); for(let i=0;i<5;i++) c.check(); document.getElementById('vPhy').click(); document.querySelector('#devtabs [data-d=tech]').click(); tab('Serial terminal'); ['do show system mtu'].forEach(l=>k(l));",
+  "wait": "(() => { const t = document.querySelector('.term'); return !!t && document.fonts.status === 'loaded' && Math.abs(t.scrollTop + t.clientHeight - t.scrollHeight) < 3; })()"
+ },
+ {
+  "name": "campus: CP-J9 part way, the file server's console: logged in, ip a, a big ping refused (message too long)",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J9',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d=fsrv]').click(); tab('Console'); ['',p.srv.user,p.srv.pw,'ip a','ping -M do -s 8972 -c 2 '+p.srv.bksrv.bip].forEach(l=>k(l));",
+  "wait": "(() => { const t = document.querySelector('.term'); return !!t && document.fonts.status === 'loaded' && Math.abs(t.scrollTop + t.clientHeight - t.scrollHeight) < 3; })()"
+ },
+ {
+  "name": "campus: CP-J9 done, the logical diagram with both servers, the backup server's Physical tab, then the big ping through from the file server",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J9',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); document.getElementById('vLog').click(); document.querySelector('#devtabs [data-d=fsrv]').click(); tab('Console'); ['ping -M do -s 8972 -c 3 '+p.srv.bksrv.bip].forEach(l=>k(l));",
+  "wait": "(() => { const t = document.querySelector('.term'); return !!t && document.fonts.status === 'loaded' && Math.abs(t.scrollTop + t.clientHeight - t.scrollHeight) < 3; })()"
+ },
+ {
+  "name": "campus: CP-J9 done, the backup server's Physical tab: its cables, its 3D model waiting for photographs",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('CP-J9',true,4242); const J=c.T, p=J.v.plan; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); document.getElementById('vPhy').click(); document.querySelector('#devtabs [data-d=bksrv]').click(); tab('Physical');"
+ },
+ {
   "name": "levels: build, the campus's work orders (more on the way)",
   "page": "build.html",
   "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS.slice(0,3).flatMap(x=>x.tickets).map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS.slice(0,3).flatMap(x=>x.jobs).map(id=>[id,1]))})); window.__e4b.openJob('CP-J1',true,4242);})()",

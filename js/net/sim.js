@@ -9,6 +9,7 @@ import { reload as reloadSwitch, duplexEnds, carries, ownAddrs, psRunOf, errDisa
 import { solve as ospfSolve, wildMatch as ospfMatch, ifCost as ospfCost } from "./ospf.js";
 import { solve as stpSolve, costOf as stpCost } from "./stp.js";
 import * as RT from "./rtcli.js";
+import { applyNetplan } from "./linux.js";
 
 /* each radio has its own hardware address: the 5 GHz one is the next number up */
 function bump(m) { const p = m.split("-"); p[5] = ((parseInt(p[5], 16) + 1) & 255).toString(16).padStart(2, "0"); return p.join("-"); }
@@ -31,10 +32,10 @@ const SIGNAL = {
 
 /* build mode: the ports each kind of device has (the sim's names), where some devices have to go,
    and how long a cable run is between two rooms of the house, in metres, as it really goes (walls, ceilings) */
-export const PORTS = { router: ["WAN", "LAN 1", "LAN 2", "LAN 3", "LAN 4"], switch: ["1", "2", "3", "4", "5"], modem: ["ETH"], pc: ["NIC"], printer: ["NET"], camera: ["LAN"], tv: ["LAN"], injector: ["DATA IN", "PoE OUT"], mesh: ["WAN", "LAN"], dcam: ["LAN"] };
+export const PORTS = { router: ["WAN", "LAN 1", "LAN 2", "LAN 3", "LAN 4"], switch: ["1", "2", "3", "4", "5"], modem: ["ETH"], pc: ["NIC"], printer: ["NET"], camera: ["LAN"], tv: ["LAN"], injector: ["DATA IN", "PoE OUT"], mesh: ["WAN", "LAN"], dcam: ["LAN"], server: ["eno1", "eno2"] };   /* a rack server's two network ports (work order 9), by the names Linux gives them
 /* what a PoE injector can send down the cable: at the injector, and what reaches the device after the cable's loss (IEEE 802.3af and 802.3at) */
 export const POE = { af: { pse: 15.4, pd: 12.95 }, at: { pse: 30, pd: 25.5 } };
-export const PORT_NAME = { WAN: "INTERNET (WAN)", ETH: "ETHERNET", NIC: "Ethernet", NET: "NETWORK", LAN: "LAN", "PoE OUT": "DATA + POWER OUT" };
+export const PORT_NAME = { WAN: "INTERNET (WAN)", ETH: "ETHERNET", NIC: "Ethernet", NET: "NETWORK", LAN: "LAN", "PoE OUT": "DATA + POWER OUT", eno1: "port 1 (eno1)", eno2: "port 2 (eno2)" };   /* a server's ports: printed 1 and 2 on its back, eno1 and eno2 to Linux */
 /* an injector's ports in pairs: each DATA + POWER OUT carries on the link from its own DATA IN, and nothing else.
    The dual-port PoE+ injector (build mode's injector2) has two pairs, kept apart as on the real thing */
 export const POE_PAIR = { "PoE OUT": "DATA IN", "DATA IN": "PoE OUT", "PoE OUT 2": "DATA IN 2", "DATA IN 2": "PoE OUT 2" };
@@ -232,8 +233,9 @@ export class Sim {
       /* the far end's own port shut (another managed switch's, or a router's): no link here either, as the cable itself says */
       if (fd.kind === "mswitch") { const fp = fd.sw.ports[swPort(far.port)]; if (!fp || fp.shutdown || errDisabled(fd.sw, swPort(far.port))) continue; }
       if (fd.kind === "brouter") { const ph = RT_IF(far.port); if (!ph || fd.sw.ifs[ph].shutdown) continue; }
-      const m = (fd.kind === "router" || fd.kind === "rogue" ? fd.mac : fd.ifaces ? fd.ifaces[0].mac : "02-00-5e-" + (hash(far.dev) >>> 0).toString(16).padStart(8, "0").slice(0, 6).replace(/(..)(..)(..)/, "$1-$2-$3")).replace(/-/g, "");
-      L["GigabitEthernet0/" + me.port] = { lldp: this.cableUp(c0) ? this.lldpOf(this.viaInjectorEnd(c0, id) || far) : null, dtp: this.dtpOf(far), chan: this.chanOf(far), farDev: far.dev, mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fd.ifaces && fd.ifaces[0].cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n };
+      const fi = fd.ifaces ? this.ifaceAt(far.dev, far.port) : null;   /* a server's second port has a hardware address of its own */
+      const m = (fd.kind === "router" || fd.kind === "rogue" ? fd.mac : fi ? fi.mac : "02-00-5e-" + (hash(far.dev) >>> 0).toString(16).padStart(8, "0").slice(0, 6).replace(/(..)(..)(..)/, "$1-$2-$3")).replace(/-/g, "");
+      L["GigabitEthernet0/" + me.port] = { lldp: this.cableUp(c0) ? this.lldpOf(this.viaInjectorEnd(c0, id) || far) : null, dtp: this.dtpOf(far), chan: this.chanOf(far), farDev: far.dev, mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fi && fi.cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n, giants: this.giantsAt(id, "GigabitEthernet0/" + me.port) };
       if (fd.maxMbps) L["GigabitEthernet0/" + me.port].max = Math.min(L["GigabitEthernet0/" + me.port].max, fd.maxMbps);
       if (fd.dtp && this.cableUp(c0)) {   /* a device trunking with the port (SB-15): its frames come in on every VLAN the port carries, so the switch learns it in each */
         const n = "GigabitEthernet0/" + me.port, cr = carries(x.sw, n, { mode: fd.dtp, nonegotiate: false }), mac = L[n].mac;
@@ -369,6 +371,7 @@ export class Sim {
     if (k === "router" || k === "rogue") return port === "WAN" ? dev + ":wan" : dev + ":lan";
     if (k === "injector" && / 2$/.test(port)) return dev + ":2";   /* a dual injector's second pair: a path of its own, never bridged to the first */
     if (k === "patchpanel") return dev + ":" + String(port).replace(/R$/, "");   /* each port joins only its own front jack and its own run */
+    if (k === "server") { const fs = this.d[dev].ifaces || []; return fs.length > 1 && fs[0].port !== port && fs.some(function (f) { return f.port === port; }) ? dev + ":" + port : dev; }   /* a server's second port (work order 9): a node of its own, never bridged to its first */
     return dev;
   }
   /* bridging devices pass frames between everything joined to them */
@@ -521,7 +524,8 @@ export class Sim {
       while (q.length) {
         const v = q.shift(); if (seen.has(v) || own(v)) continue; seen.add(v);
         const dev = v.split(/[:#@]/)[0], x = this.d[dev];
-        if (x && this.on(dev)) { const mac = x.kind === "brouter" || x.kind === "router" || x.kind === "rogue" || x.kind === "mswitch" || (x.ifaces && this.hasLink(dev)) ? dotMac(this.macOf(dev)) : null; if (mac && !macs.has(mac)) { macs.add(mac); out.push({ mac: mac, vlan: vlan, dev: dev }); } }
+        const sp = x && x.kind === "server" && v.length > dev.length ? v.slice(dev.length + 1) : null;   /* a server's second port (work order 9) */
+        if (x && this.on(dev)) { const mac = sp ? (this.cableUp(this.cableAt(dev, sp)) ? dotMac(this.ifaceAt(dev, sp).mac) : null) : x.kind === "brouter" || x.kind === "router" || x.kind === "rogue" || x.kind === "mswitch" || (x.ifaces && this.hasLink(dev)) ? dotMac(this.macOf(dev)) : null; if (mac && !macs.has(mac)) { macs.add(mac); out.push({ mac: mac, vlan: vlan, dev: dev }); } }
         for (const f of e) { const w = f[0] === v ? f[1] : f[1] === v ? f[0] : null; if (w && !seen.has(w)) q.push(w); }
       }
     }
@@ -588,6 +592,59 @@ export class Sim {
     const sw = this.d[id].sw, more = Object.keys(sw.svis || {}).some(function (v) { return sw.svis[v].ip; });
     return ownAddrs(more ? Object.assign({}, sw, { links: this.switchLinks(id) }) : sw);
   }
+  /* ------------------------------------------------------------ a server's two ports (Level 4, work order 9) */
+  /* a computer's interface by its port name (a server has two: its own network's and the backup network's) */
+  ifaceAt(id, port) { const fs = this.d[id].ifaces || []; return fs.find(function (f) { return f.port === port; }) || fs[0]; }
+  /* the layer 2 node an interface is on: the first is the device itself, as always */
+  ifNode(id, j) { return j ? this.nodeOf(id, this.d[id].ifaces[j].port) : this.homeNode(id); }
+  /* the address an interface really has right now (none without a link); a server's are fixed, from its netplan */
+  ifAddr(id, j) {
+    if (!j) return this.addr(id);
+    const f = this.d[id].ifaces[j]; if (!f || !this.on(id) || !this.cableUp(this.cableAt(id, f.port))) return null;
+    return f.cfg.mode === "static" && f.cfg.ip ? { ip: f.cfg.ip, mask: f.cfg.mask, gw: f.cfg.gw || null, dns: (f.cfg.dns || []).filter(Boolean), kind: "static", j: j } : null;
+  }
+  /* the interface a packet to an address leaves by: the one configured on its network, else the first (with the default gateway) */
+  ifFor(id, dst) { const fs = this.d[id] && this.d[id].ifaces; if (!fs || fs.length < 2) return 0; const j = fs.findIndex(function (f) { return f.cfg && f.cfg.mode === "static" && f.cfg.ip && f.cfg.mask && sameSubnet(f.cfg.ip, dst, f.cfg.mask); }); return j > 0 ? j : 0; }
+  /* a device's address on the broadcast domain given (a server's on whichever port is in it) */
+  addrIn(id, dom) { const x = this.d[id]; if (!x.ifaces || x.ifaces.length < 2 || x.kind !== "server") return this.addr(id); for (let j = 0; j < x.ifaces.length; j++) if (dom.has(this.ifNode(id, j))) return this.ifAddr(id, j); return null; }
+  /* ------------------------------------------------------------ MTU and jumbo frames (Level 4, work order 9) */
+  /* the largest packet an interface sends or takes (its MTU): 1500 unless it's been set */
+  ifMtu(id, j) { const f = this.d[id] && this.d[id].ifaces && this.d[id].ifaces[j || 0]; return (f && f.mtu) || 1500; }
+  /* the largest packet a switch's gigabit ports pass: 1500, or the jumbo MTU it was last started with */
+  swMtu(id) { const x = this.d[id]; return (x && x.sw && x.sw.jumboRun) || 1500; }
+  /* frames a switch port has dropped for being too big (show interfaces: giants) */
+  giantsAt(id, n) { const g = this.net.extra && this.net.extra.giants; return (g && g[id + "|" + n]) || 0; }
+  giant(at, k) { if (!at || !at.port) return; const e = this.net.extra || (this.net.extra = {}), g = e.giants || (e.giants = {}), key = at.dev + "|" + at.port; g[key] = (g[key] || 0) + (k || 1); }
+  /* the node an address is answered on, on a device: a server's port, a switch's VLAN, a computer itself */
+  nodeFor(who, ip, dom) { const x = this.d[who]; if (x.kind === "server") { for (let j = 0; j < x.ifaces.length; j++) { const a = this.ifAddr(who, j); if (a && a.ip === ip) return this.ifNode(who, j); } } if (x.kind === "mswitch" || x.kind === "brouter") { for (const v of dom) if (v.split(/[:#@]/)[0] === who) return v; return null; } return this.homeNode(who); }
+  /* a packet of `size` bytes (its IP header and all) to an address and its echo back: does it get there? Over the sending interface's
+     MTU it's cut into pieces before it leaves, or, with the don't-fragment bit set, refused ("message too long"). Across layer 2 nothing
+     can cut it, so the first switch whose MTU it's over drops it (a giant on the port it came in by), and so does a receiver whose own
+     MTU it's over. A router (the gateway) cuts it up, or with the don't-fragment bit says it can't. The echo comes back the same size,
+     cut by the receiver to its own MTU, and has to fit the same way back. Changes nothing (the caller counts the giants) */
+  sized(id, dst, size, df) { return this.withEdges(function () { return this.sized0(id, dst, size, df); }); }
+  sized0(id, dst, size, df) {
+    const j = this.ifFor(id, dst), mtu = this.ifMtu(id, j);
+    if (size > mtu && df) return { ok: false, why: "local", mtu: mtu };
+    const rt = this.route(id, dst); if (rt.fail) return { ok: false, why: "route", rt: rt };
+    const piece = Math.min(size, mtu), from = j ? this.ifNode(id, j) : this.homeNode(id), dom = this.domain(from);
+    const pass = function (a, b, len) { const P = this.l2Path(a, b) || []; for (const h of P) if (len > this.swMtu(h.dev)) return { dev: h.dev, port: h.port }; return null; }.bind(this);
+    if (rt.local) {
+      const who = rt.owner[0], to = this.nodeFor(who, dst, dom); if (!to) return { ok: true, rt: rt, who: who };
+      const fs = this.d[who].ifaces, wj = fs ? Math.max(0, fs.findIndex(function (f, k) { const q = this.ifAddr(who, k); return !!q && q.ip === dst; }, this)) : 0;
+      const rmtu = fs ? this.ifMtu(who, wj) : 1500;
+      const go = pass(from, to, piece); if (go) return { ok: false, why: "giant", at: go, rt: rt, who: who };
+      if (piece > rmtu) return { ok: false, why: "receiver", at: { dev: who }, rt: rt, who: who };
+      const back = Math.min(size, rmtu), ret = pass(to, from, back); if (ret) return { ok: false, why: "giant", at: ret, back: true, rt: rt, who: who };
+      if (back > mtu) return { ok: false, why: "sender", rt: rt, who: who };
+      return { ok: true, rt: rt, who: who };
+    }
+    /* through the gateway: across layer 2 to it, then its own interface, 1500 */
+    const gw = rt.via, gn = gw && this.nodeFor(gw, (rt.addr && rt.addr.gw) || "", dom);
+    if (gn) { const go = pass(from, gn, piece); if (go) return { ok: false, why: "giant", at: go, rt: rt }; }
+    if (piece > 1500 && df) return { ok: false, why: "frag", gw: rt.addr && rt.addr.gw, rt: rt };
+    return { ok: true, rt: rt, who: rt.owner && rt.owner[0] };
+  }
   /* every device in a broadcast domain that answers ARP for an address */
   owners(ip, dom) {
     const out = [];
@@ -597,12 +654,14 @@ export class Sim {
       if (x.kind === "brouter") { if (this.on(id) && this.rtIfFor(id, ip, dom)) out.push(id); continue; }
       if (x.kind === "mswitch") { if (this.on(id)) { if (this.mgmtAddrs(id).some(function (o) { return o.ip === ip && dom.has(this.vnode(id, o.vlan)); }, this) || this.routedAddrs(id).some(function (o) { return o.ip === ip && dom.has(o.node); }) || this.hsrpVips(id).some(function (o) { return o.vip === ip && dom.has(o.node); })) out.push(id); } continue; }
       if (!x.ifaces) continue;
+      if (x.kind === "server" && x.ifaces.length > 1) { for (let j = 0; j < x.ifaces.length; j++) { const a = this.ifAddr(id, j); if (a && a.ip === ip && dom.has(this.ifNode(id, j))) { out.push(id); break; } } continue; }   /* a server answers on whichever of its ports holds the address (work order 9) */
       if (!dom.has(x.kind === "bap" ? this.bapNode(id, null) : id)) continue;   /* a business access point's own address is on its untagged side */
       const a = this.addr(id); if (a && a.ip === ip) out.push(id);
     }
     return out;
   }
-  macOf(id) { const x = this.d[id]; if (x.kind === "router" || x.kind === "rogue" || x.kind === "mswitch") return x.mac; if (x.kind === "brouter") return x.sw.mac.replace(/[^0-9a-f]/gi, "").replace(/(..)(?!$)/g, "$1-"); return x.ifaces[0].mac; }
+  macOf(id, ip) { const x = this.d[id]; if (ip && x.kind === "server") { const f = x.ifaces.find(function (g) { return g.cfg && g.cfg.ip === ip; }); if (f) return f.mac; }   /* a server: the port that holds the address (work order 9) */
+    if (x.kind === "router" || x.kind === "rogue" || x.kind === "mswitch") return x.mac; if (x.kind === "brouter") return x.sw.mac.replace(/[^0-9a-f]/gi, "").replace(/(..)(?!$)/g, "$1-"); return x.ifaces[0].mac; }
   ttlOf(id) { const k = this.d[id].kind; return k === "pc" || k === "laptop" ? 128 : k === "mswitch" || k === "brouter" ? 255 : 64; }
 
   /* DHCP servers a client's request reaches */
@@ -784,10 +843,10 @@ export class Sim {
   route0(id, dst, proto, oneWay) {
     if (this.d[id] && this.d[id].kind === "brouter") return this.routeFromRouter(id, dst, proto);
     if (this.routes3(id)) return this.routeFromL3(id, dst, proto);
-    const a = this.addr(id);
+    const j = this.ifFor(id, dst), a = j ? this.ifAddr(id, j) : this.addr(id);   /* a server: the port on the address's network (work order 9) */
     if (!a) return { fail: "no-link" };
     if (isLoopback(dst)) return { local: true, owner: [id], hops: [] };
-    const dom = this.domain(this.homeNode(id));
+    const dom = this.domain(j ? this.ifNode(id, j) : this.homeNode(id));
     let next = null;
     if (sameSubnet(a.ip, dst, a.mask)) next = dst;
     else if (a.gw && sameSubnet(a.ip, a.gw, a.mask)) next = a.gw;
@@ -795,7 +854,7 @@ export class Sim {
     let owners = this.owners(next, dom);
     if (!owners.length) return { fail: next === dst ? "host-unreachable" : "gateway-unreachable", addr: a, next: next };
     if (this.anyDai()) {   /* an ARP request or its answer dropped by a switch inspecting ARP: as if nobody answered */
-      const me = this.homeNode(id), mm = this.macOf(id); let blk = null;
+      const me = j ? this.ifNode(id, j) : this.homeNode(id), mm = this.macOf(id, a.ip); let blk = null;
       owners = owners.filter(function (o) { const b = this.arpBlocked(me, mm, a.ip, o, next, dom); if (b) blk = blk || b; return !b; }, this);
       if (!owners.length) return { fail: next === dst ? "host-unreachable" : "gateway-unreachable", addr: a, next: next, dai: blk };
     }
@@ -835,7 +894,7 @@ export class Sim {
     const x = this.d[id];
     if (this.routes3(id)) return !!l3Route(this.l3View(id), to, this.learned(id));   /* a switch that routes replies by its own table */
     if (x.kind === "router" || x.kind === "rogue" || x.kind === "brouter" || (!x.ifaces && x.kind !== "mswitch")) return true;
-    const b = this.addr(id); if (!b) return false;
+    const b = this.addrIn(id, dom); if (!b) return false;   /* a server: from whichever of its ports is on that network (work order 9) */
     if (sameSubnet(b.ip, to, b.mask)) return true;
     return !!(b.gw && sameSubnet(b.ip, b.gw, b.mask) && this.owners(b.gw, dom).some((g) => this.d[g].kind === "router" || this.d[g].kind === "rogue" || this.d[g].kind === "brouter" || this.routes3(g)));   /* the router hands it back across the LAN */
   }
@@ -1323,6 +1382,7 @@ export class Sim {
         const x = this.d[act.dev];
         if (x.ifaces && x.ifaces[0].cfg.mode !== "static") { /* a restart asks for its address again */ }
         if (x.kind === "mswitch") { reloadSwitch(x.sw, "power-on"); for (const k in (this.cli || {})) if (this.cli[k].sw === act.dev) delete this.cli[k]; }   /* power off and on: only what was saved comes back; every login to it is dropped */
+        if (x.kind === "server") { applyNetplan(this, act.dev); for (const k in (this.cli || {})) if (this.cli[k].lxDev === act.dev) delete this.cli[k]; }   /* a server comes back with what's in its netplan file; every login to it is dropped (work order 9) */
         res = { ok: true, restarted: act.dev };
         break;
       }

@@ -56,8 +56,14 @@ export function chanState(sw, n) {
 }
 /* a switch saved before VLANs came (the small office's progress in a student's browser) gets them as from the box,
    in what's saved too, so it doesn't read as changed */
+/* Each configuration (and its ports) is fixed once: `carries` asks on every call, and the campus asked for it thousands of
+   times a second, every port each time (17 November 2026). Port objects are only ever made from the box (with the VLAN
+   settings) or copied from a fixed one, and nothing deletes those settings; a configuration or port list that's new (read
+   back from a save, the startup replaced) isn't in the set, so it's fixed in full. */
+const FIXED = new WeakSet();   /* (any of the four missing again, as a test strips them in place, and it is fixed in full) */
 function fix(sw) {
-  const one = function (c) { if (!c) return; if (!c.vlans) c.vlans = { "1": { name: "default" } }; if (!c.svis) c.svis = {}; if (!c.snoop) c.snoop = { on: false, vlans: [] }; if (!c.dai) c.dai = { vlans: [] }; if (c.ports) for (const n in c.ports) for (const k in PORT_VLAN) if (c.ports[n][k] === undefined) c.ports[n][k] = PORT_VLAN[k]; };
+  const one = function (c) { if (!c) return; if (FIXED.has(c) && c.vlans && c.svis && c.snoop && c.dai && (!c.ports || FIXED.has(c.ports))) return; one0(c); FIXED.add(c); if (c.ports) FIXED.add(c.ports); };
+  const one0 = function (c) { if (!c.vlans) c.vlans = { "1": { name: "default" } }; if (!c.svis) c.svis = {}; if (!c.snoop) c.snoop = { on: false, vlans: [] }; if (!c.dai) c.dai = { vlans: [] }; if (c.ports) for (const n in c.ports) for (const k in PORT_VLAN) if (c.ports[n][k] === undefined) c.ports[n][k] = PORT_VLAN[k]; };
   one(sw); one(sw.startup); return sw;
 }
 const clone = function (x) { return x === undefined ? undefined : JSON.parse(JSON.stringify(x)); };

@@ -3,7 +3,7 @@
    the other levels: the first one really there is what the check saw, everything before it is ruled out by the network. */
 import { makeCampus, coreLinks, installCore, coreCables } from "../net/campus.js";
 import { Sim } from "../net/sim.js";
-import { errDisabled, dotMac, unsaved, chanState, carries, l3Ifs, l3Route } from "../net/swcli.js";
+import { errDisabled, dotMac, unsaved, chanState, carries, l3Ifs, l3Route, pwOk } from "../net/swcli.js";
 import * as RT from "../net/rtcli.js";
 import { exec } from "../net/cmd.js";
 import { bridgeId } from "../net/stp.js";
@@ -835,4 +835,257 @@ const CJ6 = {
   summary() { return ["Distribution switch 2 is in OSPF beside switch 1, with an interface on every VLAN in use.", "Each VLAN's gateway is a standby group's virtual address: distribution switch 1 answers day to day, the same switch spanning tree sends everything to; distribution switch 2 stands by.", "If switch 1 fails, switch 2 takes every gateway, routes the traffic and relays DHCP; when switch 1 comes back, it takes over again."]; }
 };
 
-export const CAMPUS_JOBS = [CJ1, CJ2, CJ3, CJ4, CJ5, CJ6];
+/* ------------------------------------------------------------ CP-J7, a new floor end to end */
+/* the 4F access switch's uplinks, as the records give them: its port 23 to distribution switch 1's port 4, its 24 to switch 2's */
+const UP4 = [["dist1", "23", "4"], ["dist2", "24", "4"]];
+const cableBetween = function (sim, a, b) { return sim.net.cables.find(function (c) { return c.kind === "cat6" && ((c.a.dev === a && c.b.dev === b) || (c.a.dev === b && c.b.dev === a)); }) || null; };
+const endAt = function (c, dev) { return c.a.dev === dev ? c.a.port : c.b.port; };
+function rackCauses(sim, v) {
+  const x = sim.d.acc4, rows = UP4.map(function (u) { const c = cableBetween(sim, "acc4", u[0]); return { u: u, c: c, right: !!c && endAt(c, "acc4") === u[1] && endAt(c, u[0]) === u[2], up: !!c && sim.cableUp(c) }; });
+  const none = rows.find(function (r) { return !r.c; }), wrong = rows.find(function (r) { return r.c && !r.right; }), down = rows.find(function (r) { return r.right && !r.up; });
+  const say = function (r) { return r ? said(sim, r.u[0]) : "a distribution switch"; };
+  return [C("boxed", !!x.boxed, "The 4F access switch is still in its box", "It's racked in the 4F closet.", "The work order's van list: the 4F access switch, in its box."),
+    C("none", !x.boxed && !!none, "The 4F access switch has no uplink to " + say(none), "It's uplinked to both distribution switches.", "The Cable runs table: nothing between the 4F access switch and " + say(none) + "."),
+    C("ports", !x.boxed && !none && !!wrong, "The uplink to " + say(wrong) + " isn't on the ports the records give it (the 4F switch's port " + (wrong ? wrong.u[1] : "") + " to the distribution switch's port " + (wrong ? wrong.u[2] : "") + ")", "Both uplinks are on the records' ports.", "The Cable runs table: the uplink's two ends."),
+    C("down", !x.boxed && !none && !wrong && !!down, "The uplink to " + say(down) + " has no link: a port at one end is shut", "Both uplinks have a link.", "The Cable runs table: No link; show interfaces status on " + say(down) + ": port " + (down ? down.u[2] : "") + " disabled.")];
+}
+/* set up as every switch here: name, secret, console password, SSH only with the local user, its management address and gateway */
+function base4Causes(sim, v) {
+  const p = v.plan, w = sim.d.acc4.sw, m = (w.svis || {})[p.vlans.mgmt.id], u = (w.users || {})[p.user];
+  return [C("name", w.hostname !== p.sw.acc4.host, "The 4F access switch isn't named as the records say", "Its name is the records'.", "The prompt says " + w.hostname + "."),
+    C("secret", !w.enableSecret || !pwOk(w.enableSecret, p.secret), "Its enable secret isn't the campus's", "Its enable secret is the campus's.", "show running-config: " + (w.enableSecret ? "an enable secret, not the campus's" : "no enable secret") + "."),
+    C("console", !w.con.password || !pwOk(w.con.password, p.console) || w.con.login !== "password", "Its console doesn't ask for the campus's console password", "The console asks for it.", "show running-config: line con 0."),
+    C("ssh", !w.domain || !(w.rsa >= 768) || !u || !pwOk(u, p.userPw) || w.vty.login !== "local" || w.vty.transport !== "ssh", "Its remote logins aren't SSH only with the campus's local user (a domain, keys, the user, login local, transport input ssh)", "SSH only, with the campus's user.", "show running-config: line vty 0 15, the username, ip domain-name."),
+    C("mgmt", !m || m.ip !== p.sw.acc4.ip || m.mask !== p.mask || !!m.shutdown, "It has no management address on the management VLAN, as the records give it", "Its management address is the records'.", "show ip interface brief: Vlan" + p.vlans.mgmt.id + " " + (m && m.ip || "missing") + "."),
+    C("gw", w.gateway !== p.vlans.mgmt.gw, "Its default gateway isn't the management VLAN's gateway: it can't answer anything off its own network", "Its default gateway is the management VLAN's.", "show running-config: ip default-gateway " + (w.gateway || "missing") + ".")];
+}
+/* the training VLAN, created and named on the three switches that carry it */
+const TRAIN_ON = ["acc4", "dist1", "dist2"];
+function vlan4Causes(sim, v) {
+  const T = v.plan.train, miss = TRAIN_ON.find(function (id) { return !(sim.d[id].sw.vlans || {})[T.id]; }), misname = TRAIN_ON.find(function (id) { const q = (sim.d[id].sw.vlans || {})[T.id]; return q && String(q.name).toUpperCase() !== T.name; });
+  const who = function (id) { return id ? (id === "acc4" ? "the 4F access switch" : said(sim, id)) : ""; };
+  return [C("none", !!miss, "The training VLAN doesn't exist on " + who(miss), "It exists on all three.", "show vlan brief on " + who(miss) + ": no VLAN " + T.id + "."),
+    C("name", !miss && !!misname, "The training VLAN on " + who(misname) + " isn't named as the records say", "Named as the records say on all three.", "show vlan brief on " + who(misname) + ".")];
+}
+/* the 4F's uplinks: trunks as the campus's are, carrying the training and management VLANs all the way, the bundle between the distribution switches too */
+function trunk4Causes(sim, v) {
+  const p = v.plan, T = p.train.id, M = p.vlans.mgmt.id, N = p.vlans.native.id, ends = [];
+  UP4.forEach(function (u) { ends.push({ id: "acc4", n: "GigabitEthernet0/" + u[1], far: { id: u[0], n: "GigabitEthernet0/" + u[2] } }, { id: u[0], n: "GigabitEthernet0/" + u[2], far: { id: "acc4", n: "GigabitEthernet0/" + u[1] } }); });
+  const P = function (e) { return sim.d[e.id].sw.ports[e.n]; }, cr = function (e) { const f = P(e.far); return carries(Object.assign({}, sim.d[e.id].sw, { links: sim.switchLinks(e.id) }), e.n, { mode: f.mode, nonegotiate: f.nonegotiate }); };
+  const who = function (e) { return e ? (e.id === "acc4" ? "the 4F access switch's port " : said(sim, e.id) + "'s port ") + e.n.split("/")[1] : ""; };
+  const notTrunk = ends.find(function (e) { return P(e).mode !== "trunk"; }), neg = ends.find(function (e) { return P(e).mode === "trunk" && !P(e).nonegotiate; });
+  const nat = ends.find(function (e) { return P(e).native !== N; });
+  const noT = ends.find(function (e) { return cr(e).tagged.indexOf(T) < 0; }), noM = ends.find(function (e) { return cr(e).tagged.indexOf(M) < 0; });
+  const po = ["dist1", "dist2"].find(function (id) { const w = sim.d[id].sw, g = w.pcs && Object.keys(w.pcs)[0]; const q = g ? w.pcs[g] : w.ports["GigabitEthernet0/21"]; return !q || (q.allowed !== "all" && String(q.allowed).split(",").map(Number).indexOf(T) < 0 && !String(q.allowed).split(",").some(function (r) { const m = /^(\d+)-(\d+)$/.exec(r); return m && T >= +m[1] && T <= +m[2]; })); });
+  return [C("mode", !!notTrunk, who(notTrunk) + " isn't a trunk", "Every uplink end is a trunk.", "show interfaces trunk on " + (notTrunk && notTrunk.id === "acc4" ? "the 4F access switch" : notTrunk ? said(sim, notTrunk.id) : "") + ": port " + (notTrunk ? notTrunk.n.split("/")[1] : "") + " missing."),
+    C("dtp", !notTrunk && !!neg, who(neg) + " is a trunk but still negotiates (DTP): the campus's trunks don't", "No uplink end negotiates.", "show interfaces " + (neg ? neg.n.replace("GigabitEthernet", "gi") : "") + " switchport: Negotiation of Trunking: On."),
+    C("native", !notTrunk && !!nat, who(nat) + "'s native VLAN isn't the campus's unused one", "Every uplink end's native VLAN is the campus's unused one.", "show interfaces trunk: native " + (nat ? P(nat).native : "") + "."),
+    C("train", !notTrunk && !nat && !!noT, who(noT) + " doesn't carry the training VLAN", "Both uplinks carry it at both ends.", "show interfaces trunk: VLAN " + T + " not allowed on port " + (noT ? noT.n.split("/")[1] : "") + "."),
+    C("mgmt", !notTrunk && !nat && !noT && !!noM, who(noM) + " doesn't carry the management VLAN: the 4F switch can't be managed over it", "Both uplinks carry the management VLAN.", "show interfaces trunk: VLAN " + M + " not allowed."),
+    C("bundle", !!po, "The bundle between the distribution switches doesn't carry the training VLAN on " + (po ? said(sim, po) : "") + ": the two switches can't share its gateway across it", "The bundle carries it.", "show interfaces trunk on " + (po ? said(sim, po) : "") + ": Po1, VLAN " + T + " not allowed.")];
+}
+/* the training VLAN's spanning-tree root: distribution switch 1, distribution switch 2 the backup (CP-J2's convention) */
+function stp4Causes(sim, v) {
+  const T = v.plan.train.id, all = sim.stpAll(), R = all[T], root = R && R.result && R.result.root, sws = R ? R.sws : {};
+  const ids = Object.keys(sws), rootId = ids.find(function (id) { return sws[id].mac === (root && root.mac) && sws[id].prio === root.prio; }) || (ids.length ? ids.slice().sort(function (a, b) { return cmpBid(sws[a], sws[b]); })[0] : null);
+  const second = ids.filter(function (id) { return id !== rootId; }).sort(function (a, b) { return cmpBid(sws[a], sws[b]); })[0];
+  return [C("acc4", rootId === "acc4", "The 4F access switch is the training VLAN's spanning-tree root: left at the defaults, it has the lowest address", "Distribution switch 1 is its root.", "show spanning-tree vlan " + T + " on the 4F access switch: This bridge is the root."),
+    C("dist2", rootId === "dist2", "Distribution switch 2 is the training VLAN's root: its gateway is on switch 1, so the floor's traffic crosses the bundle", "Distribution switch 1 is its root.", "show spanning-tree vlan " + T + " on distribution switch 2: This bridge is the root."),
+    C("nopath", !rootId, "The training VLAN has no spanning tree: no switch carries it", "Distribution switch 1 is its root.", "show spanning-tree vlan " + T + ": not found."),
+    C("backup", rootId === "dist1" && second !== "dist2", "Distribution switch 1 is the root, but distribution switch 2 isn't the backup: if switch 1 goes, the 4F switch takes over", "Distribution switch 2 is the backup.", "show spanning-tree vlan " + T + " on distribution switch 2: its priority.")];
+}
+/* the training VLAN's gateway: both distribution switches, one standby group, switch 1 active with preempt */
+function gw4Causes(sim, v) {
+  const p = v.plan, T = p.train, own = function (id) { return T.gw.replace(/\.1$/, id === "dist1" ? ".2" : ".3"); }, si = function (id) { return (sim.d[id].sw.svis || {})[T.id] || null; };
+  const up = function (id) { return l3Ifs(sim.l3View(id)).some(function (f) { return f.name === "Vlan" + T.id && f.up; }); };
+  const noSvi = ["dist1", "dist2"].find(function (id) { const r = si(id); return !r || r.ip !== own(id) || r.mask !== p.mask; }), down = ["dist1", "dist2"].find(function (id) { return si(id) && !up(id); });
+  const sb = function (id) { const r = si(id); return (r && r.standby) || {}; }, g1 = sb("dist1"), g2 = sb("dist2"), both = Object.keys(g1).filter(function (g) { return g2[g]; });
+  const grp = !both.length, vip = both.length && both.some(function (g) { return g1[g].ip !== T.gw || g2[g].ip !== T.gw; });
+  const q = groupState(sim, Object.assign({}, p, { vlans: Object.assign({}, p.vlans, { train: T }) }), "train"), act = q && q.active ? q.active.id : null;
+  const pre = both.length && both.every(function (g) { return g1[g].preempt && (g1[g].pri || 100) > (g2[g].pri || 100); });
+  const who = function (id) { return id ? said(sim, id) : ""; };
+  return [C("svi", !!noSvi, "The training VLAN has no interface on " + who(noSvi) + " on its own address (switch 1 the second, switch 2 the third)", "Both have their own interface on it.", "show ip interface brief on " + who(noSvi) + ": Vlan" + T.id + "."),
+    C("down", !noSvi && !!down, "The training VLAN's interface on " + who(down) + " is down", "Both are up.", "show ip interface brief on " + who(down) + ": Vlan" + T.id + " down."),
+    C("group", !noSvi && !down && grp, "The two switches don't share a standby group on the training VLAN", "One group, on both.", "show standby brief on each: Vl" + T.id + "."),
+    C("vip", !noSvi && !down && !grp && !!vip, "The training VLAN's standby group doesn't answer at the gateway its PCs will use (the first address)", "Its virtual address is the gateway.", "show standby brief: Vl" + T.id + "'s virtual IP."),
+    C("active", !noSvi && !down && !grp && !vip && (act !== "dist1" || !pre), "Distribution switch 1 isn't the training gateway's active switch with preempt, as on every other VLAN", "Switch 1 active, priority 110, preempt.", "show standby brief on distribution switch 1: Vl" + T.id + ".")];
+}
+/* the edge router's pool for the training network */
+function pool4Causes(sim, v) {
+  const p = v.plan, T = p.train, rt = sim.d.edge.sw, pool = Object.keys(rt.pools || {}).map(function (k) { return rt.pools[k]; }).find(function (q) { return q.network === T.net; });
+  const ex = (rt.excluded || []).some(function (e) { return e[0] === T.gw && e[1] === T.gw.replace(/\.1$/, "." + p.excl); });
+  return [C("none", !pool, "The edge router has no DHCP pool for the training network", "It has one.", "show ip dhcp pool on the edge router: nothing for " + T.net + "."),
+    C("router", !!pool && (pool.router || [])[0] !== T.gw, "The training pool's default router isn't the training VLAN's gateway", "Its default router is the gateway.", "show running-config on the edge router: the pool's default-router."),
+    C("dns", !!pool && JSON.stringify(pool.dns || []) !== JSON.stringify(p.dns), "The training pool hands out no DNS servers, or not the campus's", "It hands out the campus's.", "show running-config on the edge router: the pool's dns-server."),
+    C("excl", !!pool && !ex, "The training pool doesn't keep its first twenty addresses back, as every pool here does", "It keeps them back.", "show running-config on the edge router: ip dhcp excluded-address.")];
+}
+function relay4Causes(sim, v) {
+  const p = v.plan, T = p.train, R = sim.rtView("edge"), live = sim.rtLive("edge"), mine = RT.allIfs(R).map(function (n) { const a = RT.addrOf(R, n, live); return a && RT.rtStatus(R, n)[1] === "up" ? a.ip : null; }).filter(Boolean);
+  const h = function (id) { const r = (sim.d[id].sw.svis || {})[T.id]; return (r && r.helpers) || []; };
+  const none = ["dist1", "dist2"].find(function (id) { return !h(id).length; }), wrong = ["dist1", "dist2"].find(function (id) { return h(id).length && !h(id).some(function (x) { return mine.indexOf(x) >= 0; }); });
+  return [C("none", !!none, (none ? Cap(said(sim, none)) : "A distribution switch") + " doesn't relay the training VLAN's DHCP requests", "Both relay them.", "show running-config on " + (none ? said(sim, none) : "") + ": interface Vlan" + T.id + " has no ip helper-address."),
+    C("wrong", !none && !!wrong, (wrong ? Cap(said(sim, wrong)) : "A distribution switch") + " relays them to an address where the edge router doesn't answer", "Both relay to the edge router.", "show running-config on " + (wrong ? said(sim, wrong) : "") + ": its ip helper-address.")];
+}
+/* the training room's desks, locked down as every desk here */
+function desks4(sim, v) { const D = v.plan.desks4; return Object.keys(D).map(function (port) { const dev = D[port][0], n = "GigabitEthernet0/" + port, c = cableBetween(sim, "acc4", dev); return { port: port, n: n, dev: dev, p: sim.d.acc4.sw.ports[n], c: c, right: !!c && endAt(c, "acc4") === port, up: !!c && sim.cableUp(c) }; }); }
+function desk4Causes(sim, v) {
+  const p = v.plan, rows = desks4(sim, v), T = p.train.id, pr = function (r) { return psRead(r.p); };
+  const none = rows.find(function (r) { return !r.c; }), wrong = rows.find(function (r) { return r.c && !r.right; }), mode = rows.find(function (r) { return r.right && (r.p.mode !== "access" || r.p.access !== T); });
+  const ps = rows.find(function (r) { const P = pr(r); return r.right && (!P.on || P.max !== 1 || P.viol !== "shutdown" || !P.sticky); }), edge = rows.find(function (r) { return r.right && !(r.p.stp && r.p.stp.portfast && r.p.stp.bpduguard); });
+  const desc = rows.find(function (r) { return r.right && String(r.p.desc).toUpperCase() !== (r.dev.toUpperCase() + "-" + p.train.name); });
+  const used = rows.map(function (r) { return +r.port; }), spare = []; for (let k = 1; k <= 22; k++) if (used.indexOf(k) < 0) spare.push(k);
+  const open = spare.find(function (k) { const q = sim.d.acc4.sw.ports["GigabitEthernet0/" + k]; return !q.shutdown || q.access !== p.vlans.parking.id; });
+  const nm = function (r) { return r ? name(sim, r.dev) : ""; };
+  return [C("cable", !!none, "The " + nm(none) + " has no cable to the 4F access switch", "Each training PC is cabled to its port.", "The Cable runs table: nothing from the " + nm(none) + "."),
+    C("port", !none && !!wrong, "The " + nm(wrong) + " isn't on the port the records give it (port " + (wrong ? wrong.port : "") + ")", "Each is on its records' port.", "The Cable runs table: the " + nm(wrong) + "'s run."),
+    C("vlan", !none && !wrong && !!mode, "The " + nm(mode) + "'s port isn't an access port in the training VLAN", "Each is an access port in it.", "show interfaces status on the 4F access switch: Gi0/" + (mode ? mode.port : "") + "."),
+    C("ps", !none && !wrong && !mode && !!ps, "The " + nm(ps) + "'s port isn't locked down as every desk here is (port security: one device, sticky, shut down on a violation)", "Each has port security as the campus does.", "show port-security interface gi0/" + (ps ? ps.port : "") + " on the 4F access switch."),
+    C("edge", !none && !wrong && !mode && !ps && !!edge, "The " + nm(edge) + "'s port isn't an edge port with BPDU guard", "Each is an edge port with BPDU guard.", "show running-config on the 4F access switch: interface gi0/" + (edge ? edge.port : "") + "."),
+    C("desc", !none && !wrong && !mode && !ps && !edge && !!desc, "The " + nm(desc) + "'s port isn't described as the records say", "Each is described as the records say.", "show interfaces status on the 4F access switch: Gi0/" + (desc ? desc.port : "") + "'s name."),
+    C("spare", !!open, "A spare port on the 4F access switch is open or out of the parking VLAN (port " + (open || "") + ")", "Every spare port is parked and shut.", "show interfaces status on the 4F access switch: Gi0/" + (open || "") + ".")];
+}
+/* the training PCs: addresses in the training network, online */
+function online4Causes(sim, v) {
+  const p = v.plan, T = p.train, pcs = ["tr1", "tr2"], a = function (id) { return sim.addr(id); };
+  const apipa = pcs.find(function (id) { const x = a(id); return !x || !x.ip || /^169\.254\./.test(x.ip); }), other = pcs.find(function (id) { const x = a(id); return x && x.ip && !/^169\.254\./.test(x.ip) && x.ip.split(".").slice(0, 3).join(".") !== T.net.split(".").slice(0, 3).join("."); });
+  const off = pcs.find(function (id) { return !sim.route(id, "8.8.8.8").internet; }), D = sim.ospfAll().routers.dist1;
+  const noadv = !(D && D.ifs.some(function (f) { return f.name === "Vlan" + T.id; }));
+  const nm = function (id) { return id ? name(sim, id) : ""; };
+  return [C("apipa", !!apipa, "The " + nm(apipa) + " has no address from DHCP (169.254: it asked and nobody answered)", "Both have addresses from the training pool.", "ipconfig on the " + nm(apipa) + ": Autoconfiguration IPv4 Address 169.254..."),
+    C("net", !apipa && !!other, "The " + nm(other) + " has an address, but not in the training network", "Both are in the training network.", "ipconfig on the " + nm(other) + "."),
+    C("noadv", !apipa && !other && !!off && noadv, "The training network isn't in OSPF: nothing beyond the distribution switches knows the way back to it", "It's advertised.", "show ip route on the edge router: no " + T.net + "."),
+    C("off", !apipa && !other && !!off && !noadv, "The " + nm(off) + " can't reach the internet", "Both are online.", off ? "ping 8.8.8.8 from the " + nm(off) + ": no reply." : "")];
+}
+function fail4Causes(sim, v) {
+  const p = v.plan, T = p.train, s2 = copyOf(sim); power(s2, "dist1", false);
+  const q = groupState(s2, Object.assign({}, p, { vlans: Object.assign({}, p.vlans, { train: T }) }), "train");
+  const off = ["tr1", "tr2"].find(function (id) { return !s2.route(id, "8.8.8.8").internet; });
+  return [C("gone", !q || !q.active, "With distribution switch 1 off, nothing answers for the training VLAN's gateway", "Switch 2 takes it over.", "Picture distribution switch 1 off: show standby brief on distribution switch 2, Vl" + T.id + "."),
+    C("off", !!q && !!q.active && !!off, "With distribution switch 1 off, the " + (off ? name(sim, off) : "") + " loses the internet: switch 2 answers the gateway, but the traffic can't get through it (the training VLAN on its uplink, its routes)", "The floor stays online.", "Picture distribution switch 1 off: tracert -d 8.8.8.8 from the " + (off ? name(sim, off) : "") + ".")];
+}
+function saved7Causes(sim) { return ["acc4", "dist1", "dist2", "edge"].map(function (id) { return C("unsaved-" + id, unsaved(sim.d[id].sw), Cap(id === "acc4" ? "the 4F access switch" : sayOf(sim, id)) + " hasn't been saved: a power cut takes the changes away", "All four are saved.", "show startup-config on " + (id === "acc4" ? "the 4F access switch" : sayOf(sim, id)) + ": it's not what's running."); }); }
+
+const CJ7 = {
+  id: "CP-J7", level: "campus", title: "A new floor end to end: the training room on 4F, its switch from the box, its VLAN all the way to the internet",
+  already: ["works", "saved"],   /* a switch fresh from its box has nothing unsaved */
+  start(seed) {
+    const b = CJ6.start(seed), sim = b.sim;
+    for (const a of CJ6.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    ["tr1", "tr2"].forEach(function (id) { delete sim.d[id].boxed; });   /* the training room's PCs are at their desks; the 4F switch is still in its box */
+    sim.cli = {};
+    return { sim: sim, v: Object.assign({}, b.v, { runs: sim.net.extra.runs || 0 }) };
+  },
+  brief() { return { quote: "We've taken the fourth floor for the new training team. The two training PCs are on their desks, the riser cables are run up to the 4F closet, and the new access switch is still in its box. Make the floor part of the campus, the same as every other floor: its own network, its gateway on the distribution switches, addresses from the edge router, and locked down like everything else. If a distribution switch dies, training carries on.", from: "Rafiki, owner" }; },
+  mason: "End to end means every hop: the desk port, the switch, both uplinks, both distribution switches, the bundle between them, the gateway, the pool and the way back. Build it in that order, and test from the desk at the end.",
+  limits: function (v) {
+    const p = v.plan, T = p.train, A = p.sw.acc4;
+    return ["The 4F access switch: " + A.host + ", locked as every switch here (enable secret " + p.secret + ", console password " + p.console + ", SSH only with the user " + p.user + ", password " + p.userPw + ", domain " + p.domain + "), managed at " + A.ip + " on the management VLAN, its gateway that VLAN's. It starts from the factory: reach it on the console.",
+      "Its uplinks: its port 23 to distribution switch 1's port 4, its port 24 to distribution switch 2's port 4. Trunks as the campus's are: native VLAN " + p.vlans.native.id + " (" + p.vlans.native.name + "), no negotiation, carrying the 4F's VLANs, the training VLAN and the management VLAN. The bundle between the distribution switches carries the training VLAN too.",
+      "The training VLAN: " + T.id + ", named " + T.name + ", " + T.net + "/24. Its gateway " + T.gw + " is a standby group shared by the distribution switches (switch 1 the second address, active, priority 110, preempt; switch 2 the third), its group numbered for the VLAN; distribution switch 1 its spanning-tree root, switch 2 the backup. The edge router hands out its addresses (the first " + p.excl + " kept back, the campus's DNS), and both distribution switches relay the requests to the same edge router address as the other VLANs.",
+      "The desks: Training PC 1 on port 1, Training PC 2 on port 2, each an access port in the training VLAN, described TR1-" + T.name + " and TR2-" + T.name + ", locked down as every desk here (port security: one device, sticky, shut down on a violation; an edge port with BPDU guard). Every spare port parked in VLAN " + p.vlans.parking.id + " and shut.",
+      "Your laptop's console cable is 1.8 m: it reaches the 4F switch from the 4F closet."];
+  },
+  reqs: [
+    { id: "rack", text: "The 4F access switch is racked in the 4F closet, uplinked to both distribution switches as the records say", causes: rackCauses,
+      ok: function () { return "The 4F access switch is racked, both uplinks on the records' ports, with a link."; },
+      rung1: function () { return "The Cable runs table, and show interfaces status on each distribution switch."; },
+      rung2: function () { return "A cable needs a port open at both ends before it carries anything: the campus parks and shuts every spare port."; } },
+    { id: "base", text: "The 4F access switch is set up as every switch here: name, secret, console password, SSH only, its management address and gateway", causes: base4Causes,
+      ok: function () { return "Named, locked, SSH only, managed on the management VLAN."; },
+      rung1: function () { return "show running-config on the 4F access switch, against the records."; },
+      rung2: function () { return "A switch fresh from the factory has none of this: every line the other switches have, it needs typed."; } },
+    { id: "vlan", text: "The training VLAN exists, named as the records say, on the 4F switch and both distribution switches", causes: vlan4Causes,
+      ok: function () { return "The training VLAN exists and is named on all three."; },
+      rung1: function () { return "show vlan brief on each of the three."; },
+      rung2: function () { return "A VLAN only exists on a switch it's been made on: every switch that carries it needs it."; } },
+    { id: "trunks", text: "The 4F's uplinks are trunks as the campus's are, carrying the training and management VLANs, and the bundle between the distribution switches carries the training VLAN too", causes: trunk4Causes,
+      ok: function () { return "Both uplinks trunk as the campus's do and carry the floor's VLANs; the bundle carries the training VLAN."; },
+      rung1: function () { return "show interfaces trunk on the 4F switch and on both distribution switches."; },
+      rung2: function () { return "A trunk carries only the VLANs its allowed list names, at both ends: a VLAN left off any hop stops there."; } },
+    { id: "stp", text: "The training VLAN's spanning-tree root is distribution switch 1, distribution switch 2 the backup", causes: stp4Causes,
+      ok: function () { return "Distribution switch 1 is the training VLAN's root, switch 2 the backup."; },
+      rung1: function () { return "show spanning-tree vlan on the 4F switch and on both distribution switches, for the training VLAN."; },
+      rung2: function () { return "Every VLAN elects its own root; a new one, left at the defaults, goes to the lowest address, wherever that is."; } },
+    { id: "gw", text: "The training VLAN's gateway is shared by standby: both distribution switches on their own addresses, distribution switch 1 active", causes: gw4Causes,
+      ok: function () { return "Both distribution switches have their own interface on the training VLAN; the gateway is the group's virtual address, switch 1 active with preempt."; },
+      rung1: function () { return "show ip interface brief and show standby brief on both distribution switches."; },
+      rung2: function () { return "The gateway is the same arrangement as on every other VLAN since the last work order: two own addresses and one shared one."; } },
+    { id: "pool", text: "The edge router hands out addresses for the training network, as for the other VLANs", causes: pool4Causes,
+      ok: function () { return "The edge router has a pool for the training network: its default router the gateway, the campus's DNS, the first addresses kept back."; },
+      rung1: function () { return "show ip dhcp pool and the pools in show running-config on the edge router."; },
+      rung2: function () { return "A pool hands out what it's told: the network, the default router, the DNS servers; addresses kept for the gateway and the gear are excluded first."; } },
+    { id: "relay", text: "Both distribution switches relay the training VLAN's DHCP requests to the edge router", causes: relay4Causes,
+      ok: function () { return "Both relay the training VLAN's requests to the edge router."; },
+      rung1: function () { return "The training VLAN interface's lines in show running-config on both distribution switches."; },
+      rung2: function () { return "A request for an address is a broadcast; it reaches the edge router's pool only if the VLAN's gateway relays it, and either switch might be the gateway."; } },
+    { id: "desks", text: "Each training PC is on its port, locked down as every desk here; the spare ports parked and shut", causes: desk4Causes,
+      ok: function () { return "Both training PCs on their ports, access ports in the training VLAN, port security, edge ports with BPDU guard, described; the spares parked and shut."; },
+      rung1: function () { return "show interfaces status and show port-security on the 4F switch."; },
+      rung2: function () { return "Every desk port on this campus is set up the same way: whatever the first work order did on the other floors, this floor needs too."; } },
+    { id: "online", text: "Both training PCs have addresses in the training network and reach the internet", causes: online4Causes,
+      ok: function () { return "Both training PCs are online with addresses from the training pool."; },
+      rung1: function () { return "ipconfig /all then ping 8.8.8.8 on each training PC; tracert if a ping fails."; },
+      rung2: function () { return "A PC that gave itself an automatic private (APIPA) address asked and nobody answered: follow the request from the desk to the pool."; } },
+    { id: "fail", text: "If distribution switch 1 fails, the training floor stays online", causes: fail4Causes,
+      ok: function () { return "With distribution switch 1 off, switch 2 answers the training gateway and the floor stays online."; },
+      rung1: function () { return "Picture distribution switch 1 off: show standby brief and show interfaces trunk on distribution switch 2."; },
+      rung2: function () { return "The standby switch can only take over what reaches it: the VLAN on its uplink to the floor, an interface, the group."; } },
+    { id: "works", text: "Everyone else still works: every PC online, both printers and every switch answering", causes: reachCauses,
+      ok: function () { return "Every PC is online; both printers and every switch answer."; },
+      rung1: function () { return "ping 8.8.8.8 from each PC; the printers and the switches from the service desk."; },
+      rung2: function () { return "Changing a trunk or the bundle changes it for every VLAN it carries."; } },
+    { id: "saved", text: "The 4F switch, both distribution switches and the edge router are saved", causes: saved7Causes,
+      ok: function () { return "All four are saved."; }, rung1: function () { return "show startup-config against show running-config on each."; }, rung2: function () { return "Only what's saved survives a power cut."; } }
+  ],
+  solve(v, sim) {
+    const p = v.plan, T = p.train, A = p.sw.acc4, relay = coreLinks(p)[0].ia, out = [], n = sim ? sim.net.extra.runs || 0 : v.runs || 0;
+    let k = 0; const lay = function (a, b) { k++; out.push({ t: "lay", a: a, b: b }); return n + k; };
+    const c = function (l) { out.push({ t: "cmd", dev: "tech", line: l, cli: true }); };
+    const login = function () { [""].concat([p.console, "enable", p.secret, "configure terminal"]).forEach(c); };
+    const save = function () { c("end"); c("copy running-config startup-config"); c(""); };
+    let con = 0; const consoleTo = function (dev) { if (con) out.push({ t: "pull", cable: "c-console-" + con }); con = lay({ dev: "tech", port: "USB-C" }, { dev: dev, port: "CONSOLE" }); };
+    /* rack it and cable it: the uplinks, the desks */
+    out.push({ t: "place", dev: "acc4", room: "c4" });
+    UP4.forEach(function (u) { lay({ dev: "acc4", port: u[1] }, { dev: u[0], port: u[2] }); });
+    Object.keys(p.desks4).forEach(function (port) { lay({ dev: p.desks4[port][0], port: "NIC" }, { dev: "acc4", port: port }); });
+    /* the 4F switch from the factory, on its console */
+    out.push({ t: "place", dev: "tech", room: "c4" }); consoleTo("acc4");
+    ["", "enable", "configure terminal", "hostname " + A.host, "enable secret " + p.secret, "line console 0", "password " + p.console, "login", "exit", "ip domain-name " + p.domain, "username " + p.user + " secret " + p.userPw, "crypto key generate rsa modulus 2048", "line vty 0 15", "login local", "transport input ssh", "exit"].forEach(c);
+    [[T.id, T.name], [p.vlans.mgmt.id, p.vlans.mgmt.name], [p.vlans.native.id, p.vlans.native.name], [p.vlans.parking.id, p.vlans.parking.name]].forEach(function (q) { c("vlan " + q[0]); c("name " + q[1]); c("exit"); });
+    c("interface range gi0/23 - 24"); c("switchport trunk native vlan " + p.vlans.native.id); c("switchport trunk allowed vlan " + T.id + "," + p.vlans.mgmt.id); c("switchport mode trunk"); c("switchport nonegotiate"); c("exit");
+    c("interface vlan " + p.vlans.mgmt.id); c("ip address " + A.ip + " " + p.mask); c("no shutdown"); c("exit"); c("ip default-gateway " + p.vlans.mgmt.gw);
+    Object.keys(p.desks4).forEach(function (port) { const d = p.desks4[port][0]; c("interface gi0/" + port); c("description " + d.toUpperCase() + "-" + T.name); c("switchport mode access"); c("switchport access vlan " + T.id); c("switchport port-security"); c("switchport port-security maximum 1"); c("switchport port-security mac-address sticky"); c("switchport port-security violation shutdown"); c("spanning-tree portfast"); c("spanning-tree bpduguard enable"); c("exit"); });
+    c("interface range gi0/3 - 22"); c("switchport mode access"); c("switchport access vlan " + p.vlans.parking.id); c("shutdown"); c("exit");
+    c("interface range gi0/25 - 28"); c("shutdown"); c("exit");
+    save();
+    /* both distribution switches: the VLAN, the uplink, the bundle, the root, the gateway, the relay */
+    out.push({ t: "pull", cable: "c-console-" + con }); con = 0; out.push({ t: "place", dev: "tech", room: "data" });
+    ["dist1", "dist2"].forEach(function (id, i) {
+      consoleTo(id); login();
+      c("vlan " + T.id); c("name " + T.name); c("exit");
+      c("interface gi0/4"); c("description ACC-4F"); c("switchport trunk native vlan " + p.vlans.native.id); c("switchport trunk allowed vlan " + T.id + "," + p.vlans.mgmt.id); c("switchport mode trunk"); c("switchport nonegotiate"); c("no shutdown"); c("exit");
+      c("interface port-channel 1"); c("switchport trunk allowed vlan add " + T.id); c("exit");
+      c("spanning-tree vlan " + T.id + " root " + (i ? "secondary" : "primary"));
+      c("interface vlan " + T.id); c("ip address " + T.gw.replace(/\.1$/, i ? ".3" : ".2") + " " + p.mask); c("ip helper-address " + relay); c("standby " + T.id + " ip " + T.gw); if (!i) { c("standby " + T.id + " priority 110"); c("standby " + T.id + " preempt"); } c("no shutdown"); c("exit");
+      save();
+    });
+    /* the edge router: the pool */
+    consoleTo("edge"); login();
+    c("ip dhcp excluded-address " + T.gw + " " + T.gw.replace(/\.1$/, "." + p.excl)); c("ip dhcp pool " + T.name); c("network " + T.net + " " + p.mask); c("default-router " + T.gw); c("dns-server " + p.dns.join(" ")); c("exit");
+    save();
+    out.push({ t: "pull", cable: "c-console-" + con });
+    /* the desks ask again */
+    ["tr1", "tr2"].forEach(function (id) { out.push({ t: "cmd", dev: id, line: "ipconfig /renew" }); });
+    return out;
+  },
+  answer(v) {
+    const p = v.plan, T = p.train;
+    return ["Place the 4F access switch in the 4F closet; lay its port 23 to distribution switch 1's port 4 and its port 24 to switch 2's; lay each training PC to its port.",
+      "Carry your laptop to the 4F closet and console in: the name and locks, VLANs " + T.id + " (" + T.name + "), the management, native and parking VLANs; gi0/23 - 24 trunks (native " + p.vlans.native.id + ", allowed " + T.id + "," + p.vlans.mgmt.id + ", nonegotiate); the management address and default gateway; desk ports 1 and 2 as every desk here; the spares parked and shut; save.",
+      "On each distribution switch: vlan " + T.id + "; gi0/4 the trunk to the 4F (no shutdown); interface port-channel 1, switchport trunk allowed vlan add " + T.id + "; spanning-tree vlan " + T.id + " root primary (switch 1) or secondary (switch 2); interface vlan " + T.id + " on its own address with ip helper-address, standby " + T.id + " ip " + T.gw + " (switch 1 priority 110, preempt); save.",
+      "On the edge router: the excluded addresses and a pool " + T.name + " for " + T.net + " with default-router " + T.gw + " and the campus's DNS; save. Then ipconfig /renew on each training PC."];
+  },
+  summary() { return ["The fourth floor is part of the campus: the 4F access switch is set up as every switch here and uplinked to both distribution switches.", "The training VLAN runs from the desk ports up both uplinks and across the bundle; distribution switch 1 is its root and its active gateway, switch 2 stands by.", "The edge router hands out its addresses through both distribution switches' relays, and the floor stays online if distribution switch 1 fails."]; }
+};
+
+export const CAMPUS_JOBS = [CJ1, CJ2, CJ3, CJ4, CJ5, CJ6, CJ7];

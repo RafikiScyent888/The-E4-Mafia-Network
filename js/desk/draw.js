@@ -127,9 +127,9 @@ export function linksOf(sim) {
 
 export function drawLogical(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "i-");
-  const ids = ["isp", "modem", "router", "rtr", "tv", "switch", "msw", "meet", "bsw", "mpc", "mgr", "tech", "pc", "bpc", "hire", "printer", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "cinj1", "cam1", "cinj2", "cam2", "dpc1", "dpc2"].concat(campus(sim) ? ["edge", "core1", "core2", "dist1", "dist2", "acc1", "acc2", "acc3", "sd1", "hd1", "pr1", "bn1", "bn2", "fin", "pr3"] : []).filter(function (id) { return shown(sim, id) && !sim.d[id].undocumented; });
+  const ids = ["isp", "modem", "router", "rtr", "tv", "switch", "msw", "meet", "bsw", "mpc", "mgr", "tech", "pc", "bpc", "hire", "printer", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "cinj1", "cam1", "cinj2", "cam2", "dpc1", "dpc2"].concat(campus(sim) ? ["edge", "core1", "core2", "dist1", "dist2", "acc1", "acc2", "acc3", "acc4", "sd1", "hd1", "pr1", "bn1", "bn2", "fin", "pr3", "tr1", "tr2"] : []).filter(function (id) { return shown(sim, id) && !sim.d[id].undocumented; });
   /* the business with its cameras (SB-J5) is drawn taller: their injectors and cameras get rows of their own */
-  svg.setAttribute("viewBox", campus(sim) ? "-44 -26 1150 710" : sim.net.site === "business" && (shown(sim, "dpc1") || shown(sim, "dpc2")) ? "-180 -26 1016 " + CAM_H : "-6 -26 836 " + (sim.net.site === "business" && sim.d.cam1 ? CAM_H : 546));   /* the department's PCs (SB-J10), once out of their boxes, get a column of their own left of the back switch */
+  svg.setAttribute("viewBox", campus(sim) ? "-44 -26 1150 820" : sim.net.site === "business" && (shown(sim, "dpc1") || shown(sim, "dpc2")) ? "-180 -26 1016 " + CAM_H : "-6 -26 836 " + (sim.net.site === "business" && sim.d.cam1 ? CAM_H : 546));   /* the department's PCs (SB-J10), once out of their boxes, get a column of their own left of the back switch */
   const P = {}; ids.forEach(function (id) { P[id] = pos(sim, id); });
   if (P.injector && P.injector2) Object.assign(P.injector2, { x: 520, y: 190 });   /* both injectors out of the van: the second one moves up out of the way */
   const below = function (id) { return !P[id].lab || P[id].lab === "below"; };
@@ -201,7 +201,8 @@ export function drawLogical(svg, sim, o) {
         const dots = painted();
         const plate = function () { let b; try { b = t.getBBox(); } catch (er) { return null; } return b.width ? { x: b.x - 4, y: b.y - 2, width: b.width + 8, height: b.height + 4 } : null; };
         const dotAt = function (q) { const r = l.up ? 7 : 9.5; return { x: q[0] - r, y: q[1] - r, w: 2 * r, h: 2 * r }; };
-        const onDot = function (q) { const pb = plate(); return !!pb && (ov(pb, dotAt(q)) || dots.some(function (z) { return ov(pb, z); })); };
+        const grow = function (z) { const g = z.w > 15 ? DOT_GAP : 0; return { x: z.x - g, y: z.y - g, w: z.w + 2 * g, h: z.h + 2 * g }; };   /* a diamond (19 across as painted) */
+        const onDot = function (q) { const pb = plate(); return !!pb && (ov(pb, dotAt(q)) || dots.some(function (z) { return ov(pb, grow(z)); })); };   /* its own dot sits beside it by design: the gap is from other cables' dots */
         const put = function (o, flip) {
           const qx = D.x + dx2 * o, qy = D.y + dy2 * o; let tx, ty, anc;
           if (flip === "on") { t.setAttribute("text-anchor", "middle"); for (let s = 20; s <= 80; s += 4) { t.setAttribute("x", qx + dx2 * s); t.setAttribute("y", qy + dy2 * s + 5); if (!onDot([qx, qy])) break; } return [qx, qy]; }   /* on its own line just past its dot, on its plate, like a label on the cable */
@@ -209,7 +210,7 @@ export function drawLogical(svg, sim, o) {
           else { let side = Math.abs(dx2) < 0.2 ? 1 : Math.sign(dx2); if (flip) side = -side; tx = qx + side * 18; ty = qy + 5; anc = side > 0 ? "start" : "end"; }
           t.setAttribute("x", tx); t.setAttribute("y", ty); t.setAttribute("text-anchor", anc); return [qx, qy];
         };
-        const clear = function (q) { let b; try { b = t.getBBox(); } catch (er) { return true; } if (!b.width) return true; const d = dotAt(q), db = { x: d.x - 4, y: d.y - 2, width: d.w + 8, height: d.h + 4 }; return !onLabel(q[0], q[1]) && b.x >= -4 && b.x + b.width <= 828 && !boxes.some(function (z) { return ov(b, z); }) && !placed.some(function (z) { return ov(b, z) || ov(db, z); }) && !tiles.some(function (z) { return ov(b, z); }) && !onDot(q) && !onDots(q[0], q[1], l.up) && (!strict || (!dotOnLine(q[0], q[1]) && !onLine({ x: b.x + 1, y: b.y + 1, width: b.width - 2, height: b.height - 2 }))); };
+        const clear = function (q) { let b; try { b = t.getBBox(); } catch (er) { return true; } if (!b.width) return true; const d = dotAt(q), gg = l.up ? 0 : DOT_GAP, db = { x: d.x - 4 - gg, y: d.y - 2 - gg, width: d.w + 8 + 2 * gg, height: d.h + 4 + 2 * gg }; return !onLabel(q[0], q[1]) && b.x >= -4 && b.x + b.width <= 828 && !boxes.some(function (z) { return ov(b, z); }) && !placed.some(function (z) { return ov(b, z) || ov(db, z); }) && !tiles.some(function (z) { return ov(b, z); }) && !onDot(q) && !onDots(q[0], q[1], l.up) && (!strict || (!dotOnLine(q[0], q[1]) && !onLine({ x: b.x + 1, y: b.y + 1, width: b.width - 2, height: b.height - 2 }))); };
         let at = null, strict = true;
         /* first clear of every other cable's line too, in its own half of its line; where lines crowd too close for that (three meeting at
            a switch's corner), clear of every name, tile and dot as before; and where a short line's half is all taken (its dot on the
@@ -232,6 +233,10 @@ export function drawLogical(svg, sim, o) {
   plates(svg, ".nl, .ns, .pl");
 }
 
+/* a dead link's diamond never touches another port name's plate (18 November 2026): on a phone, where the diagram is drawn small, the
+   diamond touching "Gi0/2"'s plate bled into the name's own pixels (6.47:1, CP-J7 on campus 4242). It keeps this much clear of every
+   plate (only the diamond: the round dots sit as close on every level and measure clean) */
+const DOT_GAP = 4;
 /* the house: rooms, devices, and the cable runs as they really are */
 const RUNS = {
   "c-coax": ["M722 38 C 706 66 676 92 652 108"],
@@ -249,7 +254,7 @@ const PLAN_NAME = { ap: "Access point", rtr: "Business router", bpc: "Back PC", 
   cinj1: "PoE injector", cam1: "Ceiling camera", cinj2: "PoE injector", cam2: "Back door camera", mphone: "Manager's phone", dpc1: "Department PC", dpc2: "Department PC", printer2: "Label printer", intruder: "Unknown laptop" };
 export function drawPlan(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "p-");
-  svg.setAttribute("viewBox", "20 20 970 " + (campus(sim) ? 775 : sim.net.site === "business" && sim.net.roomNames.dept ? 765 : sim.net.site === "business" && sim.d.cam2 ? 600 : 510));   /* with the department's room (SB-J10) below the back room: taller again */   /* the business with its cameras (SB-J5): a strip outside, under the back door, for the back door camera */
+  svg.setAttribute("viewBox", "20 20 970 " + (campus(sim) ? 975 : sim.net.site === "business" && sim.net.roomNames.dept ? 765 : sim.net.site === "business" && sim.d.cam2 ? 600 : 510));   /* with the department's room (SB-J10) below the back room: taller again */   /* the business with its cameras (SB-J5): a strip outside, under the back door, for the back door camera */
   const build = sim.net.extra.build, off = office(sim);   /* a build house shows upstairs as the back bedroom and the landing; the office is its own plan */
   const site = siteOf(sim);
   let h = off ? site.rooms(sim) : '<rect class="room" x="30" y="30" width="390" height="270"/><rect class="room" x="420" y="30" width="340" height="270"/><rect class="room" x="30" y="300" width="390" height="220"/><rect class="room" x="420" y="300" width="340" height="220"/>' +
@@ -329,7 +334,7 @@ export function drawPlan(svg, sim, o) {
     words.push([x - 12.5, y - 12.5, x + 12.5, y + 12.5]);
     svg.appendChild(mk("rect", { x: x - 8, y: y - 8, width: 16, height: 16, transform: "rotate(45 " + x + " " + y + ")", class: "pd-down" }));
   }
-  if (anyDown) { const t = mk("text", { class: "ns", x: 46, y: campus(sim) ? 777 : 505 }); t.textContent = "red dashed run: no link"; svg.appendChild(t); }   /* the campus's: under its third floor */   /* on the garage floor (the office's entrance): nothing else is there */
+  if (anyDown) { const t = mk("text", { class: "ns", x: 46, y: campus(sim) ? 977 : 505 }); t.textContent = "red dashed run: no link"; svg.appendChild(t); }   /* the campus's: under its third floor */   /* on the garage floor (the office's entrance): nothing else is there */
   plates(svg, ".rl, .ns, .cabl", "#f4f6fb");
 }
 /* the small office: the network closet (the provider's line comes in on its wall), the front desk, the manager's office,
@@ -428,15 +433,15 @@ function businessNames(sim) {
   const N = sim.net.roomNames, B = BUSINESS_ROOM_BOX, up = function (k) { return String(N[k] || "").toUpperCase().replace(/&/g, "&amp;").replace(/'/g, "&#39;"); };
   return ["closet", "counter", "office", "guest", "back"].map(function (k) { return '<text class="rl" x="' + (B[k][0] + 16) + '" y="' + (B[k][1] + 30) + '">' + up(k) + "</text>"; }).join("") + '<text class="rl" x="46" y="' + (B.closet[3] + 30) + '">ENTRANCE</text>' + (sim.d.cam2 ? '<text class="rl" x="450" y="572">OUTSIDE THE BACK DOOR</text>' : "") + (N.dept ? '<text class="rl" x="' + (B.dept[0] + 16) + '" y="' + (B.dept[3] - 14) + '">' + up("dept") + "</text>" : "");   /* the department's room's name at its foot: its runs come in at the top */
 }
-/* the campus (Rafiki's HQ): three floors, one band each: 1F the data room and the service desk, 2F its closet and the bench, 3F its
+/* the campus (Rafiki's HQ): four floors, one band each (the fourth, the training room, since work order 7): 1F the data room and the service desk, 2F its closet and the bench, 3F its
    closet and management. The provider's line comes in on the data room's wall, beside the modem */
 function campusRooms() {
   const B = CAMPUS_ROOM_BOX, r = function (k) { const b = B[k]; return '<rect class="room" x="' + b[0] + '" y="' + b[1] + '" width="' + (b[2] - b[0]) + '" height="' + (b[3] - b[1]) + '"/>'; };
-  return r("data") + r("svc") + r("c2") + r("bench") + r("c3") + r("office") + '<path class="door" d="M560 160v40M220 470v40M220 670v40"/><rect class="plate" x="26" y="98" width="14" height="24"/>';
+  return r("data") + r("svc") + r("c2") + r("bench") + r("c3") + r("office") + r("c4") + r("train") + '<path class="door" d="M560 160v40M260 470v40M260 670v40M330 870v40"/><rect class="plate" x="26" y="98" width="14" height="24"/>';
 }
 function campusNames(sim) {
   const N = sim.net.roomNames, B = CAMPUS_ROOM_BOX, up = function (k) { return String(N[k] || "").toUpperCase().replace(/&/g, "&amp;").replace(/'/g, "&#39;"); };
-  return ["data", "svc", "c2", "bench", "c3", "office"].map(function (k) { return '<text class="rl" x="' + (B[k][0] + 16) + '" y="' + (B[k][1] + 30) + '">' + up(k) + "</text>"; }).join("");
+  return ["data", "svc", "c2", "bench", "c3", "office", "c4", "train"].map(function (k) { return '<text class="rl" x="' + (B[k][0] + 16) + '" y="' + (B[k][1] + 30) + '">' + up(k) + "</text>"; }).join("");
 }
 function officeNames() {
   return '<text class="rl" x="46" y="60">NETWORK CLOSET</text><text class="rl" x="316" y="60">FRONT DESK</text><text class="rl" x="656" y="60">MANAGER\'S OFFICE</text>' +

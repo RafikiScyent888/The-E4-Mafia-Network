@@ -31,7 +31,7 @@ PLANTS = [
  ("SO-J6: copy tftp: isn't on the switch", "js/net/swcli.js", '    ["tftp:", "Copy from tftp: file system", [["running-config"', '    ["tftpx:", "Copy from tftp: file system", [["running-config"'),
  ("SO-J6: ssh-keygen isn't on the PC", "js/net/cmd.js", '    case "ssh-keygen": return sshKeygen(sim, id, args);', ""),
  ("SO-J6: the warning's fingerprint isn't the switch's own", "js/net/cmd.js", '"The fingerprint for the RSA key sent by the remote host is", fp + ".",', '"The fingerprint for the RSA key sent by the remote host is", "SHA256:" + "Q".repeat(43) + ".",'),
- ("SO-J7: the new hire's PC has no device button", "js/build/app.js", '"pc", "hire", "printer",', '"pc", "printer",'),
+ ("SO-J7: the new hire's PC has no device button", "js/build/app.js", '"dpc2", "hire", "printer",', '"dpc2", "printer",'),
  ("SO-J7: an opened port brings the new desk no address", "js/net/cmd.js", "  sim.relink(before);   /* a switch port", "  /* a switch port"),
  ("SO-J8: the wall jack has no device button", "js/build/app.js", '"mpc", "ojack", "mjack",', '"mpc", "mjack",'),
  ("SO-J8: the runs table says nothing of the link", "js/build/app.js", ': up ? "Link, " + (sp === 1000 ? "1 Gb/s" : sp + " Mb/s") : "No link";', ': "Link";'),
@@ -39,7 +39,7 @@ PLANTS = [
  ("SO-J9: no cable map on the build page", "js/build/app.js", "  if (J.def.cablemap) mapForm(host, J, sim);", ""),
  ("SO-J9: the probe can't be used in build mode", "js/build/engine.js", "tone: 1, probe: 1, repatch: 1, polarity: 1 };", "tone: 1, repatch: 1, polarity: 1 };"),
  ("SO-J10: an empty slot offers no module", "js/net/pages.js", "return x.sfp[k] || sim.net.extra.build; })", "return x.sfp[k]; })"),
- ("SO-J10: the back office switch has no device button", "js/build/app.js", '"msw", "bsw", "pc",', '"msw", "pc",'),
+ ("SO-J10: the back office switch has no device button", "js/build/app.js", '"msw", "bsw", "cab",', '"msw", "cab",'),
 ]
 only = sys.argv[1:] 
 for name, f, a, b in PLANTS:

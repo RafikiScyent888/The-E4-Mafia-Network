@@ -25,22 +25,27 @@ const VLAN_SETS = [
   { svc: 110, bench: 120, office: 130, servers: 140, printers: 150, mgmt: 199, native: 919, parking: 918 },
   { svc: 210, bench: 220, office: 230, servers: 240, printers: 250, mgmt: 254, native: 929, parking: 928 }   /* every addressed VLAN under 255: its number is its subnet's third octet */
 ];
+/* the training floor's VLAN (work order 7, a new floor end to end), one per set: like the others, its number is its subnet's third octet */
+const TRAIN_V = [60, 160, 235];
 const NAMES = { svc: "SERVICE-DESK", bench: "BENCH", office: "OFFICE", servers: "SERVERS", printers: "PRINTERS", mgmt: "MGMT", native: "NATIVE-UNUSED", parking: "PARKING" };
 /* the rooms, floor by floor, and the cable runs between them (metres; the riser carries the uplinks up the building) */
-export const CAMPUS_FLOORS = { data: 1, svc: 1, c2: 2, bench: 2, c3: 3, office: 3 };
-export const CAMPUS_RUN = { data: { svc: 22, c2: 38, bench: 52, c3: 54, office: 68 }, svc: { c2: 50, bench: 60, c3: 66, office: 76 }, c2: { bench: 18, c3: 26, office: 40 }, bench: { c3: 40, office: 48 }, c3: { office: 16 } };
+export const CAMPUS_FLOORS = { data: 1, svc: 1, c2: 2, bench: 2, c3: 3, office: 3, c4: 4, train: 4 };   /* the fourth floor, the training room (work order 7) */
+export const CAMPUS_RUN = { data: { svc: 22, c2: 38, bench: 52, c3: 54, office: 68, c4: 70, train: 84 }, svc: { c2: 50, bench: 60, c3: 66, office: 76, c4: 82, train: 92 }, c2: { bench: 18, c3: 26, office: 40, c4: 34, train: 48 }, bench: { c3: 40, office: 48, c4: 52, train: 58 }, c3: { office: 16, c4: 18, train: 32 }, office: { c4: 30, train: 40 }, c4: { train: 16 } };
 /* the logical diagram (three tiers, the provider at the top) and the floor plan (three floors, one band each) */
 export const CAMPUS_LAYOUT = {
   isp: { x: 10, y: 40 }, modem: { x: 210, y: 40, px: 120, py: 110, room: "data" }, edge: { x: 560, y: 40, lab: "right", px: 290, py: 110, room: "data" },
   core1: { x: 300, y: 150, lab: "left", px: 460, py: 110, room: "data" }, core2: { x: 820, y: 150, lab: "right", px: 460, py: 195, room: "data" },
-  dist1: { x: 380, y: 270, lab: "left", px: 290, py: 195, room: "data" }, dist2: { x: 740, y: 270, lab: "right", px: 290, py: 280, room: "data" },
-  tech: { x: 70, y: 270, px: 120, py: 195, room: "data" },
-  acc1: { x: 210, y: 390, lab: "left", px: 460, py: 280, room: "data" }, acc2: { x: 600, y: 390, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 890, y: 390, lab: "right", px: 115, py: 655, room: "c3" },
-  sd1: { x: 70, y: 510, px: 650, py: 120, room: "svc" }, hd1: { x: 200, y: 580, px: 880, py: 120, room: "svc" }, pr1: { x: 330, y: 510, px: 765, py: 250, room: "svc" },
-  bn1: { x: 500, y: 510, px: 480, py: 455, room: "bench" }, bn2: { x: 630, y: 580, px: 740, py: 455, room: "bench" },
-  mgr: { x: 760, y: 510, px: 440, py: 655, room: "office" }, fin: { x: 890, y: 580, px: 650, py: 655, room: "office" }, pr3: { x: 1020, y: 510, px: 860, py: 655, room: "office" }
+  dist1: { x: 380, y: 270, lab: "left", px: 290, py: 195, room: "data" }, dist2: { x: 740, y: 270, lab: "right", px: 120, py: 280, room: "data" },
+  tech: { x: 30, y: 240, px: 120, py: 195, room: "data", alt: { c4: { x: 1040, y: 270, px: 265, py: 855 } } },   /* carried to the 4F closet (work order 7): beside the new switch on both drawings */
+  /* the access row in four (the fourth floor, work order 7), in the same width (a wider diagram would shrink every name on it):
+     staggered, 1F and 3F up, 2F and 4F down, so no two names share a line; the desks on two rows under them */
+  acc1: { x: 100, y: 410, lab: "right", px: 460, py: 280, room: "data" }, acc2: { x: 370, y: 470, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 630, y: 410, lab: "right", px: 115, py: 655, room: "c3" }, acc4: { x: 860, y: 470, lab: "right", px: 115, py: 855, room: "c4" },
+  sd1: { x: 60, y: 590, px: 650, py: 120, room: "svc" }, hd1: { x: 150, y: 700, px: 880, py: 120, room: "svc" }, pr1: { x: 250, y: 590, px: 765, py: 250, room: "svc" },
+  bn1: { x: 345, y: 700, px: 480, py: 455, room: "bench" }, bn2: { x: 440, y: 590, px: 740, py: 455, room: "bench" },
+  mgr: { x: 545, y: 700, px: 440, py: 655, room: "office" }, fin: { x: 640, y: 590, px: 650, py: 655, room: "office" }, pr3: { x: 745, y: 700, px: 860, py: 655, room: "office" },
+  tr1: { x: 815, y: 590, px: 540, py: 855, room: "train" }, tr2: { x: 960, y: 700, px: 780, py: 855, room: "train" }
 };
-export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 345], c2: [30, 365, 220, 545], bench: [220, 365, 980, 545], c3: [30, 565, 220, 745], office: [220, 565, 980, 745] };
+export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 345], c2: [30, 365, 260, 545], bench: [260, 365, 980, 545], c3: [30, 565, 260, 745], office: [260, 565, 980, 745], c4: [30, 765, 330, 945], train: [330, 765, 980, 945] };
 const swMac = function (hi, lo) { return "00e0.4c" + hi.toString(16).padStart(2, "0") + "." + lo.toString(16).padStart(4, "0"); };
 const run = function (sw, lines) { const S = session(sw); ["", "enable", "configure terminal"].concat(lines, ["end", "copy running-config startup-config", ""]).forEach(function (l) { exec(S, l); }); return sw; };
 
@@ -79,7 +84,7 @@ export function coreCables(net, cable) {
 }
 
 export function makeCampus(seed) {
-  const r = rng(seed ^ 0x4c41), V = VLAN_SETS[r.int(0, VLAN_SETS.length - 1)], b = r.pick([16, 27, 38, 49, 63]);
+  const r = rng(seed ^ 0x4c41), V = VLAN_SETS[r.int(0, VLAN_SETS.length - 1)], b = r.pick([16, 27, 38, 49, 63]), TV = TRAIN_V[VLAN_SETS.indexOf(V)];
   const net24 = function (v) { return "10." + b + "." + v + ".0"; }, ip = function (v, h) { return "10." + b + "." + v + "." + h; };
   const vl = {}; Object.keys(V).forEach(function (k) { vl[k] = k === "native" || k === "parking" ? { id: V[k], name: NAMES[k] } : { id: V[k], name: NAMES[k], net: net24(V[k]), gw: ip(V[k], 1) }; });   /* the native and parking VLANs carry no addresses */
   const plan = {
@@ -91,8 +96,11 @@ export function makeCampus(seed) {
     /* the access ports: each switch's desk ports, what's on them and its VLAN */
     desks: { acc1: { "1": ["sd1", "svc"], "2": ["hd1", "svc"], "3": ["pr1", "printers"] }, acc2: { "1": ["bn1", "bench"], "2": ["bn2", "bench"] }, acc3: { "1": ["mgr", "office"], "2": ["fin", "office"], "3": ["pr3", "printers"] } },
     /* the uplinks: each access switch's port 23 to distribution 1, port 24 to distribution 2; between the distribution switches, ports 21 and 22 */
-    up: { acc1: "1", acc2: "2", acc3: "3" }, distLinks: ["21", "22"], edgePort: "24"
+    up: { acc1: "1", acc2: "2", acc3: "3", acc4: "4" }, distLinks: ["21", "22"], edgePort: "24",
+    /* the fourth floor (work order 7): the training VLAN, the 4F access switch, its desks */
+    train: { id: TV, name: "TRAINING", net: net24(TV), gw: ip(TV, 1) }, desks4: { "1": ["tr1", "train"], "2": ["tr2", "train"] }
   };
+  plan.sw.acc4 = { host: "RIT-ACC-4F", ip: ip(V.mgmt, 14) };
   const all = Object.keys(V).filter(function (k) { return k !== "native" && k !== "parking"; }).map(function (k) { return V[k]; }).sort(function (x, y) { return x - y; });
   const vlanLines = Object.keys(V).flatMap(function (k) { return ["vlan " + V[k], "name " + NAMES[k], "exit"]; });
   const lock = function (host) { return lockLines(plan, host); };
@@ -131,9 +139,12 @@ export function makeCampus(seed) {
     sd1: pc("sd1", "Service desk PC", "servicedesk"), hd1: pc("hd1", "Help desk PC", "helpdesk"), bn1: pc("bn1", "Bench PC 1", "bench"), bn2: pc("bn2", "Bench PC 2", "bench"),
     mgr: pc("mgr", "Manager's PC", "rafiki"), fin: pc("fin", "Finance PC", "finance"),
     pr1: printer("pr1", "1F printer", plan.printers.pr1), pr3: printer("pr3", "3F printer", plan.printers.pr3),
+    acc4: { id: "acc4", kind: "mswitch", label: "4F access switch", sub: "MSW-2800G", on: true, boxed: true, fixed: ["c4", "in the 4F closet, on its shelf"], mac: swMac(0x10, 0x0505), sw: newSwitch({ mac: swMac(0x10, 0x0505) }) },   /* in its box, from the factory (work order 7) */
     tech: { id: "tech", kind: "techlaptop", label: "Your laptop", sub: "console", on: true, os: "windows", user: "tech", host: "RAFIKI-TECH",
       ifaces: [{ name: "Ethernet", type: "eth", port: "ETH", mac: mac(rng(seed ^ 0x7ec4)), desc: "Ethernet Connection (USB-C dock)", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }], tftp: { on: false, root: "C:\\TFTP-Root", files: [], log: [] } }
   };
+  const r2 = rng(seed ^ 0x4f4f);   /* the training floor's PCs (work order 7): their own stream, so every other part of the campus is drawn as before */
+  ["tr1", "tr2"].forEach(function (id, i) { dev[id] = { id: id, kind: "pc", label: "Training PC " + (i + 1), sub: "DHCP", on: true, boxed: true, os: "windows", user: i ? "trainee" : "trainer", host: "RIT-TRAINING-PC-" + (i + 1), ifaces: nic(r2) }; });
   const cab = function (id, a, ap, b2, bp, len) { return { id: id, kind: "cat6", a: { dev: a, port: ap, seated: true }, b: { dev: b2, port: bp, seated: true }, cond: "good", length: len }; };
   const rooms = {}; Object.keys(CAMPUS_LAYOUT).forEach(function (id) { if (CAMPUS_LAYOUT[id].room) rooms[id] = CAMPUS_LAYOUT[id].room; });   /* the provider (on the logical diagram only) has no room */
   const len = function (a, b2) { const A = rooms[a], B = rooms[b2]; return A === B ? 3 : (CAMPUS_RUN[A] && CAMPUS_RUN[A][B]) || (CAMPUS_RUN[B] && CAMPUS_RUN[B][A]) || 40; };
@@ -146,7 +157,7 @@ export function makeCampus(seed) {
     seed: seed, site: "campus", client: { name: "Rafiki's IT Services", street: "HQ", manager: "Rafiki", tag: plan.tag }, mask: plan.mask, plan: plan,
     isp: { up: true, outage: false, plan: 1000, gw: "198.51.100.1", core: "203.0.113.1", dns: plan.dns.slice(), wanIp: "198.51.100." + r.int(20, 240), mask: "255.255.255.0" },
     devices: dev, cables: cables, neighbours: [], ports: {}, rooms: rooms,
-    roomNames: { data: "Data room (1F)", svc: "Service desk (1F)", c2: "2F closet", bench: "Technicians' bench (2F)", c3: "3F closet", office: "Management (3F)" }, floors: CAMPUS_FLOORS, runs: CAMPUS_RUN,
+    roomNames: { data: "Data room (1F)", svc: "Service desk (1F)", c2: "2F closet", bench: "Technicians' bench (2F)", c3: "3F closet", office: "Management (3F)", c4: "4F closet", train: "Training room (4F)" }, floors: CAMPUS_FLOORS, runs: CAMPUS_RUN,
     extra: { build: true }
   };
 }

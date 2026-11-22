@@ -51,6 +51,8 @@ const siteOf = function (sim) { return SITES[sim.net.site] || null; };
 const KIND_ICON = { pc: "pc", printer: "printer", brouter: "brouter", modem: "modem", techlaptop: "laptop", isp: "cloud" };
 const iconOf = function (sim, id) { const x = sim.d[id]; if (sim.net.site === "campus") return x.kind === "mswitch" ? (x.sw && x.sw.os === "l3switch" ? "l3switch" : "mswitch") : KIND_ICON[x.kind] || ICON_OF[id]; return ICON_OF[id]; };
 const campus = function (sim) { return sim.net.site === "campus"; };
+/* the Training Annex (work order 8) is on the floor plan once anything of it is out of its box: before then the plan is the main building's */
+const annexOn = function (sim) { return campus(sim) && ["anxc", "anxa", "cl1", "cl2"].some(function (id) { return sim.d[id] && !sim.d[id].boxed; }); };
 const office = function (sim) { return !!siteOf(sim); };   /* a site of its own (the office, the business), not a house */
 const layOf = function (sim) { return office(sim) ? siteOf(sim).layout : LAYOUT; };
 const CAM_H = 716;   /* the business's diagram's height with the cameras on it */
@@ -95,7 +97,7 @@ function subOf(sim, id) {
   if (id === "router") return x.lan.ip;
   if (x.kind === "brouter") { const f = Object.keys(x.sw.ifs).filter(function (k) { return !(x.sw.links[k] && x.sw.links[k].far === "modem"); }).map(function (k) { return x.sw.ifs[k]; }).find(function (q) { return q.ip && q.ip !== "dhcp" && !q.shutdown; }); return f ? f.ip : x.sub; }   /* its first address set by hand once it has one, on the business's side: the provider's side, even with the fixed address set by hand (SB-J7), isn't the gateway anyone here uses */
   if (id === "printer") return x.ifaces[0].cfg.mode === "static" ? x.ifaces[0].cfg.ip : "DHCP";
-  if (x.kind === "mswitch" && campus(sim)) { const m = x.sw.svis && x.sw.svis[sim.net.plan.vlans.mgmt.id]; return m && m.ip && !m.shutdown ? m.ip : x.sub; }   /* the campus's switches are managed on their management VLAN */
+  if (x.kind === "mswitch" && campus(sim)) { const A = sim.net.plan.annex, m = x.sw.svis && (x.sw.svis[sim.net.plan.vlans.mgmt.id] || (A && /^anx/.test(id) && x.sw.svis[A.mgmt.id])); return m && m.ip && !m.shutdown ? m.ip : x.sub; }   /* the campus's switches are managed on their management VLAN (the Annex's on its own, CP-J8) */
   if (x.kind === "mswitch") return x.sw.vlan1.ip && !x.sw.vlan1.shutdown ? x.sw.vlan1.ip : x.sub;   /* its management address once it has one */
   if (x.kind === "bap") return "DHCP";   /* the ceiling access point: its address is the student's to find (the router's DHCP list, the switch's neighbours), so the diagram doesn't give it */
   if (x.kind === "dcam") return x.ifaces[0].cfg.mode === "static" ? x.ifaces[0].cfg.ip : "DHCP";   /* a dome camera (SB-J5): its fixed address once it has one, as the records give it */
@@ -127,15 +129,28 @@ export function linksOf(sim) {
 
 export function drawLogical(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "i-");
-  const ids = ["isp", "modem", "router", "rtr", "tv", "switch", "msw", "meet", "bsw", "mpc", "mgr", "tech", "pc", "bpc", "hire", "printer", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "cinj1", "cam1", "cinj2", "cam2", "dpc1", "dpc2"].concat(campus(sim) ? ["edge", "core1", "core2", "dist1", "dist2", "acc1", "acc2", "acc3", "acc4", "sd1", "hd1", "pr1", "bn1", "bn2", "fin", "pr3", "tr1", "tr2"] : []).filter(function (id) { return shown(sim, id) && !sim.d[id].undocumented; });
+  const ids = ["isp", "modem", "router", "rtr", "tv", "switch", "msw", "meet", "bsw", "mpc", "mgr", "tech", "pc", "bpc", "hire", "printer", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "cinj1", "cam1", "cinj2", "cam2", "dpc1", "dpc2"].concat(campus(sim) ? ["edge", "core1", "core2", "dist1", "dist2", "acc1", "acc2", "acc3", "acc4", "sd1", "hd1", "pr1", "bn1", "bn2", "fin", "pr3", "tr1", "tr2", "anxc", "anxa", "cl1", "cl2"] : []).filter(function (id) { return shown(sim, id) && !sim.d[id].undocumented; });
   /* the business with its cameras (SB-J5) is drawn taller: their injectors and cameras get rows of their own */
-  svg.setAttribute("viewBox", campus(sim) ? "-44 -26 1150 820" : sim.net.site === "business" && (shown(sim, "dpc1") || shown(sim, "dpc2")) ? "-180 -26 1016 " + CAM_H : "-6 -26 836 " + (sim.net.site === "business" && sim.d.cam1 ? CAM_H : 546));   /* the department's PCs (SB-J10), once out of their boxes, get a column of their own left of the back switch */
+  svg.setAttribute("viewBox", campus(sim) ? "-44 -26 1150 " + (annexOn(sim) ? 1210 : 820) : sim.net.site === "business" && (shown(sim, "dpc1") || shown(sim, "dpc2")) ? "-180 -26 1016 " + CAM_H : "-6 -26 836 " + (sim.net.site === "business" && sim.d.cam1 ? CAM_H : 546));   /* the department's PCs (SB-J10), once out of their boxes, get a column of their own left of the back switch */
   const P = {}; ids.forEach(function (id) { P[id] = pos(sim, id); });
   if (P.injector && P.injector2) Object.assign(P.injector2, { x: 520, y: 190 });   /* both injectors out of the van: the second one moves up out of the way */
   const below = function (id) { return !P[id].lab || P[id].lab === "below"; };
   const gl = mk("g", {}), gn = mk("g", {}), gp = mk("g", {});
   svg.appendChild(gl); svg.appendChild(gn); svg.appendChild(gp);   /* port dots and labels sit above every line and device */
   const R = 34, links = linksOf(sim), pair = function (l) { return [l.a, l.b].sort().join("|"); }, many = {};
+  /* the Training Annex (work order 8) is a block of its own under the main building: a link between the two (the fibre) is drawn as a
+     labelled stub at each end, as a diagram of two buildings shows it, not as one line across everything between them */
+  if (annexOn(sim)) {
+    const inAnx = function (id) { return !!P[id] && P[id].y > ANNEX_Y; };
+    for (let i = links.length - 1; i >= 0; i--) {
+      const l = links[i]; if (!P[l.a] || !P[l.b] || inAnx(l.a) === inAnx(l.b)) continue;
+      const sa = "_s:" + l.cable + ":a", sb = "_s:" + l.cable + ":b";
+      P[sa] = stubEnd(P[l.a], inAnx(l.a)); P[sb] = stubEnd(P[l.b], inAnx(l.b));
+      links.splice(i, 1, { a: l.a, b: sa, pa: l.pa, pb: "", kind: l.kind, up: l.up, cable: l.cable, to: l.b }, { a: l.b, b: sb, pa: l.pb, pb: "", kind: l.kind, up: l.up, cable: l.cable, to: l.a });
+    }
+    gl.appendChild(mk("rect", { class: "zone", x: -30, y: ANNEX_Y + 10, width: 1120, height: 1172 - ANNEX_Y, rx: 14 }));
+    const zt = mk("text", { class: "ns", x: 1074, y: ANNEX_Y + 38, "text-anchor": "end" }); zt.textContent = "THE TRAINING ANNEX, ACROSS THE CAR PARK"; gl.appendChild(zt);
+  }
   const deg = {}; links.forEach(function (l) { many[pair(l)] = (many[pair(l)] || 0) + 1; deg[l.a] = (deg[l.a] || 0) + 1; deg[l.b] = (deg[l.b] || 0) + 1; });   /* two cables between the same two devices (your laptop's console and Ethernet to the switch) run side by side, fanning out from the busier device, where other ports' labels sit close */
   for (const id of ids) {
     const n = sim.d[id], p = P[id];
@@ -166,8 +181,13 @@ export function drawLogical(svg, sim, o) {
     const ea = deg[l.a] > deg[l.b] ? 0.4 : 1, eb = deg[l.b] > deg[l.a] ? 0.4 : 1;
     const A = Object.assign({}, A0, { x: A0.x + nx * sh * sg * ea, y: A0.y + ny * sh * sg * ea }), B = Object.assign({}, B0, { x: B0.x + nx * sh * sg * eb, y: B0.y + ny * sh * sg * eb });
     const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy), ux = dx / L, uy = dy / L;
-    const run = { l: l, k: k, A: A, B: B, L: L, ux: ux, uy: uy, x1: A.x + ux * R, y1: A.y + uy * R, x2: B.x - ux * R, y2: B.y - uy * R };
+    const Rb = l.to ? 0 : R;   /* a stub's far end is the end of the line, not a device */
+    const run = { l: l, k: k, A: A, B: B, L: L, ux: ux, uy: uy, x1: A.x + ux * R, y1: A.y + uy * R, x2: B.x - ux * Rb, y2: B.y - uy * Rb };
     gl.appendChild(mk("line", { x1: run.x1, y1: run.y1, x2: run.x2, y2: run.y2, class: "lk lk-" + l.kind + (l.up ? "" : " lk-down"), "data-cable": l.cable || "wifi-" + l.b }));
+    if (l.to) {   /* the stub's tag: where the line goes */
+      const up = Math.abs(ux) < 0.2, t = mk("text", { class: "pl", "data-cable": l.cable, x: B.x + (up ? 10 : 6), y: B.y + (up ? 4 : -6), "text-anchor": "start" });
+      t.textContent = "To " + stubName(sim, l.to); gp.appendChild(t);
+    }
     runs.push(run);
   }
   /* does a box (x, y, width, height) touch a line? (the line clipped to the box: Liang-Barsky) */
@@ -183,6 +203,7 @@ export function drawLogical(svg, sim, o) {
     const onLine = function (b) { return runs.some(function (s) { return s !== run && crosses(b, s); }); };
     const dotOnLine = function (x, y) { const r = (l.up ? 7 : 9.5) + 3; return onLine({ x: x - r, y: y - r, width: 2 * r, height: 2 * r }); };   /* a dot clear of every other line, with room to see it is */
     [[l.a, 1, l.pa, A], [l.b, -1, l.pb, B]].forEach(function (e) {
+      if (String(e[0]).indexOf("_s:") === 0) return;   /* a stub's far end: no port there */
       const D = e[3], dx2 = ux * e[1], dy2 = uy * e[1];
       let off = (dy2 > 0.5 ? (below(e[0]) ? R + 56 : R + 24) : R + 12) + (k && deg[e[0]] > 2 ? 22 : 0);   /* the second cable's port on a busy device: further along, clear of the first's */
       let px = D.x + dx2 * off, py = D.y + dy2 * off; const off0 = off;
@@ -237,6 +258,10 @@ export function drawLogical(svg, sim, o) {
    diamond touching "Gi0/2"'s plate bled into the name's own pixels (6.47:1, CP-J7 on campus 4242). It keeps this much clear of every
    plate (only the diamond: the round dots sit as close on every level and measure clean) */
 const DOT_GAP = 4;
+/* the Training Annex's block on the logical diagram (CP-J8): everything drawn below this line is in the other building */
+const ANNEX_Y = 850;
+const stubEnd = function (p, annex) { return annex ? { x: p.x, y: p.y - 72 } : { x: p.x + 50, y: p.y - 62 }; };   /* up from the Annex's end; up and right from the main building's */
+const stubName = function (sim, id) { const L = sim.d[id].label; return /^Annex /.test(L) ? "the " + L : L.replace(/^[A-Z](?=[a-z])/, function (m) { return m.toLowerCase(); }); };
 /* the house: rooms, devices, and the cable runs as they really are */
 const RUNS = {
   "c-coax": ["M722 38 C 706 66 676 92 652 108"],
@@ -254,7 +279,7 @@ const PLAN_NAME = { ap: "Access point", rtr: "Business router", bpc: "Back PC", 
   cinj1: "PoE injector", cam1: "Ceiling camera", cinj2: "PoE injector", cam2: "Back door camera", mphone: "Manager's phone", dpc1: "Department PC", dpc2: "Department PC", printer2: "Label printer", intruder: "Unknown laptop" };
 export function drawPlan(svg, sim, o) {
   svg.innerHTML = ""; defs(svg, "p-");
-  svg.setAttribute("viewBox", "20 20 970 " + (campus(sim) ? 975 : sim.net.site === "business" && sim.net.roomNames.dept ? 765 : sim.net.site === "business" && sim.d.cam2 ? 600 : 510));   /* with the department's room (SB-J10) below the back room: taller again */   /* the business with its cameras (SB-J5): a strip outside, under the back door, for the back door camera */
+  svg.setAttribute("viewBox", "20 20 970 " + (annexOn(sim) ? 1225 : campus(sim) ? 975 : sim.net.site === "business" && sim.net.roomNames.dept ? 765 : sim.net.site === "business" && sim.d.cam2 ? 600 : 510));   /* with the department's room (SB-J10) below the back room: taller again */   /* the business with its cameras (SB-J5): a strip outside, under the back door, for the back door camera */
   const build = sim.net.extra.build, off = office(sim);   /* a build house shows upstairs as the back bedroom and the landing; the office is its own plan */
   const site = siteOf(sim);
   let h = off ? site.rooms(sim) : '<rect class="room" x="30" y="30" width="390" height="270"/><rect class="room" x="420" y="30" width="340" height="270"/><rect class="room" x="30" y="300" width="390" height="220"/><rect class="room" x="420" y="300" width="340" height="220"/>' +
@@ -271,6 +296,12 @@ export function drawPlan(svg, sim, o) {
     if ([c.a, c.b].some(function (e) { return sim.d[e.dev] && sim.d[e.dev].kind === "patchpanel" && !/R$/.test(e.port); })) continue;   /* the patch cords stay inside the rack: the plan shows the runs out to the rooms */
     let paths = FIXED_RUNS[c.id] && !build ? FIXED_RUNS[c.id] : null;
     if (c.id === "c-coax") paths = FIXED_RUNS[c.id];
+    /* the campus's duct to the Training Annex (CP-J8): the fibre goes down the riser beside the closets and out under the car park, as the
+       installers pulled it, not across the floors in between */
+    if (!paths && campus(sim) && c.kind === "fibre" && (sim.net.rooms[c.a.dev] === "acomms") !== (sim.net.rooms[c.b.dev] === "acomms")) {
+      const X = sim.net.rooms[c.a.dev] === "acomms" ? P[c.a.dev] : P[c.b.dev], H = X === P[c.a.dev] ? P[c.b.dev] : P[c.a.dev];
+      if (X && H) { runs.push({ c: c, d: ["M" + H.px + " " + H.py + " L 375 250 L 375 330 L 215 330 L 215 975 L 370 975 L 370 1050 L " + X.px + " " + X.py], mid: [215, 650] }); continue; }   /* down between the data room's names, along under them to the riser, out under the car park and in by the comms room's far wall */
+    }
     if (!paths) {   /* a run the student laid (or any run in build mode): drawn between where its two devices really are, bowed a little so two never sit on one line */
       const A = P[c.a.dev], Bp = P[c.b.dev]; if (!A || !Bp) continue;
       if (routed) { runs.push({ c: c, A: A, B: Bp, d: null, mid: null }); continue; }   /* the business's runs find their own way, once the devices and their names are drawn (below) */
@@ -334,7 +365,7 @@ export function drawPlan(svg, sim, o) {
     words.push([x - 12.5, y - 12.5, x + 12.5, y + 12.5]);
     svg.appendChild(mk("rect", { x: x - 8, y: y - 8, width: 16, height: 16, transform: "rotate(45 " + x + " " + y + ")", class: "pd-down" }));
   }
-  if (anyDown) { const t = mk("text", { class: "ns", x: 46, y: campus(sim) ? 977 : 505 }); t.textContent = "red dashed run: no link"; svg.appendChild(t); }   /* the campus's: under its third floor */   /* on the garage floor (the office's entrance): nothing else is there */
+  if (anyDown) { const t = mk("text", { class: "ns", x: 46, y: annexOn(sim) ? 1227 : campus(sim) ? 977 : 505 }); t.textContent = "red dashed run: no link"; svg.appendChild(t); }   /* the campus's: under its third floor */   /* on the garage floor (the office's entrance): nothing else is there */
   plates(svg, ".rl, .ns, .cabl", "#f4f6fb");
 }
 /* the small office: the network closet (the provider's line comes in on its wall), the front desk, the manager's office,
@@ -435,13 +466,13 @@ function businessNames(sim) {
 }
 /* the campus (Rafiki's HQ): four floors, one band each (the fourth, the training room, since work order 7): 1F the data room and the service desk, 2F its closet and the bench, 3F its
    closet and management. The provider's line comes in on the data room's wall, beside the modem */
-function campusRooms() {
+function campusRooms(sim) {
   const B = CAMPUS_ROOM_BOX, r = function (k) { const b = B[k]; return '<rect class="room" x="' + b[0] + '" y="' + b[1] + '" width="' + (b[2] - b[0]) + '" height="' + (b[3] - b[1]) + '"/>'; };
-  return r("data") + r("svc") + r("c2") + r("bench") + r("c3") + r("office") + r("c4") + r("train") + '<path class="door" d="M560 160v40M260 470v40M260 670v40M330 870v40"/><rect class="plate" x="26" y="98" width="14" height="24"/>';
+  return r("data") + r("svc") + r("c2") + r("bench") + r("c3") + r("office") + r("c4") + r("train") + (sim && annexOn(sim) ? r("acomms") + r("class") : "") + '<path class="door" d="M560 160v40M260 470v40M260 670v40M330 870v40' + (sim && annexOn(sim) ? "M400 1090v40" : "") + '"/><rect class="plate" x="26" y="98" width="14" height="24"/>';
 }
 function campusNames(sim) {
   const N = sim.net.roomNames, B = CAMPUS_ROOM_BOX, up = function (k) { return String(N[k] || "").toUpperCase().replace(/&/g, "&amp;").replace(/'/g, "&#39;"); };
-  return ["data", "svc", "c2", "bench", "c3", "office", "c4", "train"].map(function (k) { return '<text class="rl" x="' + (B[k][0] + 16) + '" y="' + (B[k][1] + 30) + '">' + up(k) + "</text>"; }).join("");
+  return ["data", "svc", "c2", "bench", "c3", "office", "c4", "train"].concat(annexOn(sim) ? ["acomms", "class"] : []).map(function (k) { return '<text class="rl" x="' + (B[k][0] + 16) + '" y="' + (B[k][1] + 30) + '">' + up(k) + "</text>"; }).join("") + (annexOn(sim) ? '<text class="rl" x="560" y="972">THE TRAINING ANNEX, ACROSS THE CAR PARK</text>' : "");
 }
 function officeNames() {
   return '<text class="rl" x="46" y="60">NETWORK CLOSET</text><text class="rl" x="316" y="60">FRONT DESK</text><text class="rl" x="656" y="60">MANAGER\'S OFFICE</text>' +

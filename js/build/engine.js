@@ -14,6 +14,7 @@ const PHYSICAL = { look: 1, test: 1, reseat: 1, unplug: 1, replace: 1, crossover
 
 export function open(def, seed) {
   const s = seed >>> 0, b = def.start(s);
+  if (b.sim.bump) b.sim.bump();   /* a start changes the network directly (devices out of their boxes): the first pass after it runs */
   return { def: def, seed: s, sim: b.sim, v: b.v, net: [], checks: 0, fails: {}, last: null, done: false, notes: "" };
 }
 export function act(J, a) { if (STATE[a.t]) J.net.push(a); return apply(J, a); }

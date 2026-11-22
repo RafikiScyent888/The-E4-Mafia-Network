@@ -9,7 +9,7 @@ import { prompt } from "./cmd.js";
 import { POE, SFP_MODULES } from "./sim.js";
 
 /* the model each device is drawn with (the old router in HOME-10 is a home router too) */
-export const MODEL_OF = { modem: "modem", router: "router", rogue: "router", switch: "switch", pc: "pc", laptop: "laptop", intruder: "laptop", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", injector: "injector", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc", bpc: "pc", sd1: "pc", hd1: "pc", bn1: "pc", bn2: "pc", fin: "pc", tr1: "pc", tr2: "pc", pr1: "printer", pr3: "printer" };   /* the campus's desks and printers too */   /* the office's meeting room (SO-04): an old 5-port switch in the same housing, and a desktop */
+export const MODEL_OF = { modem: "modem", router: "router", rogue: "router", switch: "switch", pc: "pc", laptop: "laptop", intruder: "laptop", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", injector: "injector", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc", bpc: "pc", sd1: "pc", hd1: "pc", bn1: "pc", bn2: "pc", fin: "pc", tr1: "pc", tr2: "pc", cl1: "pc", cl2: "pc", pr1: "printer", pr3: "printer" };   /* the campus's desks and printers too */   /* the office's meeting room (SO-04): an old 5-port switch in the same housing, and a desktop */
 
 /* each model's network ports: the name printed on the model, and the sim's port at that device */
 const PORTS = {

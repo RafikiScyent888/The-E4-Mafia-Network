@@ -20,7 +20,7 @@ export function open(def, seed) {
 export function act(J, a) { if (STATE[a.t]) J.net.push(a); return apply(J, a); }
 function apply(J, a) {
   const sim = J.sim;
-  if (a.t === "cmd") return exec(sim, a.dev, a.line, a.win);   /* win: your laptop's Command Prompt, not its serial terminal */
+  if (a.t === "cmd") return exec(sim, a.dev, a.line, a.win, a.text);   /* win: your laptop's Command Prompt, not its serial terminal */
   if (a.t === "view") return page(sim, a.dev, a.key);
   if (PHYSICAL[a.t]) return physical(sim, a);
   if (a.t === "rejoin" || a.t === "join" || a.t === "joinssid") { const r = sim.apply(a), ad = sim.addr(a.dev), l = sim.wifiLink(a.dev); return { result: r, facts: { join: r.result, dev: a.dev, ap: l && l.connected ? l.ap.id : null, ip: ad && ad.ip, apipa: !!(ad && ad.kind === "apipa"), internet: !!(ad && sim.route(a.dev, PUBLIC).internet) } }; }

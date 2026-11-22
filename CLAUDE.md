@@ -157,8 +157,13 @@ The owner, 10 November 2026: "create a save point here." Where everything stands
   ways, and still passing with distribution switch 1 off. With it, for every level: a Linux command line on a server (its console, SSH from
   a desk PC, sudo, `ip`, `ping`, `ethtool`, netplan, reboot), MTU and jumbo frames in the simulation (giants, a receiver's drops). The rack
   server has no 3D model: it waits for the owner's photographs. See the CP-J9 notes in "Level 4, the campus" below.
-- **Next, in the owner's order:** the rest of Level 4: the central DHCP server (it needs a file editor on the server's command line), then
-  the 15 tickets; then Level 5 (Enterprise). The owner, 17 November 2026: "Please keep building it all out.
+- **Level 4, CP-J10, live 22 November 2026:** the central DHCP server: ISC's dhcpd on the file server, set up in nano (every desk network's
+  subnet, its range, gateway, DNS servers and lease time, the server's own network, the help desk PC's reservation, eno1 only), started and
+  enabled; every relay moved to it; the edge router's pools taken out; every desk asking again; still working with distribution switch 1 off.
+  With it, for every level: nano, systemctl, journalctl, `dhcpd -t` and the lease list on a server, and DHCP served from a server through a
+  relay. See the CP-J10 notes in "Level 4, the campus" below.
+- **Next, in the owner's order:** the rest of Level 4: the campus's Ticket Desk and its 15 tickets, smallest first; then Level 5
+  (Enterprise). The owner, 17 November 2026: "Please keep building it all out.
   We will come back and make changes once I go through it." 
 - **The container was rebuilt on 15 November 2026:** the worktrees were made again from the pushed branches, and the browser
   is now Chromium 1243 (`/opt/pw-browsers/chromium`): run the drive, AAA and models tools with `CHROME=/opt/pw-browsers/chromium`.
@@ -3971,6 +3976,76 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
     server without its Console tab, the servers off the logical diagram, the Physical tab silent about the model, the 2F closet and the data
     room not widened, the desks not stepping aside). The full unit run caught a hint saying "20 of IP header" on a campus with a VLAN 20
     (the rule: no hint names a VLAN's number): rung 2 now says it in words.
+- **CP-J10, the central DHCP server, built 22 November 2026 on `save/level4-dhcp`** (worktree `/home/user/e4-jmb`; objectives read 22 November
+  2026, Network+ V9 unchanged: "Network services: DHCP"; "Network services issues: address pool exhaustion, and incorrect gateway/IP/subnet
+  mask"; "Ports and protocols: DHCP"; "Traffic types: broadcast"). Decided, for the owner to change: ISC's `isc-dhcp-server` (its file is the
+  easiest to read; Kea is ISC's newer one), on the file server already in the data room (no new device), edited in nano.
+  - **The DHCP server** (`js/net/dhcpd.js`, pure): Ubuntu's sample `/etc/dhcp/dhcpd.conf` (every subnet commented out) and
+    `/etc/default/isc-dhcp-server` (`INTERFACESv4=""`), as the package leaves them. The file read as dhcpd reads it: global and per-subnet
+    options (`domain-name-servers`, `routers`, `subnet-mask`, `broadcast-address`, `domain-name`), lease times, `authoritative`, subnet
+    declarations with their ranges, host declarations (`hardware ethernet`, `fixed-address`); dhcpd's own messages with the line and a caret
+    (`semicolon expected.`, noticed on the next word's line as the real one does; `bad subnet number/mask combination.`; `Address range ...
+    not on net ...!`; `no option named ... in space dhcp`; dashes in a hardware address; `unexpected end of file`; `Dynamic and static leases
+    present for ...`). Starting: each port named in INTERFACESv4 (or every port when it's empty) listened on only if its own network has a
+    subnet declaration (`No subnet declaration for eno1 (...)`), `Not configured to listen on any interfaces!`, `No such device`. A lease:
+    the subnet holding the relay's address (`unknown network segment` when none), a reservation by hardware address, else the client's own
+    address back or the lowest free one, skipping one that answers (`Abandoning IP address ...: pinged before offer`), `no free leases`;
+    DNS servers given by name are dropped (it can't look them up).
+  - **The server's command line** (`js/net/linux.js`): `nano` (`vi` says the editor here is nano): unwritable without sudo, `[ Error writing
+    ...: Permission denied ]`; each write (`^O`, the text with it) and leaving (`^X`) is a line sent to the server, so done, undone and
+    replayed like any other. `systemctl` (status as systemd prints it, start, stop, restart, enable and disable with their symlink lines,
+    `--now`, is-active, is-enabled; reload not applicable; without sudo, `Interactive authentication required.`); a failed start says nothing
+    until you look (the unit runs dhcpd in the foreground); `journalctl -u` (and `-n`); `dhcpd -t -cf`; `dhcp-lease-list`; the leases file.
+    The service reads its files only as it starts (a file written later waits for a restart); enabled, it starts at boot (a reboot, or a
+    restart from the Physical tab). The installer's first start failed (the sample file) and was disabled: that's in its journal. Before
+    CP-J10 the server has none of it (`Unit isc-dhcp-server.service could not be found.`).
+  - **The simulation** (`js/net/sim.js`): a relay reaches a server running dhcpd that listens on the port holding the helper address, if
+    the answer can get back to the relay's address; DORA in the server's journal (`DHCPDISCOVER ... via`, `DHCPOFFER`, `DHCPREQUEST`,
+    `DHCPACK`), the lease (its mask, routers, DNS servers, lease time) on the PC; `ipconfig /release` is `DHCPRELEASE ... (found)`.
+  - **CP-J10** (`js/build/campus.js`), 11 lines: the file declares every pooled network (service desk, bench, office, training, the
+    classroom) and its own; each subnet's range (the twenty-first to the last), its routers option (the shared standby gateway, the Annex
+    core's for the classroom), the campus's DNS servers, a day's lease; the help desk PC's reservation (its hardware address, the records'
+    address, outside the range); eno1 only; running from its files as they are, and enabled; every relay to the file server and nowhere else
+    (both distribution switches, the Annex core); the edge router's pools and excluded addresses gone; every PC's lease from the file server
+    (the help desk PC on its reservation); with distribution switch 1 off, every HQ desk still gets an address and out; everyone works;
+    saved. The walk-through: the server first (both files in nano, `dhcpd -t`, `enable --now`), the relays and the edge router from the data
+    room, the Annex core from its comms room, then every desk asks again. Its records carry the help desk PC's hardware address and the edge
+    router's pools as the work order starts (`v.dh`), so the walk-through needs no simulation.
+  - **The page** (`js/desk/window.js`, `css/e4.css`): nano in the Console tab (and over SSH in a PC's Command Prompt): it takes the whole
+    terminal, as on the real thing (the scrollback back when it closes); the title bar with the whole path (wrapped in a narrow column) and
+    Modified; the status line ([ Read 71 lines ], [ Wrote ... lines ]); Ctrl+O asks File Name to Write (Enter or Ctrl+C), Ctrl+X asks Save
+    modified buffer? (Y, N, Ctrl+C) when there are changes; every key a real button too. Inverted title bar and keys, as nano's.
+  - **Checks, on its tree:** `npm test` 614 of 614 (`tests/campus-dhcpd.test.js` 9: the parser and dhcpd's messages, starting it, the service and
+    the journal, the editor and its permissions, a relayed request and its lease, a port it doesn't listen on, what a lease can't carry and
+    an answer with no way back, a check changing nothing, the server before the package; in `tests/campus-jobs.test.js` CP-J10's tempting
+    wrong ways, every cause reached, and its other right ways: the sample edited in place, started then enabled, a root shell, the interface
+    unquoted, two ranges, DNS in each subnet, a reboot to start it); the CP-J10 drive 73 (every step through the page, nano's other ways out
+    over SSH: no sudo, changes not written) and its drawings on six campuses 36; the full drive 7,391 (run alone); the models 202; AAA on the 41 campus and
+    levels states (5 new: the install's failure, the question to save, the write refused, dhcpd -t on a broken file, done), 179,057 text runs;
+    every earlier campus work order's two drawings the same markup as `main`'s (108: nine work orders, three campuses, start and done, both
+    fonts). Plants, all caught: Node 15 on the engine and 42 on CP-J10's causes (three engine ones missed at first, each a test missing:
+    named DNS servers, the running server's copy, the answer's way back through a gateway taken away; all closed); page 5 (one missed at first:
+    the box's height cap, invisible until a question shows; the drive now checks the answers are on screen, and the editor is 12 rows, so it
+    fits a 1000-pixel window with a question showing).
+  - **The AAA checker's sampling (`tools/aaa.mjs`, 22 November 2026):** a text's background was sampled from the pixel row and column its box
+    starts in, rounded down: a box starting at y 7841.98 took in row 7841, 98% outside it. In the full-page screenshot that row, a pixel off
+    from where it was measured, held the anti-aliased edge of a line beside the label's plate, so CP-J9's finished campus failed on a phone
+    with easier reading on ("2", 6.47:1) once CP-J10's row moved the page down by 51.22 pixels (`main` landed on a different fraction and
+    passed). It now starts at the first pixel whose middle is inside the box and ends where it did, so it only ever samples less: no state
+    that passed can fail. Calibrated on that state: it passes; the port numbers moved 3 pixels off their plates onto the lines fail (2.05:1);
+    the port numbers pale fail (3.55:1).
+  - **Known, not fixed (found 22 November 2026):** with your laptop out of the data room (carried to the Annex in CP-J8 and CP-J10), core
+    switch 1's run to distribution switch 2 passes under "Distribution switch 1" on the floor plan. The router (`routeRuns`) has no clear curve
+    for it in any state: the data room's four columns of devices, each name about 160 units wide, leave corridors under 10 units, so every
+    curve crosses a name's margin; with your laptop in its place the curve chosen stays in the margin, without it the run goes under the plate.
+    The finished drawings pass. The fix is a roomier data room, which redraws every campus work order: to be done and checked on its own.
+    CP-J10's part-way check measures the plan's names and tiles there, not its runs.
+  - **Known, not fixed:** a campus work order takes about four seconds to open or reload (measured on an idle machine: CP-J8 3.5, CP-J9 4,
+    CP-J10 3.6 to 3.9): each rebuilds its starting campus by replaying every work order before it. Keeping each one's starting campus would
+    make it quick; not done yet. The drive gives a campus reload 15 seconds (it had 5, and a busy machine once went over).
+  - **Found on the way, for every level:** three CP-J7 node plants had matched twice since CP-J9 added lines like theirs, and one Linux
+    plant no longer matched after `reboot()` gained the service: all four re-aimed and caught (CP-J7's "still in its box" needed a test of its
+    own). The plant script's anchors are now all checked to match once.
 
 ## Objectives
 

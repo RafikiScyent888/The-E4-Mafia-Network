@@ -371,6 +371,55 @@ test("CP-J8: other right ways pass: a network statement for each of the Annex's 
   }
 });
 
+/* a server's own console lines (work order 9): edited by the device they're typed to */
+const onSrv = (sol, dev, f) => sol.flatMap((a) => { if (a.t !== "cmd" || a.dev !== dev) return [a]; const r = f(a.line); return r === undefined ? [a] : r.map((l) => Object.assign({}, a, { line: l })); });
+test("CP-J9: the tempting wrong ways each fail their own line for their own cause", () => {
+  const def = byId["CP-J9"];
+  for (const s of seeds("CP-J9").slice(0, 3)) {
+    const v = B.open(def, s).v, p = v.plan, Bk = p.backup, S = p.srv, sol = def.solve(v), cause = (J, id) => { const r = line(J, id); return r.ok ? null : r.real.id; };
+    const on = (dev, from, to) => editOn(sol, dev, (l) => (l === from ? (to === null ? [] : [].concat(to)) : undefined)), drp = (dev, re) => editOn(sol, dev, (l) => (re.test(l) ? [] : undefined));
+    const np = "sudo netplan set ethernets.eno2.mtu=" + Bk.mtu, noNp = (dev) => onSrv(sol, dev, (l) => (l === np ? [] : undefined));
+    let J = tryIt(def, s, sol.map((a) => (a.t === "lay" && a.a.dev === "bksrv" && a.a.port === "eno2" ? Object.assign({}, a, { b: { dev: "acc2", port: "7" } }) : a))); assert.equal(cause(J, "rack"), "ports", s + " the backup port on another switch port");
+    J = tryIt(def, s, sol.filter((a) => !(a.t === "lay" && a.a.dev === "bksrv" && a.a.port === "eno2"))); assert.equal(cause(J, "rack"), "none", s + " its backup port never cabled"); assert.equal(cause(J, "bknet"), "link");
+    J = tryIt(def, s, editOn(sol, "dist2", (l) => (l === "vlan " + Bk.id ? ["vlan " + p.vlans.native.id] : undefined))); assert.equal(cause(J, "vlan"), "none", s + " the VLAN never made on switch 2"); assert.equal(cause(J, "fail"), "way");
+    J = tryIt(def, s, on("acc2", "name " + Bk.name, "name BKP")); assert.equal(cause(J, "vlan"), "name", s + " named off the records on the 2F switch");
+    J = tryIt(def, s, drp("acc2", /^switchport trunk allowed vlan add /)); assert.equal(cause(J, "trunks"), "trunk", s + " the 2F switch's uplinks without it"); assert.equal(cause(J, "bknet"), "way");
+    J = tryIt(def, s, on("dist1", "interface port-channel 1", "interface gi0/" + p.up.acc1)); assert.equal(cause(J, "trunks"), "bundle", s + " the bundle on switch 1 never given it"); assert.ok(line(J, "big").ok, s + " the way through switch 1 meanwhile");
+    J = tryIt(def, s, ["dist1", "dist2"].reduce((acc, d) => editOn(acc, d, (l) => (/^spanning-tree vlan /.test(l) ? [] : undefined)), sol)); assert.equal(cause(J, "stp"), "access", s + " the root left to the defaults: an access switch's address is lowest");
+    J = tryIt(def, s, ["dist1", "dist2"].reduce((acc, d) => editOn(acc, d, (l) => (/root primary$/.test(l) ? [l.replace("primary", "secondary")] : /root secondary$/.test(l) ? [l.replace("secondary", "primary")] : undefined)), sol)); assert.equal(cause(J, "stp"), "dist2", s + " the root on switch 2");
+    J = tryIt(def, s, drp("dist2", /^spanning-tree vlan /)); assert.equal(cause(J, "stp"), "backup", s + " no backup: an access switch is next");
+    J = tryIt(def, s, editOn(sol, "acc2", (l) => (l === "no shutdown" ? [] : undefined))); assert.equal(cause(J, "ports"), "shut", s + " the backup server's ports left shut"); assert.equal(cause(J, "online"), "link");
+    J = tryIt(def, s, on("acc2", "switchport access vlan " + Bk.id, "switchport access vlan " + p.vlans.servers.id)); assert.equal(cause(J, "ports"), "vlan", s + " its backup port in the servers VLAN"); assert.equal(cause(J, "bknet"), "way");
+    J = tryIt(def, s, drp("acc2", /^spanning-tree (portfast|bpduguard)/)); assert.equal(cause(J, "ports"), "edge", s + " not edge ports");
+    J = tryIt(def, s, on("acc1", "description FSRV-" + Bk.name, "description FILES-BKP")); assert.equal(cause(J, "ports"), "desc", s + " described off the records");
+    J = tryIt(def, s, drp("acc2", /^reload$/)); assert.equal(cause(J, "jumbo"), "wait", s + " the 2F switch never reloaded"); assert.equal(cause(J, "big"), "giant");
+    J = tryIt(def, s, drp("dist2", /^system mtu jumbo /)); assert.equal(cause(J, "jumbo"), "none", s + " switch 2 left at 1500"); assert.ok(line(J, "big").ok, s + " the way through switch 1 meanwhile"); assert.equal(cause(J, "fail"), "big");
+    J = tryIt(def, s, on("acc1", "system mtu jumbo " + Bk.mtu, "system mtu jumbo 4000")); assert.equal(cause(J, "jumbo"), "small", s + " too small on the 1F switch"); assert.equal(cause(J, "big"), "giant");
+    J = tryIt(def, s, noNp("fsrv")); assert.equal(cause(J, "mtu"), "eno2", s + " the file server left at 1500"); assert.equal(cause(J, "big"), "local", s + " it won't send it whole"); assert.equal(cause(J, "persist"), "netplan");
+    J = tryIt(def, s, noNp("bksrv")); assert.equal(cause(J, "mtu"), "eno2", s + " the backup server left at 1500"); assert.equal(cause(J, "big"), "recv", s + " it drops it as it arrives");
+    J = tryIt(def, s, onSrv(sol, "fsrv", (l) => (l === np ? ["sudo ip link set dev eno2 mtu " + Bk.mtu] : l === "sudo netplan apply" ? [] : undefined))); assert.ok(line(J, "big").ok, s + " it works for now"); assert.equal(cause(J, "persist"), "netplan", s + " but only until the next reboot");
+    J = tryIt(def, s, onSrv(sol, "fsrv", (l) => (l === "sudo netplan apply" ? [l, "sudo ip link set dev eno1 mtu " + Bk.mtu] : undefined))); assert.equal(cause(J, "mtu"), "eno1", s + " the file server's own port made jumbo too");
+    J = tryIt(def, s, on("acc1", "reload", ["reload", "", "", p.console, "enable", p.secret, "configure terminal", "no system mtu jumbo", "end", "copy running-config startup-config"])); assert.ok(line(J, "jumbo").ok, s + " in effect until the next reload"); assert.equal(cause(J, "persist"), "switch", s + " but not saved");
+    J = tryIt(def, s, drp("acc2", /^(copy running-config startup-config|reload)$/)); assert.equal(cause(J, "saved"), "unsaved-acc2", s + " the 2F switch unsaved");
+  }
+});
+
+test("CP-J9: other right ways pass: a bigger jumbo MTU, the save answered at the reload, the root by priority, the netplan put into effect by a reboot", () => {
+  const def = byId["CP-J9"];
+  for (const s of seeds("CP-J9").slice(0, 2)) {
+    const v = B.open(def, s).v, p = v.plan, Bk = p.backup, sol = def.solve(v);
+    let acts = ["dist1", "dist2"].reduce((acc, d) => editOn(acc, d, (l) => {
+      if (/root primary$/.test(l)) return ["spanning-tree vlan " + Bk.id + " priority 24576"];
+      if (/root secondary$/.test(l)) return ["spanning-tree vlan " + Bk.id + " priority 28672"];
+      if (/^system mtu jumbo /.test(l)) return ["system mtu jumbo 9198"];
+      return undefined;
+    }), sol);
+    let skip = 0; acts = editOn(acts, "acc1", (l) => { if (l === "copy running-config startup-config") { skip = 1; return []; } if (skip === 1 && l === "") { skip = 2; return []; } if (l === "reload") return ["reload", "yes"]; return undefined; });
+    acts = onSrv(acts, "bksrv", (l) => (l === "sudo netplan apply" ? ["sudo reboot"] : undefined));
+    const J = tryIt(def, s, acts); const c = B.check(J); assert.ok(c.res.every((r) => r.ok), s + " " + c.res.filter((r) => !r.ok).map((r) => r.id + ": " + r.ev).join("; "));
+  }
+});
+
 test("the PCs waiting on a pool get their addresses the moment it's finished being typed: a console leaving the pool's mode starts a pass", () => {
   const def = byId["CP-J8"];
   for (const s of seeds("CP-J8").slice(0, 2)) {
@@ -393,6 +442,8 @@ test("no help names a password, an address or a VLAN number; Mason's ladder clim
     assert.ok(!new RegExp("\\b" + p.train.id + "\\b").test(words) && words.indexOf(p.train.net) < 0 && words.indexOf(p.train.gw) < 0, def.id + " help names the training VLAN or its addresses");
     const A = p.annex; for (const q of [A.cls, A.mgmt]) assert.ok(!new RegExp("\\b" + q.id + "\\b").test(words) && words.indexOf(q.net) < 0 && words.indexOf(q.gw) < 0, def.id + " help names an Annex VLAN or its addresses");
     for (const x of [A.core.host, A.acc.host, A.acc.ip, A.link.hqIp, A.link.anxIp, A.link.net, A.link.hqDesc, A.link.anxDesc]) assert.ok(words.indexOf(x) < 0, def.id + " help names " + x);
+    const Bk = p.backup, S = p.srv; assert.ok(!new RegExp("\\b" + Bk.id + "\\b").test(words) && words.indexOf(Bk.net) < 0, def.id + " help names the backup VLAN or its network");
+    for (const x of [S.pw, S.user, S.fsrv.ip, S.fsrv.bip, S.bksrv.ip, S.bksrv.bip, "FSRV-", "BKSRV-"]) assert.ok(words.indexOf(x) < 0, def.id + " help names " + x);
     for (let i = 0; i < 5; i++) B.check(J);
     const m = B.mason(J); assert.ok(m && JSON.stringify(m).length > 20);
   }

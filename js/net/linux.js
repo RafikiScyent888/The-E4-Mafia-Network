@@ -1,0 +1,296 @@
+/* The Linux command line on the campus's rack servers (Level 4, work order 9: jumbo frames for the backup network). Ubuntu Server's
+   bash, as far as a technician needs it for the network: logging in on the server's own console (or arriving over SSH), sudo, ip
+   (addresses, links, routes, and setting a port's MTU), ping with its size and don't-fragment options, ethtool, the netplan file
+   (read it, set a port's MTU in it, apply it), and reboot. What `ip link set ... mtu` changes is gone at the next reboot; what's
+   in netplan stays, as on the real thing. Plain functions over the simulation, no page code: tested under Node. */
+import { isIp, sameSubnet, maskBits, broadcast, network, lpad, pad, hash } from "./util.js";
+
+export const LX_HELP = [
+  ["ip a  (ip addr, ip -br a)", "this server's ports, their state, MTU and addresses"],
+  ["ip link  (ip -s link show eno2)", "its ports, their MTU, and their counters"],
+  ["sudo ip link set dev eno2 mtu 9000", "set a port's MTU now (gone at the next reboot)"],
+  ["ip route  (ip r)", "its routing table"],
+  ["ping -c 4 <address>", "send echo requests (ping runs until stopped if -c isn't given)"],
+  ["ping -M do -s <bytes> <address>", "a big ping that must not be cut up: does a frame that size get through?"],
+  ["ethtool eno2", "a port's speed, duplex and whether it has a link"],
+  ["sudo cat /etc/netplan/50-cloud-init.yaml", "the server's network settings file, as it starts up with"],
+  ["sudo netplan get [key]", "read the netplan settings (a key such as ethernets.eno2.mtu)"],
+  ["sudo netplan set <key>=<value>", "change one, such as ethernets.eno2.mtu=9000 (in the file only)"],
+  ["sudo netplan apply", "put the file's settings into effect now"],
+  ["sudo reboot", "restart the server (it comes back with what's in its netplan file)"],
+  ["hostname, whoami, uname -a", "who and where you are"],
+  ["sudo -i", "a root shell (exit to leave it)"],
+  ["clear", "clear the screen"],
+  ["exit  (logout)", "log out"]
+];
+export const NETPLAN_FILE = "/etc/netplan/50-cloud-init.yaml";
+const MAX_MTU = 9216, MIN_MTU = 68;
+
+/* a session: on the server's own console it starts at the login prompt; over SSH it's already logged in */
+export function lxStart(via, user) { return via === "console" ? { via: via, mode: "login", user: null, tries: 0, root: false, sudoOk: false } : { via: via, mode: "shell", user: user, tries: 0, root: false, sudoOk: false }; }
+export function lxPrompt(sim, id, st) {
+  const x = sim.d[id], h = x.host;
+  if (!st || st.mode === "login") return h + " login: ";
+  if (st.mode === "pass") return "Password: ";
+  if (st.mode === "sudo") return "[sudo] password for " + st.user + ": ";
+  return (st.root ? "root" : st.user) + "@" + h + ":~" + (st.root ? "# " : "$ ");
+}
+export function lxSecret(st) { return !!st && (st.mode === "pass" || st.mode === "sudo"); }
+export function motd(sim, id) {
+  const x = sim.d[id], a = sim.ifAddr(id, 0);
+  return ["Welcome to Ubuntu 24.04.1 LTS (GNU/Linux 6.8.0-49-generic x86_64)", "", "  System information as of Sun Nov 22 10:42:07 UTC 2026", "", "  System load:  0.08              Processes:             191", "  Usage of /:   23.4% of 438.91GB  Users logged in:       1", "  Memory usage: 9%                IPv4 address for eno1: " + (a ? a.ip : "(none)"), "", "Last login: Fri Nov 20 16:31:12 2026 from " + (x.lastFrom || "10.0.0.1"), ""];
+}
+
+/* one line typed to the server: returns { out: [lines], closed, clear, facts } */
+export function lxExec(sim, id, st, raw) {
+  const x = sim.d[id], line = String(raw == null ? "" : raw);
+  if (st.mode === "login") { const u = line.trim(); if (!u) return { out: [] }; st.user = u; st.mode = "pass"; return { out: [], secret: true }; }
+  if (st.mode === "pass") {
+    if ((x.lx.users || {})[st.user] === line) { st.mode = "shell"; st.tries = 0; st.root = false; st.sudoOk = false; return { out: motd(sim, id), facts: { cmd: "login", dev: id, user: st.user, ok: true } }; }
+    st.mode = "login"; return { out: ["", "Login incorrect"], facts: { cmd: "login", dev: id, user: st.user, ok: false } };
+  }
+  if (st.mode === "sudo") {
+    if ((x.lx.users || {})[st.user] === line) { st.mode = "shell"; st.tries = 0; st.sudoOk = true; const p = st.pend; st.pend = null; return run(sim, id, st, p, true); }
+    st.tries++;
+    if (st.tries >= 3) { st.mode = "shell"; st.tries = 0; st.pend = null; return { out: ["sudo: 3 incorrect password attempts"], facts: { cmd: "sudo", dev: id, ok: false } }; }
+    return { out: ["Sorry, try again."], secret: true, facts: { cmd: "sudo", dev: id, ok: false } };
+  }
+  return run(sim, id, st, line.trim(), st.root);
+}
+
+function run(sim, id, st, line, root) {
+  const x = sim.d[id], t = line.split(/\s+/).filter(Boolean), c = t[0] || "", args = t.slice(1), facts = { cmd: c, dev: id, linux: true, line: line };
+  const done = function (out, more) { return Object.assign({ out: out, facts: Object.assign(facts, (more && more.facts) || {}) }, more || {}); };
+  if (!c) return done([]);
+  switch (c) {
+    case "sudo": {
+      if (!args.length) return done(["usage: sudo -h | -K | -k | -V", "usage: sudo [-u user] command"]);
+      if (args[0] === "-i" || (args[0] === "su" && args.length === 1) || args[0] === "-s") { if (root || st.sudoOk) { st.root = true; return done([]); } st.mode = "sudo"; st.pend = "__root__"; return done([], { secret: true }); }
+      if (root || st.sudoOk) return run(sim, id, st, args.join(" "), true);
+      st.mode = "sudo"; st.pend = args.join(" "); return done([], { secret: true });
+    }
+    case "__root__": if (!root) return done([c + ": command not found"]); st.root = true; return done([]);   /* only ever reached after sudo -i's password */
+    case "exit": case "logout": {
+      if (st.root && !root) { st.root = false; return done(["logout"]); }
+      if (st.root) { st.root = false; return done(["logout"]); }
+      if (st.via === "console") { st.mode = "login"; st.user = null; st.sudoOk = false; return done(["logout", "", "Ubuntu 24.04.1 LTS " + x.host + " tty1", ""], { facts: { logout: true } }); }
+      return done(["logout"], { closed: true, facts: { logout: true } });
+    }
+    case "clear": return done([], { clear: true });
+    case "help": return done(["Commands you can use on this server:", ""].concat(LX_HELP.map(function (h) { return "  " + pad(h[0], 40) + h[1]; })));
+    case "hostname": return done([x.host]);
+    case "whoami": return done([root ? "root" : st.user]);
+    case "uname": return done([args[0] === "-a" ? "Linux " + x.host + " 6.8.0-49-generic #49-Ubuntu SMP PREEMPT_DYNAMIC Mon Nov  4 02:06:24 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux" : "Linux"]);
+    case "ip": return done(ipCmd(sim, id, args, root));
+    case "ping": return ping(sim, id, args, facts);
+    case "ethtool": return done(ethtool(sim, id, args));
+    case "cat": return done(cat(sim, id, args, root));
+    case "ls": return done(ls(sim, id, args, root));
+    case "netplan": return done(netplan(sim, id, args, root), { facts: { netplan: args[0] || "" } });
+    case "reboot": case "shutdown": {
+      if (c === "shutdown" && !(args[0] === "-r")) return done(["(This server stays on: it's in use. To restart it: sudo reboot)"]);
+      if (!root) return done(["Failed to set wall message, ignoring: Interactive authentication required.", "Call to Reboot failed: Interactive authentication required."]);
+      reboot(sim, id);
+      if (st.via === "console") { st.mode = "login"; st.user = null; st.root = false; st.sudoOk = false; return done(["", "Broadcast message from root@" + x.host + " on pts/1 (Sun 2026-11-22 10:42:07 UTC):", "", "The system will reboot now!", "", "[  OK  ] Stopped target network.target - Network.", "[  OK  ] Reached target reboot.target - System Reboot.", "", "Ubuntu 24.04.1 LTS " + x.host + " tty1", ""], { facts: { reboot: true } }); }
+      return done([], { closed: true, closedBy: "remote", facts: { reboot: true } });
+    }
+    default: return done([c + ": command not found"]);
+  }
+}
+
+/* ------------------------------------------------------------ the server's ports */
+const colon = function (m) { return String(m).replace(/-/g, ":").toLowerCase(); };
+function v6(m) { const b = colon(m).split(":").map(function (h) { return parseInt(h, 16); }); b[0] ^= 2; const w = [b[0] << 8 | b[1], b[2] << 8 | 0xff, 0xfe << 8 | b[3], b[4] << 8 | b[5]]; return "fe80::" + w.map(function (n) { return n.toString(16); }).join(":"); }
+const ALT = { eno1: "enp1s0f0", eno2: "enp1s0f1" };
+function ports(sim, id) {
+  const x = sim.d[id];
+  return x.ifaces.map(function (f, j) { const c = sim.cableAt(id, f.port), up = sim.on(id) && !!c && sim.cableUp(c); return { f: f, j: j, up: up, mtu: f.mtu || 1500, ip: f.cfg && f.cfg.ip, mask: f.cfg && f.cfg.mask, gw: f.cfg && f.cfg.gw }; });
+}
+function findPort(sim, id, name) { return ports(sim, id).find(function (p) { return p.f.name === name; }); }
+function ipCmd(sim, id, a, root) {
+  a = a.slice(); let brief = false, stats = false;
+  while (a[0] && a[0][0] === "-") { const o = a.shift(); if (/^-br(ief)?$/.test(o)) brief = true; else if (/^-s(tat(istic)?s?)?$/.test(o)) stats = true; else if (o === "-4" || o === "-c" || o === "-color" || o === "--color") { } else return ['Option "' + o + '" is unknown, try "ip -help".']; }
+  const obj = a.shift() || "";
+  if (!obj) return ["Usage: ip [ OPTIONS ] OBJECT { COMMAND | help }", "where  OBJECT := { address | link | route | ... }", "       OPTIONS := { -s[tatistics] | -br[ief] | -4 | ... }"];
+  if (/^a(d(d(r(e(s(s)?)?)?)?)?)?$/.test(obj)) return ipAddr(sim, id, a, brief, root);
+  if (/^l(i(n(k)?)?)?$/.test(obj)) return ipLink(sim, id, a, brief, stats, root);
+  if (/^r(o(u(t(e)?)?)?)?$/.test(obj)) return ipRoute(sim, id, a);
+  return ['Object "' + obj + '" is unknown, try "ip help".'];
+}
+/* "show", "show dev eno2", "show eno2", "eno2": the port asked for, or every port */
+function devArg(a) { a = a.slice(); if (a[0] && /^(show|list|lst|sh)$/.test(a[0])) a.shift(); if (a[0] === "dev") a.shift(); return a[0] || null; }
+function headLine(p, i) { return (i + 2) + ": " + p.f.name + ": <" + (p.up ? "BROADCAST,MULTICAST,UP,LOWER_UP" : "NO-CARRIER,BROADCAST,MULTICAST,UP") + "> mtu " + p.mtu + " qdisc mq state " + (p.up ? "UP" : "DOWN") + " group default qlen 1000"; }
+const LO = ["1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000", "    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00"];
+function ipAddr(sim, id, a, brief, root) {
+  if (a[0] && /^(add|del|delete|change|replace|flush)$/.test(a[0])) return ["(This server's addresses come from its netplan file, and they're right: this work is about its MTU.)"];
+  const want = devArg(a), P = ports(sim, id);
+  if (want && want !== "lo" && !P.some(function (p) { return p.f.name === want; })) return ['Device "' + want + '" does not exist.'];
+  if (brief) return (want ? [] : [pad("lo", 17) + pad("UNKNOWN", 15) + "127.0.0.1/8 ::1/128"]).concat(P.filter(function (p) { return !want || p.f.name === want; }).map(function (p) { return pad(p.f.name, 17) + pad(p.up ? "UP" : "DOWN", 15) + (p.ip ? p.ip + "/" + maskBits(p.mask) + " " : "") + (p.up ? v6(p.f.mac) + "/64" : ""); }));
+  const L = want && want !== "lo" ? [] : LO.concat(["    inet 127.0.0.1/8 scope host lo", "       valid_lft forever preferred_lft forever"]);
+  P.forEach(function (p, i) {
+    if (want && p.f.name !== want) return;
+    L.push(headLine(p, i), "    link/ether " + colon(p.f.mac) + " brd ff:ff:ff:ff:ff:ff", "    altname " + ALT[p.f.name]);
+    if (p.ip) L.push("    inet " + p.ip + "/" + maskBits(p.mask) + " brd " + broadcast(p.ip, p.mask) + " scope global " + p.f.name, "       valid_lft forever preferred_lft forever");
+    if (p.up) L.push("    inet6 " + v6(p.f.mac) + "/64 scope link", "       valid_lft forever preferred_lft forever");
+  });
+  return L;
+}
+function ipLink(sim, id, a, brief, stats, root) {
+  if (a[0] === "set") return linkSet(sim, id, a.slice(1), root);
+  const want = devArg(a), P = ports(sim, id);
+  if (want && want !== "lo" && !P.some(function (p) { return p.f.name === want; })) return ['Device "' + want + '" does not exist.'];
+  if (brief) return (want ? [] : [pad("lo", 17) + pad("UNKNOWN", 15) + "00:00:00:00:00:00 <LOOPBACK,UP,LOWER_UP>"]).concat(P.filter(function (p) { return !want || p.f.name === want; }).map(function (p) { return pad(p.f.name, 17) + pad(p.up ? "UP" : "DOWN", 15) + colon(p.f.mac) + " <" + (p.up ? "BROADCAST,MULTICAST,UP,LOWER_UP" : "NO-CARRIER,BROADCAST,MULTICAST,UP") + ">"; }));
+  const L = want && want !== "lo" ? [] : LO.slice();
+  P.forEach(function (p, i) {
+    if (want && p.f.name !== want) return;
+    L.push(headLine(p, i).replace(" group default", " mode DEFAULT group default"), "    link/ether " + colon(p.f.mac) + " brd ff:ff:ff:ff:ff:ff");
+    if (stats) {
+      const err = rxErrAt(sim, id, p.f.port), h = hash(id + p.f.name), rb = p.up ? 48211934 + h % 900000 : 0, rp = p.up ? 391812 + h % 9000 : 0;
+      L.push("    RX:  bytes packets errors dropped  missed   mcast", "    " + lpad(rb, 10) + lpad(rp, 8) + lpad(err, 7) + lpad(0, 8) + lpad(0, 8) + lpad(p.up ? 1204 : 0, 8), "    TX:  bytes packets errors dropped carrier collsns", "    " + lpad(p.up ? 21774231 + h % 700000 : 0, 10) + lpad(p.up ? 204511 + h % 7000 : 0, 8) + lpad(0, 7) + lpad(0, 8) + lpad(0, 8) + lpad(0, 8));
+    }
+    L.push("    altname " + ALT[p.f.name]);
+  });
+  return L;
+}
+function linkSet(sim, id, a, root) {
+  a = a.slice(); if (a[0] === "dev") a.shift();
+  const name = a.shift(); if (!name) return ['Not enough information: "dev" argument is required.'];
+  const p = findPort(sim, id, name); if (!p) return ['Cannot find device "' + name + '"'];
+  if (!a.length) return ['Not enough information: an attribute to set (such as mtu) is required.'];
+  const k = a.shift();
+  if (k === "mtu") {
+    const v = a.shift(); if (!v || !/^\d+$/.test(v)) return ['Error: argument "' + (v || "") + '" is wrong: Invalid MTU'];
+    if (!root) return ["RTNETLINK answers: Operation not permitted"];
+    if (+v > MAX_MTU) return ["Error: mtu greater than device maximum."];
+    if (+v < MIN_MTU) return ["Error: mtu less than device minimum."];
+    p.f.mtu = +v; if (sim.bump) sim.bump(); return [];
+  }
+  if (k === "up" || k === "down") return ["(This server's ports stay up here. To take one down, unplug its cable on the Physical tab.)"];
+  return ['Error: either "dev" is duplicate, or "' + k + '" is a garbage.'];
+}
+function ipRoute(sim, id, a) {
+  if (a[0] && /^(add|del|delete|change|replace|flush)$/.test(a[0])) return ["(This server's routes come from its netplan file, and they're right: this work is about its MTU.)"];
+  const P = ports(sim, id), L = [], gw = P.find(function (p) { return p.gw; });
+  if (gw) L.push("default via " + gw.gw + " dev " + gw.f.name + " proto static" + (gw.up ? "" : " linkdown"));
+  P.forEach(function (p) { if (p.ip) L.push(network(p.ip, p.mask) + "/" + maskBits(p.mask) + " dev " + p.f.name + " proto kernel scope link src " + p.ip + (p.up ? "" : " linkdown")); });
+  return L;
+}
+function rxErrAt(sim, id, port) { const e = sim.net.extra && sim.net.extra.rxerr; return (e && e[id + "|" + port]) || 0; }
+function rxErr(sim, id, port, k) { const e = sim.net.extra || (sim.net.extra = {}), g = e.rxerr || (e.rxerr = {}), key = id + "|" + port; g[key] = (g[key] || 0) + k; }
+function ethtool(sim, id, a) {
+  if (!a[0]) return ["ethtool: bad command line argument(s)", "For more information run ethtool -h"];
+  const p = findPort(sim, id, a[a.length - 1]); if (!p) return ["netlink error: no device matches name (offset 24)", "netlink error: No such device"];
+  const c = sim.cableAt(id, p.f.port), sp = p.up && c ? sim.speed(c) : 0;
+  return ["Settings for " + p.f.name + ":", "\tSupported ports: [ TP ]", "\tSupported link modes:   10baseT/Half 10baseT/Full", "\t                        100baseT/Half 100baseT/Full", "\t                        1000baseT/Full", "\tSpeed: " + (p.up ? (sp || 1000) + "Mb/s" : "Unknown!"), "\tDuplex: " + (p.up ? "Full" : "Unknown! (255)"), "\tAuto-negotiation: on", "\tPort: Twisted Pair", "\tMDI-X: " + (p.up ? "off (auto)" : "Unknown (auto)"), "\tLink detected: " + (p.up ? "yes" : "no")];
+}
+
+/* ------------------------------------------------------------ files and netplan */
+export function netplanText(x) {
+  const N = x.lx.netplan, L = ["network:", "  version: 2", "  ethernets:"];
+  Object.keys(N).forEach(function (n) {
+    const e = N[n]; L.push("    " + n + ":", "      addresses:", "      - \"" + e.addr + "\"");
+    if (e.mtu) L.push("      mtu: " + e.mtu);
+    if (e.gw) L.push("      routes:", "      - to: \"default\"", "        via: \"" + e.gw + "\"");
+    if (e.dns && e.dns.length) { L.push("      nameservers:", "        addresses:"); e.dns.forEach(function (d) { L.push("        - " + d); }); }
+  });
+  return L;
+}
+function cat(sim, id, a, root) {
+  const x = sim.d[id]; if (!a.length) return ["(cat waits for typing here on a real server; name a file: cat /etc/hostname)"];
+  return a.reduce(function (out, f) {
+    if (f === NETPLAN_FILE) return out.concat(root ? netplanText(x) : ["cat: " + f + ": Permission denied"]);
+    if (f === "/etc/hostname") return out.concat([x.host]);
+    if (f === "/etc/os-release") return out.concat(['PRETTY_NAME="Ubuntu 24.04.1 LTS"', 'NAME="Ubuntu"', 'VERSION_ID="24.04"', 'VERSION="24.04.1 LTS (Noble Numbat)"']);
+    return out.concat(["cat: " + f + ": No such file or directory"]);
+  }, []);
+}
+function ls(sim, id, a, root) {
+  const long = a.some(function (w) { return /^-[a-zA-Z]*l/.test(w); }), dir = a.filter(function (w) { return w[0] !== "-"; })[0] || "~";
+  if (dir === "/etc/netplan" || dir === "/etc/netplan/") return long ? ["total 4", "-rw------- 1 root root " + netplanText(sim.d[id]).join("\n").length + " Nov 20 16:20 50-cloud-init.yaml"] : ["50-cloud-init.yaml"];
+  if (dir === "~" || dir === "." || dir === "/home/" + (sim.d[id].lx && Object.keys(sim.d[id].lx.users)[0])) return [];
+  if (dir === NETPLAN_FILE) return [long ? "-rw------- 1 root root " + netplanText(sim.d[id]).join("\n").length + " Nov 20 16:20 " + NETPLAN_FILE : NETPLAN_FILE];
+  return ["ls: cannot access '" + dir + "': No such file or directory"];
+}
+const NP_USAGE = ["usage: netplan [-h] [--debug] {apply,get,set} ...", "", "Network configuration in YAML", "", "options:", "  -h, --help  show this help message and exit", "  --debug     Enable debug messages", "", "Available commands:", "    apply     Apply current netplan config to running system", "    get       Get a setting by specifying a nested key like \"ethernets.eth0.addresses\", or \"all\"", "    set       Add new setting by specifying a dotted key=value pair like ethernets.eth0.dhcp4=true"];
+function netplan(sim, id, a, root) {
+  const x = sim.d[id], N = x.lx.netplan, sub = a[0];
+  if (!sub || sub === "-h" || sub === "--help" || sub === "help") return NP_USAGE;
+  if (!/^(get|set|apply)$/.test(sub)) return NP_USAGE.slice(0, 1).concat(["netplan: error: argument : invalid choice: '" + sub + "' (choose from 'apply', 'get', 'set')"]);
+  if (!root) return ["PermissionError: [Errno 13] Permission denied: '" + NETPLAN_FILE + "'"];
+  if (sub === "apply") { applyNetplan(sim, id); return []; }
+  if (sub === "get") {
+    const key = a[1]; if (!key || key === "all") return netplanText(x);
+    const k = key.split("."); if (k[0] === "network") k.shift();
+    if (k[0] === "ethernets" && k.length === 1) return Object.keys(N).map(function (n) { return n + ":"; });
+    if (k[0] !== "ethernets" || !N[k[1]]) return ["null"];
+    if (k.length === 2) return netplanText({ lx: { netplan: { [k[1]]: N[k[1]] } } }).slice(4).map(function (l) { return l.slice(6); });
+    if (k[2] === "mtu" && k.length === 3) return [N[k[1]].mtu ? String(N[k[1]].mtu) : "null"];
+    if (k[2] === "addresses" && k.length === 3) return ["- \"" + N[k[1]].addr + "\""];
+    return ["null"];
+  }
+  /* set: ethernets.<port>.mtu=<n> (or null to take it out) */
+  const m = /^(?:network\.)?([^=]+)=(.*)$/.exec(a.slice(1).join(" "));
+  if (!m) return ["netplan: error: the following arguments are required: key_value"];
+  const k = m[1].split("."), v = m[2].trim();
+  if (k[0] !== "ethernets" || k.length !== 3) return ["(This server's netplan takes ethernets.<port>.mtu here: its addresses and routes are set already.)"];
+  if (!N[k[1]]) return ["Error in network definition: " + NETPLAN_FILE + ": unknown interface '" + k[1] + "' (this server's ports are " + Object.keys(N).join(" and ") + ")"];
+  if (k[2] !== "mtu") return /^(addresses|routes|nameservers|dhcp4|dhcp6|gateway4)$/.test(k[2]) ? ["(This server's netplan takes ethernets.<port>.mtu here: its addresses and routes are set already.)"] : ["Error in network definition: unknown key '" + k[2] + "'"];
+  if (v === "null" || v === "") { delete N[k[1]].mtu; return []; }
+  if (!/^\d+$/.test(v)) return ["Error in network definition: " + NETPLAN_FILE + ": invalid unsigned int value '" + v + "'"];
+  N[k[1]].mtu = +v; return [];
+}
+/* the file's settings put into effect: each port's MTU (1500 if the file has none); a device's maximum refuses more, as networkd does */
+export function applyNetplan(sim, id) {
+  const x = sim.d[id], N = x.lx.netplan;
+  x.ifaces.forEach(function (f) { const e = N[f.name]; const want = e && e.mtu ? e.mtu : 1500; f.mtu = Math.max(MIN_MTU, Math.min(MAX_MTU, want)); });
+  if (sim.bump) sim.bump();
+}
+/* a restart: it comes back with what's in its netplan file (an MTU set only with ip link is gone) */
+export function reboot(sim, id) { applyNetplan(sim, id); const x = sim.d[id]; x.boots = (x.boots || 0) + 1; }
+
+/* ------------------------------------------------------------ ping, Linux's */
+function ping(sim, id, a, facts) {
+  let n = 0, size = 56, hint = "want", target = null, ifn = null;
+  for (let i = 0; i < a.length; i++) {
+    const w = a[i];
+    if (w === "-c") { n = parseInt(a[++i], 10); if (!(n > 0)) return { out: ["ping: invalid argument: '" + (a[i] || "") + "'"], facts: facts }; }
+    else if (w === "-s") { size = parseInt(a[++i], 10); if (!(size >= 0) || size > 65507) return { out: ["ping: invalid argument: '" + (a[i] || "") + "': out of range: 0 <= value <= 65507"], facts: facts }; }
+    else if (w === "-M") { hint = a[++i]; if (!/^(do|want|dont|probe)$/.test(hint || "")) return { out: ["ping: invalid -M argument: " + (hint || "")], facts: facts }; }
+    else if (w === "-I") ifn = a[++i];
+    else if (/^-[iWwq4]$/.test(w)) { if (/^-[iWw]$/.test(w)) i++; }
+    else if (w[0] === "-") return { out: ["ping: invalid option -- '" + w.replace(/^-+/, "")[0] + "'", "", "Usage", "  ping [options] <destination>"], facts: facts };
+    else target = w;
+  }
+  if (!target) return { out: ["ping: usage error: Destination address required"], facts: facts };
+  const stop = !n; if (stop) n = 4;   /* without -c ping runs until stopped: here it's stopped after four, as you would with Ctrl+C */
+  let ip = target;
+  if (!isIp(target)) { const ok = sim.lookup && sim.lookup(target); if (!ok) return { out: ["ping: " + target + ": Temporary failure in name resolution"], facts: Object.assign(facts, { target: target, ok: false, why: "name" }) }; ip = ok; }
+  const df = hint === "do", total = size + 28, j = sim.ifFor(id, ip), me = sim.ifAddr(id, j);
+  Object.assign(facts, { target: target, ip: ip, size: size, df: df, total: total });
+  if (ifn && !sim.d[id].ifaces.some(function (f) { return f.name === ifn; })) return { out: ["ping: SO_BINDTODEVICE " + ifn + ": No such device"], facts: facts };
+  const r = sim.sized(id, ip, total, df), rt = r.rt || {};
+  if (r.why === "route" && (rt.fail === "no-link" || rt.fail === "no-route")) return { out: ["ping: connect: Network is unreachable"], facts: Object.assign(facts, { ok: false, why: "unreachable", sent: 0, replies: 0 }) };
+  const L = ["PING " + ip + " (" + ip + ") " + size + "(" + total + ") bytes of data."], R = sim.r("lxping" + ip + ":" + size), times = [];
+  let got = 0, errs = 0; const who = r.who || (rt.owner && rt.owner[0]), wx = who && sim.d[who];
+  const fw = !!wx && (wx.kind === "pc" || wx.kind === "laptop") && !wx.echo;   /* Windows' firewall drops ping, as on any network */
+  for (let i = 1; i <= n; i++) {
+    if (r.why === "local") { L.push("ping: local error: message too long, mtu=" + r.mtu); errs++; continue; }
+    if (r.why === "frag") { L.push("From " + (r.gw || "") + " icmp_seq=" + i + " Frag needed and DF set (mtu = 1500)"); errs++; continue; }
+    if (r.why === "route") {
+      if (rt.fail === "host-unreachable" || rt.fail === "gateway-unreachable") { L.push("From " + (me ? me.ip : "") + " icmp_seq=" + i + " Destination Host Unreachable"); errs++; }
+      else if (rt.fail === "net-unreachable") { L.push("From " + (rt.hops && rt.hops[0]) + " icmp_seq=" + i + " Destination Net Unreachable"); errs++; }
+      continue;
+    }
+    if (!r.ok || fw) continue;   /* dropped on the way (a giant at a switch, or too big for the receiver) or never answered: nothing comes back */
+    const t = (rt.local ? 0.3 : 0.9) + R() * 0.25 + (total > 1500 ? 0.4 : 0);
+    times.push(t); got++;
+    L.push((size + 8) + " bytes from " + ip + ": icmp_seq=" + i + " ttl=" + ((wx ? sim.ttlOf(who) : 64) - (rt.routers || 0)) + " time=" + t.toFixed(3) + " ms");
+  }
+  if (r.why === "giant" && r.at && r.at.port) sim.giant(r.at, n);   /* every one of them dropped at that switch port, and counted there */
+  if (r.why === "receiver" && who) { const wf = sim.d[who].ifaces && sim.d[who].ifaces.find(function (f) { return f.cfg && f.cfg.ip === ip; }); if (wf) rxErr(sim, who, wf.port, n); }
+  if (stop) L.push("^C");
+  L.push("--- " + ip + " ping statistics ---", n + " packets transmitted, " + got + " received, " + (errs ? "+" + errs + " errors, " : "") + Math.round((n - got) / n * 100) + "% packet loss, time " + (n - 1) * 1001 + "ms");
+  if (times.length) { const mn = Math.min.apply(null, times), mx = Math.max.apply(null, times), av = times.reduce(function (s, v) { return s + v; }, 0) / times.length, md = Math.sqrt(times.reduce(function (s, v) { return s + (v - av) * (v - av); }, 0) / times.length); L.push("rtt min/avg/max/mdev = " + [mn, av, mx, md].map(function (v) { return v.toFixed(3); }).join("/") + " ms"); }
+  Object.assign(facts, { sent: n, replies: got, ok: got > 0, why: r.ok ? (fw ? "firewall" : "ok") : r.why, at: r.at || null, beyond: got > 0 && who !== id, local: !!rt.local });
+  return { out: L, facts: facts };
+}

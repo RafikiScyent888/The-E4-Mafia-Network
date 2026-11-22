@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { CAMPUS_JOBS } from "../js/build/campus.js";
 import * as B from "../js/build/engine.js";
 import { coreLinks } from "../js/net/campus.js";
+import * as DH from "../js/net/dhcpd.js";
 
 const N = Number(process.env.SEEDS || 12);
 const byId = Object.fromEntries(CAMPUS_JOBS.map((d) => [d.id, d]));
@@ -279,6 +280,7 @@ test("CP-J7: the tempting wrong ways each fail their own line for their own caus
   for (const s of seeds("CP-J7").slice(0, 3)) {
     const v = B.open(def, s).v, p = v.plan, T = p.train, sol = def.solve(v), cause = (J, id) => { const r = line(J, id); return r.ok ? null : r.real.id; };
     const on = (dev, from, to) => editOn(sol, dev, (l) => (l === from ? (to === null ? [] : [].concat(to)) : undefined)), drp = (dev, re) => editOn(sol, dev, (l) => (re.test(l) ? [] : undefined));
+    assert.equal(cause(B.open(def, s), "rack"), "boxed", s + " at the start the 4F switch is still in its box");
     let J = tryIt(def, s, sol.map((a) => (a.t === "lay" && a.a.dev === "acc4" && a.a.port === "23" ? Object.assign({}, a, { b: { dev: "dist1", port: "5" } }) : a))); assert.equal(cause(J, "rack"), "ports", s + " the uplink on another port");
     J = tryIt(def, s, editOn(sol, "dist1", (l) => (l === "no shutdown" ? [] : undefined))); assert.equal(cause(J, "rack"), "down", s + " distribution switch 1's port 4 left shut");
     J = tryIt(def, s, on("acc4", "hostname " + p.sw.acc4.host, "hostname RIT-ACC4")); assert.equal(cause(J, "base"), "name", s + " named off the records");
@@ -420,6 +422,78 @@ test("CP-J9: other right ways pass: a bigger jumbo MTU, the save answered at the
   }
 });
 
+/* CP-J10: the file the walk-through writes, changed; the defaults file the same */
+const onConf = (sol, f) => sol.map((a) => (a.line === "^O" && /subnet /.test(a.text || "") ? Object.assign({}, a, { text: f(a.text) }) : a));
+const onDefs = (sol, f) => sol.map((a) => (a.line === "^O" && /INTERFACESv4/.test(a.text || "") ? Object.assign({}, a, { text: f(a.text) }) : a));
+const subBlock = (t, net) => { const i = t.indexOf("subnet " + net + " "), j = t.indexOf("}\n", i); return [i, j + 2]; };
+const cut = (t, net) => { const [i, j] = subBlock(t, net); return t.slice(0, i) + t.slice(j); };
+const inSub = (t, net, f) => { const [i, j] = subBlock(t, net); return t.slice(0, i) + f(t.slice(i, j)) + t.slice(j); };
+test("CP-J10: the tempting wrong ways each fail their own line for their own cause", () => {
+  const def = byId["CP-J10"];
+  for (const s of seeds("CP-J10").slice(0, 2)) {
+    const v = B.open(def, s).v, p = v.plan, V = p.vlans, S = p.srv, R = p.dhcp.resv, sol = def.solve(v), relay = "10." + V.svc.net.split(".")[1] + ".255.5", cause = (J, id) => { const r = line(J, id); return r.ok ? null : r.real.id; };
+    const at = (n, h) => n.replace(/\.0$/, "." + h);
+    let J = tryIt(def, s, onConf(sol, (t) => t.replace("default-lease-time " + p.dhcp.lease + ";", "default-lease-time " + p.dhcp.lease))); assert.equal(cause(J, "conf"), "syntax", s + " a semicolon left off"); assert.equal(cause(J, "running"), "failed");
+    J = tryIt(def, s, sol.filter((a) => !(a.line === "^O" && /subnet /.test(a.text || "")))); assert.equal(cause(J, "conf"), "sample", s + " the sample left as it is"); assert.equal(cause(J, "pools"), "nosub"); assert.equal(cause(J, "running"), "failed");
+    J = tryIt(def, s, onConf(sol, (t) => cut(t, p.train.net))); assert.equal(cause(J, "conf"), "missing", s + " no subnet for the training network"); assert.equal(cause(J, "pools"), "nosub"); assert.equal(cause(J, "leases"), "none", s + " the training PCs get no answer");
+    J = tryIt(def, s, onConf(sol, (t) => cut(t, V.servers.net))); assert.equal(cause(J, "conf"), "own", s + " no subnet for its own network"); assert.equal(cause(J, "running"), "failed"); assert.equal(cause(J, "leases"), "none");
+    J = tryIt(def, s, onConf(sol, (t) => inSub(t, V.bench.net, (b) => b.replace(/range [\d.]+ /, "range " + at(V.bench.net, 10) + " ")))); assert.equal(cause(J, "pools"), "kept", s + " the range into the kept-back addresses");
+    J = tryIt(def, s, onConf(sol, (t) => inSub(t, V.office.net, (b) => b.replace(/ [\d.]+;\n  option routers/, " " + at(V.office.net, 30) + ";\n  option routers")))); assert.equal(cause(J, "pools"), "small", s + " a range of ten");
+    J = tryIt(def, s, onConf(sol, (t) => inSub(t, V.bench.net, (b) => b.replace(/  option routers [\d.]+;\n/, "")))); assert.equal(cause(J, "pools"), "routers", s + " no routers option"); assert.equal(cause(J, "leases"), "gw");
+    J = tryIt(def, s, onConf(sol, (t) => inSub(t, V.svc.net, (b) => b.replace("option routers " + V.svc.gw, "option routers " + at(V.svc.net, 2))))); assert.equal(cause(J, "pools"), "own", s + " distribution switch 1's own address as the router"); assert.equal(cause(J, "leases"), "gw"); assert.equal(cause(J, "fail"), "gw");
+    J = tryIt(def, s, onConf(sol, (t) => t.replace(/option domain-name-servers [^;]+;/, "option domain-name-servers ns1.example.org, ns2.example.org;"))); assert.equal(cause(J, "pools"), "dnsnamed", s + " the sample's DNS names"); assert.equal(cause(J, "leases"), "dns");
+    J = tryIt(def, s, onConf(sol, (t) => t.replace("default-lease-time " + p.dhcp.lease + ";", "default-lease-time 600;"))); assert.equal(cause(J, "pools"), "lease", s + " the sample's ten minutes");
+    J = tryIt(def, s, onConf(sol, (t) => t.replace(/host help-desk-pc \{[\s\S]*?\}\n/, ""))); assert.equal(cause(J, "resv"), "none", s + " no reservation"); assert.equal(cause(J, "leases"), "resv");
+    J = tryIt(def, s, onConf(sol, (t) => t.replace(v.dh.mac, "02:00:00:00:00:01"))); assert.equal(cause(J, "resv"), "mac", s + " another hardware address"); assert.equal(cause(J, "leases"), "resv");
+    J = tryIt(def, s, onConf(sol, (t) => t.replace("fixed-address " + R.ip, "fixed-address " + at(V.svc.net, 16)))); assert.equal(cause(J, "resv"), "ip", s + " another address");
+    J = tryIt(def, s, onConf(sol, (t) => t.replace("fixed-address " + R.ip, "fixed-address " + at(V.svc.net, 30)).replace(/(subnet [\d.]+ [\s\S]*?)/, "$1"))); assert.equal(cause(J, "resv"), "ip", s + " an address in the range is not the records'");
+    J = tryIt(def, s, onConf(sol, (t) => inSub(t, V.svc.net, (b) => b.replace(/range [\d.]+ /, "range " + R.ip + " ")))); assert.equal(cause(J, "pools"), "kept"); assert.equal(cause(J, "resv"), "range", s + " the reserved address inside the range");
+    J = tryIt(def, s, onConf(sol, (t) => t.replace(v.dh.mac, v.dh.mac.replace(/:/g, "-")))); assert.equal(cause(J, "conf"), "syntax", s + " the hardware address with dashes, as Windows writes it");
+    J = tryIt(def, s, sol.filter((a) => !(a.line === "^O" && /INTERFACESv4/.test(a.text || "")))); assert.equal(cause(J, "listen"), "empty", s + " every port"); assert.ok(line(J, "running").ok && line(J, "leases").ok, s + " it serves meanwhile");
+    J = tryIt(def, s, onDefs(sol, (t) => t.replace('INTERFACESv4="eno1"', 'INTERFACESv4="eno1 eno2"'))); assert.equal(cause(J, "listen"), "eno2", s + " the backup network too");
+    J = tryIt(def, s, onDefs(sol, (t) => t.replace('INTERFACESv4="eno1"', 'INTERFACESv4="eth0"'))); assert.equal(cause(J, "listen"), "nodev", s + " a port it hasn't got"); assert.equal(cause(J, "running"), "failed");
+    J = tryIt(def, s, swap(sol, "sudo systemctl enable --now isc-dhcp-server", "sudo systemctl enable isc-dhcp-server")); assert.equal(cause(J, "running"), "failed", s + " enabled but never started: still the install's failure"); assert.equal(cause(J, "leases"), "none");
+    J = tryIt(def, s, swap(sol, "sudo systemctl enable --now isc-dhcp-server", "sudo systemctl start isc-dhcp-server")); assert.equal(cause(J, "running"), "disabled", s + " started but not enabled"); assert.ok(line(J, "leases").ok);
+    J = tryIt(def, s, sol.flatMap((a) => (a.line === "systemctl status isc-dhcp-server" && a.dev === "fsrv" && sol.indexOf(a) > 5 ? [a, Object.assign({}, a, { line: "sudo nano " + "/etc/dhcp/dhcpd.conf" }), Object.assign({}, a, { line: "^O", text: sol.find((q) => q.line === "^O" && /subnet /.test(q.text || "")).text + "# changed\n" }), Object.assign({}, a, { line: "^X" })] : [a])));
+    assert.equal(cause(J, "running"), "stale", s + " the file changed after it started");
+    J = tryIt(def, s, editOn(sol, "dist2", (l) => (l === "ip helper-address " + S.fsrv.ip ? [] : undefined))); assert.equal(cause(J, "relays"), "none", s + " switch 2 relays nothing"); assert.equal(cause(J, "fail"), "relay");
+    J = tryIt(def, s, editOn(sol, "dist1", (l) => (l === "ip helper-address " + S.fsrv.ip ? ["ip helper-address " + S.fsrv.bip] : undefined))); assert.equal(cause(J, "relays"), "bip", s + " to the backup address");
+    J = tryIt(def, s, editOn(sol, "dist1", (l) => (l === "ip helper-address " + S.fsrv.ip ? ["ip helper-address " + S.fsrv.ip.replace(/\.10$/, ".11")] : undefined))); assert.equal(cause(J, "relays"), "miss", s + " a digit off");
+    J = tryIt(def, s, editOn(sol, "dist1", (l) => (l === "no ip helper-address " + relay ? [] : undefined))); assert.equal(cause(J, "relays"), "other", s + " the edge router left on switch 1's relays");
+    J = tryIt(def, s, editOn(sol, "anxc", (l) => (/ip helper-address /.test(l) ? [] : undefined))); assert.equal(cause(J, "relays"), "miss", s + " the Annex left relaying to the edge router"); assert.equal(cause(J, "leases"), "none", s + " the classroom gets nothing now the pools are gone");
+    J = tryIt(def, s, editOn(sol, "edge", (l) => (/^no ip dhcp pool /.test(l) ? [] : undefined))); assert.equal(cause(J, "edge"), "pools", s + " the edge router's pools left");
+    J = tryIt(def, s, editOn(sol, "edge", (l) => (/^no ip dhcp excluded-address /.test(l) ? [] : undefined))); assert.equal(cause(J, "edge"), "excl", s + " its excluded addresses left");
+    J = tryIt(def, s, drop(sol, (a) => a.dev === "bn2" && /^ipconfig/.test(a.line))); assert.equal(cause(J, "leases"), "old", s + " a bench PC never asked again");
+    J = tryIt(def, s, drop(sol, (a) => a.dev === "hd1" && /^ipconfig/.test(a.line))); assert.equal(cause(J, "leases"), "old", s + " the help desk PC never asked again");
+    J = tryIt(def, s, editOn(sol, "anxc", (l) => (l === "copy running-config startup-config" ? [] : undefined))); assert.equal(cause(J, "saved"), "unsaved-anxc", s + " the Annex core unsaved");
+    J = tryIt(def, s, onConf(sol, (t) => inSub(t, V.office.net, (b) => b.replace(/  range [^\n]+\n/, "")))); assert.equal(cause(J, "pools"), "range", s + " a subnet with no range"); assert.equal(cause(J, "leases"), "none");
+    J = tryIt(def, s, onConf(sol, (t) => inSub(t, V.bench.net, (b) => b.replace("option routers " + V.bench.gw, "option routers " + V.office.gw)))); assert.equal(cause(J, "pools"), "wrongrt", s + " another network's gateway"); assert.equal(cause(J, "leases"), "gw");
+    J = tryIt(def, s, onConf(sol, (t) => t.replace(/option domain-name-servers [^;]+;/, "option domain-name-servers " + p.dns[0] + ";"))); assert.equal(cause(J, "pools"), "dns", s + " one DNS server, not two"); assert.equal(cause(J, "leases"), "dns");
+    J = tryIt(def, s, onDefs(sol, (t) => t.replace('INTERFACESv4="eno1"', 'INTERFACESv4="eno2"'))); assert.equal(cause(J, "listen"), "eno1", s + " the backup port alone"); assert.equal(cause(J, "running"), "failed", s + " no subnet for eno2's network: nothing to listen on");
+    J = tryIt(def, s, sol.concat([{ t: "cmd", dev: "fsrv", line: "sudo systemctl stop isc-dhcp-server", cli: true }])); assert.equal(cause(J, "running"), "off", s + " stopped at the end");
+    J = tryIt(def, s, editOn(sol, "edge", (l) => (l === "copy running-config startup-config" ? [] : undefined))); assert.equal(cause(J, "saved"), "unsaved-edge", s + " the edge router unsaved");
+  }
+});
+
+test("CP-J10: other right ways pass: the sample edited in place, started then enabled, a root shell, the interface unquoted, two ranges, DNS in each subnet, a reboot to start it", () => {
+  const def = byId["CP-J10"];
+  for (const s of seeds("CP-J10").slice(0, 2)) {
+    const v = B.open(def, s).v, p = v.plan, sol = def.solve(v);
+    let acts = onConf(sol, (t) => DH.SAMPLE.replace(/option domain-name-servers [^;]+;/, "option domain-name-servers " + p.dns.join(", ") + ";").replace("default-lease-time 600;", "default-lease-time " + p.dhcp.lease + ";") + "\n" + t.replace(/^option domain-name-servers [^\n]+\n/m, "").replace(/^default-lease-time [^\n]+\n/m, "").replace(/^max-lease-time [^\n]+\n/m, "").replace(/^ddns-update-style [^\n]+\n/m, ""));
+    acts = swap(acts, "sudo systemctl enable --now isc-dhcp-server", "sudo systemctl start isc-dhcp-server");
+    acts = acts.flatMap((a) => (a.line === "sudo systemctl start isc-dhcp-server" ? [a, Object.assign({}, a, { line: "sudo systemctl enable isc-dhcp-server" })] : [a]));
+    let J = tryIt(def, s, acts), c = B.check(J); assert.ok(c.res.every((r) => r.ok), s + " the sample edited, started then enabled: " + c.res.filter((r) => !r.ok).map((r) => r.id + ": " + r.ev).join("; "));
+    acts = onDefs(sol, (t) => t.replace('INTERFACESv4="eno1"', "INTERFACESv4=eno1"));
+    acts = onConf(acts, (t) => t.replace(/range ([\d.]+)\.21 ([\d.]+)\.254;/g, "range $1.21 $1.120;\n  range $1.121 $2.254;\n  option domain-name-servers " + p.dns.join(", ") + ";").replace(/^option domain-name-servers [^\n]+\n/m, ""));
+    const at = acts.findIndex((a) => a.dev === "fsrv" && a.line === "sudo nano /etc/dhcp/dhcpd.conf"), pw = acts[at + 1];   /* sudo -i, its password, then nano as root */
+    acts = acts.slice(0, at).concat([Object.assign({}, acts[at], { line: "sudo -i" }), pw, Object.assign({}, acts[at], { line: "nano /etc/dhcp/dhcpd.conf" })], acts.slice(at + 2));
+    acts = acts.flatMap((a) => (a.dev === "fsrv" && a.line === "dhcpd -t -cf /etc/dhcp/dhcpd.conf" ? [Object.assign({}, a, { line: "exit" }), a] : [a]));
+    acts = swap(acts, "sudo systemctl enable --now isc-dhcp-server", "sudo systemctl enable isc-dhcp-server");
+    acts = acts.flatMap((a) => (a.dev === "fsrv" && a.line === "sudo systemctl enable isc-dhcp-server" ? [a, Object.assign({}, a, { line: "sudo reboot" })] : [a]));
+    J = tryIt(def, s, acts); c = B.check(J); assert.ok(c.res.every((r) => r.ok), s + " a root shell, unquoted, two ranges, DNS per subnet, a reboot: " + c.res.filter((r) => !r.ok).map((r) => r.id + ": " + r.ev).join("; "));
+  }
+});
+
 test("the PCs waiting on a pool get their addresses the moment it's finished being typed: a console leaving the pool's mode starts a pass", () => {
   const def = byId["CP-J8"];
   for (const s of seeds("CP-J8").slice(0, 2)) {
@@ -444,6 +518,7 @@ test("no help names a password, an address or a VLAN number; Mason's ladder clim
     for (const x of [A.core.host, A.acc.host, A.acc.ip, A.link.hqIp, A.link.anxIp, A.link.net, A.link.hqDesc, A.link.anxDesc]) assert.ok(words.indexOf(x) < 0, def.id + " help names " + x);
     const Bk = p.backup, S = p.srv; assert.ok(!new RegExp("\\b" + Bk.id + "\\b").test(words) && words.indexOf(Bk.net) < 0, def.id + " help names the backup VLAN or its network");
     for (const x of [S.pw, S.user, S.fsrv.ip, S.fsrv.bip, S.bksrv.ip, S.bksrv.bip, "FSRV-", "BKSRV-"]) assert.ok(words.indexOf(x) < 0, def.id + " help names " + x);
+    for (const x of [p.dhcp.resv.ip, String(p.dhcp.lease)].concat(p.dns)) assert.ok(words.indexOf(x) < 0, def.id + " help names " + x);
     for (let i = 0; i < 5; i++) B.check(J);
     const m = B.mason(J); assert.ok(m && JSON.stringify(m).length > 20);
   }

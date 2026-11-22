@@ -1,7 +1,9 @@
 /* Level 4 build mode: the campus's work orders (Rafiki's HQ; the plan approved 16 November 2026: "Yes to the level 4 plans,
    build it out"). Each starts from the campus as the one before it left it. Every line is an ordered list of causes, as on
    the other levels: the first one really there is what the check saw, everything before it is ruled out by the network. */
-import { makeCampus, coreLinks, installCore, coreCables, fileServer, CAMPUS_RUN } from "../net/campus.js";
+import { makeCampus, coreLinks, installCore, coreCables, fileServer, dhcpKit, CAMPUS_RUN } from "../net/campus.js";
+import * as DH from "../net/dhcpd.js";
+import { ip2n } from "../net/util.js";
 import { Sim, SFP_MODULES, runLength } from "../net/sim.js";
 import { errDisabled, dotMac, unsaved, chanState, carries, l3Ifs, l3Route, pwOk } from "../net/swcli.js";
 import * as RT from "../net/rtcli.js";
@@ -1602,4 +1604,228 @@ const CJ9 = {
   summary() { return ["The backup server is racked in the 2F closet, on another floor from the files it copies, and on the servers network.", "The two servers have a backup network of their own: a VLAN from the 1F access switch, across both distribution switches, to the 2F access switch, with distribution switch 1 its root.", "It carries 9000-byte frames all the way: both servers' backup ports in their netplan files, every switch on the way reloaded with a jumbo MTU, and it still runs through distribution switch 2 if switch 1 fails."]; }
 };
 
-export const CAMPUS_JOBS = [CJ1, CJ2, CJ3, CJ4, CJ5, CJ6, CJ7, CJ8, CJ9];
+/* ------------------------------------------------------------ work order 10: the central DHCP server */
+/* every network the edge router hands out for today: its VLAN, its desks, the switches that relay its requests */
+const POOLS10 = function (p) { return [
+  { k: "svc", say: "the service desk network", V: p.vlans.svc, pcs: ["sd1", "hd1"], relays: ["dist1", "dist2"] },
+  { k: "bench", say: "the bench network", V: p.vlans.bench, pcs: ["bn1", "bn2"], relays: ["dist1", "dist2"] },
+  { k: "office", say: "the office network", V: p.vlans.office, pcs: ["mgr", "fin"], relays: ["dist1", "dist2"] },
+  { k: "train", say: "the training network", V: p.train, pcs: ["tr1", "tr2"], relays: ["dist1", "dist2"] },
+  { k: "cls", say: "the Annex classroom's network", V: p.annex.cls, pcs: ["cl1", "cl2"], relays: ["anxc"] }]; };
+const host10 = function (V, h) { return V.net.replace(/\.0$/, "." + h); };
+const F10 = function (sim, path) { const F = sim.d.fsrv.lx.files || {}; return F[path] ? F[path].text : ""; };
+const conf10 = function (sim) { return DH.parse(F10(sim, DH.CONF)); };
+const D10 = function (sim) { return sim.d.fsrv.lx.dhcpd; };
+const subFor = function (c, P) { return c.subnets.find(function (S) { return S.net === P.V.net; }) || null; };
+const pcSay = function (sim, id) { return sim.d[id].label.replace(/^[A-Z](?=[a-z])/, function (m) { return m.toLowerCase(); }); };
+function conf10Causes(sim, v) {
+  const p = v.plan, c = conf10(sim), e = c.errors[0], live = c.subnets.length > 0, miss = !e && live && POOLS10(p).find(function (P) { return !subFor(c, P); });
+  const own = !e && live && !miss && !c.subnets.some(function (S) { return S.net === p.vlans.servers.net; });
+  return [C("syntax", !!e, "The DHCP server can't read its file: line " + (e ? e.line : "") + ", " + (e ? e.msg : ""), "It reads the file.", "dhcpd -t -cf " + DH.CONF + ": " + DH.CONF + " line " + (e ? e.line + ": " + e.msg : "") + "."),
+    C("sample", !e && !live, "The DHCP server's file is still the package's sample: every subnet in it is commented out", "The file declares subnets of its own.", "cat " + DH.CONF + ": every subnet line starts with #."),
+    C("missing", !!miss, "The file declares no subnet for " + (miss ? miss.say : ""), "Every network the edge router hands out for has its subnet.", "cat " + DH.CONF + ": no subnet " + (miss ? miss.V.net : "") + "."),
+    C("own", own, "The file has no subnet declaration for the server's own network, the one its port 1 (eno1) is on: dhcpd won't listen on a port whose network it doesn't know", "Its own network is declared.", "journalctl -u isc-dhcp-server: No subnet declaration for eno1.")];
+}
+function pools10Causes(sim, v) {
+  const p = v.plan, c = conf10(sim), rows = c.errors.length ? [] : POOLS10(p).map(function (P) { const S = subFor(c, P); return S ? { P: P, S: S, o: DH.leaseOpts(c, S, null) } : null; }).filter(Boolean);
+  const lo = function (r) { return Math.min.apply(null, r.S.ranges.map(function (q) { return ip2n(q[0]); })); }, hi = function (r) { return Math.max.apply(null, r.S.ranges.map(function (q) { return ip2n(q[1]); })); };
+  const none = rows.find(function (r) { return !r.S.ranges.length; }), kept = !none && rows.find(function (r) { return lo(r) < ip2n(host10(r.P.V, p.excl + 1)); });
+  const small = !none && !kept && rows.find(function (r) { return lo(r) > ip2n(host10(r.P.V, p.excl + 1)) || hi(r) < ip2n(host10(r.P.V, 254)); });
+  const noRt = rows.find(function (r) { return !r.o.routers.length; }), own = !noRt && rows.find(function (r) { return r.o.routers[0] !== r.P.V.gw && r.P.k !== "cls" && (r.o.routers[0] === host10(r.P.V, 2) || r.o.routers[0] === host10(r.P.V, 3)); });
+  const wrongRt = !noRt && !own && rows.find(function (r) { return r.o.routers[0] !== r.P.V.gw; });
+  const named = rows.find(function (r) { return !r.o.dns.length; }), dns = !named && rows.find(function (r) { return r.o.dns.join(",") !== p.dns.join(","); });
+  const lease = rows.find(function (r) { return r.o.secs !== p.dhcp.lease; }), at = function (r) { return r ? r.P.say : ""; };
+  const nosub = c.errors.length ? POOLS10(p)[0] : POOLS10(p).find(function (P) { return !subFor(c, P); });
+  return [C("nosub", !!nosub, "There's nothing to hand out for " + (nosub ? nosub.say : "") + " yet: the file has no subnet for it" + (c.errors.length ? " it can read" : ""), "Every network has its subnet.", "cat " + DH.CONF + ": no subnet " + (nosub ? nosub.V.net : "") + "."),
+    C("range", !!none, Cap(at(none)) + "'s subnet has no range: there's nothing in it to hand out", "Every subnet has its range.", "cat " + DH.CONF + ": subnet " + (none ? none.P.V.net : "") + " has no range line."),
+    C("kept", !!kept, Cap(at(kept)) + "'s range reaches into the first twenty addresses, kept back for the gateway and the gear", "Every range keeps the first twenty back.", "cat " + DH.CONF + ": the range in subnet " + (kept ? kept.P.V.net : "") + "."),
+    C("small", !!small, Cap(at(small)) + "'s range isn't the records' twenty-first to the last: a range that small runs out", "Every range is the records'.", "cat " + DH.CONF + ": the range in subnet " + (small ? small.P.V.net : "") + "."),
+    C("routers", !!noRt, Cap(at(noRt)) + "'s leases carry no default gateway (no routers option): its PCs can't leave their own network", "Every lease carries its gateway.", "cat " + DH.CONF + ": no option routers for subnet " + (noRt ? noRt.P.V.net : "") + "."),
+    C("own", !!own, Cap(at(own)) + "'s routers option is one distribution switch's own address, not the gateway the two share: if that switch fails, its PCs lose their way out", "Every routers option is the shared gateway.", "cat " + DH.CONF + ": option routers " + (own ? own.o.routers[0] : "") + "."),
+    C("wrongrt", !!wrongRt, Cap(at(wrongRt)) + "'s routers option isn't its gateway", "Every routers option is its network's gateway.", "cat " + DH.CONF + ": option routers " + (wrongRt ? wrongRt.o.routers[0] : "") + "."),
+    C("dnsnamed", !!named, Cap(at(named)) + "'s leases carry no DNS servers the PCs can use" + (named && named.o.dnsNamed ? ": the sample's names, which nobody here can look up" : ""), "Every lease carries the campus's DNS servers.", "cat " + DH.CONF + ": option domain-name-servers."),
+    C("dns", !!dns, Cap(at(dns)) + "'s DNS servers aren't the campus's two", "Every lease carries the campus's two.", "cat " + DH.CONF + ": option domain-name-servers " + (dns ? dns.o.dns.join(", ") : "") + "."),
+    C("lease", !!lease, "Leases last " + (lease ? lease.o.secs : "") + " seconds" + (lease && lease.o.secs === 600 ? " (the sample's ten minutes)" : "") + ", not a day as the records say", "Leases last a day.", "cat " + DH.CONF + ": default-lease-time.")];
+}
+function resv10Causes(sim, v) {
+  const p = v.plan, R = p.dhcp.resv, c = conf10(sim), m = DH.macNorm(sim.d[R.dev].ifaces[0].mac), hs = c.errors.length ? [] : c.hosts;
+  const byIp = hs.find(function (h) { return h.ip === R.ip; }), byMac = hs.find(function (h) { return h.mac === m; });
+  const S = subnetFor(c, R.ip), inRange = !!S && S.ranges.some(function (q) { return ip2n(R.ip) >= ip2n(q[0]) && ip2n(R.ip) <= ip2n(q[1]); });
+  return [C("none", !byIp && !byMac, "The file reserves nothing for the help desk PC", "It has its reservation.", "cat " + DH.CONF + ": no host declaration."),
+    C("mac", !!byIp && byIp.mac !== m, "The reservation's hardware address isn't the help desk PC's", "It's the help desk PC's.", "ipconfig /all on the help desk PC: its Physical Address, against the host declaration's hardware ethernet."),
+    C("ip", !byIp && !!byMac, "The help desk PC's reservation isn't the records' address", "It's the records' address.", "cat " + DH.CONF + ": fixed-address " + (byMac ? byMac.ip : "") + "."),
+    C("range", !!byIp && byIp.mac === m && inRange, "The reserved address is inside the range too: the server could lend it to someone else", "It's outside the range.", "dhcpd -t: Dynamic and static leases present for " + R.ip + ".")];
+}
+const subnetFor = function (c, ip) { return c.errors.length ? null : DH.subnetOf(c, ip); };
+function listen10Causes(sim, v) {
+  const L = DH.interfacesOf(F10(sim, DH.DEFAULTS)), have = sim.d.fsrv.ifaces.map(function (f) { return f.name; }), bad = L.find(function (n) { return have.indexOf(n) < 0; });
+  return [C("empty", !L.length, "The DHCP server is set to listen on every port (INTERFACESv4 is empty): the backup network's too", "It listens on eno1 only.", "cat " + DH.DEFAULTS + ": INTERFACESv4=\"\"."),
+    C("nodev", !!bad, "INTERFACESv4 names " + (bad || "") + ", which this server doesn't have", "It names eno1.", "ip -br a on the file server: its ports are eno1 and eno2."),
+    C("eno1", !bad && L.length > 0 && L.indexOf("eno1") < 0, "INTERFACESv4 leaves out eno1, the port the relays' requests arrive on", "It names eno1.", "cat " + DH.DEFAULTS + "."),
+    C("eno2", !bad && L.indexOf("eno2") >= 0, "INTERFACESv4 includes eno2 as well, the backup network: no desk is there to serve", "It names eno1 only.", "cat " + DH.DEFAULTS + ".")];
+}
+function running10Causes(sim, v) {
+  const S = D10(sim), why = S.why === "conf" ? "it can't read its file" : S.why === "nodev" ? "INTERFACESv4 names a port it doesn't have" : "it found no port to listen on (no subnet declared for eno1's network)";
+  const stale = S.state === "active" && S.run && (S.run.file !== F10(sim, DH.CONF) || S.run.defaults !== F10(sim, DH.DEFAULTS));
+  return [C("off", S.state === "inactive", "The DHCP server isn't running", "It's running.", "systemctl status isc-dhcp-server: inactive (dead)."),
+    C("failed", S.state === "failed", "The DHCP server tried to start and stopped: " + why, "It's running.", "systemctl status isc-dhcp-server: failed; journalctl -u isc-dhcp-server says why."),
+    C("stale", stale, "The DHCP server is running from an older copy of its files: it reads them only as it starts", "It's running the files as they are now.", "systemctl status isc-dhcp-server: running since before the file was last written (ls -l /etc/dhcp)."),
+    C("disabled", !S.enabled, "The DHCP server isn't enabled: at the next restart it stays off", "It's enabled.", "systemctl is-enabled isc-dhcp-server: disabled.")];
+}
+function relays10(sim, v) {
+  const p = v.plan, out = [];
+  POOLS10(p).forEach(function (P) { P.relays.forEach(function (id) { const r = (sim.d[id].sw.svis || {})[P.V.id]; out.push({ P: P, id: id, h: (r && r.helpers) || [] }); }); });
+  return out;
+}
+function relays10Causes(sim, v) {
+  const S = v.plan.srv.fsrv, rows = relays10(sim, v), at = function (r) { return r ? said(sim, r.id) + "'s relay for " + r.P.say : ""; };
+  const none = rows.find(function (r) { return !r.h.length; }), bip = !none && rows.find(function (r) { return r.h.indexOf(S.bip) >= 0 && r.h.indexOf(S.ip) < 0; });
+  const miss = !none && !bip && rows.find(function (r) { return r.h.indexOf(S.ip) < 0; }), other = !none && !bip && !miss && rows.find(function (r) { return r.h.some(function (h) { return h !== S.ip; }); });
+  return [C("none", !!none, Cap(at(none)) + " is gone: nothing sends its requests on", "Every relay is there.", "show running-config on " + (none ? said(sim, none.id) : "") + ": interface Vlan" + (none ? none.P.V.id : "") + " has no ip helper-address."),
+    C("bip", !!bip, Cap(at(bip)) + " sends to the file server's backup address: the backup network isn't routed, so nothing gets there", "Every relay sends to the server's own address.", "show running-config on " + (bip ? said(sim, bip.id) : "") + ": ip helper-address " + S.bip + "."),
+    C("miss", !!miss, Cap(at(miss)) + " doesn't send to the file server", "Every relay sends to the file server.", "show running-config on " + (miss ? said(sim, miss.id) : "") + ": ip helper-address " + (miss ? miss.h.join(", ") : "") + "."),
+    C("other", !!other, Cap(at(other)) + " still sends to " + (other ? other.h.filter(function (h) { return h !== S.ip; }).join(", ") : "") + " as well: every request goes to the old server too", "Every relay sends to the file server alone.", "show running-config on " + (other ? said(sim, other.id) : "") + ": interface Vlan" + (other ? other.P.V.id : "") + ".")];
+}
+function edge10Causes(sim) {
+  const R = sim.d.edge.sw, pools = Object.keys(R.pools || {}), ex = (R.excluded || []).length;
+  return [C("pools", pools.length > 0, "The edge router still has DHCP pools (" + pools.join(", ") + "): two servers for the same networks, and a stale copy of the plan", "It has none.", "show ip dhcp pool on the edge router."),
+    C("excl", !pools.length && ex > 0, "The edge router still keeps addresses back for pools it no longer has", "It keeps none back.", "show running-config on the edge router: ip dhcp excluded-address.")];
+}
+function leases10Causes(sim, v) {
+  const p = v.plan, S = p.srv.fsrv, all = [];
+  POOLS10(p).forEach(function (P) { P.pcs.forEach(function (id) { all.push({ id: id, P: P, l: sim.d[id].ifaces[0].lease }); }); });
+  const none = all.find(function (r) { return !r.l; }), old = !none && all.find(function (r) { return r.l.server !== S.ip; });
+  const gw = !none && !old && all.find(function (r) { return r.l.gw !== r.P.V.gw; }), dns = !none && !old && !gw && all.find(function (r) { return (r.l.dns || []).join(",") !== p.dns.join(","); });
+  const hd = sim.d[p.dhcp.resv.dev].ifaces[0].lease, resv = !none && !old && !!hd && hd.ip !== p.dhcp.resv.ip;
+  const at = function (r) { return r ? pcSay(sim, r.id) : ""; };
+  return [C("none", !!none, "The " + at(none) + " has no address: its request gets no answer", "Every PC has its address.", "ipconfig on the " + at(none) + ": Autoconfiguration IPv4 Address 169.254...."),
+    C("old", !!old, "The " + at(old) + " still holds the address the edge router lent it: it hasn't asked again since the file server took over", "Every PC's lease is the file server's.", "ipconfig /all on the " + at(old) + ": DHCP Server " + (old ? old.l.server : "") + "."),
+    C("gw", !!gw, "The " + at(gw) + "'s lease from the file server has " + (gw && gw.l.gw ? "the wrong default gateway" : "no default gateway"), "Every lease has its gateway.", "ipconfig on the " + at(gw) + ": Default Gateway " + (gw ? gw.l.gw || "(none)" : "") + "."),
+    C("dns", !!dns, "The " + at(dns) + "'s lease doesn't carry the campus's DNS servers", "Every lease carries them.", "ipconfig /all on the " + at(dns) + ": DNS Servers."),
+    C("resv", resv, "The help desk PC isn't on its reserved address: it hasn't asked again since the reservation, or the reservation doesn't match it", "It's on its reserved address.", "ipconfig on the help desk PC: IPv4 Address " + (hd ? hd.ip : "") + ".")];
+}
+function fail10Causes(sim, v) {
+  const p = v.plan, S = p.srv.fsrv, s2 = copyOf(sim); power(s2, "dist1", false);
+  const rows = POOLS10(p).filter(function (P) { return P.relays.indexOf("dist1") >= 0; }).map(function (P) { const id = P.pcs[0]; s2.release(id); s2.dhcp(id, "renew"); const l = s2.d[id].ifaces[0].lease; return { P: P, id: id, l: l, out: !!l && !!s2.route(id, "8.8.8.8").internet }; });
+  const none = rows.find(function (r) { return !r.l || r.l.server !== S.ip; }), stuck = !none && rows.find(function (r) { return !r.out; });
+  return [C("relay", !!none, "With distribution switch 1 off, a PC on " + (none ? none.P.say : "") + " gets no address from the file server: distribution switch 2 doesn't send its requests there", "Distribution switch 2 relays every one.", "Picture distribution switch 1 off: show running-config on distribution switch 2, interface Vlan" + (none ? none.P.V.id : "") + "."),
+    C("gw", !!stuck, "With distribution switch 1 off, " + (stuck ? stuck.P.say : "") + "'s PCs get an address but can't leave their network: their gateway goes with the switch", "They still get out through switch 2.", "Picture distribution switch 1 off: the routers option in " + DH.CONF + ".")];
+}
+const ON10 = ["dist1", "dist2", "anxc"];
+function saved10Causes(sim) { return ON10.map(function (id) { return C("unsaved-" + id, unsaved(sim.d[id].sw), Cap(said(sim, id)) + " hasn't been saved", "Every switch and the router are saved.", "show startup-config on " + said(sim, id) + ": it's not what's running."); }).concat([C("unsaved-edge", unsaved(sim.d.edge.sw), "The edge router hasn't been saved", "It's saved.", "show startup-config on the edge router: it's not what's running.")]); }
+/* the file the walk-through writes: every desk network's subnet, the server's own, the help desk PC's reservation */
+function dhcpText10(v) {
+  const p = v.plan, R = p.dhcp.resv, m = v.dh.mac;
+  const L = ["# Rafiki's HQ and the Training Annex: one DHCP server for every desk network", "option domain-name-servers " + p.dns.join(", ") + ";", "default-lease-time " + p.dhcp.lease + ";", "max-lease-time " + p.dhcp.lease * 2 + ";", "ddns-update-style none;", "authoritative;", "",
+    "# the servers network, this server's own (eno1): nothing handed out here", "subnet " + p.vlans.servers.net + " netmask " + p.mask + " {", "}", ""];
+  POOLS10(p).forEach(function (P) { L.push("# " + P.say.replace(/^the /, ""), "subnet " + P.V.net + " netmask " + p.mask + " {", "  range " + host10(P.V, p.excl + 1) + " " + host10(P.V, 254) + ";", "  option routers " + P.V.gw + ";", "}", ""); });
+  L.push("host help-desk-pc {", "  hardware ethernet " + m + ";", "  fixed-address " + R.ip + ";", "}", "");
+  return L.join("\n");
+}
+
+const CJ10 = {
+  id: "CP-J10", level: "campus", title: "The central DHCP server: every desk's address from the file server, the edge router out of the job",
+  already: ["works", "saved"],
+  start(seed) {
+    const b = CJ9.start(seed), sim = b.sim;
+    for (const a of CJ9.solve(b.v, sim)) { if (a.t === "cmd") exec(sim, a.dev, a.line); else sim.apply(a); }
+    dhcpKit(sim.net);   /* isc-dhcp-server on the file server since last month, disabled until it's set up */
+    sim.cli = {};
+    const R = sim.d.edge.sw;   /* what the walk-through needs from the campus as it starts: the help desk PC's hardware address, the edge router's pools */
+    return { sim: sim, v: Object.assign({}, b.v, { runs: sim.net.extra.runs || 0, dh: { mac: DH.macNorm(sim.d[b.v.plan.dhcp.resv.dev].ifaces[0].mac), pools: Object.keys(R.pools || {}), excl: (R.excluded || []).map(function (e) { return e.slice(); }) } }) };
+  },
+  brief() { return { quote: "Every pool on the edge router is one more thing the router does, and every new network means another pool on it. The installer put a DHCP server on the file server last month and never set it up. Move the lot onto it: every desk network handed out from one place, the relays pointed there, the router out of the job. And the help desk PC keeps one address for good: the remote-support tools are set up for it.", from: "Rafiki, owner" }; },
+  mason: "A relay can only send a request somewhere that's listening. Build the server first and check what it says about itself, then move the relays, then take the old pools away, then have every desk ask again.",
+  limits: function (v) {
+    const p = v.plan, S = p.srv, R = p.dhcp.resv;
+    return ["The DHCP server: isc-dhcp-server, put on the file server (" + S.fsrv.host + ", " + S.fsrv.ip + " on its port 1, eno1) by the installer last month and disabled until it's set up. Log in on its console (its tab) as " + S.user + ", password " + S.pw + "; sudo asks for it too. Its settings: " + DH.CONF + ". Which ports it serves on: INTERFACESv4 in " + DH.DEFAULTS + ", eno1 only, never the backup network. It starts at every boot.",
+      "The pools: one for each network the edge router hands out for today. " + POOLS10(p).map(function (P) { return P.say.replace(/^the /, "") + " " + P.V.net + "/24 (gateway " + P.V.gw + ")"; }).join("; ") + ". Each hands out ." + (p.excl + 1) + " to .254, keeping the first twenty back for the gateway and the gear; its routers option is that gateway (on the HQ networks the address the two distribution switches share by standby; in the Annex, the Annex core's); DNS servers " + p.dns.join(" and ") + "; leases of a day (" + p.dhcp.lease + " seconds).",
+      "The help desk PC keeps " + R.ip + " for good: a reservation on the DHCP server (a host declaration with its hardware address and that fixed address). Its hardware address is on the PC (ipconfig /all); dhcpd writes hardware addresses with colons.",
+      "The relays: both distribution switches relay the HQ networks' requests (ip helper-address on each network's interface), the Annex core the classroom's; all of them to the file server's address, and nowhere else. Once the file server serves, the edge router hands out nothing: its pools and its excluded addresses come out.",
+      "Every PC on those networks asks again (ipconfig /release, then ipconfig /renew) and gets its address from the file server.",
+      "The switches and the router are locked as every one here: enable secret " + p.secret + ", console password " + p.console + ", SSH with the user " + p.user + ", password " + p.userPw + ". Your laptop's console cable is 1.8 m: the distribution switches and the edge router from the data room, the Annex core from the Annex's comms room."];
+  },
+  reqs: [
+    { id: "conf", text: "The DHCP server's file declares a subnet for every network the edge router hands out for, and for its own", causes: conf10Causes,
+      ok: function () { return "The file reads cleanly and declares every network, and the server's own."; },
+      rung1: function () { return "cat the DHCP server's file, and dhcpd -t to check it."; },
+      rung2: function () { return "dhcpd hands out only for the networks it's told about, and it only listens on a port whose own network is declared, even one it hands nothing out on."; } },
+    { id: "pools", text: "Each network's subnet hands out the records' range, with its gateway, the campus's DNS servers and a day's lease", causes: pools10Causes,
+      ok: function () { return "Every subnet's range, gateway, DNS servers and lease time are the records'."; },
+      rung1: function () { return "The DHCP server's file, subnet by subnet, against the records."; },
+      rung2: function () { return "A lease carries more than an address: the mask, the default gateway and the DNS servers all come from the server, and a PC uses whatever it's given."; } },
+    { id: "resv", text: "The help desk PC has its reservation: its hardware address, the records' address, outside the range", causes: resv10Causes,
+      ok: function () { return "The help desk PC's reservation is right."; },
+      rung1: function () { return "ipconfig /all on the help desk PC, and the host declaration in the DHCP server's file."; },
+      rung2: function () { return "A reservation is matched on the hardware address the PC sends; a fixed address should be one the range never lends."; } },
+    { id: "listen", text: "The DHCP server serves on eno1 only", causes: listen10Causes,
+      ok: function () { return "INTERFACESv4 names eno1 alone."; },
+      rung1: function () { return "The file that says which ports the DHCP server serves on, and ip -br a."; },
+      rung2: function () { return "Left empty, the server serves on every port it can; a server with a port on a network of its own should be told which port is for desks."; } },
+    { id: "running", text: "The DHCP server is running, from its files as they are now, and starts at every boot", causes: running10Causes,
+      ok: function () { return "It's running, from the files as they stand, and enabled."; },
+      rung1: function () { return "systemctl status isc-dhcp-server, then journalctl -u isc-dhcp-server."; },
+      rung2: function () { return "A service reads its settings as it starts: a change waits for a restart, and a start that fails says why in its log, not on the screen. Starting it and having it start at boot are two different settings."; } },
+    { id: "relays", text: "Every relay sends to the file server, and only there: both distribution switches for the HQ networks, the Annex core for the classroom", causes: relays10Causes,
+      ok: function () { return "Every relay sends to the file server alone."; },
+      rung1: function () { return "show running-config on both distribution switches and the Annex core: each network's interface."; },
+      rung2: function () { return "A PC's request is a broadcast that stops at its own network: the switch routing that network passes it on, as a unicast, to each address it's given, and only those."; } },
+    { id: "edge", text: "The edge router hands out nothing: its pools and excluded addresses are gone", causes: edge10Causes,
+      ok: function () { return "The edge router has no pools left."; },
+      rung1: function () { return "show ip dhcp pool and show running-config on the edge router."; },
+      rung2: function () { return "Two servers for one network is a fault waiting to happen: the old one comes out when the new one takes over."; } },
+    { id: "leases", text: "Every PC on those networks holds a lease from the file server, with its gateway and DNS servers; the help desk PC its reserved address", causes: leases10Causes,
+      ok: function () { return "Every PC's lease is the file server's; the help desk PC is on its reserved address."; },
+      rung1: function () { return "ipconfig /all on each PC: its address, gateway, DNS servers and the DHCP server it came from."; },
+      rung2: function () { return "A PC keeps the lease it has until it asks again; what it's given then is what the new server says."; } },
+    { id: "fail", text: "If distribution switch 1 fails, every HQ desk still gets its address and its way out", causes: fail10Causes,
+      ok: function () { return "With distribution switch 1 off, every HQ network still gets its leases through switch 2, and leaves by the shared gateway."; },
+      rung1: function () { return "Picture distribution switch 1 off: show running-config on distribution switch 2, and the routers options in the DHCP server's file."; },
+      rung2: function () { return "Both switches relay, so either can carry a request; and the gateway a lease hands out should be the one that moves when a switch fails."; } },
+    { id: "works", text: "Everyone still works: every PC online, both printers and every switch answering", causes: reachCauses,
+      ok: function () { return "Every PC is online; both printers and every switch answer."; },
+      rung1: function () { return "ping 8.8.8.8 from each PC; the printers and the switches from the service desk."; },
+      rung2: function () { return "Moving the server changes where a lease comes from, not what it should say."; } },
+    { id: "saved", text: "Both distribution switches, the Annex core and the edge router are saved", causes: saved10Causes,
+      ok: function () { return "All four are saved."; }, rung1: function () { return "show startup-config against show running-config on each."; }, rung2: function () { return "Only what's saved survives a power cut, or a reload."; } }
+  ],
+  solve(v, sim) {
+    const p = v.plan, S = p.srv, out = [], n = sim ? sim.net.extra.runs || 0 : v.runs || 0, relay = coreLinks(p)[0].ia;
+    let k = 0; const lay = function (a, b) { k++; out.push({ t: "lay", a: a, b: b }); return n + k; };
+    const c = function (l) { out.push({ t: "cmd", dev: "tech", line: l, cli: true }); };
+    const login = function () { [""].concat([p.console, "enable", p.secret, "configure terminal"]).forEach(c); };
+    const save = function () { c("end"); c("copy running-config startup-config"); c(""); };
+    let con = 0; const consoleTo = function (dev) { if (con) out.push({ t: "pull", cable: "c-console-" + con }); con = lay({ dev: "tech", port: "USB-C" }, { dev: dev, port: "CONSOLE" }); };
+    const L = function (l, text) { const a = { t: "cmd", dev: "fsrv", line: l, cli: true }; if (text != null) a.text = text; out.push(a); };
+    /* the server first: its file, its port, started and enabled */
+    [""].concat([S.user, S.pw]).forEach(function (l) { L(l); });
+    L("systemctl status isc-dhcp-server");
+    L("sudo nano " + DH.CONF); L(S.pw); L("^O", dhcpText10(v)); L("^X");
+    L("sudo nano " + DH.DEFAULTS); L("^O", DH.DEFAULTS_TEXT.replace("INTERFACESv4=\"\"", "INTERFACESv4=\"eno1\"")); L("^X");
+    L("dhcpd -t -cf " + DH.CONF); L("sudo systemctl enable --now isc-dhcp-server"); L("systemctl status isc-dhcp-server");
+    /* the relays: both distribution switches, then the edge router's pools out */
+    ["dist1", "dist2"].forEach(function (id) { consoleTo(id); login(); POOLS10(p).filter(function (P) { return P.relays.indexOf(id) >= 0; }).forEach(function (P) { c("interface vlan " + P.V.id); c("no ip helper-address " + relay); c("ip helper-address " + S.fsrv.ip); c("exit"); }); save(); });
+    consoleTo("edge"); login();
+    v.dh.pools.forEach(function (nm) { c("no ip dhcp pool " + nm); });
+    v.dh.excl.forEach(function (e) { c("no ip dhcp excluded-address " + e[0] + (e[1] && e[1] !== e[0] ? " " + e[1] : "")); });
+    save();
+    /* the Annex core, from the Annex's comms room */
+    out.push({ t: "pull", cable: "c-console-" + con }); con = 0; out.push({ t: "place", dev: "tech", room: "acomms" });
+    consoleTo("anxc"); login(); c("interface vlan " + p.annex.cls.id); c("no ip helper-address " + relay); c("ip helper-address " + S.fsrv.ip); c("exit"); save();
+    out.push({ t: "pull", cable: "c-console-" + con }); out.push({ t: "place", dev: "tech", room: "data" });
+    /* every desk asks again */
+    POOLS10(p).forEach(function (P) { P.pcs.forEach(function (id) { out.push({ t: "cmd", dev: id, line: "ipconfig /release" }, { t: "cmd", dev: id, line: "ipconfig /renew" }); }); });
+    return out;
+  },
+  answer(v) {
+    const p = v.plan, S = p.srv, R = p.dhcp.resv;
+    return ["On the file server's console: log in; sudo nano " + DH.CONF + ": the campus's DNS servers (option domain-name-servers " + p.dns.join(", ") + ";), default-lease-time " + p.dhcp.lease + ";, an empty subnet for the servers network (" + p.vlans.servers.net + "), and for each desk network a subnet with range ." + (p.excl + 1) + " to .254 and option routers its gateway; a host declaration for the help desk PC (hardware ethernet its address with colons, fixed-address " + R.ip + "); Ctrl+O, Ctrl+X.",
+      "sudo nano " + DH.DEFAULTS + ": INTERFACESv4=\"eno1\". Check with dhcpd -t -cf " + DH.CONF + ", then sudo systemctl enable --now isc-dhcp-server, and systemctl status isc-dhcp-server.",
+      "On each distribution switch, for each HQ desk network's interface: no ip helper-address (the edge router's), ip helper-address " + S.fsrv.ip + "; save. On the Annex core the same for the classroom's interface.",
+      "On the edge router: no ip dhcp pool for each pool, no ip dhcp excluded-address for each line; save.",
+      "On every desk PC: ipconfig /release, then ipconfig /renew."];
+  },
+  summary() { return ["One DHCP server for the whole campus: the file server hands out every desk network's addresses, each with its gateway, the campus's DNS servers and a day's lease, and starts at every boot.", "Both distribution switches and the Annex core relay to it, so a desk still gets its address if distribution switch 1 fails.", "The edge router is out of the job; the help desk PC keeps its address by reservation."]; }
+};
+
+export const CAMPUS_JOBS = [CJ1, CJ2, CJ3, CJ4, CJ5, CJ6, CJ7, CJ8, CJ9, CJ10];

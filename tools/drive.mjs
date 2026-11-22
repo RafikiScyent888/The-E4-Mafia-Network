@@ -2302,7 +2302,12 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
     if (a.t === "place") return place(p, a.dev, a.room);   /* the 4F access switch out of its box, your laptop carried upstairs (CP-J7): the Place form */
     if (a.t === "lay") return lay(p, a.a.dev, a.a.port, a.b.dev, a.b.port);
     if (a.t === "sfp") { await dev(p, a.dev); await tab(p, "Physical"); await p.click('.acts:has-text("' + a.slot + ':") button:has-text("in a ' + a.type + ' module")'); await p.waitForTimeout(80); return; }   /* a module from the van, on the switch's Physical tab (CP-J8) */
-    if (a.t === "cmd" && a.cli && (a.dev === "fsrv" || a.dev === "bksrv")) { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== a.dev) { await dev(p, a.dev); await tab(p, "Console"); } return type(p, a.line); }   /* a rack server's own console (CP-J9) */
+    if (a.t === "cmd" && a.cli && (a.dev === "fsrv" || a.dev === "bksrv")) {   /* a rack server's own console (CP-J9) */
+      if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== a.dev) { await dev(p, a.dev); await tab(p, "Console"); }
+      if (a.line === "^O") { await p.fill(".term .nano-text", a.text); await p.press(".term .nano-text", "Control+o"); await p.click(".term .nano-ok"); await p.waitForTimeout(40); return; }   /* nano (CP-J10): the file typed in, written out, its name kept */
+      if (a.line === "^X") { await p.press(".term .nano-text", "Control+x"); await p.waitForTimeout(40); return; }
+      return type(p, a.line);
+    }
     if (a.t === "pull") { const i = await p.evaluate((id) => window.__e4b.T.sim.net.cables.findIndex((c) => c.id === id), a.cable); check(i >= 0, "the cable to pull, " + a.cable + ", is in the runs table"); await p.click("#runs tbody tr:nth-child(" + (i + 1) + ") button"); await p.waitForTimeout(40); return; }
     if (a.t === "cmd" && a.cli) { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== "tech") await dev(p, "tech"); if (!(await p.$('.win-tabs button[aria-selected="true"]:text-is("Serial terminal")'))) await tab(p, "Serial terminal"); return type(p, a.line); }
     if (a.t === "cmd") { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== a.dev) { await dev(p, a.dev); await tab(p, "Command Prompt"); } return type(p, a.line); }
@@ -2317,12 +2322,23 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
       const plan = await BJ(p, () => window.__e4b.T.sim.net.plan);
       check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed && /Level 4 · Campus/.test(await p.$eval("#labtitle", (n) => n.textContent)), tag + "opens the job on the campus asked for, under Level 4 · Campus");
       const lim = await p.$eval(".limits", (n) => n.textContent);
-      check([plan.secret].concat(job === "CP-J4" ? [plan.console, plan.vlans.mgmt.gw] : job === "CP-J5" ? [plan.console, plan.sw.core1.host, plan.sw.core2.host] : job === "CP-J6" ? [plan.console, plan.sw.dist1.ip, plan.sw.dist2.ip] : job === "CP-J7" ? [plan.console, plan.userPw, plan.sw.acc4.host, plan.sw.acc4.ip, plan.train.name] : job === "CP-J8" ? [plan.console, plan.userPw, plan.annex.core.host, plan.annex.acc.host, plan.annex.acc.ip, plan.annex.link.hqIp, plan.annex.link.anxIp, plan.annex.cls.gw, plan.annex.cls.name] : job === "CP-J9" ? [plan.console, plan.srv.user, plan.srv.pw, plan.srv.bksrv.host, plan.srv.bksrv.ip, plan.srv.bksrv.bip, plan.srv.fsrv.bip, plan.backup.name, "BKSRV-BACKUP", "8972"] : [plan.user, plan.userPw]).every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the campus's records the job needs");
+      check([plan.secret].concat(job === "CP-J4" ? [plan.console, plan.vlans.mgmt.gw] : job === "CP-J5" ? [plan.console, plan.sw.core1.host, plan.sw.core2.host] : job === "CP-J6" ? [plan.console, plan.sw.dist1.ip, plan.sw.dist2.ip] : job === "CP-J7" ? [plan.console, plan.userPw, plan.sw.acc4.host, plan.sw.acc4.ip, plan.train.name] : job === "CP-J8" ? [plan.console, plan.userPw, plan.annex.core.host, plan.annex.acc.host, plan.annex.acc.ip, plan.annex.link.hqIp, plan.annex.link.anxIp, plan.annex.cls.gw, plan.annex.cls.name] : job === "CP-J9" ? [plan.console, plan.srv.user, plan.srv.pw, plan.srv.bksrv.host, plan.srv.bksrv.ip, plan.srv.bksrv.bip, plan.srv.fsrv.bip, plan.backup.name, "BKSRV-BACKUP", "8972"] : job === "CP-J10" ? [plan.console, plan.srv.user, plan.srv.pw, plan.srv.fsrv.host, plan.srv.fsrv.ip, plan.dhcp.resv.ip, String(plan.dhcp.lease), "INTERFACESv4", "/etc/dhcp/dhcpd.conf", plan.train.gw, plan.annex.cls.gw] : [plan.user, plan.userPw]).every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the campus's records the job needs");
       await checkJob(p);
       check((await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do");
       const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
+      let wrote = 0;
       for (const a of sol) {
+        if (job === "CP-J10" && a.line === "^O" && !wrote) {   /* nano open on the DHCP server's file: its whole path, what it read, its keys on screen */
+          const st = await p.evaluate(() => ({ path: document.querySelector(".term .nano-path").textContent, status: document.querySelector(".term .nano-status").textContent, keys: [...document.querySelectorAll(".term .nano-keys button")].map((b) => { const r = b.getBoundingClientRect(), t = document.querySelector(".term").getBoundingClientRect(); return r.height > 0 && r.bottom <= innerHeight && r.bottom <= t.bottom + 0.5 && r.top >= t.top; }), out: document.querySelector(".term pre").hidden }));
+          check(st.path === "/etc/dhcp/dhcpd.conf" && st.status === "[ Read 71 lines ]" && st.keys.length === 2 && st.keys.every(Boolean) && st.out, tag + "nano on the DHCP server's file: its whole path, [ Read 71 lines ], Write Out and Exit on screen, the screen given over to it");
+        }
         await step(p, a);
+        if (job === "CP-J10" && a.line === "^O" && !wrote++) check(/^\[ Wrote \d+ lines \]$/.test(await p.$eval(".term .nano-status", (n) => n.textContent)), tag + "nano wrote the file out: [ Wrote ... lines ]");
+        if (job === "CP-J10" && a.t === "lay" && a.b.dev === "anxc" && a.b.port === "CONSOLE") {   /* part way: your laptop carried to the Annex's comms room, on the Annex core's console: the floor plan's names and tiles clear.
+             Not its runs: with your laptop out of the data room, core switch 1's run to distribution switch 2 passes under "Distribution switch 1"
+             (CP-J8's part way the same, live since 22 November 2026): the data room has no clear curve for it. Known, not fixed: see the CP-J10 notes */
+          await p.click("#vPhy"); await p.waitForTimeout(60); const mp = await labelsClear(p, "plan"); check(mp.n > 0 && !mp.out.length, tag + "part way, your laptop in the Annex comms room: the floor plan's names clear" + (mp.out.length ? " (" + mp.out.join("; ") + ")" : ""));
+        }
         if (job === "CP-J9" && a.t === "lay" && a.b.dev === "acc2" && a.b.port === "CONSOLE") {   /* part way: your laptop carried to the 2F closet, on the 2F switch's console, the floor plan clear */
           await p.click("#vPhy"); await p.waitForTimeout(60); const mp = await labelsClear(p, "plan"); check(mp.n > 0 && !mp.out.length, tag + "part way, your laptop in the 2F closet: the floor plan's names clear" + (mp.out.length ? " (" + mp.out.join("; ") + ")" : ""));
           await planBothFonts(p, tag + "part way, your laptop in the 2F closet");
@@ -2408,6 +2424,30 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
         check(pnames.indexOf("File server") >= 0 && pnames.indexOf("Backup server") >= 0, tag + "the floor plan: the file server in the data room, the backup server in the 2F closet");
         if (seed === 11) { await dev(p, "bksrv"); await tab(p, "Physical"); await p.waitForTimeout(200); const pt = await p.$eval(".win-body", (n) => n.textContent); check(/3D model is still to be built: it waits for photographs/.test(pt) && /port 2 \(eno2\)/.test(pt), tag + "the backup server's Physical tab: its cables, and its 3D model waiting for photographs, said so"); }
       }
+      if (job === "CP-J10") {   /* every desk's lease from the file server, seen from the desks; the server over SSH: running, enabled, its leases; the relays and the edge router */
+        const S = plan.srv, R = plan.dhcp.resv, sv = async (lines) => { for (const l of ["ssh " + S.user + "@" + S.fsrv.ip, S.pw].concat(lines)) await step(p, { t: "cmd", dev: "sd1", line: l }); const out = await term(p); await step(p, { t: "cmd", dev: "sd1", line: "exit" }); return out; };
+        await step(p, { t: "cmd", dev: "bn1", line: "ipconfig /all" }); const ia = (await term(p)).split("ipconfig /all").pop();
+        check(new RegExp("DHCP Server[ .]*: " + S.fsrv.ip.replace(/\./g, "\\.")).test(ia) && new RegExp("Default Gateway[ .]*: " + plan.vlans.bench.gw.replace(/\./g, "\\.")).test(ia), tag + "ipconfig /all on Bench PC 1: its lease from the file server, its gateway the bench network's");
+        await step(p, { t: "cmd", dev: "hd1", line: "ipconfig" }); check(re(R.ip).test((await term(p)).split("ipconfig").pop()), tag + "the help desk PC is on its reserved address, " + R.ip);
+        const o = await sv(["systemctl status isc-dhcp-server", "dhcp-lease-list"]), st = o.slice(o.lastIndexOf("systemctl status"), o.lastIndexOf("dhcp-lease-list")), ll = o.slice(o.lastIndexOf("dhcp-lease-list"));
+        check(/Active: active \(running\)/.test(st) && /; enabled; preset: enabled\)/.test(st) && / eno1\n/.test(st), tag + "systemctl status on the file server, over SSH from the service desk: running, enabled, on eno1");
+        check((ll.match(/^[0-9a-f:]{17}\s+10\./gm) || []).length >= 10 && re(R.ip).test(ll), tag + "dhcp-lease-list on the file server: every desk's lease, the help desk PC's reserved address among them");
+        const o2 = await ssh(p, plan, plan.sw.dist2.ip, ["show running-config | include helper"]), hl = o2.slice(o2.lastIndexOf("show running-config"));
+        check(hl.split("\n").filter((l) => /ip helper-address/.test(l)).length === 4 && hl.split("\n").filter((l) => /ip helper-address/.test(l)).every((l) => l.indexOf(S.fsrv.ip) >= 0), tag + "show running-config | include helper on distribution switch 2: four relays, every one to the file server");
+        if (seed === 11) {   /* nano's other ways out: changes not written (it asks), and a file opened without sudo (it won't write) */
+          const L = async (l) => step(p, { t: "cmd", dev: "sd1", line: l });
+          await L("ssh " + S.user + "@" + S.fsrv.ip); await L(S.pw); await L("nano /etc/dhcp/dhcpd.conf");
+          check(/is unwritable/.test(await p.$eval(".term .nano-status", (n) => n.textContent)), tag + "nano over SSH without sudo: the file opens, [ File ... is unwritable ]");
+          await p.press(".term .nano-text", "End"); await p.type(".term .nano-text", "# not mine"); await p.press(".term .nano-text", "Control+o"); await p.click(".term .nano-ok"); await p.waitForTimeout(40);
+          check(/Error writing \/etc\/dhcp\/dhcpd\.conf: Permission denied/.test(await p.$eval(".term .nano-status", (n) => n.textContent)), tag + "Ctrl+O without sudo: [ Error writing ...: Permission denied ]");
+          await p.press(".term .nano-text", "Control+x"); check(/Save modified buffer\?/.test(await p.$eval(".term .nano-q", (n) => n.textContent)), tag + "Ctrl+X with changes not written: nano asks Save modified buffer?");
+          const on = await p.evaluate(() => { const t = document.querySelector(".term").getBoundingClientRect(); return [...document.querySelectorAll(".term .nano-a button, .term .nano-keys button")].map((b) => { const r = b.getBoundingClientRect(); return r.height > 0 && r.top >= t.top && r.bottom <= t.bottom + 0.5 && r.bottom <= innerHeight; }); });
+          check(on.length === 5 && on.every(Boolean), tag + "the question's three answers and nano's two keys inside the terminal and on screen (" + on.join(",") + ")");
+          await p.click(".term .nano-no"); await p.waitForTimeout(40); await L("cat /etc/dhcp/dhcpd.conf");
+          check(!/# not mine/.test(await term(p)) && await p.isVisible(".term .cmdin"), tag + "No: nano leaves, the file as it was, the prompt back");
+          await L("exit");
+        }
+      }
       if (job === "CP-J4" && seed === 11) {   /* the bars over a long title, easier reading's font in: the sticky columns sit under them (16 November 2026: their height was measured only at load) */
         await p.click("#dys"); await p.evaluate(() => document.fonts.ready); await p.waitForTimeout(250);
         const ch = await p.evaluate(() => [document.querySelector(".chrome").offsetHeight, parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--chromeH"))]);
@@ -2420,7 +2460,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
       const fp = await labelsClear(p, "plan"); check(fp.n > 0 && !fp.out.length, tag + "the finished campus's floor plan: all " + fp.n + " names of devices and rooms on it, clear of each other and of every tile" + (fp.out.length ? " (" + fp.out.join("; ") + ")" : ""));
       await dysClear(p, tag + "the finished campus");
       await planBothFonts(p, tag + "the finished campus");
-      await p.reload(); await p.waitForTimeout(350);
+      await p.reload({ timeout: 15000 }); await p.waitForTimeout(350);   /* a campus work order rebuilds its starting campus from every one before it: about four seconds on an idle machine (CP-J9 and CP-J10 alike), over the five a click is given on a busy one */
       check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)) && /done 1×|Done 1×/.test(await p.$eval('#queue [data-j="' + job + '"]', (n) => n.textContent)), tag + "still done after a reload, and the list counts it");
     } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0] + (process.env.STACK ? " " + (String(e.stack).match(/drive\.mjs:\d+/g) || []).join(" ") : "")); }
     await ctx.close();

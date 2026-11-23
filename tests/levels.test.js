@@ -40,5 +40,17 @@ test("the small business is complete: 10 work orders and 15 tickets, all built (
   assert.equal(LEVELS[3].later, undefined, "the campus is no longer built later (stage 1, CP-J1 to CP-J4)");
   assert.equal(isOpen(4, all(2)), false, "the campus stays locked while the small business isn't finished");
   assert.equal(isOpen(4, all(3)), true, "and opens once it is");
-  assert.equal(built(LEVELS[3]), false, "the campus is still being built: it can't count as finished yet");
+});
+
+test("the campus is complete: 10 work orders and 15 tickets, all built (CP-15 the last, 23 November 2026); doing them all finishes it", function () {
+  const L = LEVELS[3];
+  assert.equal(L.later, undefined); assert.equal(L.planned, undefined, "a complete level carries no planned"); assert.equal(L.coming, undefined, "and says nothing more is coming");
+  assert.equal(L.jobs.length, 10); assert.equal(L.tickets.length, 15);
+  assert.deepEqual(L.jobs.slice(0, 2), ["CP-J1", "CP-J2"]); assert.equal(L.tickets[L.tickets.length - 1], "CP-15");
+  assert.equal(built(L), true);
+  assert.equal(finished(L, all(3)), false, "nothing of it done yet");
+  const P = all(4); delete P.j[L.jobs[L.jobs.length - 1]];
+  assert.equal(finished(L, P), false, "every ticket and all but one work order: not finished");
+  assert.equal(finished(L, all(4)), true, "everything done: finished");
+  assert.equal(LEVELS[4].later, true, "the enterprise level is still built later");
 });

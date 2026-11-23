@@ -30,8 +30,9 @@ export const LEVELS = [
      16 November 2026, so it no longer carries planned */
   { n: 3, id: "business", name: "Small business", the: "the small business", tickets: BUSINESS_TICKETS.map(function (t) { return t.id; }), jobs: BUSINESS_JOBS.map(function (d) { return d.id; }) },
   /* 10 work orders and 15 tickets, as planned 16 November 2026 (the owner: "Yes to the level 4 plans, build it out"), going live stage
-     by stage, smallest first: the work orders all live by 22 November 2026, then the tickets one at a time */
-  { n: 4, id: "campus", name: "Campus", the: "the campus", tickets: CAMPUS_TICKETS.map(function (t) { return t.id; }), jobs: CAMPUS_JOBS.map(function (d) { return d.id; }), planned: 25, coming: "more tickets on the way" },
+     by stage, smallest first: the work orders all live by 22 November 2026, then the tickets one at a time, the last (CP-15) live
+     23 November 2026, so it no longer carries planned */
+  { n: 4, id: "campus", name: "Campus", the: "the campus", tickets: CAMPUS_TICKETS.map(function (t) { return t.id; }), jobs: CAMPUS_JOBS.map(function (d) { return d.id; }) },
   { n: 5, id: "enterprise", name: "Enterprise", the: "the enterprise level", tickets: [], jobs: [], later: true }
 ];
 const TITLES = {}; HOME_TICKETS.concat(JOBS, OFFICE_JOBS, OFFICE_TICKETS, BUSINESS_JOBS, BUSINESS_TICKETS, CAMPUS_JOBS, CAMPUS_TICKETS).forEach(function (d) { TITLES[d.id] = d.title; });

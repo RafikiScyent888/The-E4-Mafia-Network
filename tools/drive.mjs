@@ -1381,7 +1381,7 @@ if (!process.env.ONLY || process.env.ONLY === "tickets-campus" || process.env.ON
       await p.click('#left [data-level="4"]').catch(() => {}); await p.waitForTimeout(60);
       const q = await p.$$eval('#queue [data-t^="CP-"]', (l) => l.map((b) => b.dataset.t + ":" + (b.getAttribute("aria-disabled") === "true" ? "off" : "on")));
       check(q.join(",") === CAMPUS_TICKETS.map((d) => d.id + ":on").join(","), "campus tickets: the level 4 queue lists the campus tickets built (" + q.join(",") + ")");
-      check(/^Tier 4 · Campus · tickets/.test(await p.$eval("#queue li.tier", (n) => n.textContent)) && /More tickets on the way/.test(await p.$eval("#queue", (n) => n.textContent)), "campus tickets: the queue's heading says Tier 4 · Campus, and more tickets on the way");
+      check(/^Tier 4 · Campus · tickets/.test(await p.$eval("#queue li.tier", (n) => n.textContent)) && !/on the way|built later/i.test(await p.$eval("#queue", (n) => n.textContent)), "campus tickets: the queue's heading says Tier 4 · Campus, and nothing more is coming (all 15 built)");
       const jobs = await p.$$eval("#queue a.joblink", (l) => l.map((a) => [a.querySelector(".num").textContent, a.querySelector(".what").textContent]));
       check(jobs.length === 10 && jobs.every((j) => /^CP-J\d+$/.test(j[0]) && j[1].length > 20), "campus tickets: the queue's ten work orders, each with its title (" + jobs.map((j) => j[0] + ":" + j[1].length).join(" ") + ")");
       check(/campus network/.test(await p.$eval("#tk .from", (n) => n.textContent)) && /Tier 4 · Campus/.test(await p.$eval("#labtitle", (n) => n.textContent)), "campus tickets: the card says campus network, the title Tier 4 · Campus");
@@ -2062,7 +2062,37 @@ if (!process.env.ONLY || process.env.ONLY === "business" || process.env.ONLY ===
     await p.goto(base + "index.html"); await p.waitForTimeout(350);
     const L3 = await p.$eval('#left [data-level="3"]', (n) => n.textContent), L4 = await p.$eval('#left [data-level="4"]', (n) => n.textContent);
     check(/Finished: 15 of 15 tickets, 10 of 10 work orders/.test(L3), tag + "Level 3 says finished, 15 of 15 tickets and 10 of 10 work orders (" + L3 + ")");
-    const nT4b = LEVELS[3].tickets.length; check(L4 === "Level 4 · Campus0 of " + nT4b + " ticket" + (nT4b === 1 ? "" : "s") + ", 0 of " + LEVELS[3].jobs.length + " work orders done · " + LEVELS[3].coming && !/built later/.test(L4) && !(await p.$eval('#left [data-level="4"]', (n) => n.parentNode.classList.contains("locked"))), tag + "Level 4 is open, counts its tickets and work orders, and says more are on the way (" + L4 + ")");
+    const nT4b = LEVELS[3].tickets.length; check(L4 === "Level 4 · Campus0 of " + nT4b + " ticket" + (nT4b === 1 ? "" : "s") + ", 0 of " + LEVELS[3].jobs.length + " work orders done" + (LEVELS[3].coming ? " · " + LEVELS[3].coming : "") && !/built later/.test(L4) && !(await p.$eval('#left [data-level="4"]', (n) => n.parentNode.classList.contains("locked"))), tag + "Level 4 is open, counts its tickets and work orders, and says more are on the way (" + L4 + ")");
+  } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+  await ctx.close();
+}
+
+/* the campus complete (23 November 2026: its 10 work orders and 15 tickets all built, CP-15 the last): with every ticket solved and every
+   work order but the last done, finishing the last one finishes Level 4; the enterprise level is still built later */
+if (!process.env.ONLY || process.env.ONLY === "campus" || process.env.ONLY === "tickets-campus") {
+  const { LEVELS } = await import("../js/desk/levels.js");
+  const net = { t: {}, solved: Object.fromEntries(LEVELS.slice(0, 4).flatMap((L) => L.tickets).map((id) => [id, 1])) };
+  const lastJob = LEVELS[3].jobs[LEVELS[3].jobs.length - 1];
+  const built = { j: {}, done: Object.fromEntries(LEVELS.slice(0, 3).flatMap((L) => L.jobs).concat(LEVELS[3].jobs.slice(0, -1)).map((id) => [id, 1])) };
+  const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
+  await ctx.addInitScript(([n, b]) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify(n)); localStorage.setItem("e4-build-v1", JSON.stringify(b)); sessionStorage.setItem("seeded", "1"); } }, [net, built]);
+  const p = await ctx.newPage(); p.setDefaultTimeout(20000); p.on("pageerror", (e) => errs.push("campus finished: " + e.message));
+  const tag = "levels, the campus finished: ";
+  try {
+    await p.goto(base + "index.html", { timeout: 60000 }); await p.waitForTimeout(350);
+    const before = await p.$eval('#left [data-level="4"]', (n) => n.textContent);
+    check(before === "Level 4 · Campus15 of 15 tickets, 9 of 10 work orders done", tag + "before the last work order, Level 4 counts 15 of 15 tickets and 9 of 10 work orders, and says nothing more is coming (" + before + ")");
+    await p.click('#left [data-level="4"]'); await p.waitForTimeout(60);
+    check(!/on the way|built later/i.test(await p.$eval("#queue", (n) => n.textContent)), tag + "the desk's queue for the campus says nothing more is coming");
+    await p.goto(base + "build.html", { timeout: 60000 }); await p.waitForTimeout(350);
+    await p.evaluate((id) => { const c = window.__e4b; c.openJob(id, true, 2026); const J = c.T; J.def.solve(J.v, J.sim).forEach((a) => c.act(a)); }, lastJob);
+    await p.click("#doCheck"); await p.waitForTimeout(400);   /* the real button: it's what counts a job done */
+    const box = await p.$eval("#check", (n) => n.textContent);
+    check(/Level 4 finished/.test(box) && /Enterprise is still being built/.test(box) && !/on the way|so far/.test(box), tag + lastJob + "'s done box says Level 4 is finished and the enterprise level is still being built (" + box.slice(box.indexOf("Level 4"), box.indexOf("Level 4") + 70) + ")");
+    await p.goto(base + "index.html", { timeout: 60000 }); await p.waitForTimeout(350);
+    const L4 = await p.$eval('#left [data-level="4"]', (n) => n.textContent), L5 = await p.$eval('#left [data-level="5"]', (n) => n.textContent);
+    check(/Finished: 15 of 15 tickets, 10 of 10 work orders/.test(L4), tag + "Level 4 says finished, 15 of 15 tickets and 10 of 10 work orders (" + L4 + ")");
+    check(/built later/.test(L5), tag + "Level 5 says it's built later (" + L5 + ")");
   } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
   await ctx.close();
 }
@@ -2736,7 +2766,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
       const { p, ctx } = await cpage("index.html", { net: solvedTo(3), build: { j: {}, done: doneTo(3) } }); const tag = "campus levels, the small business finished: ";
       try {
         const L = await lv(p, 4);
-        const nT4 = LEVELS[3].tickets.length; check(!L.locked && new RegExp("0 of " + nT4 + " ticket" + (nT4 === 1 ? "" : "s") + ", 0 of " + LEVELS[3].jobs.length + " work orders done · more tickets on the way").test(L.text), tag + "Level 4 is open on the Ticket Desk, counts its tickets and work orders and says more tickets are coming (" + L.text + ")");
+        const nT4 = LEVELS[3].tickets.length; check(!L.locked && new RegExp("0 of " + nT4 + " ticket" + (nT4 === 1 ? "" : "s") + ", 0 of " + LEVELS[3].jobs.length + " work orders done" + (LEVELS[3].coming ? " · " + LEVELS[3].coming : "$")).test(L.text), tag + "Level 4 is open on the Ticket Desk, counts its tickets and work orders and says more tickets are coming (" + L.text + ")");
         await p.click('#left [data-level="4"]'); await p.waitForTimeout(60);
         check((await p.$$('#left a[href="build.html#job=CP-J1"]')).length === 1, tag + "the desk links the campus's work orders into Build");
         await p.click('#left a[href="build.html#job=CP-J1"]'); await p.waitForTimeout(400);

@@ -1901,5 +1901,33 @@
   "ticket": "CP-02",
   "seed": 13,
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-02'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; c.guess('right'); login(); ['configure terminal','router ospf 1'].concat(v.ups.map(n=>'no passive-interface '+n.replace('GigabitEthernet','gi')),['end','copy running-config startup-config','','show ip ospf neighbor','exit','ping 8.8.8.8']).forEach(k); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-03 the card, the floor's desk: its gateway, a ping nobody answers, arp",
+  "page": "index.html",
+  "ticket": "CP-03",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-03'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.other+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw.dist1.ip,P.userPw,'enable',P.secret].forEach(k);}; document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); ['ipconfig','ping '+v.gw,'arp -a'].forEach(k); document.getElementById('tk').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-03 show standby brief on distribution switch 1, the wrong virtual address",
+  "page": "index.html",
+  "ticket": "CP-03",
+  "seed": 3,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-03'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.other+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw.dist1.ip,P.userPw,'enable',P.secret].forEach(k);}; login(); k('show standby brief'); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-03 the floor plan, Mason's third rung",
+  "page": "index.html",
+  "ticket": "CP-03",
+  "seed": 2025,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-03'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.other+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw.dist1.ip,P.userPw,'enable',P.secret].forEach(k);}; document.getElementById('vPhy').click(); const w=c.T.opts.filter(o=>!o.right).map(o=>o.id); w.slice(0,4).forEach(x=>c.guess(x)); c.resetBoard(); c.guess(w[4]); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-03 solved, the summary",
+  "page": "index.html",
+  "ticket": "CP-03",
+  "seed": 5,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-03'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.other+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw.dist1.ip,P.userPw,'enable',P.secret].forEach(k);}; c.guess('right'); login(); ['configure terminal','interface vlan '+v.vid,'standby '+v.vid+' ip '+v.gw,'end','copy running-config startup-config','','show standby brief','exit'].forEach(k); document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); k('ping 8.8.8.8'); document.getElementById('board').scrollIntoView();"
  }
 ]

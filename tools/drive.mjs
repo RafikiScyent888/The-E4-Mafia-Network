@@ -870,6 +870,19 @@ const cp02Login = async (p, v) => {
   for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
 };
 const cp02Conf = async (p, v, lines) => { await cp02Login(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
+/* CP-03: the floor's VLAN and gateway off the card; SSH to distribution switch 1 from a desk on another floor */
+const cp03Vlan = async (p, v) => {
+  const label = { svc: "Service desk VLAN", bench: "Bench VLAN", office: "Office VLAN", train: "Training VLAN" }[v.kind], row = await rec(p, label), m = row.match(/^(\d+) · named \S+ · \S+ · gateway (\S+)$/);
+  check(!!m && +m[1] === v.vid && m[2] === v.gw, "CP-03: Rafiki's records give the floor's VLAN and its gateway (" + row + ")");
+  return { id: m ? m[1] : "?", gw: m ? m[2] : "?" };
+};
+const cp03Login = async (p, v) => {
+  const ssh = await rec(p, "Remote logins (SSH)"), sws = await rec(p, "The switches"), sec = await rec(p, "Enable secret");
+  const m = ssh.match(/^user (\S+) · password (\S+)$/), ip = (sws.match(new RegExp(v.plan.sw.dist1.host + " (\\d+\\.\\d+\\.\\d+\\.\\d+)")) || [])[1], s2 = (sec.match(/^(\S+)/) || [])[1];
+  await dev(p, v.other); await tab(p, "Command Prompt");
+  for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
+};
+const cp03Conf = async (p, v, lines) => { await cp03Login(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
 const campConf = async (p, v, lines) => { await campLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "exit"])) await type(p, l); };
 Object.assign(PLAN, {
   "CP-01": {
@@ -905,6 +918,25 @@ Object.assign(PLAN, {
     },
     wrong: async (p, v) => { await cp02Conf(p, v, ["router ospf 1", "no passive-interface default"]); },   /* the template off altogether: works, and Mason says why it isn't the fix */
     fix: async (p, v) => { await cp02Conf(p, v, ["router ospf 1"].concat(v.ups.map((n) => "no passive-interface " + n.replace("GigabitEthernet", "gi")))); },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); }
+  },
+  "CP-03": {
+    look: async (p, v) => {
+      const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "CP-03's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(60);
+      const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "CP-03's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+      await dysClear(p, "CP-03"); await planBothFonts(p, "CP-03");
+      const V = await cp03Vlan(p, v);
+      await dev(p, v.pc); await tab(p, "Command Prompt");
+      for (const l of ["ipconfig", "ping " + V.gw, "arp -a"]) await type(p, l);
+      const t = await term(p);
+      check(new RegExp("Default Gateway[ .]*: " + V.gw.replace(/\./g, "\\.")).test(t) && /Destination host unreachable|Request timed out/.test(t.split("ping " + V.gw).pop()), "CP-03 " + v.kind + ": the " + v.pcName + " has the records' gateway, and nothing answers it");
+      await cp03Login(p, v); await type(p, "show standby brief");
+      const o = (await term(p)).split("show standby brief").pop(); await type(p, "exit");
+      check(new RegExp("^Vl" + V.id + "\\s+" + V.id + "\\s.*Active.*" + v.typo.replace(/\./g, "\\.") + "\\s*$", "m").test(o), "CP-03 " + v.kind + ": show standby brief on distribution switch 1: the floor's group active there at " + v.typo);
+    },
+    wrong: async (p, v) => { const V = await cp03Vlan(p, v); await cp03Conf(p, v, ["interface vlan " + V.id, "no standby " + V.id]); },   /* distribution switch 1 out of the group: switch 2 answers alone */
+    fix: async (p, v) => { const V = await cp03Vlan(p, v); await cp03Conf(p, v, ["interface vlan " + V.id, "standby " + V.id + " ip " + V.gw]); },
     proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); }
   }
 });

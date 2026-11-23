@@ -190,5 +190,70 @@ const CP02 = {
   }
 };
 
-export const CAMPUS_TICKETS = [CP01, CP02];
+/* ---------------------------------------------------------------- CP-03 */
+/* A floor's gateway nobody answers for: on Saturday the contractor re-entered distribution switch 1's standby lines from his notes
+   after a failover test, and typed one VLAN's virtual address wrong. Distribution switch 1 is still the active router for that group
+   (priority 110, preempt), so the group answers for the address it was given; distribution switch 2, standby, answers for nothing.
+   The floor's desks still use the gateway the records give, and nothing answers it: they reach each other and nothing else. */
+const CP03_KIND = {
+  svc: { vlan: "svc", pcs: ["sd1", "hd1"], floor: "1F", other: "mgr", room: "the service desk and the help desk on the first floor" },
+  bench: { vlan: "bench", pcs: ["bn1", "bn2"], floor: "2F", other: "sd1", room: "the repair bench on the second floor" },
+  office: { vlan: "office", pcs: ["mgr", "fin"], floor: "3F", other: "bn1", room: "the offices on the third floor" },
+  train: { vlan: "train", pcs: ["tr1", "tr2"], floor: "4F", other: "fin", room: "the training room on the fourth floor" }
+};
+const vlanOf = function (p, k) { return k === "train" ? p.train : p.vlans[k]; };
+const sbIp = function (sim, id, vid, saved) { const sw = sim.d[id].sw, w = saved ? sw.startup : sw, r = w && w.svis && w.svis[String(vid)]; return r && r.standby && r.standby[String(vid)] ? r.standby[String(vid)].ip || null : null; };
+const CP03 = {
+  id: "CP-03", n: "03", level: 4, tier: "common", title: "A whole floor reaches only itself after Saturday's change", priority: 1, due: "1 h",
+  kinds: ["svc", "bench", "office", "train"],
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("CP-03:" + seed)), kind = r.pick(CP03.kinds), K = CP03_KIND[kind], V = vlanOf(p, K.vlan);
+    const last = r.pick([11, 10, 100]), typo = V.gw.replace(/\.1$/, "." + last), pc = r.pick(K.pcs);
+    /* the standby line retyped wrong on distribution switch 1, and saved */
+    const sw = sim.d.dist1.sw; [sw, sw.startup].forEach(function (w) { w.svis[String(V.id)].standby[String(V.id)].ip = typo; });
+    sim.bump(); sim.relink(sim.links());
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, vid: V.id, vname: V.name, gw: V.gw, typo: typo, own1: V.gw.replace(/\.1$/, ".2"), pcs: K.pcs.slice(), pc: pc, pcName: name(sim, pc), other: K.other, otherName: name(sim, K.other), floor: K.floor, room: K.room } };
+  },
+  brief(v) { return { quote: "Since Saturday " + v.room + " can't reach anything but each other: no internet, no file server, no printing to the printers. The " + v.pcName + " still has its address. Every other floor is fine. On Saturday the network contractor tested a failover between the two distribution switches, then re-entered the standby settings on distribution switch 1 from his notes and saved." }; },
+  mason: "Find the first hop the floor's traffic takes, and ask who's meant to answer it, and who actually does.",
+  affected: function (v) { return v.pc; },
+  options(v) {
+    return [
+      { id: "right", right: true, text: "Distribution switch 1, the active router for the floor's standby group, answers for a virtual address that isn't the floor's gateway" },
+      { id: "dhcp", text: "The DHCP server hands the floor's desks the wrong gateway", why: "ipconfig on the " + v.pcName + " shows the gateway the records give for its VLAN: the desks are asking the right address. Nothing answers it." },
+      { id: "active2", text: "Distribution switch 2 took over the floor's gateway in the failover test and doesn't route it", why: "show standby brief on either switch has distribution switch 1 active for the floor's group, preempt set, distribution switch 2 standby." },
+      { id: "trunk", text: "The floor's VLAN was left off the trunks to the distribution switches after the test", why: "The " + v.pcName + " reaches distribution switch 1's own address on its VLAN: a ping to it answers, and show interfaces trunk on the floor's access switch lists the VLAN forwarding." },
+      { id: "svi", text: "Distribution switch 1's interface for the floor's VLAN was left shut after the test", why: "show ip interface brief on distribution switch 1 has the VLAN's interface up and up, and its own address on the floor answers a ping." },
+      { id: "acl", text: "An access list on the floor's VLAN interface drops everything leaving the floor", why: "The desk's ping to its gateway gets no answer at all, and arp -a has no entry for the gateway: nothing is answering for that address. A list would still let the address be found." }
+    ];
+  },
+  rung1(v) { return "On the " + v.pcName + ": ipconfig, ping its gateway, then arp -a. Then from a desk on another floor, SSH to the distribution switches (the records have their addresses): who answers for the floor's gateway?"; },
+  rung2() { return "A standby group shares one virtual address between two routers, and the active one answers for it, as configured on the active one. If the address the active router was given isn't the one the devices use as their gateway, nobody answers theirs."; },
+  fixHints(v) { return ["show standby brief on both distribution switches: the floor's group, who's active, and the virtual address beside it. Compare it with the gateway the records give.", "Correct it where it went wrong, on the switch that's active for the group; the other switch, and the desks, are already right.", "Save it, as the change was saved. Then from the " + v.pcName + ": a ping to the internet."]; },
+  exhibits(sim, v) { return sbIp(sim, "dist1", v.vid) === v.typo && sim.hsrpVips("dist1").some(function (q) { return q.vip === v.typo; }) && !v.pcs.some(function (d) { return online(sim, d); }) && online(sim, v.other); },
+  fixed(sim, v) {
+    return sbIp(sim, "dist1", v.vid) === v.gw && sbIp(sim, "dist1", v.vid, true) === v.gw && sbIp(sim, "dist2", v.vid) === v.gw && sbIp(sim, "dist2", v.vid, true) === v.gw
+      && sim.hsrpVips("dist1").some(function (q) { return q.vip === v.gw; }) && v.pcs.every(function (d) { return online(sim, d); }) && online(sim, v.other);
+  },
+  partial(v, sim) {
+    if (!sim.hsrpVips("dist1").some(function (q) { return q.vip === v.gw; })) return "The floor is out again, but distribution switch 1 isn't the floor's active gateway any more: distribution switch 2 answers alone, with nothing behind it if it fails, and away from the switch the floor's traffic is meant to use.";
+    if (sbIp(sim, "dist2", v.vid) !== v.gw) return "The floor is out again, but distribution switch 2's standby address for the floor isn't its gateway any more: if distribution switch 1 fails, nobody answers it.";
+    if (sbIp(sim, "dist1", v.vid, true) !== v.gw) return "The floor is out again, but distribution switch 1 hasn't saved it: its saved configuration still has the wrong address, so the next reload brings the fault back.";
+    return "It works, but not the way the records have it.";
+  },
+  proves(f, sim, v) { return f.cmd === "ping" && f.dev === v.pc && f.replies > 0 && !!f.internet; },
+  proofText: "a ping from a desk on the floor to the internet that gets replies",
+  evidence: [
+    { id: "ipc", test: function (f, v) { return f.cmd === "ipconfig" && f.dev === v.pc && f.gw === v.gw; }, text: function (f, v) { return "ipconfig on the " + v.pcName + ": its address, and the gateway the records give, " + v.gw; } },
+    { id: "gwping", test: function (f, v) { return f.cmd === "ping" && f.dev === v.pc && f.ip === v.gw && !f.replies; }, text: function (f, v) { return "ping " + v.gw + " from the " + v.pcName + ": nothing answers the gateway"; } },
+    { id: "own1", test: function (f, v) { return f.cmd === "ping" && f.dev === v.pc && f.ip === v.own1 && f.replies > 0; }, text: function (f, v) { return "ping " + v.own1 + " from the " + v.pcName + ": distribution switch 1's own address on the floor answers"; } },
+    { id: "sb", test: function (f, v) { return (f.on === "dist1" || f.on === "dist2") && new RegExp("^Vl" + v.vid + "\\s+" + v.vid + "\\s.*" + v.typo.replace(/\./g, "\\.") + "\\s*$", "m").test(devOut(f)); }, text: function (f, v) { return "show standby brief: Vl" + v.vid + ", distribution switch 1 active, virtual address " + v.typo + ", not " + v.gw; } }
+  ],
+  summary(v) {
+    return { cause: "Re-entering distribution switch 1's standby settings on Saturday, the contractor typed the " + v.floor + " VLAN's virtual address as " + v.typo + " instead of " + v.gw + ", and saved. Distribution switch 1 is the active router for that group, so the group answered for " + v.typo + "; the floor's desks still used " + v.gw + ", the gateway the records give, and nobody answered it.", fix: "On distribution switch 1, interface vlan " + v.vid + ": standby " + v.vid + " ip " + v.gw + ", then saved. Distribution switch 1 answered for the gateway again, distribution switch 2 standby behind it, and the " + v.pcName + " reached the internet." };
+  }
+};
+
+export const CAMPUS_TICKETS = [CP01, CP02, CP03];
 export const CAMPUS_COMING = [];

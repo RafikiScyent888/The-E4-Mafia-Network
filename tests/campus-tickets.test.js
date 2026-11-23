@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { CAMPUS_TICKETS, campusRecords } from "../js/tickets/campus.js";
 import * as E from "../js/tickets/engine.js";
 import { exec } from "../js/net/cmd.js";
+import { online } from "../js/build/jobs.js";
 import { coreLinks } from "../js/net/campus.js";
 import { rng, hash } from "../js/net/util.js";
 
@@ -201,6 +202,83 @@ test("CP-02: the brief and every hint never name the right answer, a password, a
       for (const bad of [p.secret, p.console, p.userPw, p.srv.pw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, "names a password: " + x);
       for (const n of Object.values(p.vlans).map((V) => String(V.id)).concat([String(p.train.id), String(p.annex.cls.id)])) assert.ok(!new RegExp("\\b" + n + "\\b").test(x), "names VLAN " + n + ": " + x);
       for (const cmd of ["passive", "router ospf", "copy running-config", "gi0/19", "gi0/20", "gi0/25"]) assert.ok(x.indexOf(cmd) < 0, "names " + cmd + ": " + x);
+    }
+  }
+});
+
+/* ---------------------------------------------------------------- CP-03 */
+const CP03 = CAMPUS_TICKETS.find((d) => d.id === "CP-03");
+const onDist = (T, which, lines, save) => { const v = T.v, f = on(v.other); return [f("ssh " + v.plan.user + "@" + v.plan.sw[which].ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("configure terminal")].concat(lines.map(f), [f("end")], save === false ? [] : [f("copy running-config startup-config"), f("")], [f("exit")]); };
+const vipFix = (T) => onDist(T, "dist1", ["interface vlan " + T.v.vid, "standby " + T.v.vid + " ip " + T.v.gw]);
+const proof3 = (T) => [on(T.v.pc)("ping 8.8.8.8")];
+
+test("CP-03: the fault shows in the commands: the floor's desks with the right gateway and nobody answering it, distribution switch 1's own address answering, the group active on distribution switch 1 at the wrong address", () => {
+  for (const s of seedsOf(CP03)) {
+    const T = E.open(CP03, s), v = T.v, f = on(v.pc), g = on(v.other);
+    assert.ok(CP03.exhibits(T.sim, v), s + " exhibits");
+    assert.match(out(T, [f("ipconfig")]), new RegExp("Default Gateway[ .]*: " + v.gw.replace(/\./g, "\\.")), s + " the right gateway");
+    assert.match(out(T, [f("ping " + v.gw)]), /Destination host unreachable|Request timed out/); assert.match(out(T, [f("ping " + v.own1)]), /Reply from .*bytes=/, s + " distribution switch 1's own address answers");
+    assert.ok(out(T, [f("arp -a")]).indexOf(v.gw + " ") < 0, s + " no ARP entry for the gateway");
+    const o = out(T, [g("ssh " + v.plan.user + "@" + v.plan.sw.dist1.ip), g(v.plan.userPw), g("enable"), g(v.plan.secret), g("show standby brief")]);
+    assert.match(o, new RegExp("^Vl" + v.vid + "\\s+" + v.vid + "\\s+110\\s+P Active\\s.*" + v.typo.replace(/\./g, "\\.") + "\\s*$", "m"), s + " distribution switch 1 active at the wrong address");
+    assert.equal(T.fixed, false);
+    for (const id of ["ipc", "gwping", "own1", "sb"]) assert.ok(T.evidence.some((e) => e.id === id), s + " the notebook took " + id);
+    assert.equal(T.opts.length, 6); assert.equal(T.opts.filter((o) => o.right).length, 1); assert.ok(T.opts.filter((o) => !o.right).every((o) => o.why && o.why.length > 30));
+    const S = CP03.summary(v); assert.ok(S.cause.length > 80 && S.fix.length > 60);
+  }
+});
+
+test("CP-03: the virtual address put right on distribution switch 1, saved, fixes it; the desk's ping to the internet proves it, and a right diagnosis solves it", () => {
+  for (const s of seedsOf(CP03)) {
+    const T = E.open(CP03, s), v = T.v;
+    for (const a of proof3(T)) E.act(T, a); assert.equal(T.proven, false, s + " a ping before the fix proves nothing");
+    for (const a of vipFix(T)) E.act(T, a);
+    assert.equal(T.fixed, true, s + " fixed");
+    E.act(T, on(v.pc)("ping " + v.gw)); assert.equal(T.proven, false, s + " a ping to the gateway isn't the proof");
+    for (const a of proof3(T)) E.act(T, a); assert.equal(T.proven, true);
+    E.guess(T, T.opts.find((o) => o.right).id); assert.equal(T.solved, true);
+  }
+});
+
+test("CP-03: the tempting wrong fixes don't: distribution switch 1 taken out of the group, distribution switch 2 matched to the wrong address, the fix unsaved, the desk given a gateway by hand", () => {
+  for (const s of seedsOf(CP03, 2)) {
+    const open = () => E.open(CP03, s);
+    let T = open(); for (const a of onDist(T, "dist1", ["interface vlan " + T.v.vid, "no standby " + T.v.vid])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " distribution switch 1 out of the group"); for (const a of proof3(T)) E.act(T, a); assert.equal(T.proven, false); assert.match(T.partial || "", /isn't the floor's active gateway/);
+    T = open(); for (const a of onDist(T, "dist2", ["interface vlan " + T.v.vid, "standby " + T.v.vid + " ip " + T.v.typo])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " distribution switch 2 matched to the typo"); assert.ok(CP03.exhibits(T.sim, T.v));
+    T = open(); for (const a of onDist(T, "dist1", ["interface vlan " + T.v.vid, "standby " + T.v.vid + " ip " + T.v.gw], false)) E.act(T, a);
+    assert.equal(T.fixed, false, s + " unsaved"); for (const a of proof3(T)) E.act(T, a); assert.match(T.partial || "", /hasn't saved it/);
+    T = open(); E.act(T, { t: "client", dev: T.v.pc, values: { mode: "static", ip: T.sim.addr(T.v.pc).ip, mask: T.v.plan.mask, gw: T.v.typo, dns: [] } });
+    assert.equal(T.fixed, false, s + " the desk pointed at the wrong address by hand");
+    /* the desk pointed at the wrong address by hand first (it worked), then the switch put right: that desk is left pointing at an address nobody answers */
+    for (const a of onDist(T, "dist1", ["interface vlan " + T.v.vid, "standby " + T.v.vid + " ip " + T.v.gw])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the switch put right, but one desk still on the wrong gateway by hand"); assert.ok(T.v.pcs.some((d) => d !== T.v.pc && online(T.sim, d)), s + " the floor's other desks are back");
+    /* the address put right on distribution switch 1, then its VLAN interface shut: switch 2 answers alone */
+    T = open(); for (const a of onDist(T, "dist1", ["interface vlan " + T.v.vid, "standby " + T.v.vid + " ip " + T.v.gw, "shutdown"])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " switch 1's VLAN interface shut"); for (const a of proof3(T)) E.act(T, a); assert.equal(T.proven, false); assert.match(T.partial || "", /isn't the floor's active gateway/);
+  }
+});
+
+test("CP-03: the ladder climbs, and a saved ticket replays exactly", () => {
+  const T = E.open(CP03, seedsOf(CP03)[0]), wrongs = T.opts.filter((o) => !o.right).map((o) => o.id);
+  assert.equal(E.guess(T, wrongs[0]).rung, 0); assert.equal(E.guess(T, wrongs[1]).rung, 0); assert.equal(E.guess(T, wrongs[2]).rung, 1); assert.equal(E.guess(T, wrongs[3]).rung, 2);
+  E.resetBoard(T); assert.equal(E.guess(T, wrongs[4]).rung, 3); assert.equal(E.live(T).length, 2); assert.ok(E.live(T).some((o) => o.right));
+  const U = E.open(CP03, seedsOf(CP03, 1)[0]), v = U.v;
+  for (const a of [on(v.pc)("ping " + v.gw)].concat(vipFix(U), proof3(U))) E.act(U, a);
+  const R = E.restore(CP03, JSON.parse(JSON.stringify(E.save(U))));
+  assert.equal(R.fixed, U.fixed); assert.deepEqual(R.evidence, U.evidence); assert.equal(R.proven, U.proven); assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
+});
+
+test("CP-03: the brief and every hint never name the right answer, a password, a VLAN number, either address or the fix's command", () => {
+  for (const s of seedsOf(CP03)) {
+    const T = E.open(CP03, s), right = T.opts.find((o) => o.right).text.toLowerCase(), p = T.v.plan;
+    const texts = [CP03.rung1(T.v, T.sim), CP03.rung2(T.v, T.sim), ...CP03.fixHints(T.v, T.sim), CP03.brief(T.v, T.sim).quote, CP03.mason].map((x) => x.toLowerCase());
+    for (const x of texts) {
+      assert.ok(x.indexOf(right) < 0, x);
+      for (const bad of [p.secret, p.console, p.userPw, p.srv.pw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, "names a password: " + x);
+      for (const n of Object.values(p.vlans).map((V) => String(V.id)).concat([String(p.train.id), String(p.annex.cls.id)])) assert.ok(!new RegExp("\\b" + n + "\\b").test(x), "names VLAN " + n + ": " + x);
+      for (const bad of [T.v.gw, T.v.typo, "standby " + T.v.vid, "interface vlan", "copy running-config"]) assert.ok(x.indexOf(bad) < 0, "names " + bad + ": " + x);
     }
   }
 });

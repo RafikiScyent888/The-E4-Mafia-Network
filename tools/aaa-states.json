@@ -2069,5 +2069,33 @@
   "ticket": "CP-08",
   "seed": 4,
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-08'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=(d)=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw[d].ip,P.userPw,'enable',P.secret].forEach(k);}; c.guess('right'); login(v.side); ['configure terminal','interface '+v.short.toLowerCase(),v.kind==='vlan'?'switchport trunk allowed vlan add '+v.drop:'switchport trunk native vlan '+P.vlans.native.id,'end','copy running-config startup-config','','show etherchannel summary','exit'].forEach(k); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-09 the card, show ip ospf neighbor: EXSTART",
+  "page": "index.html",
+  "ticket": "CP-09",
+  "seed": 5,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-09'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw.dist1.ip,P.userPw,'enable',P.secret].forEach(k);}; login(); k('show ip ospf neighbor'); document.getElementById('tk').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-09 distribution switch 1: protocols and configuration, a neighbour missing",
+  "page": "index.html",
+  "ticket": "CP-09",
+  "seed": 1,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-09'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw.dist1.ip,P.userPw,'enable',P.secret].forEach(k);}; login(); ['show ip ospf neighbor','show ip protocols','show running-config'].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-09 the floor plan, Mason's third rung",
+  "page": "index.html",
+  "ticket": "CP-09",
+  "seed": 2025,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-09'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw.dist1.ip,P.userPw,'enable',P.secret].forEach(k);}; document.getElementById('vPhy').click(); const w=c.T.opts.filter(o=>!o.right).map(o=>o.id); w.slice(0,4).forEach(x=>c.guess(x)); c.resetBoard(); c.guess(w[4]); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-09 solved, the summary",
+  "page": "index.html",
+  "ticket": "CP-09",
+  "seed": 8,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-09'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw.dist1.ip,P.userPw,'enable',P.secret].forEach(k);}; c.guess('right'); login(); (v.kind==='mtu'?['configure terminal','interface '+v.short.toLowerCase(),'no ip mtu']:['configure terminal','router ospf 1','no router-id']).concat(['end','copy running-config startup-config','','show ip ospf neighbor','exit']).forEach(k); document.getElementById('board').scrollIntoView();"
  }
 ]

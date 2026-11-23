@@ -111,6 +111,12 @@ NODE += [
 NODE += [
  ("CP-08: show running-config leaves out a link's allowed VLANs", "js/net/swcli.js", '    if (p.allowed !== "all") L.push(" switchport trunk allowed vlan " + vlanText(p.allowed));', '    if (false) L.push(" switchport trunk allowed vlan " + vlanText(p.allowed));'),
 ]
+NODE += [
+ ("CP-09: the fix unsaved counts", "js/tickets/campus.js", "fixed(sim, v) { return CP09.d1Right(sim, v) && CP09.d1Right(sim, v, true) && ", "fixed(sim, v) { return CP09.d1Right(sim, v) && "),
+ ("CP-09: any router ID that works counts", "js/tickets/campus.js", 'return !w.ports["GigabitEthernet0/19"].mtu && !w.ports["GigabitEthernet0/20"].mtu && !w.ospf.rid; },', 'return !w.ports["GigabitEthernet0/19"].mtu && !w.ports["GigabitEthernet0/20"].mtu && w.ospf.rid !== v.coreRid; },'),
+ ("CP-09: an MTU mismatch still forms FULL", "js/net/ospf.js", '(m.f.mtu || 1500) !== (o.f.mtu || 1500) ? "EXSTART" : "FULL";', '"FULL";'),
+ ("CP-09: two routers with one ID become neighbours", "js/net/ospf.js", " && routers[a.id].rid !== routers[b.id].rid; };", "; };"),
+]
 AAA = [
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "CP-01 the card with Rafiki's records"),
 ]

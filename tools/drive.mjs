@@ -1696,7 +1696,7 @@ if (!process.env.ONLY || process.env.ONLY === "business" || process.env.ONLY ===
     await p.goto(base + "index.html"); await p.waitForTimeout(350);
     const L3 = await p.$eval('#left [data-level="3"]', (n) => n.textContent), L4 = await p.$eval('#left [data-level="4"]', (n) => n.textContent);
     check(/Finished: 15 of 15 tickets, 10 of 10 work orders/.test(L3), tag + "Level 3 says finished, 15 of 15 tickets and 10 of 10 work orders (" + L3 + ")");
-    check(L4 === "Level 4 · Campus0 of " + LEVELS[3].jobs.length + " work orders done · " + LEVELS[3].coming && !/built later/.test(L4) && !(await p.$eval('#left [data-level="4"]', (n) => n.parentNode.classList.contains("locked"))), tag + "Level 4 is open, counts its work orders, and says more are on the way (" + L4 + ")");
+    const nT4b = LEVELS[3].tickets.length; check(L4 === "Level 4 · Campus0 of " + nT4b + " ticket" + (nT4b === 1 ? "" : "s") + ", 0 of " + LEVELS[3].jobs.length + " work orders done · " + LEVELS[3].coming && !/built later/.test(L4) && !(await p.$eval('#left [data-level="4"]', (n) => n.parentNode.classList.contains("locked"))), tag + "Level 4 is open, counts its tickets and work orders, and says more are on the way (" + L4 + ")");
   } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
   await ctx.close();
 }

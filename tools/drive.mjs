@@ -1040,6 +1040,25 @@ Object.assign(PLAN, {
     wrong: async (p, v) => { for (const d of ["dist1", "dist2"]) await cp07Conf(p, v, d, ["interface range gi0/21 - 22", "channel-group 1 mode on"]); },   /* both forced on: up, but not negotiated */
     fix: async (p, v) => { for (const d of v.ends) await cp07Conf(p, v, d, ["interface range gi0/21 - 22", "channel-group 1 mode active"]); },
     proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await cp04Login(p, v, "dist1"); await type(p, "show etherchannel summary"); await type(p, "exit"); }
+  },
+  "CP-08": {
+    look: async (p, v) => {
+      const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "CP-08's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(60);
+      const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "CP-08's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+      await dysClear(p, "CP-08"); await planBothFonts(p, "CP-08");
+      await cp04Login(p, v, v.side); await type(p, "show etherchannel summary"); await type(p, "show running-config");
+      const o = (await term(p)).split("show etherchannel summary").pop(); await type(p, "exit");
+      const sus = (o.match(/(Gi0\/2[12])\(s\)/) || [])[1], blk = (n) => ((o.split("interface " + n + "\n")[1] || "").split("!")[0]);
+      const mine = blk("GigabitEthernet0/" + (sus || "?").slice(4)), pc = blk("Port-channel1");
+      const al = (t) => ((t.match(/allowed vlan (\S+)/) || [])[1] || "").split(","), nat = (t) => (t.match(/native vlan (\d+)/) || [])[1] || "1";
+      const miss = al(pc).filter((x) => al(mine).indexOf(x) < 0);
+      v.fix8 = miss.length ? "switchport trunk allowed vlan add " + miss.join(",") : nat(mine) !== nat(pc) ? "switchport trunk native vlan " + nat(pc) : null; v.sus8 = sus;
+      check(sus === v.short && !!v.fix8, "CP-08 " + v.kind + ": over SSH, " + v.sideName + " shows " + sus + " suspended, its trunk line differing from Port-channel1's (" + v.fix8 + ")");
+    },
+    wrong: async (p, v) => { await cp07Conf(p, v, v.side, ["interface " + (v.sus8 || "?").toLowerCase(), "shutdown", "no shutdown"]); },   /* bounced: still suspended */
+    fix: async (p, v) => { await cp07Conf(p, v, v.side, ["interface " + (v.sus8 || "?").toLowerCase(), v.fix8 || "?"]); },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await cp04Login(p, v, v.side); await type(p, "show etherchannel summary"); await type(p, "exit"); }
   }
 });
 

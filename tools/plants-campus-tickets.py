@@ -102,6 +102,15 @@ NODE += [
 PAGE += [
  ("CP-07: show etherchannel summary marks every member bundled", "js/net/swcli.js", 'M.map(function (n) { return short(n) + "(" + chanState(sw, n) + ")"; }).join("   "));', 'M.map(function (n) { return short(n) + "(P)"; }).join("   "));'),
 ]
+NODE += [
+ ("CP-08: the fix unsaved counts", "js/tickets/campus.js", "fixed(sim, v) { return CP08.memberRight(sim, v) && CP08.memberRight(sim, v, true) && ", "fixed(sim, v) { return CP08.memberRight(sim, v) && "),
+ ("CP-08: the port-channel changed to match counts", "js/tickets/campus.js", " && JSON.stringify([sim.d.dist1.sw.pcs, sim.d.dist2.sw.pcs]) === v.pc && chanUp(sim, \"dist1\")", " && chanUp(sim, \"dist1\")"),
+ ("CP-08: a member with its own native VLAN stays in the bundle", "js/net/swcli.js", 'const L2KEYS = ["mode", "access", "native", "allowed", "nonegotiate"];', 'const L2KEYS = ["mode", "access", "allowed", "nonegotiate"];'),
+ ("CP-08: the fault planted in the running configuration only", "js/tickets/campus.js", "[sw, sw.startup].forEach(function (w) { const q = w.ports[n]; if (kind === \"vlan\")", "[sw].forEach(function (w) { const q = w.ports[n]; if (kind === \"vlan\")"),
+]
+NODE += [
+ ("CP-08: show running-config leaves out a link's allowed VLANs", "js/net/swcli.js", '    if (p.allowed !== "all") L.push(" switchport trunk allowed vlan " + vlanText(p.allowed));', '    if (false) L.push(" switchport trunk allowed vlan " + vlanText(p.allowed));'),
+]
 AAA = [
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "CP-01 the card with Rafiki's records"),
 ]

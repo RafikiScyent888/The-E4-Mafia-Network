@@ -4075,7 +4075,11 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
     diamonds (bigger than the round dots) left no clear place for "NIC" on the short line, and it landed on the 3F printer's line (the drive's
     drawing check). 600 is the least that fits: 610 put "Finance PC" a pixel onto the manager's PC's tile. Every campus drawing has the
     finance PC 10 units lower.
-  - **Checks, on its tree:** RESULTS
+  - **Checks, on its tree:** `npm test` 622 of 622; the campus tickets drive 140 checks; the full drive passed every check but two old
+    ones that expected Level 4 to have no tickets (the campus block's and the levels block's lines for Level 4: both now count the tickets),
+    and the levels part run again after the fix (`ONLY=business`, 978 checks, passing); the models 202 (run alone); 48 contrast states,
+    204,723 text runs, all passing; plants: Node 9, two missed at first and closed with tests (port security weakened only in the saved
+    copy; the proof pinged from inside the campus), page 12, all caught.
 - **The order of the campus's tickets, re-sized 22 November 2026** (the owner's rule: "Keep building everything in order of increasing in
   size"). The configuration-only faults first, each on one device; anything needing a new device or a console a ticket can't reach yet
   later. BPDU guard (proposed second) needs a spare managed switch at a desk, so it moves to the end. Built so far, on

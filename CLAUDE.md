@@ -4076,6 +4076,35 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
     drawing check). 600 is the least that fits: 610 put "Finance PC" a pixel onto the manager's PC's tile. Every campus drawing has the
     finance PC 10 units lower.
   - **Checks, on its tree:** RESULTS
+- **The order of the campus's tickets, re-sized 22 November 2026** (the owner's rule: "Keep building everything in order of increasing in
+  size"). The configuration-only faults first, each on one device; anything needing a new device or a console a ticket can't reach yet
+  later. BPDU guard (proposed second) needs a spare managed switch at a desk, so it moves to the end. Built so far, on
+  `save/level4-tickets` (worktree `/home/user/e4-cpt`), one commit each: CP-02 ef225ed, CP-03 b24e884, CP-04 80f6714.
+- **CP-02, no way out of the network since the weekend's maintenance:** the contractor's OSPF hardening template (`passive-interface
+  default`, typed again on a switch that already had it, so the exceptions are wiped) on one layer 3 switch, saved. Two variants:
+  distribution switch 1 (HQ cut off: its desks get Destination net unreachable from their gateway; the Annex still reaches the
+  internet, but not the file server, whose replies go to switch 1) and the Annex core (the classroom cut off). The edge router would be a
+  third, but with its OSPF silent it has no way back to any desk, so only its console reaches it, and a campus ticket can't carry your
+  laptop to a console yet (no laying cables in a ticket): it comes later with a ticket that adds that. Evidence: tracert stopping at the
+  gateway; over SSH (a desk on the switch's own networks reaches it), `show ip ospf neighbor` empty, `show ip protocols` "(every interface
+  but none)", `show ip route` "Gateway of last resort is not set", the uplinks up and up. The fix: `no passive-interface` for each port
+  facing a router, the template kept, saved. Wrong fixes, each tested: the template taken off (`no passive-interface default`: Mason says
+  OSPF now talks out of the desks' ports), one uplink of two, a static default (alone it fails on OSPF; on top of the real fix it works and
+  Mason names it), unsaved, distribution switch 2 changed, the classroom's VLAN interface opened instead.
+- **CP-03, a whole floor reaches only itself after Saturday's change:** distribution switch 1's standby virtual address for one floor's
+  VLAN retyped wrong (.11, .10 or .100) and saved; switch 1 is still active (priority 110, preempt), so the group answers the typo and
+  nobody answers the gateway the desks use. Four variants, one a floor. Evidence: the desk's records' gateway in ipconfig, its ping
+  unanswered and no ARP entry for it, distribution switch 1's own address on the floor answering, `show standby brief` (on either switch)
+  showing the typo. The desk can't reach the switches' management addresses: SSH from a desk on another floor (rung 1 says so). The fix:
+  `standby N ip` back to the gateway on switch 1, saved. Wrong fixes: switch 1 out of the group (switch 2 answers alone), switch 2 matched
+  to the typo, unsaved, the desk given the typo as its gateway by hand.
+- **CP-04, distribution switch 2 still the gateway after Saturday's reload:** nothing is down; the monitoring flagged switch 2 active for
+  one VLAN since switch 1's firmware reload (`show version`: up two days, returned to ROM by reload). That group's line on switch 1 was
+  changed in the failover test and saved: preempt taken off, or the priority taken back to 100 (a tie with switch 2's, and the higher
+  address wins). Each variant's fix is the other's near miss on the board, and tried as a wrong fix. The proof is `show standby brief` on
+  switch 1, active for the group. The drive reads 110 off switch 1's lines for its other groups (the records don't give priorities).
+  Wrong fixes: the other variant's fix, switch 2 lowered (switch 1 preempts only in the priority variant), switch 2 bounced (switch 1
+  active, Mason says only because switch 2 dropped out), unsaved.
 
 ## Objectives
 

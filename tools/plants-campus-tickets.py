@@ -74,6 +74,16 @@ NODE += [
 PAGE += [
  ("CP-04: show standby brief leaves out the P", "js/net/swcli.js", "+ pad(q.pri, 4) + (q.preempt ? \"P \" : \"  \") + pad(q.state, 8)", "+ pad(q.pri, 4) + \"  \" + pad(q.state, 8)"),
 ]
+NODE += [
+ ("CP-05: the fix unsaved counts", "js/tickets/campus.js", "fixed(sim, v) { return CP05.edgeRight(sim, v) && CP05.edgeRight(sim, v, true) && ", "fixed(sim, v) { return CP05.edgeRight(sim, v) && "),
+ ("CP-05: a default typed into the edge router counts", "js/tickets/campus.js", " && JSON.stringify(sim.d.edge.sw.routes || []) === v.routes && [\"sd1\"", " && [\"sd1\""),
+ ("CP-05: the internet port on a typed address counts", "js/tickets/campus.js", "return !!w && !!w.ospf && !!w.ospf.originate && !!w.ifs[v.wan].dhcp; },", "return !!w && !!w.ospf && !!w.ospf.originate; },"),
+ ("CP-05: the edge router originates with no default of its own", "js/net/sim.js", "const def = !!O.originate && RT.routes(R, bare).some(function (t) { return t.code === \"S*\"; });", "const def = !!O.originate;"),
+ ("CP-05: the brief names the fix", "js/tickets/campus.js", r'\"removing lines that weren' + "'" + r't needed\", and saved.', r'\"removing lines that weren' + "'" + r't needed\" such as default-information originate, and saved.'),
+]
+PAGE += [
+ ("CP-05: the records leave out the edge router's internet port", "js/tickets/campus.js", '" · its console in the data room · its internet port (" + p.edge.wan.replace("GigabitEthernet", "Gi") + ") takes its address', '" · its console in the data room · it takes its address'),
+]
 AAA = [
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "CP-01 the card with Rafiki's records"),
 ]

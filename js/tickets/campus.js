@@ -34,7 +34,7 @@ export function campusRecords(v, sim) {
   const vl = function (x, label) { return x ? [label, x.id + " · named " + x.name + (x.net ? " · " + x.net + "/24 · gateway " + x.gw : "")] : null; };
   return [
     ["The switches", "by SSH from a desk PC at their management addresses: " + ["dist1", "dist2", "acc1", "acc2", "acc3", "acc4"].map(at).filter(Boolean).join(" · ") + " · the Annex: " + A.core.host + " " + A.core.ip + " · " + A.acc.host + " " + A.acc.ip + " · the core switches (" + sw.core1.host + ", " + sw.core2.host + ") at their consoles in the data room"],
-    ["The edge router", p.edge.host + " · by SSH at " + coreLinks(p)[0].ia + " · its console in the data room"],
+    ["The edge router", p.edge.host + " · by SSH at " + coreLinks(p)[0].ia + " · its console in the data room · its internet port (" + p.edge.wan.replace("GigabitEthernet", "Gi") + ") takes its address, and the provider's default, from the provider by DHCP"],
     ["Enable secret", p.secret + " (every switch and the edge router)"],
     ["Console password", p.console],
     ["Remote logins (SSH)", "user " + p.user + " · password " + p.userPw],
@@ -321,5 +321,68 @@ const CP04 = {
   }
 };
 
-export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04];
+/* ---------------------------------------------------------------- CP-05 */
+/* Nobody on the campus reaches the internet; inside, everything works. The edge router is the only way out, and OSPF carries its
+   default to every other router only while it originates one, which it does only while it has a default of its own (the provider's,
+   learned with its address by DHCP). Two ways it stopped, each saved on the edge router: a clean-up took "default-information
+   originate" off; or, after the provider's visit, its internet port was left on the address the engineer had it type by hand, so
+   there's no lease, no default of its own, and nothing to hand on. */
+const CP05 = {
+  id: "CP-05", n: "05", level: 4, tier: "common", title: "No internet anywhere on the campus, though everything inside works", priority: 1, due: "1 h",
+  kinds: ["originate", "wan"],
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("CP-05:" + seed)), kind = r.pick(CP05.kinds), pc = r.pick(["sd1", "bn2", "fin", "tr2", "cl1"]);
+    const rt = sim.d.edge.sw, isp = sim.net.isp, wan = p.edge.wan;
+    if (kind === "originate") [rt.ospf, rt.startup.ospf].forEach(function (O) { delete O.originate; });
+    else [rt, rt.startup].forEach(function (w) { const f = w.ifs[wan]; f.dhcp = false; f.ip = isp.wanIp; f.mask = isp.mask || "255.255.255.0"; });
+    sim.bump(); sim.relink(sim.links());
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, pc: pc, pcName: name(sim, pc), wan: wan, wanIp: isp.wanIp, edgeIp: coreLinks(p)[0].ia, routes: JSON.stringify(rt.routes || []) } };
+  },
+  brief(v) { return { quote: v.kind === "originate"
+    ? "Nobody at HQ or the Annex can reach the internet since this morning: email, the suppliers' sites, the card machine's updates. Inside, everything works: the file server, printing, the Annex from HQ. The " + v.pcName + " still has its address. Last night the network contractor tidied the configurations on the core routing, \"removing lines that weren't needed\", and saved."
+    : "Nobody at HQ or the Annex can reach the internet since yesterday afternoon: email, the suppliers' sites, the card machine's updates. Inside, everything works: the file server, printing, the Annex from HQ. The " + v.pcName + " still has its address. Yesterday the provider's engineer was in the data room checking the line; he had someone type the line's address into the edge router by hand while he tested, said the line was fine, and left. The router was saved before he went." }; },
+  mason: "Everything inside works, so the trouble is at the way out. Follow a desk's traffic towards the internet and see where it's turned back, then ask that router where it thinks the way out is.",
+  affected: function (v) { return v.pc; },
+  options(v) {
+    const orig = { id: "originate", text: "The edge router no longer hands its default route into OSPF, so no router inside has a way out", why: "show running-config on the edge router still has default-information originate under router ospf 1. It has nothing to originate: show ip route there has no gateway of last resort." };
+    const wanO = { id: "wan", text: "The edge router has no default route of its own any more, so there's nothing for it to hand into OSPF", why: "show ip route on the edge router has its gateway of last resort, the provider's, and a ping from it to the internet answers. What's missing is the line under router ospf 1 that hands it on." };
+    return [
+      { id: "right", right: true, text: v.kind === "originate" ? orig.text : wanO.text },
+      v.kind === "originate" ? wanO : orig,
+      { id: "provider", text: "The provider's line is down", why: v.kind === "originate" ? "The edge router itself reaches the internet: a ping from it to 8.8.8.8 answers, and show ip interface brief has its internet port up." : "show ip interface brief on the edge router has its internet port up, and it reaches the provider's gateway: a ping to it answers. It's the routes beyond that it has none of." },
+      { id: "nat", text: "The edge router's address translation stopped, so replies can't find their way back", why: "The desks' traffic never reaches the edge router: tracert from a desk stops at its own gateway with Destination net unreachable. Translation would need the traffic to get there first." },
+      { id: "ospf", text: "OSPF between the core and the distribution switches went down in the tidy-up", why: "show ip ospf neighbor on distribution switch 1 lists both core switches FULL, and every network inside is reachable from every desk." },
+      { id: "dns", text: "The DNS servers the desks are given stopped answering", why: "A ping to 8.8.8.8 by its address fails too, and tracert stops at the desk's own gateway: it's routing, not names." }
+    ];
+  },
+  rung1(v) { return "From the " + v.pcName + ": tracert to an address on the internet. Then SSH to the device that turns it back, and on to the edge router (the records have both): their routing tables, and where each one's way out comes from."; },
+  rung2() { return "Routers inside a network learn the way out from the edge router, by the routing protocol, only if the edge router announces a default; and it can announce one only while it has a default route of its own to the provider."; },
+  fixHints(v) { return ["On the edge router: show ip route (is there a gateway of last resort?), show running-config (the internet port, and the routing protocol's section), and a ping from it to the internet.", v.kind === "originate" ? "Put back what was tidied away: the edge router's routing protocol needs to announce its default again. Nothing inside needs changing." : "The records have the edge router's internet port taking its address, and the provider's default with it, from the provider. Put it back that way; nothing inside needs changing.", "Save it. Then from the " + v.pcName + ": a ping to the internet."]; },
+  edgeRight(sim, v, saved) { const rt = sim.d.edge.sw, w = saved ? rt.startup : rt; return !!w && !!w.ospf && !!w.ospf.originate && !!w.ifs[v.wan].dhcp; },
+  exhibits(sim, v) { return !CP05.edgeRight(sim, v) && !online(sim, v.pc) && !online(sim, "mgr") && !online(sim, "cl2"); },
+  fixed(sim, v) { return CP05.edgeRight(sim, v) && CP05.edgeRight(sim, v, true) && JSON.stringify(sim.d.edge.sw.routes || []) === v.routes && ["sd1", "mgr", "tr1", "cl1", v.pc].every(function (d) { return online(sim, d); }); },
+  partial(v, sim) {
+    if (JSON.stringify(sim.d.edge.sw.routes || []) !== v.routes) return "The campus is out again, but by a default route typed into the edge router: the records have the provider hand it over with the line's address, and a route typed by hand stops working the day the provider changes its gateway.";
+    if (!CP05.edgeRight(sim, v)) return "It works, but the edge router isn't set up the way the records have it.";
+    if (!CP05.edgeRight(sim, v, true)) return "The campus is out again, but the edge router hasn't saved it: after the next reload, the same.";
+    return "It works, but not the way the records have it.";
+  },
+  proves(f, sim, v) { return f.cmd === "ping" && f.dev === v.pc && f.replies > 0 && !!f.internet; },
+  proofText: "a ping from a desk to the internet that gets replies",
+  evidence: [
+    { id: "unreach", test: function (f, v) { return f.dev === v.pc && ((f.cmd === "ping" && f.kind === "net-unreachable") || (f.cmd === "tracert" && !!f.stopAt)); }, text: function (f, v) { return (f.cmd === "tracert" ? "tracert" : "ping") + " from the " + v.pcName + ": its own gateway answers Destination net unreachable"; } },
+    { id: "d1route", test: function (f) { return f.on === "dist1" && /Gateway of last resort is not set/.test(devOut(f)); }, text: function () { return "show ip route on distribution switch 1: no gateway of last resort"; } },
+    { id: "d1nbr", test: function (f) { const o = devOut(f); return f.on === "dist1" && /Neighbor ID\s+Pri\s+State/.test(o) && (o.match(/FULL/g) || []).length >= 2; }, text: function () { return "show ip ospf neighbor on distribution switch 1: both core switches FULL"; } },
+    { id: "edgeroute", test: function (f, v) { const o = devOut(f); return f.on === "edge" && /Gateway of last resort/.test(o) && (v.kind === "wan" ? /Gateway of last resort is not set/.test(o) : /Gateway of last resort is \S+ to network 0\.0\.0\.0/.test(o)); }, text: function (f, v) { return v.kind === "wan" ? "show ip route on the edge router: no gateway of last resort of its own" : "show ip route on the edge router: its gateway of last resort, the provider's"; } },
+    { id: "edgerun", test: function (f, v) { const o = devOut(f); return f.on === "edge" && /router ospf 1/.test(o) && (v.kind === "wan" ? new RegExp("interface " + v.wan + "\\s+ip address " + v.wanIp.replace(/\./g, "\\.")).test(o) : !/default-information originate/.test(o)); }, text: function (f, v) { return v.kind === "wan" ? "show running-config on the edge router: the internet port on an address typed by hand, not from the provider" : "show running-config on the edge router: router ospf 1 without default-information originate"; } }
+  ],
+  summary(v) {
+    return v.kind === "originate"
+      ? { cause: "The contractor's tidy-up took default-information originate out of the edge router's OSPF and saved it. The edge router still had its default to the provider, but no longer announced it, so no router inside had a way out: every desk's gateway answered Destination net unreachable for the internet.", fix: "On the edge router, under router ospf 1: default-information originate, then saved. Every router inside learned the default again (O*E2), and the " + v.pcName + " reached the internet." }
+      : { cause: "While the provider's engineer tested the line, the edge router's internet port was given the line's address by hand, and saved. With no DHCP lease it had no default route of its own, so it had nothing to originate: OSPF still ran, but no router inside learned a way out.", fix: "On the edge router, interface " + v.wan + ": ip address dhcp, as the records have it, then saved. It took its address and the provider's default again, announced the default into OSPF, and the " + v.pcName + " reached the internet." };
+  }
+};
+
+export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05];
 export const CAMPUS_COMING = [];

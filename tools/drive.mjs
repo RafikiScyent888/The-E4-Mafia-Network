@@ -896,6 +896,16 @@ const cp04Login = async (p, v, which) => {
   for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
 };
 const cp04Conf = async (p, v, lines) => { await cp04Login(p, v, "dist1"); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
+/* CP-05: the edge router by SSH from the desk, its address and internet port off the card */
+const cp05Wan = async (p, v) => { const row = await rec(p, "The edge router"), m = row.match(/its internet port \((Gi\S+)\)/); check(!!m && "GigabitEthernet" + m[1].slice(2) === v.wan, "CP-05: Rafiki's records name the edge router's internet port (" + row + ")"); return m ? m[1] : "?"; };
+const cp05Login = async (p, v) => {
+  const ssh = await rec(p, "Remote logins (SSH)"), row = await rec(p, "The edge router"), sec = await rec(p, "Enable secret");
+  const m = ssh.match(/^user (\S+) · password (\S+)$/), ip = (row.match(/by SSH at (\d+\.\d+\.\d+\.\d+)/) || [])[1], s2 = (sec.match(/^(\S+)/) || [])[1];
+  check(ip === v.edgeIp, "CP-05: Rafiki's records give the edge router's SSH address");
+  await dev(p, v.pc); await tab(p, "Command Prompt");
+  for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
+};
+const cp05Conf = async (p, v, lines) => { await cp05Login(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
 const campConf = async (p, v, lines) => { await campLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "exit"])) await type(p, l); };
 Object.assign(PLAN, {
   "CP-01": {
@@ -973,6 +983,22 @@ Object.assign(PLAN, {
       await cp04Conf(p, v, ["interface vlan " + vid, "standby " + vid + " priority " + pri]);
     },
     proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await cp04Login(p, v, "dist1"); await type(p, "show standby brief"); await type(p, "exit"); }
+  },
+  "CP-05": {
+    look: async (p, v) => {
+      const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "CP-05's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(60);
+      const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "CP-05's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+      await dysClear(p, "CP-05"); await planBothFonts(p, "CP-05");
+      await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "tracert 8.8.8.8");
+      check(/reports: Destination net unreachable\./.test(await term(p)), "CP-05 " + v.kind + ": tracert from the " + v.pcName + " turned back at its gateway");
+      await cp05Login(p, v); for (const l of ["show ip route", "show running-config"]) await type(p, l);
+      const o = (await term(p)).split("show ip route").pop(); await type(p, "exit");
+      check(v.kind === "originate" ? /Gateway of last resort is \S+ to network 0\.0\.0\.0/.test(o) && !/default-information originate/.test(o) : /Gateway of last resort is not set/.test(o) && /default-information originate/.test(o), "CP-05 " + v.kind + ": over SSH, the edge router " + (v.kind === "originate" ? "has its default but doesn't announce it" : "has no default of its own"));
+    },
+    wrong: async (p, v) => { const W = await cp05Wan(p, v); await cp05Conf(p, v, v.kind === "originate" ? ["interface " + W, "ip address dhcp"] : ["router ospf 1", "default-information originate"]); },   /* the other variant's fix */
+    fix: async (p, v) => { const W = await cp05Wan(p, v); await cp05Conf(p, v, v.kind === "originate" ? ["router ospf 1", "default-information originate"] : ["interface " + W, "ip address dhcp"]); },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); }
   }
 });
 

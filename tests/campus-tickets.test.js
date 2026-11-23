@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { CAMPUS_TICKETS, campusRecords } from "../js/tickets/campus.js";
 import * as E from "../js/tickets/engine.js";
 import { exec } from "../js/net/cmd.js";
+import { online } from "../js/build/jobs.js";
 import { coreLinks } from "../js/net/campus.js";
 import { rng, hash } from "../js/net/util.js";
 
@@ -349,5 +350,82 @@ test("CP-04: the brief and every hint never name the right answer, a password, a
       for (const bad of ["standby " + T.v.vid, "priority 110", "interface vlan", "copy running-config"]) assert.ok(x.indexOf(bad) < 0, "names " + bad + ": " + x);
     }
     for (const x of [CP04.brief(T.v, T.sim).quote, CP04.mason].map((y) => y.toLowerCase())) for (const bad of ["preempt", "priority"]) assert.ok(x.indexOf(bad) < 0, "the brief or Mason's opener names " + bad + ": " + x);
+  }
+});
+
+/* ---------------------------------------------------------------- CP-05 */
+const CP05 = CAMPUS_TICKETS.find((d) => d.id === "CP-05");
+const onEdge = (T, lines, save) => { const v = T.v, f = on(v.pc); return [f("ssh " + v.plan.user + "@" + v.edgeIp), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("configure terminal")].concat(lines.map(f), [f("end")], save === false ? [] : [f("copy running-config startup-config"), f("")], [f("exit")]); };
+const fix5 = (T) => onEdge(T, T.v.kind === "originate" ? ["router ospf 1", "default-information originate"] : ["interface " + T.v.wan, "ip address dhcp"]);
+const proof5 = (T) => [on(T.v.pc)("ping 8.8.8.8")];
+
+test("CP-05: the fault shows in the commands: every desk's gateway turning the internet back, distribution switch 1 with its neighbours and no way out, the edge router without the default or not announcing it", () => {
+  for (const s of seedsOf(CP05)) {
+    const T = E.open(CP05, s), v = T.v, f = on(v.pc);
+    assert.ok(CP05.exhibits(T.sim, v), s + " exhibits");
+    assert.match(out(T, [f("tracert 8.8.8.8")]), /reports: Destination net unreachable\./);
+    assert.match(out(T, [f("ping " + v.plan.srv.fsrv.ip)]), /Reply from .*bytes=/, s + " inside works");
+    const d = out(T, [f("ssh " + v.plan.user + "@" + v.plan.sw.dist1.ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("show ip route"), f("show ip ospf neighbor"), f("exit")]);
+    assert.match(d, /Gateway of last resort is not set/); assert.equal((d.match(/FULL/g) || []).length, 2, s + " both cores FULL");
+    const o = out(T, [f("ssh " + v.plan.user + "@" + v.edgeIp), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("show ip route"), f("show running-config"), f("exit")]);
+    if (v.kind === "originate") { assert.match(o, /Gateway of last resort is \S+ to network 0\.0\.0\.0/); assert.ok(!/default-information originate/.test(o)); }
+    else { assert.match(o, /Gateway of last resort is not set/); assert.match(o, new RegExp("interface " + v.wan + "\\s+ip address " + v.wanIp.replace(/\./g, "\\."))); assert.match(o, /default-information originate/); }
+    assert.equal(T.fixed, false);
+    for (const id of ["unreach", "d1route", "d1nbr", "edgeroute", "edgerun"]) assert.ok(T.evidence.some((e) => e.id === id), s + " the notebook took " + id);
+    assert.equal(T.opts.length, 6); assert.equal(T.opts.filter((o) => o.right).length, 1); assert.ok(T.opts.filter((o) => !o.right).every((o) => o.why && o.why.length > 30));
+    assert.ok(T.opts.some((o) => !o.right && o.id === (v.kind === "originate" ? "wan" : "originate")), s + " the other cause is a near miss");
+    const S = CP05.summary(v); assert.ok(S.cause.length > 80 && S.fix.length > 60);
+  }
+});
+
+test("CP-05: the edge router put back as the records have it, saved, fixes it; a desk's ping to the internet proves it, and a right diagnosis solves it", () => {
+  for (const s of seedsOf(CP05)) {
+    const T = E.open(CP05, s), v = T.v;
+    for (const a of proof5(T)) E.act(T, a); assert.equal(T.proven, false);
+    for (const a of fix5(T)) E.act(T, a);
+    assert.equal(T.fixed, true, s + " fixed");
+    E.act(T, on(v.pc)("ping " + v.edgeIp)); assert.equal(T.proven, false, s + " a ping to the edge router isn't the proof");
+    for (const a of proof5(T)) E.act(T, a); assert.equal(T.proven, true);
+    E.guess(T, T.opts.find((o) => o.right).id); assert.equal(T.solved, true);
+  }
+});
+
+test("CP-05: the tempting wrong fixes don't: a default typed on the edge router or on distribution switch 1, the other variant's fix, the fix unsaved", () => {
+  for (const s of seedsOf(CP05)) {
+    const open = () => E.open(CP05, s);
+    let T = open(); const gw = T.sim.net.isp.gw; for (const a of onEdge(T, ["ip route 0.0.0.0 0.0.0.0 " + gw])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " a default typed on the edge router");
+    if (T.v.kind === "wan") { for (const a of proof5(T)) E.act(T, a); assert.equal(T.proven, false); assert.match(T.partial || "", /typed into the edge router/); } else assert.ok(CP05.exhibits(T.sim, T.v), s + " typed on top of the one it has: still nothing announced");
+    T = open(); const f = on(T.v.pc), nh = coreLinks(T.v.plan).find((l) => l.b === "dist1").ia;
+    for (const a of [f("ssh " + T.v.plan.user + "@" + T.v.plan.sw.dist1.ip), f(T.v.plan.userPw), f("enable"), f(T.v.plan.secret), f("configure terminal"), f("ip route 0.0.0.0 0.0.0.0 " + nh), f("end"), f("exit")]) E.act(T, a);
+    assert.equal(T.fixed, false, s + " a default on distribution switch 1"); assert.ok(!online(T.sim, T.v.pc), s + " the core has no way out either");
+    T = open(); for (const a of onEdge(T, T.v.kind === "originate" ? ["interface " + T.v.wan, "ip address dhcp"] : ["router ospf 1", "default-information originate"])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the other variant's fix"); assert.ok(CP05.exhibits(T.sim, T.v));
+    T = open(); for (const a of onEdge(T, T.v.kind === "originate" ? ["router ospf 1", "default-information originate"] : ["interface " + T.v.wan, "ip address dhcp"], false)) E.act(T, a);
+    assert.equal(T.fixed, false, s + " unsaved"); for (const a of proof5(T)) E.act(T, a); assert.match(T.partial || "", /hasn't saved it/);
+  }
+});
+
+test("CP-05: the ladder climbs, and a saved ticket replays exactly", () => {
+  const T = E.open(CP05, seedsOf(CP05)[0]), wrongs = T.opts.filter((o) => !o.right).map((o) => o.id);
+  assert.equal(E.guess(T, wrongs[0]).rung, 0); assert.equal(E.guess(T, wrongs[1]).rung, 0); assert.equal(E.guess(T, wrongs[2]).rung, 1); assert.equal(E.guess(T, wrongs[3]).rung, 2);
+  E.resetBoard(T); assert.equal(E.guess(T, wrongs[4]).rung, 3); assert.equal(E.live(T).length, 2); assert.ok(E.live(T).some((o) => o.right));
+  const U = E.open(CP05, seedsOf(CP05, 1)[0]);
+  for (const a of fix5(U).concat(proof5(U))) E.act(U, a);
+  const R = E.restore(CP05, JSON.parse(JSON.stringify(E.save(U))));
+  assert.equal(R.fixed, U.fixed); assert.deepEqual(R.evidence, U.evidence); assert.equal(R.proven, U.proven); assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
+});
+
+test("CP-05: the brief and every hint never name the right answer, a password, a VLAN number or the fix's command", () => {
+  for (const s of seedsOf(CP05)) {
+    const T = E.open(CP05, s), right = T.opts.find((o) => o.right).text.toLowerCase(), p = T.v.plan;
+    const texts = [CP05.rung1(T.v, T.sim), CP05.rung2(T.v, T.sim), ...CP05.fixHints(T.v, T.sim), CP05.brief(T.v, T.sim).quote, CP05.mason].map((x) => x.toLowerCase());
+    for (const x of texts) {
+      assert.ok(x.indexOf(right) < 0, x);
+      for (const bad of [p.secret, p.console, p.userPw, p.srv.pw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, "names a password: " + x);
+      for (const n of Object.values(p.vlans).map((V) => String(V.id)).concat([String(p.train.id), String(p.annex.cls.id)])) assert.ok(!new RegExp("\\b" + n + "\\b").test(x), "names VLAN " + n + ": " + x);
+      for (const bad of ["default-information", "ip address dhcp", "router ospf", "copy running-config"]) assert.ok(x.indexOf(bad) < 0, "names " + bad + ": " + x);
+    }
+    for (const x of [CP05.brief(T.v, T.sim).quote, CP05.mason].map((y) => y.toLowerCase())) for (const bad of ["originate", "dhcp", "default route"]) assert.ok(x.indexOf(bad) < 0, "the brief or Mason's opener names " + bad + ": " + x);
   }
 });

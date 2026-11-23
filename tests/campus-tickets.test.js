@@ -332,6 +332,12 @@ test("CP-04: the tempting wrong fixes don't: the other variant's fix, switch 2 l
     assert.equal(T.fixed, false, s + " switch 2 bounced"); for (const a of proof4(T)) E.act(T, a); assert.equal(T.proven, false); assert.match(T.partial || "", /only because switch 2 dropped out/);
     T = open(); for (const a of fix4(T).slice(0, 0).concat(onD(T, "dist1", ["interface vlan " + T.v.vid, T.v.kind === "preempt" ? "standby " + T.v.vid + " preempt" : "standby " + T.v.vid + " priority 110"], false))) E.act(T, a);
     assert.equal(T.fixed, false, s + " unsaved"); for (const a of proof4(T)) E.act(T, a); assert.match(T.partial || "", /hasn't saved the change/);
+    /* switch 2 lowered first (tempting), then switch 1 put right as well: switch 2 isn't as the records have it */
+    T = open(); for (const a of onD(T, "dist2", ["interface vlan " + T.v.vid, "standby " + T.v.vid + " priority 90"]).concat(fix4(T))) E.act(T, a);
+    assert.equal(T.fixed, false, s + " switch 2 lowered as well"); for (const a of proof4(T)) E.act(T, a); assert.match(T.partial || "", /switch 2's settings for the group have changed/);
+    /* put right and saved, then switch 1's line changed back without saving: the running configuration is wrong again */
+    T = open(); for (const a of fix4(T).concat(onD(T, "dist1", ["interface vlan " + T.v.vid, T.v.kind === "preempt" ? "no standby " + T.v.vid + " preempt" : "standby " + T.v.vid + " priority 100"], false))) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the running configuration changed back after the save");
   }
 });
 
@@ -1169,4 +1175,12 @@ test("CP-15: the brief and every hint never name the right answer, a password or
     }
     for (const x of [CP15.rung1(T.v, T.sim), CP15.brief(T.v, T.sim).quote, CP15.mason].map((y) => y.toLowerCase())) for (const bad of ["bpdu", "loop", "spanning"]) assert.ok(x.indexOf(bad) < 0, "rung 1, the brief or Mason names " + bad + ": " + x);
   }
+});
+
+/* every campus ticket shows its fault on the campus it was asked for, in every variant: a ticket moves to another campus when its fault
+   doesn't show, so a rule that stopped one variant showing would otherwise go unnoticed (the tests would just meet the other variants) */
+for (const def of CAMPUS_TICKETS) test(def.id + ": the fault shows on every campus asked for, every variant (no campus skipped)", () => {
+  const kinds = new Set();
+  for (const s of seedsOf(def)) { const T = E.open(def, s); assert.equal(T.seed, s, def.id + " campus " + s + " was skipped: its fault didn't show"); if (T.v.kind) kinds.add(T.v.kind); }
+  if (def.kinds) assert.deepEqual([...kinds].sort(), def.kinds.slice().sort(), def.id + ": every variant met");
 });

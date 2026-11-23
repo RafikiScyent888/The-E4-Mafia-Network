@@ -114,5 +114,81 @@ const CP01 = {
   }
 };
 
-export const CAMPUS_TICKETS = [CP01];
+/* ---------------------------------------------------------------- CP-02 */
+/* The weekend's hardening template, run on one layer 3 switch and saved: "passive-interface default" under OSPF, so OSPF sends no
+   hellos out of a port facing desks. Typed again on a switch that already had it, it also wipes the exceptions the work orders made
+   for the ports facing other routers (distribution switch 1's two uplinks to the core, CP-J5; the Annex core's fibre, CP-J8). Their
+   networks are still advertised, but nothing is heard across them: no neighbours, no routes beyond the switch's own networks. The
+   edge router would be a third place, but with its OSPF silent it has no way back to any desk, so only its console reaches it, and a
+   ticket can't carry your laptop there yet. */
+const CP02_KIND = {
+  hq: { dev: "dist1", ups: ["GigabitEthernet0/19", "GigabitEthernet0/20"], pcs: ["sd1", "bn1", "mgr", "tr1"], other: "cl1", swName: "distribution switch 1", where: "HQ",
+    story: function (pc) { return "Since Monday morning nobody at HQ can get on the internet: email, the suppliers' sites, nothing. Inside, printing and the file server still work, and the " + pc + " still has its address. The trainer across the car park says the Annex is fine. Over the weekend the network contractor applied the company's new hardening template; his change sheet says \"template applied to one layer 3 switch, tested, saved\", and nothing more."; } },
+  annex: { dev: "anxc", ups: ["GigabitEthernet0/25"], pcs: ["cl1", "cl2"], other: "mgr", swName: "the Annex core switch", where: "the Annex",
+    story: function (pc) { return "The Training Annex's classroom can't reach anything outside its own building since the weekend: not the internet, not the file server at HQ. The " + pc + " still has its address, and HQ itself is fine. Over the weekend the network contractor applied the company's new hardening template; his change sheet says \"template applied to one layer 3 switch, tested, saved\", and nothing more."; } }
+};
+const ospfOn = function (sim, id, saved) { const sw = sim.d[id].sw; return saved ? sw.startup && sw.startup.ospf : sw.ospf; };
+const sameSet = function (a, b) { return a.length === b.length && a.every(function (x) { return b.indexOf(x) >= 0; }); };
+const CP02 = {
+  id: "CP-02", n: "02", level: 4, tier: "common", title: "No way out of the network since the weekend's maintenance", priority: 1, due: "1 h",
+  kinds: ["hq", "annex"],
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("CP-02:" + seed)), kind = r.pick(CP02.kinds), K = CP02_KIND[kind], pc = r.pick(K.pcs);
+    const sw = sim.d[K.dev].sw, routes = JSON.stringify(sw.routes || []);
+    /* the template, typed under router ospf 1 and saved: every interface passive, the exceptions gone */
+    [sw.ospf, sw.startup.ospf].forEach(function (O) { O.passiveDefault = true; O.active = []; });
+    sim.bump(); sim.relink(sim.links());
+    freeze(sim);
+    const ip = K.dev === "anxc" ? p.annex.core.ip : p.sw[K.dev].ip;
+    return { sim: sim, v: { kind: kind, plan: p, dev: K.dev, ups: K.ups.slice(), pc: pc, pcName: name(sim, pc), other: K.other, swName: K.swName, swIp: ip, where: K.where, routes: routes, gw: sim.d[pc].ifaces[0].lease ? sim.d[pc].ifaces[0].lease.gw : "" } };
+  },
+  brief(v) { return { quote: CP02_KIND[v.kind].story(v.pcName) }; },
+  mason: "Start from what still works and what doesn't. Then follow the traffic until it stops, and ask the last device that answered why it stopped there.",
+  affected: function (v) { return v.pc; },
+  options(v) {
+    const s = v.swName, S = s.charAt(0).toUpperCase() + s.slice(1), up = v.kind === "hq" ? "uplinks to the core switches" : "fibre to core switch 2";
+    return [
+      { id: "right", right: true, text: "The template made " + s + "'s " + up + " passive under OSPF: it hears no neighbours there, so it has no routes beyond its own networks" },
+      { id: "link", text: S + "'s " + up + (v.kind === "hq" ? " are" : " is") + " down after the maintenance", why: "show ip interface brief on " + s + " has " + (v.kind === "hq" ? "both uplinks" : "the fibre port") + " up and up, and show interfaces status says connected. A dead link would show down." },
+      { id: "originate", text: "The edge router stopped handing its default route into OSPF", why: (v.kind === "hq" ? "The Annex still reaches the internet through the same core" : "HQ still reaches the internet through the same core") + ", so the default is still in OSPF. " + S + " doesn't hear it: show ip ospf neighbor there lists nobody." },
+      { id: "acl", text: "The template put an access list on " + s + "'s " + up + " that blocks traffic leaving", why: "show ip interface on " + (v.kind === "hq" ? "the uplinks" : "the fibre port") + " shows no access list set, and the replies say Destination net unreachable from " + s + " itself: that's a route it doesn't have, not a filter." },
+      { id: "network", text: "The template deleted " + s + "'s OSPF network statement, so it no longer takes part in OSPF", why: "show ip protocols on " + s + " still routes for its network statement, and show ip ospf interface brief still lists its interfaces in area 0." },
+      { id: "dhcp", text: "The desks lost their addresses when the DHCP server was restarted in the maintenance window", why: "ipconfig on the " + v.pcName + " shows its lease and its gateway, and the gateway answers a ping. A desk without an address would be on 169.254." }
+    ];
+  },
+  rung1(v) { return "From the " + v.pcName + ": tracert to an address on the internet, and see which device answers last. Then SSH to that device (its address is in the records): its routing table, and who it hears routes from."; },
+  rung2() { return "A router learns routes only from neighbours it has formed, and OSPF forms one only across an interface that sends and hears hellos. An interface can be in OSPF, its network advertised, and still send no hellos: then nothing is learned across it."; },
+  fixHints(v) { return ["On " + v.swName + ": show ip protocols lists the interfaces OSPF keeps quiet; show ip ospf neighbor lists who it hears.", "The template's idea is sound: OSPF quiet on every port facing desks. It only needs its exceptions: the ports that face other routers.", "Save it, as the template was saved. Then from the " + v.pcName + ": a ping to the internet."]; },
+  /* OSPF as the records have it on that switch: quiet on every interface but the ones facing other routers */
+  ospfRight(sim, v, saved) { const O = ospfOn(sim, v.dev, saved); return !!O && !!O.passiveDefault && sameSet(O.active || [], v.ups); },
+  exhibits(sim, v) { const O = ospfOn(sim, v.dev); return !!O.passiveDefault && !v.ups.some(function (n) { return (O.active || []).indexOf(n) >= 0; }) && !online(sim, v.pc) && online(sim, v.other); },
+  fixed(sim, v) { return CP02.ospfRight(sim, v) && CP02.ospfRight(sim, v, true) && JSON.stringify(sim.d[v.dev].sw.routes || []) === v.routes && online(sim, v.pc) && online(sim, v.other); },
+  partial(v, sim) {
+    const O = ospfOn(sim, v.dev);
+    if (!O.passiveDefault) return "The desks are out again, but OSPF on " + v.swName + " now talks out of every interface, the desks' networks too: hellos where the desks are, which the template is there to stop: anything plugged into a desk port could answer them and hand the switch routes.";
+    if (JSON.stringify(sim.d[v.dev].sw.routes || []) !== v.routes) return "It works, but a static route typed on " + v.swName + " is doing the job OSPF should: the records have every route learned, and a route typed by hand doesn't follow the network when a link fails.";
+    if (!CP02.ospfRight(sim, v)) {
+      const act = O.active || [], miss = v.ups.filter(function (n) { return act.indexOf(n) < 0; }), extra = act.filter(function (n) { return v.ups.indexOf(n) < 0; });
+      if (miss.length) return "The desks are out again, but " + v.swName + " still keeps OSPF quiet on " + miss.join(" and ") + ": everything goes over the other uplink, with nothing to fall back on if it fails.";
+      return "The desks are out again, but OSPF on " + v.swName + " now talks out of " + extra.join(" and ") + " too, which faces no router: the template is there to keep it quiet on ports like that.";
+    }
+    if (!CP02.ospfRight(sim, v, true)) return "The desks are out again, but " + v.swName + " hasn't saved it: the template is still in its saved configuration, so the next reload brings the fault back.";
+    return "It works, but not the way the records have it.";
+  },
+  proves(f, sim, v) { return f.cmd === "ping" && f.dev === v.pc && f.replies > 0 && !!f.internet; },
+  proofText: "a ping from the desk to the internet that gets replies",
+  evidence: [
+    { id: "unreach", test: function (f, v) { return f.dev === v.pc && ((f.cmd === "ping" && f.kind === "net-unreachable") || (f.cmd === "tracert" && !!f.stopAt)); }, text: function (f, v) { return (f.cmd === "tracert" ? "tracert" : "ping") + " from the " + v.pcName + ": " + v.swName + " answers Destination net unreachable"; } },
+    { id: "nbr", test: function (f, v) { const o = devOut(f); return f.on === v.dev && /Neighbor ID\s+Pri\s+State/.test(o) && !/FULL/.test(o); }, text: function (f, v) { return "show ip ospf neighbor on " + v.swName + ": no neighbours at all"; } },
+    { id: "proto", test: function (f, v) { return f.on === v.dev && /Passive Interface\(s\):\s+\(every interface but none\)/.test(devOut(f)); }, text: function (f, v) { return "show ip protocols on " + v.swName + ": every interface passive, none left talking"; } },
+    { id: "route", test: function (f, v) { const o = devOut(f); return f.on === v.dev && /Gateway of last resort is not set/.test(o); }, text: function (f, v) { return "show ip route on " + v.swName + ": no gateway of last resort, only its own networks"; } },
+    { id: "brief", test: function (f, v) { const o = devOut(f); return f.on === v.dev && v.ups.every(function (n) { return new RegExp("^" + n + "\\s.*\\bup\\s+up", "m").test(o); }); }, text: function (f, v) { return "show ip interface brief on " + v.swName + ": " + (v.kind === "hq" ? "both uplinks" : "the fibre port") + " up and up"; } }
+  ],
+  summary(v) {
+    const up = v.kind === "hq" ? "two uplinks to the core switches" : "fibre to core switch 2";
+    return { cause: "The contractor's hardening template, run on " + v.swName + " and saved, was passive-interface default under OSPF. Typed on a switch that already had it, it wiped the exceptions for its " + up + ": OSPF still advertised the switch's networks, but sent no hellos across those ports, so it formed no neighbours and learned no routes, the default from the edge router among them. Its desks reached each other and nothing beyond.", fix: "On " + v.swName + ", under router ospf 1: no passive-interface for each port facing the core, the template's passive-interface default kept, then saved. Its neighbours came up FULL, the routes came back, and the " + v.pcName + " reached the internet." };
+  }
+};
+
+export const CAMPUS_TICKETS = [CP01, CP02];
 export const CAMPUS_COMING = [];

@@ -1866,5 +1866,40 @@
   "ticket": "CP-01",
   "seed": 6,
   "setup": "sessionStorage.setItem('e4-instructor','1'); window.__e4.go('CP-01'); document.querySelector('[data-site=hq]').dispatchEvent(new MouseEvent('click',{bubbles:true})); document.getElementById('card').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-02 the card, the Annex cut off, the classroom PC's tracert",
+  "page": "index.html",
+  "ticket": "CP-02",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-02'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); k('tracert 8.8.8.8'); document.getElementById('tk').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-02 over SSH on distribution switch 1: no neighbours, every interface passive, the routing table",
+  "page": "index.html",
+  "ticket": "CP-02",
+  "seed": 1,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-02'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; login(); ['show ip ospf neighbor','show ip protocols','show ip route'].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-02 the floor plan, Mason's third rung",
+  "page": "index.html",
+  "ticket": "CP-02",
+  "seed": 2025,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-02'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; document.getElementById('vPhy').click(); const w=c.T.opts.filter(o=>!o.right).map(o=>o.id); w.slice(0,4).forEach(x=>c.guess(x)); c.resetBoard(); c.guess(w[4]); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-02 a wrong fix (the template off altogether), Mason says why",
+  "page": "index.html",
+  "ticket": "CP-02",
+  "seed": 2,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-02'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; c.guess('right'); login(); ['configure terminal','router ospf 1','no passive-interface default','end','copy running-config startup-config','','show ip ospf neighbor','exit','ping 8.8.8.8'].forEach(k); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-02 solved, the summary",
+  "page": "index.html",
+  "ticket": "CP-02",
+  "seed": 13,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-02'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; c.guess('right'); login(); ['configure terminal','router ospf 1'].concat(v.ups.map(n=>'no passive-interface '+n.replace('GigabitEthernet','gi')),['end','copy running-config startup-config','','show ip ospf neighbor','exit','ping 8.8.8.8']).forEach(k); document.getElementById('board').scrollIntoView();"
  }
 ]

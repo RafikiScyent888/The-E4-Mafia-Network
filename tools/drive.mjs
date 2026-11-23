@@ -861,6 +861,15 @@ const campLogin = async (p, v) => {
   await dev(p, campOther(v)); await tab(p, "Command Prompt");
   for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
 };
+/* CP-02: SSH from the desk that can't get out to the layer 3 switch that stops its traffic (its own gateway), every value off the card */
+const cp02Login = async (p, v) => {
+  const ssh = await rec(p, "Remote logins (SSH)"), sws = await rec(p, "The switches"), sec = await rec(p, "Enable secret");
+  const m = ssh.match(/^user (\S+) · password (\S+)$/), host = v.dev === "anxc" ? v.plan.annex.core.host : v.plan.sw[v.dev].host, ip = (sws.match(new RegExp(host + " (\\d+\\.\\d+\\.\\d+\\.\\d+)")) || [])[1], s2 = (sec.match(/^(\S+)/) || [])[1];
+  check(!!m && ip === v.swIp && s2 === v.plan.secret, "CP-02: Rafiki's records on the ticket give the SSH login, " + v.swName + "'s address and the enable secret");
+  await dev(p, v.pc); await tab(p, "Command Prompt");
+  for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
+};
+const cp02Conf = async (p, v, lines) => { await cp02Login(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
 const campConf = async (p, v, lines) => { await campLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "exit"])) await type(p, l); };
 Object.assign(PLAN, {
   "CP-01": {
@@ -880,6 +889,23 @@ Object.assign(PLAN, {
     wrong: async (p, v) => { await campConf(p, v, ["interface gi0/" + v.port, "no shutdown"]); },   /* opened without shutting it first: still err-disabled */
     fix: async (p, v) => { await campConf(p, v, ["interface gi0/" + v.port, "shutdown", "no shutdown"]); },
     proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.dev); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); }
+  },
+  "CP-02": {
+    look: async (p, v) => {
+      const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "CP-02's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(60);
+      const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "CP-02's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+      await dysClear(p, "CP-02"); await planBothFonts(p, "CP-02");
+      await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "tracert 8.8.8.8");
+      check(/reports: Destination net unreachable\./.test(await term(p)), "CP-02 " + v.kind + ": tracert from the " + v.pcName + " stops at its gateway, no route beyond");
+      await cp02Login(p, v);
+      for (const l of ["show ip ospf neighbor", "show ip protocols", "show ip route"]) await type(p, l);
+      const o = (await term(p)).split("show ip ospf neighbor").pop(); await type(p, "exit");
+      check(!/FULL/.test(o) && /\(every interface but none\)/.test(o) && /Gateway of last resort is not set/.test(o), "CP-02 " + v.kind + ": over SSH, " + v.swName + " has no neighbours, every interface passive, no gateway of last resort");
+    },
+    wrong: async (p, v) => { await cp02Conf(p, v, ["router ospf 1", "no passive-interface default"]); },   /* the template off altogether: works, and Mason says why it isn't the fix */
+    fix: async (p, v) => { await cp02Conf(p, v, ["router ospf 1"].concat(v.ups.map((n) => "no passive-interface " + n.replace("GigabitEthernet", "gi")))); },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); }
   }
 });
 

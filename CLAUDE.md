@@ -4046,6 +4046,36 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
   - **Found on the way, for every level:** three CP-J7 node plants had matched twice since CP-J9 added lines like theirs, and one Linux
     plant no longer matched after `reboot()` gained the service: all four re-aimed and caught (CP-J7's "still in its box" needed a test of its
     own). The plant script's anchors are now all checked to match once.
+- **The campus's Ticket Desk and CP-01, built 22 November 2026 on `save/level4-dhcp`** (worktree `/home/user/e4-jmb`; objectives read 22
+  November 2026, Network+ V9 unchanged: "Types of attacks: MAC flooding, … rogue devices/services" and the port security that answers them;
+  "Cabling and physical interface issues: interface issues (… port status)"). The owner's order: the campus's 15 tickets smallest first, each
+  live on its own after its checks, then Level 5.
+  - **Every campus ticket starts from the finished campus** (`js/tickets/campus.js`, `settled(seed)`): CP-J10's starting campus with its
+    walk-through replayed through the same commands a student types, then frozen as a ticket keeps its moment (no command line left open,
+    no trace, not a build). So a campus ticket opens in about four seconds, as a work order does.
+  - **Rafiki's records on every campus ticket** (`campusRecords`): the switches by name and management address (the Annex's too, and the
+    core switches at their consoles), the edge router by SSH, the enable secret, the console password, the SSH login, the servers, the desks,
+    each VLAN (`id · named NAME · network/24 · gateway`, the native and parking VLANs), the desk ports' protections. The drive reads every
+    value it types off the card.
+  - **CP-01, a desk PC dead to the network after a visitor plugged in** (the smallest: nothing new in the engine). A visitor unplugged a desk
+    PC's cable and plugged in their own laptop; port security (sticky, one address, shut down on a violation, from CP-J1) saw a second
+    address and err-disabled the port; the PC's cable went back in and the port stayed shut. Three variants: the finance PC (3F), bench PC
+    2 (2F), the help desk PC (1F). The evidence: Media disconnected on the PC; over SSH from the other desk PC on that switch, `show
+    interfaces status` (err-disabled), `show port-security interface` (Secure-shutdown, one violation, the visitor's address the last
+    source), `show port-security address` (the PC's own address still the sticky one). The fix: shut the port and open it again; the
+    records' port security kept, running and saved. Wrong fixes: `no shutdown` alone (still err-disabled), the PC restarted or its cable
+    reseated, port security switched off or loosened (Mason: it works, but the next stranger's laptop would too), maximum 2, restrict.
+  - **The desk:** Level 4 lists its tickets in the queue ("Tier 4 · Campus · tickets", more on the way), on the troubleshooting shelf
+    (Campus, locked until the small business is finished) and on the map (Rafiki HQ and the Annex). The card says campus network; the title
+    "Site: Rafiki HQ and the Training Annex · Level 4: Campus"; the campus's devices have buttons. A campus ticket on a locked level opens
+    HOME-01 instead.
+  - **Found and fixed, live since stage 1:** the queue's campus work orders had no titles (`TITLES` in `js/desk/levels.js` left out
+    `CAMPUS_JOBS`). A plant puts it back and the drive catches it.
+  - **The finance PC 10 units lower on the logical diagram** (`fin` y 590 to 600 in `js/net/campus.js`): with its link dead, both ends'
+    diamonds (bigger than the round dots) left no clear place for "NIC" on the short line, and it landed on the 3F printer's line (the drive's
+    drawing check). 600 is the least that fits: 610 put "Finance PC" a pixel onto the manager's PC's tile. Every campus drawing has the
+    finance PC 10 units lower.
+  - **Checks, on its tree:** RESULTS
 
 ## Objectives
 

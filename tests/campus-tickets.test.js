@@ -429,3 +429,72 @@ test("CP-05: the brief and every hint never name the right answer, a password, a
     for (const x of [CP05.brief(T.v, T.sim).quote, CP05.mason].map((y) => y.toLowerCase())) for (const bad of ["originate", "dhcp", "default route"]) assert.ok(x.indexOf(bad) < 0, "the brief or Mason's opener names " + bad + ": " + x);
   }
 });
+
+/* ---------------------------------------------------------------- CP-06 */
+const CP06 = CAMPUS_TICKETS.find((d) => d.id === "CP-06");
+const onSw6 = (T, ip, lines, save) => { const v = T.v, f = on("sd1"); return [f("ssh " + v.plan.user + "@" + ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("configure terminal")].concat(lines.map(f), [f("end")], save === false ? [] : [f("copy running-config startup-config"), f("")], [f("exit")]); };
+const fix6 = (T) => onSw6(T, T.v.swIp, ["no spanning-tree vlan " + T.v.vid + " priority"]);
+const proof6 = (T) => { const v = T.v, f = on("sd1"); return [f("ssh " + v.plan.user + "@" + v.plan.sw.dist1.ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("show spanning-tree vlan " + v.vid), f("exit")]; };
+
+test("CP-06: the fault shows in the commands: distribution switch 1 hearing a lower root, the access switch the root, its priority in its configuration; nobody offline", () => {
+  for (const s of seedsOf(CP06)) {
+    const T = E.open(CP06, s), v = T.v, f = on("sd1");
+    assert.ok(CP06.exhibits(T.sim, v), s + " exhibits");
+    const d = out(T, proof6(T)); assert.match(d, new RegExp("Root ID\\s+Priority\\s+" + (v.prio + v.vid) + "\\b")); assert.ok(!/This bridge is the root/.test(d), s + " switch 1 not root");
+    assert.equal(T.proven, false, s + " the show before the fix proves nothing");
+    const a = out(T, [f("ssh " + v.plan.user + "@" + v.swIp), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("show spanning-tree vlan " + v.vid), f("show running-config"), f("exit")]);
+    assert.match(a, /This bridge is the root/); assert.match(a, new RegExp("spanning-tree vlan " + v.vid + " priority " + v.prio + "\\b"));
+    assert.equal(T.fixed, false);
+    for (const id of ["d1", "acc", "run"]) assert.ok(T.evidence.some((e) => e.id === id), s + " the notebook took " + id);
+    assert.equal(T.opts.length, 6); assert.equal(T.opts.filter((o) => o.right).length, 1); assert.ok(T.opts.filter((o) => !o.right).every((o) => o.why && o.why.length > 30));
+    const S = CP06.summary(v); assert.ok(S.cause.length > 80 && S.fix.length > 60);
+  }
+});
+
+test("CP-06: the access switch back at the default, saved, fixes it; show spanning-tree on distribution switch 1 proves it, and a right diagnosis solves it", () => {
+  for (const s of seedsOf(CP06)) {
+    const T = E.open(CP06, s);
+    for (const a of fix6(T)) E.act(T, a); assert.equal(T.fixed, true, s + " fixed");
+    for (const a of proof6(T)) E.act(T, a); assert.equal(T.proven, true, s + " proven");
+    E.guess(T, T.opts.find((o) => o.right).id); assert.equal(T.solved, true);
+  }
+  const T = E.open(CP06, seedsOf(CP06)[0]); for (const a of onSw6(T, T.v.swIp, ["spanning-tree vlan " + T.v.vid + " priority 32768"])) E.act(T, a); assert.equal(T.fixed, true, "the default typed in full counts too");
+});
+
+test("CP-06: the tempting wrong fixes don't: distribution switch 1 lowered further, the access switch only raised above switch 1, the fix unsaved, another VLAN's priority taken off", () => {
+  for (const s of seedsOf(CP06, 2)) {
+    const open = () => E.open(CP06, s);
+    let T = open(); for (const a of onSw6(T, T.v.plan.sw.dist1.ip, ["spanning-tree vlan " + T.v.vid + " priority 0"])) E.act(T, a);
+    if (T.v.prio > 0) { assert.equal(T.fixed, false, s + " switch 1 lowered to 0"); for (const a of proof6(T)) E.act(T, a); assert.equal(T.proven, false); assert.match(T.partial || "", /changing the distribution switches' priorities/); }
+    T = open(); for (const a of onSw6(T, T.v.swIp, ["spanning-tree vlan " + T.v.vid + " priority 28672"])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " raised above switch 1 but not to the default"); for (const a of proof6(T)) E.act(T, a); assert.match(T.partial || "", /isn't at the default priority/);
+    T = open(); for (const a of onSw6(T, T.v.swIp, ["no spanning-tree vlan " + T.v.vid + " priority"], false)) E.act(T, a);
+    assert.equal(T.fixed, false, s + " unsaved"); for (const a of proof6(T)) E.act(T, a); assert.match(T.partial || "", /hasn't saved it/);
+    T = open(); const other = [T.v.plan.vlans.svc.id, T.v.plan.vlans.bench.id].find((x) => x !== T.v.vid); for (const a of onSw6(T, T.v.swIp, ["no spanning-tree vlan " + other + " priority"])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " another VLAN's"); assert.ok(CP06.exhibits(T.sim, T.v));
+  }
+});
+
+test("CP-06: the ladder climbs, and a saved ticket replays exactly", () => {
+  const T = E.open(CP06, seedsOf(CP06)[0]), wrongs = T.opts.filter((o) => !o.right).map((o) => o.id);
+  assert.equal(E.guess(T, wrongs[0]).rung, 0); assert.equal(E.guess(T, wrongs[1]).rung, 0); assert.equal(E.guess(T, wrongs[2]).rung, 1); assert.equal(E.guess(T, wrongs[3]).rung, 2);
+  E.resetBoard(T); assert.equal(E.guess(T, wrongs[4]).rung, 3); assert.equal(E.live(T).length, 2); assert.ok(E.live(T).some((o) => o.right));
+  const U = E.open(CP06, seedsOf(CP06, 1)[0]);
+  for (const a of fix6(U).concat(proof6(U))) E.act(U, a);
+  const R = E.restore(CP06, JSON.parse(JSON.stringify(E.save(U))));
+  assert.equal(R.fixed, U.fixed); assert.deepEqual(R.evidence, U.evidence); assert.equal(R.proven, U.proven); assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
+});
+
+test("CP-06: the brief and every hint never name the right answer, a password, a VLAN number or the fix's command", () => {
+  for (const s of seedsOf(CP06)) {
+    const T = E.open(CP06, s), right = T.opts.find((o) => o.right).text.toLowerCase(), p = T.v.plan;
+    const texts = [CP06.rung1(T.v, T.sim), CP06.rung2(T.v, T.sim), ...CP06.fixHints(T.v, T.sim), CP06.brief(T.v, T.sim).quote, CP06.mason].map((x) => x.toLowerCase());
+    for (const x of texts) {
+      assert.ok(x.indexOf(right) < 0, x);
+      for (const bad of [p.secret, p.console, p.userPw, p.srv.pw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, "names a password: " + x);
+      for (const n of Object.values(p.vlans).map((V) => String(V.id)).concat([String(p.train.id), String(p.annex.cls.id)])) assert.ok(!new RegExp("\\b" + n + "\\b").test(x), "names VLAN " + n + ": " + x);
+      for (const bad of ["spanning-tree vlan", "copy running-config", String(T.v.prio) === "0" ? "priority 0" : String(T.v.prio)]) assert.ok(x.indexOf(bad) < 0, "names " + bad + ": " + x);
+    }
+    for (const x of [CP06.brief(T.v, T.sim).quote, CP06.mason].map((y) => y.toLowerCase())) assert.ok(x.indexOf("priority") < 0, "the brief or Mason's opener names the priority: " + x);
+  }
+});

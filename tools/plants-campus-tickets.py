@@ -84,6 +84,15 @@ NODE += [
 PAGE += [
  ("CP-05: the records leave out the edge router's internet port", "js/tickets/campus.js", '" · its console in the data room · its internet port (" + p.edge.wan.replace("GigabitEthernet", "Gi") + ") takes its address', '" · its console in the data room · it takes its address'),
 ]
+NODE += [
+ ("CP-06: the fix unsaved counts", "js/tickets/campus.js", "fixed(sim, v) { return stpPrio(sim, v.sw, v.vid) === 32768 && stpPrio(sim, v.sw, v.vid, true) === 32768 && ", "fixed(sim, v) { return stpPrio(sim, v.sw, v.vid) === 32768 && "),
+ ("CP-06: the access switch anywhere above switch 1 counts", "js/tickets/campus.js", "fixed(sim, v) { return stpPrio(sim, v.sw, v.vid) === 32768 && stpPrio(sim, v.sw, v.vid, true) === 32768 && ", "fixed(sim, v) { return stpPrio(sim, v.sw, v.vid) > 24576 && stpPrio(sim, v.sw, v.vid, true) > 24576 && "),
+ ("CP-06: distribution switch 1 lowered further counts", "js/tickets/campus.js", ' && JSON.stringify(["dist1", "dist2"].map(function (d) { return [stpPrio(sim, d, v.vid), stpPrio(sim, d, v.vid, true)]; })) === v.dist && stpRoot(sim, v.vid) === "dist1"', ' && stpRoot(sim, v.vid) === "dist1"'),
+ ("CP-06: the root elected on the address before the priority", "js/net/stp.js", "const cmpId = function (a, b) { return a.prio - b.prio || (a.mac < b.mac ? -1 : a.mac > b.mac ? 1 : 0); };", "const cmpId = function (a, b) { return (a.mac < b.mac ? -1 : a.mac > b.mac ? 1 : 0) || a.prio - b.prio; };"),
+]
+PAGE += [
+ ("CP-06: show spanning-tree never says this bridge is the root", "js/net/swcli.js", 'if (me.root === T.me) out.push("             This bridge is the root"); else', 'if (false) out.push("             This bridge is the root"); else'),
+]
 AAA = [
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "CP-01 the card with Rafiki's records"),
 ]

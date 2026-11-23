@@ -39,7 +39,7 @@ NODE += [
  ("CP-02: one uplink of two counts", "js/tickets/campus.js", "return !!O && !!O.passiveDefault && sameSet(O.active || [], v.ups); },", "return !!O && !!O.passiveDefault && v.ups.some(function (n) { return (O.active || []).indexOf(n) >= 0; }); },"),
  ("CP-02: the fix unsaved counts", "js/tickets/campus.js", "fixed(sim, v) { return CP02.ospfRight(sim, v) && CP02.ospfRight(sim, v, true) && ", "fixed(sim, v) { return CP02.ospfRight(sim, v) && "),
  ("CP-02: a static route typed by hand counts", "js/tickets/campus.js", " && JSON.stringify(sim.d[v.dev].sw.routes || []) === v.routes && online(sim, v.pc)", " && online(sim, v.pc)"),
- ("CP-02: a ping to the gateway proves it", "js/tickets/campus.js", 'return f.cmd === "ping" && f.dev === v.pc && f.replies > 0 && !!f.internet; },', 'return f.cmd === "ping" && f.dev === v.pc && f.replies > 0; },'),
+ ("CP-02: a ping to the gateway proves it", "js/tickets/campus.js", 'return f.cmd === "ping" && f.dev === v.pc && f.replies > 0 && !!f.internet; },\n  proofText: "a ping from the desk to', 'return f.cmd === "ping" && f.dev === v.pc && f.replies > 0; },\n  proofText: "a ping from the desk to'),
  ("CP-02: the template planted in the running configuration only", "js/tickets/campus.js", "[sw.ospf, sw.startup.ospf].forEach(function (O) { O.passiveDefault = true; O.active = []; });", "[sw.ospf].forEach(function (O) { O.passiveDefault = true; O.active = []; });"),
  ("CP-02: rung 2 names the answer", "js/tickets/campus.js", "and still send no hellos: then nothing is learned across it.", "and still send no hellos (a passive interface): then nothing is learned across it."),
  ("CP-02: a wrong option left without its reason", "js/tickets/campus.js", 'why: "show ip protocols on " + s + " still routes for its network statement, and show ip ospf interface brief still lists its interfaces in area 0." },', 'why: "" },'),
@@ -48,6 +48,20 @@ NODE += [
 PAGE += [
  ("CP-02: the Annex core's address left off the records", "js/tickets/campus.js", '" · the Annex: " + A.core.host + " " + A.core.ip + " · "', '" · the Annex: " + A.core.host + " · "'),
  ("CP-02: show ip protocols never lists the passive interfaces", "js/net/swcli.js", 'O.passiveDefault ? ["  Passive Interface(s):", "    (every interface but " + ((O.active || []).map(short).join(", ") || "none") + ")"] : O.passive.length', 'false ? [] : O.passive.length'),
+]
+NODE += [
+ ("CP-03: the fix unsaved counts", "js/tickets/campus.js", 'return sbIp(sim, "dist1", v.vid) === v.gw && sbIp(sim, "dist1", v.vid, true) === v.gw && ', 'return sbIp(sim, "dist1", v.vid) === v.gw && '),
+ ("CP-03: distribution switch 1 out of the group counts", "js/tickets/campus.js", '      && sim.hsrpVips("dist1").some(function (q) { return q.vip === v.gw; }) && v.pcs.every(', '      && v.pcs.every('),
+ ("CP-03: one desk on the floor online is enough", "js/tickets/campus.js", '&& v.pcs.every(function (d) { return online(sim, d); }) && online(sim, v.other);', '&& v.pcs.some(function (d) { return online(sim, d); }) && online(sim, v.other);'),
+ ("CP-03: a ping to the gateway proves it", "js/tickets/campus.js", 'proves(f, sim, v) { return f.cmd === "ping" && f.dev === v.pc && f.replies > 0 && !!f.internet; },\n  proofText: "a ping from a desk on the floor', 'proves(f, sim, v) { return f.cmd === "ping" && f.dev === v.pc && f.replies > 0; },\n  proofText: "a ping from a desk on the floor'),
+ ("CP-03: the typo planted in the running configuration only", "js/tickets/campus.js", "[sw, sw.startup].forEach(function (w) { w.svis[String(V.id)].standby[String(V.id)].ip = typo; });", "[sw].forEach(function (w) { w.svis[String(V.id)].standby[String(V.id)].ip = typo; });"),
+ ("CP-03: rung 1 names the address", "js/tickets/campus.js", 'return "On the " + v.pcName + ": ipconfig, ping its gateway, then arp -a.', 'return "On the " + v.pcName + ": ipconfig, ping " + v.typo + ", then arp -a.'),
+ ("CP-03: a wrong option left without its reason", "js/tickets/campus.js", 'why: "show standby brief on either switch has distribution switch 1 active for the floor\'s group, preempt set, distribution switch 2 standby." },', 'why: "" },'),
+ ("CP-03: the standby group answers on the standby switch's address", "js/net/sim.js", "vip: act ? act.vip || (el.find(function (m) { return m.vip; }) || {}).vip : null };", "vip: sby ? sby.vip : act ? act.vip : null };"),
+]
+PAGE += [
+ ("CP-03: the VLAN plan on the card leaves out the gateways", "js/tickets/campus.js", '(x.net ? " · " + x.net + "/24 · gateway " + x.gw : "")', '(x.net ? " · " + x.net + "/24" : "")'),
+ ("CP-03: show standby brief shows no virtual address", "js/net/swcli.js", '+ pad(q.standby, 16) + (q.vip || "unknown");', '+ pad(q.standby, 16) + "unknown";'),
 ]
 AAA = [
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "CP-01 the card with Rafiki's records"),

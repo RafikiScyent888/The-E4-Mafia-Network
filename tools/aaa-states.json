@@ -2153,5 +2153,33 @@
   "ticket": "CP-11",
   "seed": 6,
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-11'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; c.guess('right'); login(); ['configure terminal','interface '+v.short.toLowerCase(),'ip address '+v.ip+' '+v.mask,'end','copy running-config startup-config','','show ip ospf neighbor','exit','ping 8.8.8.8'].forEach(k); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-12 the card with the change sheet, the desk's ipconfig /all",
+  "page": "index.html",
+  "ticket": "CP-12",
+  "seed": 1,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-12'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.srv.user+'@'+P.srv.fsrv.ip,P.srv.pw].forEach(k);}; document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); k('ipconfig /all'); document.getElementById('tk').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-12 the file server: the service failed, its log, dhcpd -t",
+  "page": "index.html",
+  "ticket": "CP-12",
+  "seed": 3,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-12'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.srv.user+'@'+P.srv.fsrv.ip,P.srv.pw].forEach(k);}; login(); ['systemctl status isc-dhcp-server','journalctl -u isc-dhcp-server -n 12','dhcpd -t -cf /etc/dhcp/dhcpd.conf'].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-12 nano on the DHCP server's file, the floor plan, Mason's third rung",
+  "page": "index.html",
+  "ticket": "CP-12",
+  "seed": 9,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-12'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.srv.user+'@'+P.srv.fsrv.ip,P.srv.pw].forEach(k);}; document.getElementById('vPhy').click(); login(); ['sudo nano /etc/dhcp/dhcpd.conf',P.srv.pw].forEach(k); const w=c.T.opts.filter(o=>!o.right).map(o=>o.id); w.slice(0,4).forEach(x=>c.guess(x)); c.resetBoard(); c.guess(w[4]); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-12 solved, the summary",
+  "page": "index.html",
+  "ticket": "CP-12",
+  "seed": 2,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-12'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.srv.user+'@'+P.srv.fsrv.ip,P.srv.pw].forEach(k);}; c.guess('right'); const F=c.T.sim.d.fsrv.lx.files['/etc/dhcp/dhcpd.conf'].text.replace(/  range [^\\n]*\\n  option [^\\n]*\\n\\}\\n*$/, '  range '+v.net+'.21 '+v.net+'.254;\\n  option routers '+v.net+'.1;\\n}\\n'); c.act({t:'cmd',dev:'mgr',line:'ssh '+P.srv.user+'@'+P.srv.fsrv.ip}); c.act({t:'cmd',dev:'mgr',line:P.srv.pw}); c.act({t:'cmd',dev:'mgr',line:'sudo nano /etc/dhcp/dhcpd.conf'}); c.act({t:'cmd',dev:'mgr',line:P.srv.pw}); c.act({t:'cmd',dev:'mgr',line:'^O',text:F}); c.act({t:'cmd',dev:'mgr',line:'^X'}); c.act({t:'cmd',dev:'mgr',line:'sudo systemctl restart isc-dhcp-server'}); c.act({t:'cmd',dev:'mgr',line:'exit'}); document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); ['ipconfig /renew','ping 8.8.8.8'].forEach(k); document.getElementById('board').scrollIntoView();"
  }
 ]

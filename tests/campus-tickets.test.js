@@ -844,3 +844,76 @@ test("CP-11: the brief and every hint never name the right answer, a password, a
     for (const x of [CP11.brief(T.v, T.sim).quote, CP11.mason].map((y) => y.toLowerCase())) assert.ok(x.indexOf("mask") < 0, "the brief or Mason's opener names the mask: " + x);
   }
 });
+
+/* ---------------------------------------------------------------- CP-12 */
+const CP12 = CAMPUS_TICKETS.find((d) => d.id === "CP-12");
+const onSrv = (T, lines) => { const f = (l, t) => ({ t: "cmd", dev: "mgr", line: l, text: t }), p = T.v.plan; return [f("ssh " + p.srv.user + "@" + p.srv.fsrv.ip), f(p.srv.pw)].concat(lines.map((l) => (Array.isArray(l) ? f(l[0], l[1]) : f(l))), [f("exit")]); };
+const confNow = (T) => T.sim.d.fsrv.lx.files["/etc/dhcp/dhcpd.conf"].text;
+const goodConf = (T) => confNow(T).replace(/  range [^\n]*\n  option [^\n]*\n\}\n*$/, "  range " + T.v.net + ".21 " + T.v.net + ".254;\n  option routers " + T.v.net + ".1;\n}\n");
+const edit12 = (T, text, restart) => onSrv(T, ["sudo nano /etc/dhcp/dhcpd.conf", T.v.plan.srv.pw, ["^O", text], "^X"].concat(restart === false ? [] : ["sudo systemctl restart isc-dhcp-server"]));
+const proof12 = (T) => [on(T.v.pc)("ipconfig /renew"), on(T.v.pc)("ping 8.8.8.8")];
+
+test("CP-12: the fault shows in the commands: the desk on 169.254, the DHCP service failed, its log and dhcpd -t naming the contractor's line", () => {
+  for (const s of seedsOf(CP12)) {
+    const T = E.open(CP12, s), v = T.v;
+    assert.ok(CP12.exhibits(T.sim, v), s + " exhibits");
+    assert.match(out(T, [on(v.pc)("ipconfig /all")]), /Autoconfiguration IPv4 Address[ .]*: 169\.254\./);
+    const o = out(T, onSrv(T, ["systemctl status isc-dhcp-server", "journalctl -u isc-dhcp-server -n 12", "dhcpd -t -cf /etc/dhcp/dhcpd.conf", "systemctl is-enabled isc-dhcp-server"]));
+    assert.match(o, /Active: failed/); assert.match(o, /^enabled$/m);
+    assert.match(o, { semicolon: /semicolon expected/, range: /not on net/, option: /no option named router in space dhcp/ }[v.kind], s + " the error names the line");
+    assert.equal(T.fixed, false);
+    for (const id of ["apipa", "status", "journal", "test"]) assert.ok(T.evidence.some((e) => e.id === id), s + " the notebook took " + id);
+    assert.equal(T.opts.length, 6); assert.equal(T.opts.filter((o) => o.right).length, 1); assert.ok(T.opts.filter((o) => !o.right).every((o) => o.why && o.why.length > 30));
+    const S = CP12.summary(v); assert.ok(S.cause.length > 80 && S.fix.length > 60);
+  }
+});
+
+test("CP-12: the file put right as the change sheet has it, the service started, fixes it once the desk asks again; its ping to the internet proves it, and a right diagnosis solves it", () => {
+  for (const s of seedsOf(CP12)) {
+    const T = E.open(CP12, s), v = T.v;
+    for (const a of edit12(T, goodConf(T))) E.act(T, a);
+    assert.equal(T.sim.d.fsrv.lx.dhcpd.state, "active", s + " running"); assert.equal(T.fixed, false, s + " not until the desk asks again");
+    for (const a of proof12(T)) E.act(T, a); assert.equal(T.fixed, true, s + " fixed"); E.act(T, on(v.pc)("ping 8.8.8.8")); assert.equal(T.proven, true);
+    assert.equal(T.sim.d[v.pc].ifaces[0].lease.server, v.srv);
+    E.guess(T, T.opts.find((o) => o.right).id); assert.equal(T.solved, true);
+  }
+});
+
+test("CP-12: the tempting wrong fixes don't: a restart with the file as it is, the file put right but not restarted, the new block taken out, an address set by hand", () => {
+  for (const s of seedsOf(CP12)) {
+    const open = () => E.open(CP12, s);
+    let T = open(); for (const a of onSrv(T, ["sudo systemctl restart isc-dhcp-server", T.v.plan.srv.pw]).concat(proof12(T))) E.act(T, a);
+    assert.equal(T.fixed, false, s + " restarted as it is"); assert.equal(T.sim.d.fsrv.lx.dhcpd.state, "failed");
+    T = open(); for (const a of edit12(T, goodConf(T), false).concat(proof12(T))) E.act(T, a);
+    assert.equal(T.fixed, false, s + " written, not restarted"); assert.ok(!online(T.sim, T.v.pc));
+    T = open(); const cut = confNow(T).replace(/\n# Meeting room[\s\S]*$/, "\n"); for (const a of edit12(T, cut).concat(proof12(T))) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the new block taken out"); assert.match(T.partial || "", /meeting-room network is gone/);
+    /* the server put right, but the desk given a working address by hand instead of asking again */
+    T = open(); const P = T.v.plan, V = { sd1: P.vlans.svc, bn2: P.vlans.bench, fin: P.vlans.office, tr2: P.train, cl2: P.annex.cls }[T.v.pc];
+    for (const a of edit12(T, goodConf(T))) E.act(T, a);
+    E.act(T, { t: "client", dev: T.v.pc, values: { mode: "static", ip: V.gw.replace(/\.1$/, ".19"), mask: P.mask, gw: V.gw, dns: T.sim.d.mgr.ifaces[0].lease.dns.slice() } }); E.act(T, on(T.v.pc)("ping 8.8.8.8"));
+    assert.ok(online(T.sim, T.v.pc), s + " the address by hand works"); assert.equal(T.fixed, false, s + " an address by hand"); assert.match(T.partial || "", /set by hand/);
+  }
+});
+
+test("CP-12: the ladder climbs, and a saved ticket replays exactly, the editor's writes included", () => {
+  const T = E.open(CP12, seedsOf(CP12)[0]), wrongs = T.opts.filter((o) => !o.right).map((o) => o.id);
+  assert.equal(E.guess(T, wrongs[0]).rung, 0); assert.equal(E.guess(T, wrongs[1]).rung, 0); assert.equal(E.guess(T, wrongs[2]).rung, 1); assert.equal(E.guess(T, wrongs[3]).rung, 2);
+  E.resetBoard(T); assert.equal(E.guess(T, wrongs[4]).rung, 3); assert.equal(E.live(T).length, 2); assert.ok(E.live(T).some((o) => o.right));
+  const U = E.open(CP12, seedsOf(CP12, 1)[0]);
+  for (const a of edit12(U, goodConf(U)).concat(proof12(U))) E.act(U, a);
+  const R = E.restore(CP12, JSON.parse(JSON.stringify(E.save(U))));
+  assert.equal(R.fixed, U.fixed); assert.deepEqual(R.evidence, U.evidence); assert.equal(R.proven, U.proven); assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
+});
+
+test("CP-12: the brief and every hint never name the right answer, a password or the mistake", () => {
+  for (const s of seedsOf(CP12)) {
+    const T = E.open(CP12, s), right = T.opts.find((o) => o.right).text.toLowerCase(), p = T.v.plan;
+    const texts = [CP12.rung1(T.v, T.sim), CP12.rung2(T.v, T.sim), ...CP12.fixHints(T.v, T.sim), CP12.brief(T.v, T.sim).quote, CP12.mason].map((x) => x.toLowerCase());
+    for (const x of texts) {
+      assert.ok(x.indexOf(right) < 0, x);
+      for (const bad of [p.secret, p.console, p.userPw, p.srv.pw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, "names a password: " + x);
+      for (const bad of ["semicolon", "option router ", "not on net", "systemctl restart"]) assert.ok(x.indexOf(bad) < 0, "names " + bad + ": " + x);
+    }
+  }
+});

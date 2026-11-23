@@ -12,6 +12,9 @@ import { coreLinks } from "../net/campus.js";
 import { dotMac, chanState } from "../net/swcli.js";
 import { rng, hash } from "../net/util.js";
 import { exec } from "../net/cmd.js";
+import { lxExec } from "../net/linux.js";
+import * as DHCPD from "../net/dhcpd.js";
+const DHCPD_CONF = DHCPD.CONF;
 
 const J10 = CAMPUS_JOBS.find(function (d) { return d.id === "CP-J10"; });
 /* the campus as CP-J10 left it, on a day like any other: nobody logged in, the moment frozen */
@@ -734,5 +737,78 @@ const CP11 = {
   }
 };
 
-export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07, CP08, CP09, CP10, CP11];
+/* ---------------------------------------------------------------- CP-12 */
+/* The DHCP server down after an edit. Yesterday at five the contractor added next month's meeting-room network to the DHCP server's
+   file on the file server, from his change sheet, and restarted the service; the file had a mistake in the new block, dhcpd refused it,
+   and the service stayed failed. Nothing anyone notices until a desk asks for an address: every desk with a lease keeps working; the one
+   restarted this morning gave itself 169.254. The fix is on the server: the file put right (the change sheet in the brief gives the new
+   network), the service started, the desk asking again. */
+const CP12_DESKS = ["sd1", "bn2", "fin", "tr2", "cl2"];
+const CP12 = {
+  id: "CP-12", n: "12", level: 4, tier: "common", title: "The desk restarted this morning has no network", priority: 2, due: "2 h",
+  kinds: ["semicolon", "range", "option"],
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("CP-12:" + seed)), kind = r.pick(CP12.kinds), pc = r.pick(CP12_DESKS);
+    const used = Object.values(p.vlans).map(function (V) { return V.id; }).concat([p.train.id, p.annex.cls.id, p.annex.mgmt.id, p.backup.id]);
+    let nn = p.vlans.servers.id + 5; while (used.indexOf(nn) >= 0) nn++;
+    const net = p.vlans.svc.net.split(".").slice(0, 2).join(".") + "." + nn, x = sim.d.fsrv, F = x.lx.files, orig = F[DHCPD_CONF].text;
+    const block = ["", "# Meeting room, from next month (change sheet MR-1)", "subnet " + net + ".0 netmask 255.255.255.0 {",
+      kind === "range" ? "  range " + net.replace(/\.\d+$/, "." + (nn + 1)) + ".21 " + net.replace(/\.\d+$/, "." + (nn + 1)) + ".254;" : "  range " + net + ".21 " + net + ".254;",
+      kind === "option" ? "  option router " + net + ".1;" : kind === "semicolon" ? "  option routers " + net + ".1" : "  option routers " + net + ".1;",
+      "}", ""];
+    F[DHCPD_CONF] = { text: orig.replace(/\n*$/, "\n") + block.join("\n"), at: "Nov 21 17:02" };
+    lxExec(sim, "fsrv", { via: "ssh", mode: "shell", user: p.srv.user, root: true, tries: 0, sudoOk: true }, "systemctl restart isc-dhcp-server");
+    sim.bump(); sim.relink(sim.links());
+    exec(sim, pc, "ipconfig /release"); exec(sim, pc, "ipconfig /renew");   /* this morning: the desk restarted and asked */
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, pc: pc, pcName: name(sim, pc), net: net, nn: nn, orig: orig, srv: p.srv.fsrv.ip } };
+  },
+  brief(v) { return { quote: "The " + v.pcName + " has no network this morning: it was restarted for updates first thing. Everyone else is working. Yesterday at five the network contractor added next month's meeting-room network to the DHCP server, from his change sheet (MR-1: network " + v.net + ".0/24, addresses " + v.net + ".21 to " + v.net + ".254, gateway " + v.net + ".1), restarted it, and left." }; },
+  mason: "Something changed yesterday that nobody tested by asking for an address. Ask the thing that hands them out how it's doing.",
+  affected: function (v) { return v.pc; },
+  options(v) {
+    return [
+      { id: "right", right: true, text: "The DHCP server isn't running: the contractor's addition to its file has a mistake, and the restart failed on it" },
+      { id: "relay", text: "The distribution switches' relays were changed along with the new network", why: "show running-config on the distribution switches has every floor still relaying to the DHCP server's address, and the server's own log says why it isn't answering: it stopped yesterday." },
+      { id: "pool", text: "The DHCP server ran out of addresses for the " + v.pcName + "'s network", why: "systemctl status on the file server says the service failed: it isn't running at all. A full pool would still be running, and say so in the log." },
+      { id: "overlap", text: "The new meeting-room network overlaps one already in use, so the server stopped handing out the old one", why: "dhcpd -t names a line in the new block and what's wrong with it, and it isn't an overlap: the meeting room's network isn't used anywhere else." },
+      { id: "disabled", text: "The service was disabled, so it didn't start again after the file server restarted overnight", why: "systemctl is-enabled says enabled, and the file server didn't restart: its log shows the service restarted yesterday at five, and failing on the file there and then." },
+      { id: "iface", text: "The contractor's change took eno1 out of the defaults file, so dhcpd listens nowhere", why: "/etc/default/isc-dhcp-server still has INTERFACESv4=\"eno1\", and the log's error names a line in dhcpd.conf, not a missing interface." }
+    ];
+  },
+  rung1(v) { return "On the " + v.pcName + ": ipconfig /all. Then, from a desk that works, SSH to the file server (the records have the login): the DHCP service's status, and its log."; },
+  rung2() { return "A service reads its file only as it starts: a mistake in the file stops it starting, and it says so in its log, with the line. dhcpd -t checks a file without starting anything."; },
+  fixHints(v) { return ["On the file server: systemctl status and journalctl for the DHCP service, and dhcpd -t on its file: they name the line.", "Edit the file with sudo and put the new block right, as the change sheet has it; the rest of the file is fine. Then start the service again.", "Then on the " + v.pcName + ": ask for an address again, and ping the internet."]; },
+  fileRight(sim, v) {
+    const S = sim.d.fsrv.lx.dhcpd; if (!S || S.state !== "active" || !S.run) return false;
+    const C = DHCPD.parse(S.run.file), O = DHCPD.parse(v.orig);
+    const mr = C.subnets.find(function (s) { return s.net === v.net + ".0"; });
+    return !C.errors.length && O.subnets.every(function (o) { return C.subnets.some(function (s) { return s.net === o.net && JSON.stringify(s.ranges) === JSON.stringify(o.ranges) && JSON.stringify(s.opts) === JSON.stringify(o.opts); }); })
+      && !!mr && JSON.stringify(mr.ranges) === JSON.stringify([[v.net + ".21", v.net + ".254"]]) && !!mr.opts.routers && String(mr.opts.routers).indexOf(v.net + ".1") >= 0;
+  },
+  exhibits(sim, v) { const a = sim.addr(v.pc), S = sim.d.fsrv.lx.dhcpd; return S.state === "failed" && !!a && /^169\.254\./.test(a.ip) && online(sim, "mgr"); },
+  fixed(sim, v) { const L = sim.d[v.pc].ifaces[0].lease; return CP12.fileRight(sim, v) && !!sim.d.fsrv.lx.dhcpd.enabled && online(sim, v.pc) && !!L && L.server === v.srv; },
+  partial(v, sim) {
+    const S = sim.d.fsrv.lx.dhcpd, L = sim.d[v.pc].ifaces[0].lease;
+    if (!L || L.server !== v.srv) return "The " + v.pcName + " is online, but not with an address from the DHCP server: set by hand, and every other desk that restarts will have the same trouble.";
+    if (S.state === "active" && S.run && !DHCPD.parse(S.run.file).subnets.some(function (s) { return s.net === v.net + ".0"; })) return "The DHCP server is running again, but next month's meeting-room network is gone from its file: the contractor's addition wasn't the mistake, only the way it was typed.";
+    if (!CP12.fileRight(sim, v)) return "The DHCP server is running, but its file isn't as the change sheet and the records have it.";
+    if (!S.enabled) return "The DHCP server is running, but it won't start by itself after the file server restarts: it's no longer enabled.";
+    return "It works, but not the way the records have it.";
+  },
+  proves(f, sim, v) { return f.cmd === "ping" && f.dev === v.pc && f.replies > 0 && !!f.internet; },
+  proofText: "a ping from the desk to the internet, with its address from the DHCP server",
+  evidence: [
+    { id: "apipa", test: function (f, v) { return f.cmd === "ipconfig" && f.dev === v.pc && !!f.apipa; }, text: function (f, v) { return "ipconfig on the " + v.pcName + ": 169.254, an address it gave itself"; } },
+    { id: "status", test: function (f) { return f.on === "fsrv" && /isc-dhcp-server\.service/.test(devOut(f)) && /Active: failed/.test(devOut(f)); }, text: function () { return "systemctl status on the file server: the DHCP service failed"; } },
+    { id: "journal", test: function (f) { return f.on === "fsrv" && /dhcpd\[\d+\]: \/etc\/dhcp\/dhcpd\.conf line \d+:/.test(devOut(f)); }, text: function (f) { const m = devOut(f).match(/\/etc\/dhcp\/dhcpd\.conf line (\d+): ([^\n]+)/); return "the DHCP service's log: " + (m ? "line " + m[1] + ", " + m[2] : "an error in its file"); } },
+    { id: "test", test: function (f) { return f.on === "fsrv" && /^dhcpd/.test(String(f.line || "").replace(/^sudo /, "")) && /\/etc\/dhcp\/dhcpd\.conf line \d+:/.test(typeof f.out === "string" ? f.out : ""); }, text: function () { return "dhcpd -t on the file: the same line, the same error"; } }
+  ],
+  summary(v) {
+    const what = v.kind === "semicolon" ? "the routers line had no semicolon at its end" : v.kind === "range" ? "the range was typed on the next network up, outside the subnet it was in" : "it said option router, not option routers";
+    return { cause: "The contractor added the meeting-room network to the DHCP server's file, but " + what + ". dhcpd refused the file when he restarted the service, and it stayed failed. Desks with leases kept working; the " + v.pcName + ", restarted this morning, asked for an address, got no answer, and gave itself 169.254.", fix: "On the file server, sudo nano /etc/dhcp/dhcpd.conf: the meeting-room block put right as the change sheet has it (range " + v.net + ".21 to " + v.net + ".254, option routers " + v.net + ".1;), dhcpd -t clean, sudo systemctl restart isc-dhcp-server: active. The " + v.pcName + " asked again and got its address from the DHCP server." };
+  }
+};
+
+export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07, CP08, CP09, CP10, CP11, CP12];
 export const CAMPUS_COMING = [];

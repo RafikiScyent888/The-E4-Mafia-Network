@@ -932,6 +932,13 @@ const cp11Login = async (p, v) => {
   for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
 };
 const cp11Conf = async (p, v, lines) => { await cp11Login(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
+/* CP-12: SSH from the manager's PC (it works) to the file server, its login off the card */
+const cp12Login = async (p, v) => {
+  const row = await rec(p, "The servers"), m = row.match(/^(\S+) (\d+\.\d+\.\d+\.\d+) \(the file server and the DHCP server\).* log in as (\S+), password (\S+)$/);
+  check(!!m && m[2] === v.srv, "CP-12: Rafiki's records give the file server's address and login");
+  await dev(p, "mgr"); await tab(p, "Command Prompt");
+  for (const l of ["ssh " + (m ? m[3] : "?") + "@" + (m ? m[2] : "?"), m ? m[4] : "?"]) await type(p, l);
+};
 const campConf = async (p, v, lines) => { await campLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "exit"])) await type(p, l); };
 Object.assign(PLAN, {
   "CP-01": {
@@ -1129,6 +1136,33 @@ Object.assign(PLAN, {
     wrong: async (p, v) => { await cp11Conf(p, v, ["interface " + v.if11, "shutdown", "no shutdown"]); },
     fix: async (p, v) => { await cp11Conf(p, v, ["interface " + v.if11, "ip address " + v.ip11]); },
     proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); }
+  },
+  "CP-12": {
+    look: async (p, v) => {
+      const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "CP-12's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(60);
+      const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "CP-12's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+      await dysClear(p, "CP-12"); await planBothFonts(p, "CP-12");
+      await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ipconfig /all");
+      check(/Autoconfiguration IPv4 Address[ .]*: 169\.254\./.test(await term(p)), "CP-12 " + v.kind + ": the " + v.pcName + " on 169.254");
+      await cp12Login(p, v); for (const l of ["systemctl status isc-dhcp-server", "journalctl -u isc-dhcp-server -n 12", "dhcpd -t -cf /etc/dhcp/dhcpd.conf"]) await type(p, l);
+      const o = (await term(p)).split("systemctl status isc-dhcp-server").pop(); await type(p, "exit");
+      check(/Active: failed/.test(o) && /\/etc\/dhcp\/dhcpd\.conf line \d+:/.test(o), "CP-12 " + v.kind + ": over SSH, the DHCP service failed, its log and dhcpd -t naming a line in its file");
+      const q = await p.$eval("#tk .q", (n) => n.textContent), m = q.match(/network (\S+)\.0\/24, addresses (\S+) to (\S+), gateway (\S+?)\)/);
+      check(!!m && m[1] === v.net, "CP-12: the brief gives the change sheet's network, range and gateway");
+      v.sheet12 = m ? { range: m[2] + " " + m[3], gw: m[4] } : null;
+    },
+    wrong: async (p, v) => { await cp12Login(p, v); await type(p, "sudo systemctl restart isc-dhcp-server"); await type(p, v.plan.srv.pw); await type(p, "exit"); },   /* restarted with the file as it is: fails again */
+    fix: async (p, v) => {
+      await cp12Login(p, v); await type(p, "sudo nano /etc/dhcp/dhcpd.conf"); await type(p, v.plan.srv.pw);
+      const txt = await p.$eval(".term .nano-text", (n) => n.value), S = v.sheet12 || { range: "?", gw: "?" };
+      const fixed = txt.replace(/  range [^\n]*\n  option [^\n]*\n\}\n*$/, "  range " + S.range + ";\n  option routers " + S.gw + ";\n}\n");
+      check(fixed !== txt, "CP-12: the meeting-room block found at the end of the file in nano");
+      await p.fill(".term .nano-text", fixed); await p.press(".term .nano-text", "Control+o"); await p.click(".term .nano-ok"); await p.waitForTimeout(40); await p.press(".term .nano-text", "Control+x"); await p.waitForTimeout(40);
+      await type(p, "sudo dhcpd -t -cf /etc/dhcp/dhcpd.conf"); await type(p, "sudo systemctl restart isc-dhcp-server"); await type(p, "systemctl is-active isc-dhcp-server");
+      check(/^active$/m.test((await term(p)).split("sudo systemctl restart isc-dhcp-server").pop()), "CP-12: the DHCP service active after the file was put right"); await type(p, "exit");
+    },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); await type(p, "ping 8.8.8.8"); }
   }
 });
 

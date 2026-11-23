@@ -130,6 +130,12 @@ NODE += [
 PAGE += [
  ("CP-11: the fibre's addressing left off the records", "js/tickets/campus.js", '    ["The fibre between the buildings", ', '    false && ["The fibre between the buildings", '),
 ]
+NODE += [
+ ("CP-12: the new block taken out counts", "js/tickets/campus.js", "      && !!mr && JSON.stringify(mr.ranges) === JSON.stringify([[v.net + \".21\", v.net + \".254\"]]) && !!mr.opts.routers && String(mr.opts.routers).indexOf(v.net + \".1\") >= 0;", "      ;"),
+ ("CP-12: the file right but the service not restarted counts", "js/tickets/campus.js", "const S = sim.d.fsrv.lx.dhcpd; if (!S || S.state !== \"active\" || !S.run) return false;", "const S = sim.d.fsrv.lx.dhcpd; if (!S) return false; if (!S.run) S.run = { file: (sim.d.fsrv.lx.files[DHCPD_CONF] || {}).text || \"\" };"),
+ ("CP-12: an address set by hand counts", "js/tickets/campus.js", "return CP12.fileRight(sim, v) && !!sim.d.fsrv.lx.dhcpd.enabled && online(sim, v.pc) && !!L && L.server === v.srv; },", "return CP12.fileRight(sim, v) && !!sim.d.fsrv.lx.dhcpd.enabled && online(sim, v.pc); },"),
+ ("CP-12: dhcpd starts on a file with a mistake", "js/net/dhcpd.js", "  if (conf.errors.length) return { ok: false, log: log.concat(errorLines(conf)), conf: conf, listen: [], why: \"conf\" };", "  if (false) return { ok: false };"),
+]
 AAA = [
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "CP-01 the card with Rafiki's records"),
 ]

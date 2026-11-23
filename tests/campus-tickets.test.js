@@ -984,3 +984,68 @@ test("CP-13: the brief and every hint never name the right answer, a password or
     for (const x of [CP13.brief(T.v, T.sim).quote, CP13.mason].map((y) => y.toLowerCase())) for (const bad of ["mtu", "jumbo", "1500"]) assert.ok(x.indexOf(bad) < 0, "the brief or Mason's opener names " + bad + ": " + x);
   }
 });
+
+/* ---------------------------------------------------------------- CP-14 */
+const CP14 = CAMPUS_TICKETS.find((d) => d.id === "CP-14");
+const fix14 = (T) => [{ t: "sfp", dev: "anxc", slot: T.v.slot, type: "1000BASE-LX" }];
+const proof14 = (T) => [on(T.v.pc)("ping 8.8.8.8")];
+
+test("CP-14: the fault shows in the commands and on the module: the Annex core's fibre port notconnect with no light, or err-disabled and unsupported, the inventory naming the wrong module", () => {
+  for (const s of seedsOf(CP14)) {
+    const T = E.open(CP14, s), v = T.v, f = on(v.pc);
+    assert.ok(CP14.exhibits(T.sim, v), s + " exhibits");
+    const o = out(T, [f("ssh " + v.plan.user + "@" + v.swIp), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("show interfaces status"), f("show interfaces transceiver"), f("show inventory"), f("exit")]);
+    assert.match(o, new RegExp("^Gi0\\/25\\s.*" + (v.kind === "sx" ? "notconnect\\s+.*1000BaseSX" : "err-disabled\\s+.*10GBaseSR"), "m"));
+    assert.match(o, v.kind === "sx" ? /-40\.0\s+\(no light received\)/ : /Unsupported transceiver/);
+    assert.match(o, v.kind === "sx" ? /PID: SFP-1000BASE-SX/ : /PID: SFP-10G-SR/);
+    E.act(T, { t: "look", cable: v.fibre, end: v.end });
+    assert.equal(T.fixed, false);
+    for (const id of ["stat", "inv", "look"]) assert.ok(T.evidence.some((e) => e.id === id), s + " the notebook took " + id);
+    assert.equal(T.opts.length, 6); assert.equal(T.opts.filter((o) => o.right).length, 1); assert.ok(T.opts.filter((o) => !o.right).every((o) => o.why && o.why.length > 30));
+    assert.ok(T.opts.some((o) => !o.right && o.id === (v.kind === "sx" ? "sfpplus" : "sx")), s + " the other cause is a near miss");
+    const S = CP14.summary(v); assert.ok(S.cause.length > 80 && S.fix.length > 60);
+  }
+});
+
+test("CP-14: a 1000BASE-LX from the van in the Annex core's slot fixes it; a classroom PC's ping to the internet proves it, and a right diagnosis solves it", () => {
+  for (const s of seedsOf(CP14)) {
+    const T = E.open(CP14, s), v = T.v;
+    for (const a of proof14(T)) E.act(T, a); assert.equal(T.proven, false);
+    for (const a of fix14(T)) E.act(T, a); assert.equal(T.fixed, true, s + " fixed");
+    for (const a of proof14(T)) E.act(T, a); assert.equal(T.proven, true);
+    E.guess(T, T.opts.find((o) => o.right).id); assert.equal(T.solved, true);
+  }
+});
+
+test("CP-14: the tempting wrong fixes don't: the other wrong module, the strands swapped at the Annex end, the port bounced", () => {
+  for (const s of seedsOf(CP14)) {
+    const open = () => E.open(CP14, s);
+    let T = open(); E.act(T, { t: "sfp", dev: "anxc", slot: T.v.slot, type: T.v.kind === "sx" ? "10GBASE-SR" : "1000BASE-SX" });
+    assert.equal(T.fixed, false, s + " the other wrong module"); assert.ok(!online(T.sim, T.v.pc));
+    T = open(); E.act(T, { t: "polarity", cable: T.v.fibre, end: T.v.end }); assert.equal(T.fixed, false, s + " the strands swapped");
+    T = open(); for (const a of [on(T.v.pc)("ssh " + T.v.plan.user + "@" + T.v.swIp), on(T.v.pc)(T.v.plan.userPw), on(T.v.pc)("enable"), on(T.v.pc)(T.v.plan.secret), on(T.v.pc)("configure terminal"), on(T.v.pc)("interface gi0/25"), on(T.v.pc)("shutdown"), on(T.v.pc)("no shutdown"), on(T.v.pc)("end"), on(T.v.pc)("exit")]) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the port bounced"); assert.ok(CP14.exhibits(T.sim, T.v));
+  }
+});
+
+test("CP-14: the ladder climbs, and a saved ticket replays exactly, the module swap included", () => {
+  const T = E.open(CP14, seedsOf(CP14)[0]), wrongs = T.opts.filter((o) => !o.right).map((o) => o.id);
+  assert.equal(E.guess(T, wrongs[0]).rung, 0); assert.equal(E.guess(T, wrongs[1]).rung, 0); assert.equal(E.guess(T, wrongs[2]).rung, 1); assert.equal(E.guess(T, wrongs[3]).rung, 2);
+  E.resetBoard(T); assert.equal(E.guess(T, wrongs[4]).rung, 3); assert.equal(E.live(T).length, 2); assert.ok(E.live(T).some((o) => o.right));
+  const U = E.open(CP14, seedsOf(CP14, 1)[0]);
+  for (const a of fix14(U).concat(proof14(U))) E.act(U, a);
+  const R = E.restore(CP14, JSON.parse(JSON.stringify(E.save(U))));
+  assert.equal(R.fixed, U.fixed); assert.deepEqual(R.evidence, U.evidence); assert.equal(R.proven, U.proven); assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
+});
+
+test("CP-14: the brief and every hint never name the right answer, a password or the module to fit", () => {
+  for (const s of seedsOf(CP14)) {
+    const T = E.open(CP14, s), right = T.opts.find((o) => o.right).text.toLowerCase(), p = T.v.plan;
+    const texts = [CP14.rung1(T.v, T.sim), CP14.rung2(T.v, T.sim), ...CP14.fixHints(T.v, T.sim), CP14.brief(T.v, T.sim).quote, CP14.mason].map((x) => x.toLowerCase());
+    for (const x of texts) {
+      assert.ok(x.indexOf(right) < 0, x);
+      for (const bad of [p.secret, p.console, p.userPw, p.srv.pw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, "names a password: " + x);
+      for (const bad of ["1000base-lx", "1000base-sx", "10gbase-sr", "sfp+", "multimode", "1310", "850"]) assert.ok(x.indexOf(bad) < 0, "names " + bad + ": " + x);
+    }
+  }
+});

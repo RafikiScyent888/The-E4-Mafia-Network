@@ -2209,5 +2209,34 @@
   "ticket": "CP-13",
   "seed": 7,
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-13'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const srv=(w)=>{document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.srv.user+'@'+P.srv[w].ip,P.srv.pw].forEach(k);}; c.guess('right'); srv(v.srv||'bksrv'); ['sudo netplan set ethernets.eno2.mtu=9000',P.srv.pw,'sudo netplan apply','exit'].forEach(k); srv('fsrv'); ['ping -M do -s 8972 -c 3 '+v.bb,'exit'].forEach(k); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-14 the card, the Annex core's status, transceiver and inventory",
+  "page": "index.html",
+  "ticket": "CP-14",
+  "seed": 2,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-14'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; login(); ['show interfaces status','show interfaces transceiver','show inventory'].forEach(k); document.getElementById('tk').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-14 the Annex core's Physical tab: the module looked at",
+  "page": "index.html",
+  "ticket": "CP-14",
+  "seed": 1,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-14'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; document.querySelector('#devtabs [data-d=anxc]').click(); tab('Physical'); c.act({t:'look',cable:v.fibre,end:v.end}); document.querySelector('.side').scrollIntoView();",
+  "nogl": true
+ },
+ {
+  "name": "campus tickets: CP-14 the floor plan, Mason's third rung",
+  "page": "index.html",
+  "ticket": "CP-14",
+  "seed": 2025,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-14'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; document.getElementById('vPhy').click(); const w=c.T.opts.filter(o=>!o.right).map(o=>o.id); w.slice(0,4).forEach(x=>c.guess(x)); c.resetBoard(); c.guess(w[4]); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-14 solved, the summary",
+  "page": "index.html",
+  "ticket": "CP-14",
+  "seed": 3,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-14'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; c.guess('right'); c.act({t:'sfp',dev:'anxc',slot:v.slot,type:'1000BASE-LX'}); document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); k('ping 8.8.8.8'); document.getElementById('board').scrollIntoView();"
  }
 ]

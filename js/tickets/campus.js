@@ -14,6 +14,8 @@ import { rng, hash } from "../net/util.js";
 import { exec } from "../net/cmd.js";
 import { lxExec, applyNetplan } from "../net/linux.js";
 import * as DHCPD from "../net/dhcpd.js";
+import { SFP_MODULES } from "../net/sim.js";
+const SFP_PID = Object.fromEntries(Object.keys(SFP_MODULES).map(function (k) { return [k, SFP_MODULES[k].pid]; }));
 const DHCPD_CONF = DHCPD.CONF;
 
 const J10 = CAMPUS_JOBS.find(function (d) { return d.id === "CP-J10"; });
@@ -41,7 +43,7 @@ export function campusRecords(v, sim) {
     ["Enable secret", p.secret + " (every switch and the edge router)"],
     ["Console password", p.console],
     ["Remote logins (SSH)", "user " + p.user + " · password " + p.userPw],
-    ["The fibre between the buildings", "core switch 2 " + A.link.hqIf.replace("GigabitEthernet", "Gi") + " " + A.link.hqIp + " · the Annex core " + A.link.anxIf.replace("GigabitEthernet", "Gi") + " " + A.link.anxIp + " · mask " + A.link.mask + ", routed, in OSPF"],
+    ["The fibre between the buildings", "core switch 2 " + A.link.hqIf.replace("GigabitEthernet", "Gi") + " " + A.link.hqIp + " · the Annex core " + A.link.anxIf.replace("GigabitEthernet", "Gi") + " " + A.link.anxIp + " · mask " + A.link.mask + ", routed, in OSPF · single-mode fibre, a 1000BASE-LX module at each end"],
     ["The servers", S.fsrv.host + " " + S.fsrv.ip + " (the file server and the DHCP server) · " + S.bksrv.host + " " + S.bksrv.ip + " (the backup server) · log in as " + S.user + ", password " + S.pw],
     ["The desks", "1F the service desk and the help desk on the 1F access switch's ports 1 and 2 · 2F bench PCs 1 and 2 on the 2F switch's 1 and 2 · 3F the manager and finance on the 3F switch's 1 and 2 · 4F training PCs 1 and 2 on the 4F switch's 1 and 2 · the Annex classroom PCs on its access switch's 1 and 2"],
     ["The desk ports", "port security on every desk port: sticky, one address, shut down on a violation; portfast and BPDU guard"]
@@ -871,5 +873,54 @@ const CP13 = {
   }
 };
 
-export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07, CP08, CP09, CP10, CP11, CP12, CP13];
+/* ---------------------------------------------------------------- CP-14 */
+/* The Annex core's fibre module replaced on Friday after a "receive power low" warning, by the installer, from the spares drawer in the
+   data room: the wrong kind. Either a 1000BASE-SX (850 nm, for multimode) on single-mode fibre facing core switch 2's 1000BASE-LX
+   (1310 nm): no light either way, the port notconnect; or an SFP+ 10GBASE-SR in a 1 Gb/s slot: unsupported, the port err-disabled.
+   The classroom has been cut off since. The fix is physical: a 1000BASE-LX from the van in the Annex core's slot. */
+const CP14 = {
+  id: "CP-14", n: "14", level: 4, tier: "common", title: "The Annex cut off since its fibre module was replaced", priority: 1, due: "1 h",
+  kinds: ["sx", "sfpplus"],
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("CP-14:" + seed)), kind = r.pick(CP14.kinds), L = p.annex.link, pc = r.pick(["cl1", "cl2"]);
+    sim.d.anxc.sfp[L.anxPort] = kind === "sx" ? "1000BASE-SX" : "10GBASE-SR";
+    sim.bump(); sim.relink(sim.links());
+    freeze(sim);
+    const fc = sim.cableAt("anxc", L.anxPort);
+    return { sim: sim, v: { kind: kind, plan: p, pc: pc, pcName: name(sim, pc), slot: L.anxPort, port: L.anxIf, short: L.anxIf.replace("GigabitEthernet", "Gi"), swIp: p.annex.core.ip, mod: sim.d.anxc.sfp[L.anxPort], fibre: fc ? fc.id : null, end: fc ? (fc.a.dev === "anxc" ? "a" : "b") : null } };
+  },
+  brief(v) { return { quote: "The Training Annex's classroom has had no connection to HQ or the internet since Friday afternoon. On Friday morning the monitoring had warned of low light on the fibre at the Annex end, and the installer replaced the Annex core switch's fibre module with one from the spares drawer in the data room. The " + v.pcName + " still has its address." }; },
+  mason: "Something physical changed on Friday, and the link hasn't worked since. Ask the switch what it thinks it's holding, then go and look.",
+  affected: function (v) { return v.pc; },
+  options(v) {
+    const sx = { id: "sx", text: "The replacement module is made for multimode fibre, at a different wavelength from core switch 2's, so no light gets through either way", why: "show interfaces status calls the port err-disabled, not notconnect: the switch won't use the module at all. show inventory names it an SFP+ 10GBASE-SR, which a 1 Gb/s slot can't run." };
+    const sp = { id: "sfpplus", text: "The replacement is a 10 Gb/s SFP+ module in a 1 Gb/s slot, so the switch shuts the port", why: "show interfaces status has the port notconnect, not err-disabled, and show inventory names a 1 Gb/s module. It's the kind of fibre and the wavelength that don't match: show interfaces transceiver receives no light." };
+    return [
+      { id: "right", right: true, text: v.kind === "sx" ? sx.text : sp.text },
+      v.kind === "sx" ? sp : sx,
+      { id: "polarity", text: "The fibre's two strands were put back crossed at the Annex end when the module was changed", why: "Crossed strands with matching modules still light each end's receiver from the wrong side and the link stays down, but show inventory and Look at the plug say this module isn't the kind the records give for the fibre." },
+      { id: "dirty", text: "The fibre end is dirty, still causing the low light Friday's warning was about", why: "A dirty end lowers the light; it doesn't take it away: show interfaces transceiver " + (v.kind === "sx" ? "receives nothing at all, and the module isn't the records' kind" : "can't even read the module: it's unsupported") + "." },
+      { id: "ospf", text: "The Annex core lost its OSPF settings when the module was changed", why: "show running-config on the Annex core has router ospf 1 as the records have it. OSPF has no neighbour because the fibre port is down." },
+      { id: "core2", text: "Core switch 2's end of the fibre went down in the same work", why: "The Annex core's own port says why it's down: its module. show inventory and Look at the plug at the Annex end are enough to find it, and core switch 2's module is the records' kind." }
+    ];
+  },
+  rung1(v) { return "SSH to the Annex core from the " + v.pcName + " (the records have its address): show interfaces status, show interfaces transceiver, show inventory. Then the Annex core's Physical tab: look at the fibre module itself, and compare it with what the records give for the fibre."; },
+  rung2() { return "The modules at the two ends of a fibre have to agree with each other and with the fibre: the same wavelength, made for that kind of fibre, and a speed the slot can run. A module that fails any of those leaves the link dark, or the port shut."; },
+  fixHints(v) { return ["The records say which modules the fibre between the buildings takes.", "The van has 1 Gb/s modules of both kinds: the Annex core's Physical tab swaps them.", "Then from the " + v.pcName + ": a ping to the internet."]; },
+  exhibits(sim, v) { return sim.d.anxc.sfp[v.slot] !== "1000BASE-LX" && !online(sim, v.pc) && online(sim, "mgr"); },
+  fixed(sim, v) { return sim.d.anxc.sfp[v.slot] === "1000BASE-LX" && sim.d.core2.sfp[v.plan.annex.link.hqPort] === "1000BASE-LX" && online(sim, "cl1") && online(sim, "cl2") && online(sim, "mgr"); },
+  partial() { return "It works, but not the way the records have it."; },
+  proves(f, sim, v) { return f.cmd === "ping" && (f.dev === "cl1" || f.dev === "cl2") && f.replies > 0 && !!f.internet; },
+  proofText: "a ping from a classroom PC to the internet that gets replies",
+  evidence: [
+    { id: "stat", test: function (f, v) { const o = devOut(f); return f.on === "anxc" && new RegExp("^" + v.short.replace("/", "\\/") + "\\s.*" + (v.kind === "sx" ? "notconnect" : "err-disabled"), "m").test(o); }, text: function (f, v) { return "show interfaces status on the Annex core: " + v.short + " " + (v.kind === "sx" ? "notconnect" : "err-disabled"); } },
+    { id: "inv", test: function (f, v) { return f.on === "anxc" && /PID:/.test(devOut(f)) && devOut(f).indexOf(SFP_PID[v.mod]) >= 0; }, text: function (f, v) { return "show inventory on the Annex core: the fibre slot holds " + SFP_PID[v.mod]; } },
+    { id: "look", test: function (f, v) { return f.phys === "look" && f.cable === v.fibre && f.end === v.end; }, text: function (f, v) { return "the Annex core's fibre module, looked at: " + v.mod + (v.kind === "sx" ? ", a black bail" : ", an SFP+"); } }
+  ],
+  summary(v) {
+    return { cause: "Friday's replacement module from the spares drawer was " + (v.kind === "sx" ? "a 1000BASE-SX: 850 nm, made for multimode fibre, facing core switch 2's 1000BASE-LX at 1310 nm on single-mode fibre. No light got through either way, so the port stayed notconnect." : "an SFP+ 10GBASE-SR: a 10 Gb/s module in a 1 Gb/s slot. The switch can't run it, so it shut the port (err-disabled).") + " With its only link down, the Annex core had no OSPF neighbour and no way out, and the classroom reached nothing beyond its building.", fix: "On the Annex core's Physical tab: the module in " + v.slot + " swapped for a 1000BASE-LX from the van, as the records have it at both ends. The link came up, OSPF formed with core switch 2, and the classroom reached the internet." };
+  }
+};
+
+export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07, CP08, CP09, CP10, CP11, CP12, CP13, CP14];
 export const CAMPUS_COMING = [];

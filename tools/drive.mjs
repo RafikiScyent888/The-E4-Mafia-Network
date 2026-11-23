@@ -1193,6 +1193,24 @@ Object.assign(PLAN, {
       await cp04Login(p, v, k); for (const l of ["configure terminal", "system mtu jumbo 9000", "end", "copy running-config startup-config", "", "reload", "", "exit"]) await type(p, l);
     },
     proof: async (p) => { const v = await T(p, () => window.__e4.T.v), S = await cp13Srv(p); await cp13Login(p, S, "fsrv"); await type(p, "ping -M do -s 8972 -c 3 " + v.bb); await type(p, "exit"); }
+  },
+  "CP-14": {
+    look: async (p, v) => {
+      const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "CP-14's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(60);
+      const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "CP-14's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+      await dysClear(p, "CP-14"); await planBothFonts(p, "CP-14");
+      const row = await rec(p, "The fibre between the buildings"), mod = (row.match(/a (\S+) module at each end/) || [])[1];
+      check(mod === "1000BASE-LX", "CP-14: Rafiki's records give the fibre's modules (" + row + ")"); v.mod14 = mod || "?";
+      await cp11Login(p, v); for (const l of ["show interfaces status", "show inventory"]) await type(p, l);
+      const o = (await term(p)).split("show interfaces status").pop(); await type(p, "exit");
+      check(new RegExp("^Gi0\\/25\\s.*" + (v.kind === "sx" ? "notconnect" : "err-disabled"), "m").test(o) && o.indexOf(v.kind === "sx" ? "SFP-1000BASE-SX" : "SFP-10G-SR") >= 0, "CP-14 " + v.kind + ": over SSH, the Annex core's fibre port down, its inventory naming the module in it");
+      await dev(p, "anxc"); await tab(p, "Physical"); await p.click('.cabs li:has-text("ibre") button:text-is("Look at the plug")'); await p.waitForTimeout(60);
+    },
+    /* the SX variant: the LC pair swapped at the Annex end (the near miss on the board); the SFP+ variant: an SX module from the van */
+    wrong: async (p, v) => { await dev(p, "anxc"); await tab(p, "Physical"); if (v.kind === "sx") await p.click('.cabs li:has-text("ibre") button:text-is("Swap the LC pair over at this end")'); else await p.click('.phys button:text-is("Swap in a 1000BASE-SX module")'); await p.waitForTimeout(60); },
+    fix: async (p, v) => { await dev(p, "anxc"); await tab(p, "Physical"); await p.click('.phys button:text-is("Swap in a ' + v.mod14 + ' module")'); await p.waitForTimeout(60); },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); }
   }
 });
 

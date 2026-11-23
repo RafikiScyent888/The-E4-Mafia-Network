@@ -141,6 +141,13 @@ NODE += [
  ("CP-13: an MTU set only with ip link counts", "js/tickets/campus.js", "return e && e.mtu === 9000 && (saved || (f && f.mtu === 9000)); });", "return f && f.mtu === 9000; });"),
  ("CP-13: a switch passes giants", "js/net/sim.js", "for (const h of P) if (len > this.swMtu(h.dev)) return { dev: h.dev, port: h.port }; return null; }.bind(this);", "return null; }.bind(this);"),
 ]
+NODE += [
+ ("CP-14: an SX module on single-mode fibre links", "js/net/sim.js", "mods.some(function (m) { return m.rate !== 1000 || m.fiber !== c.fiber; }) || mods[0].nm !== mods[1].nm)", "mods.some(function (m) { return m.rate !== 1000; }))"),
+ ("CP-14: any module in the slot counts", "js/tickets/campus.js", 'fixed(sim, v) { return sim.d.anxc.sfp[v.slot] === "1000BASE-LX" && ', 'fixed(sim, v) { return !!sim.d.anxc.sfp[v.slot] && '),
+]
+PAGE += [
+ ("CP-14: the fibre's modules left off the records", "js/tickets/campus.js", " · single-mode fibre, a 1000BASE-LX module at each end\"],", "\"],"),
+]
 AAA = [
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "CP-01 the card with Rafiki's records"),
 ]

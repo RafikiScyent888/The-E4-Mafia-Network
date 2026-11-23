@@ -915,6 +915,7 @@ const cp06Login = async (p, v, which) => {
   for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
 };
 const cp06Conf = async (p, v, lines) => { await cp06Login(p, v, v.sw); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
+const cp07Conf = async (p, v, which, lines) => { await cp04Login(p, v, which); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
 const campConf = async (p, v, lines) => { await campLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "exit"])) await type(p, l); };
 Object.assign(PLAN, {
   "CP-01": {
@@ -1023,6 +1024,22 @@ Object.assign(PLAN, {
     wrong: async (p, v) => { const vid = await cp06Vlan(p, v); await cp06Conf(p, v, ["spanning-tree vlan " + vid + " priority 28672"]); },   /* above switch 1, not the default: switch 1 is root again, Mason says why it isn't the fix */
     fix: async (p, v) => { const vid = await cp06Vlan(p, v); await cp06Conf(p, v, ["no spanning-tree vlan " + vid + " priority"]); },
     proof: async (p) => { const v = await T(p, () => window.__e4.T.v); const vid = await cp06Vlan(p, v); await cp06Login(p, v, "dist1"); await type(p, "show spanning-tree vlan " + vid); await type(p, "exit"); }
+  },
+  "CP-07": {
+    look: async (p, v) => {
+      const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "CP-07's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(60);
+      const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "CP-07's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+      await dysClear(p, "CP-07"); await planBothFonts(p, "CP-07");
+      const o = {};
+      for (const d of ["dist1", "dist2"]) { await cp04Login(p, v, d); await type(p, "show etherchannel summary"); await type(p, "show running-config"); o[d] = (await term(p)).split("show etherchannel summary").pop(); await type(p, "exit"); }
+      const bad = ["dist1", "dist2"].filter((d) => !/^1\s+Po1\(SU\)\s+LACP\s+Gi0\/21\(P\)\s+Gi0\/22\(P\)/m.test(o[d]));
+      check(bad.length >= 1 && (v.kind === "passive" ? ["dist1", "dist2"].every((d) => /channel-group 1 mode passive/.test(o[d])) : /channel-group 1 mode on/.test(o[v.side])), "CP-07 " + v.kind + ": over SSH, the bundle isn't negotiated with both links at " + bad.join(" and ") + ", the channel-group lines changed");
+      v.ends = v.kind === "passive" ? ["dist1", "dist2"] : ["dist1", "dist2"].filter((d) => /channel-group 1 mode on/.test(o[d]));   /* the ends to put back, as read from their configurations */
+    },
+    wrong: async (p, v) => { for (const d of ["dist1", "dist2"]) await cp07Conf(p, v, d, ["interface range gi0/21 - 22", "channel-group 1 mode on"]); },   /* both forced on: up, but not negotiated */
+    fix: async (p, v) => { for (const d of v.ends) await cp07Conf(p, v, d, ["interface range gi0/21 - 22", "channel-group 1 mode active"]); },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await cp04Login(p, v, "dist1"); await type(p, "show etherchannel summary"); await type(p, "exit"); }
   }
 });
 

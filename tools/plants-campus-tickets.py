@@ -93,6 +93,15 @@ NODE += [
 PAGE += [
  ("CP-06: show spanning-tree never says this bridge is the root", "js/net/swcli.js", 'if (me.root === T.me) out.push("             This bridge is the root"); else', 'if (false) out.push("             This bridge is the root"); else'),
 ]
+NODE += [
+ ("CP-07: the fix unsaved counts", "js/tickets/campus.js", "fixed(sim, v) { return CP07.modesRight(sim) && CP07.modesRight(sim, true) && ", "fixed(sim, v) { return CP07.modesRight(sim) && "),
+ ("CP-07: any bundle that's up counts", "js/tickets/campus.js", "fixed(sim, v) { return CP07.modesRight(sim) && CP07.modesRight(sim, true) && ", "fixed(sim, v) { return "),
+ ("CP-07: active facing passive counts as the records", "js/tickets/campus.js", 'return chanModes(sim, id, saved).every(function (m) { return m === "active"; }); }); },', 'return chanModes(sim, id, saved).every(function (m) { return m !== "on"; }); }); },'),
+ ("CP-07: two passive ends bundle", "js/net/swcli.js", '(p.chan.mode === "passive" && far.mode === "passive")) return "I";', 'false) return "I";'),
+]
+PAGE += [
+ ("CP-07: show etherchannel summary marks every member bundled", "js/net/swcli.js", 'M.map(function (n) { return short(n) + "(" + chanState(sw, n) + ")"; }).join("   "));', 'M.map(function (n) { return short(n) + "(P)"; }).join("   "));'),
+]
 AAA = [
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "CP-01 the card with Rafiki's records"),
 ]

@@ -5,6 +5,7 @@
 import { HOME_TICKETS, HOME_COMING } from "../tickets/home.js";
 import { OFFICE_TICKETS, OFFICE_COMING } from "../tickets/office.js";
 import { BUSINESS_TICKETS, BUSINESS_COMING, businessRecords } from "../tickets/business.js";
+import { CAMPUS_TICKETS, CAMPUS_COMING, campusRecords } from "../tickets/campus.js";
 import { LEVELS, isOpen } from "./levels.js";
 import * as E from "../tickets/engine.js";
 import { HELP } from "../net/cmd.js";
@@ -19,13 +20,15 @@ import { cableMap } from "./cablemapui.js";
 
 const PAGE = document.body.dataset.page;
 const S = load();
-const DEFS = {}; HOME_TICKETS.concat(OFFICE_TICKETS, BUSINESS_TICKETS).forEach(function (d) { DEFS[d.id] = d; });
+const DEFS = {}; HOME_TICKETS.concat(OFFICE_TICKETS, BUSINESS_TICKETS, CAMPUS_TICKETS).forEach(function (d) { DEFS[d.id] = d; });
 const item = function (d) { return { id: d.id, n: d.n, tier: d.tier, title: d.title, level: d.level || 1, built: true }; };
 const LIST = HOME_TICKETS.map(item).concat(HOME_COMING.map(function (c) { return Object.assign({ built: false, level: 1 }, c); }),
   OFFICE_TICKETS.map(item), OFFICE_COMING.map(function (c) { return Object.assign({ built: false }, c); }),
-  BUSINESS_TICKETS.map(item), BUSINESS_COMING.map(function (c) { return Object.assign({ built: false }, c); }));   /* every level's tickets; the queue shows the chosen level's */
+  BUSINESS_TICKETS.map(item), BUSINESS_COMING.map(function (c) { return Object.assign({ built: false }, c); }),
+  CAMPUS_TICKETS.map(item), CAMPUS_COMING.map(function (c) { return Object.assign({ built: false }, c); }));   /* every level's tickets; the queue shows the chosen level's */
 const DEVICES = ["pc", "switch", "msw", "pp", "mgr", "mjack", "ojack", "meet", "bsw", "mpc", "router", "modem", "printer", "tech", "injector", "camera", "tv", "mesh", "laptop", "phone", "guest"];   /* an undocumented box gets no button: find it on the floor plan */
 const BIZ_DEVICES = ["pc", "mgr", "bpc", "dpc1", "dpc2", "printer", "printer2", "intruder", "msw", "bsw", "rtr", "modem", "cab", "ap", "injector", "cinj1", "cam1", "cinj2", "cam2", "guest", "mphone", "tech"];   /* the business's, in the order the work orders brought them */
+const CAMPUS_DEVICES = ["sd1", "hd1", "bn1", "bn2", "mgr", "fin", "tr1", "tr2", "cl1", "cl2", "pr1", "pr3", "edge", "core1", "core2", "dist1", "dist2", "acc1", "acc2", "acc3", "acc4", "anxc", "anxa", "fsrv", "bksrv", "modem", "tech"];   /* the campus's: the desks first, then the gear from the edge down */
 const $ = function (id) { return document.getElementById(id); };
 let replateMap = null;
 
@@ -85,9 +88,9 @@ function renderLeft() {
 }
 function renderTitle() {
   const d = ctx.T.def, net = ctx.T.sim.net, lt = $("labtitle");
-  const surname = net.client.name.replace(/^(Mrs?|Ms)\. /, ""), L = LEVELS[(d.level || 1) - 1], office = net.site === "office", biz = net.site === "business";
+  const surname = net.client.name.replace(/^(Mrs?|Ms)\. /, ""), L = LEVELS[(d.level || 1) - 1], office = net.site === "office", biz = net.site === "business", camp = net.site === "campus";
   const t = { desk: ["Ticket " + d.id + " · " + d.title, "Queue: Tier " + L.n + " · " + L.name + " · Rafiki's IT Services"], bench: ["Lab " + d.id + " · " + d.title, "Shelf: Network troubleshooting · Level: " + L.name],
-    map: [(office || biz ? net.client.name : surname + " home") + " · ticket " + d.id + " · " + d.title, biz ? "Site: Small business, " + net.client.street + " · Level 3: Small business" : office ? "Site: Small office, " + net.client.street + " · Level 2: Small office" : "Site: Client homes, Maple Street · Level 1: Home"] }[PAGE];
+    map: [(office || biz || camp ? net.client.name : surname + " home") + " · ticket " + d.id + " · " + d.title, camp ? "Site: Rafiki HQ and the Training Annex · Level 4: Campus" : biz ? "Site: Small business, " + net.client.street + " · Level 3: Small business" : office ? "Site: Small office, " + net.client.street + " · Level 2: Small office" : "Site: Client homes, Maple Street · Level 1: Home"] }[PAGE];
   lt.textContent = t[0]; lt.appendChild(el("small", null, t[1]));
   document.title = d.id + " · " + { desk: "Ticket Desk", bench: "Lab Bench", map: "Service Map" }[PAGE] + " · The E4 Mafia Network";
 }
@@ -96,11 +99,12 @@ function renderTicketCard() {
   tk.innerHTML = "";
   tk.appendChild(el("h3", { tabindex: "-1", id: "tkh" }, d.id + " · " + d.title));
   tk.appendChild(el("div", { class: "meta" }, el("b", null, "Priority " + d.priority), el("br"), "Due in " + d.due));
-  tk.appendChild(el("p", { class: "from" }, net.client.name + " · " + net.client.street + " · " + ({ office: "office network", business: "business network" }[net.site] || "home network")));
+  tk.appendChild(el("p", { class: "from" }, net.client.name + " · " + net.client.street + " · " + ({ office: "office network", business: "business network", campus: "campus network" }[net.site] || "home network")));
   tk.appendChild(el("p", { class: "q" }, "“" + b.quote + "”"));
   tk.appendChild(el("p", { class: "mason2" }, el("b", null, "Mason: "), d.mason));
   if (net.site === "office" && T.v.plan) tk.appendChild(officeRecords(d, T));
   if (net.site === "business" && T.v.plan) tk.appendChild(records("The business's records", (d.records && d.records(T.v, T.sim)) || businessRecords(T.v, T.sim)));
+  if (net.site === "campus" && T.v.plan) tk.appendChild(records("Rafiki's records", (d.records && d.records(T.v, T.sim)) || campusRecords(T.v, T.sim)));
 }
 /* the office's records, as the client keeps them: what a technician is given to log in to its switch. A ticket can
    change a line where its story says the records changed (SO-03's new address; SO-09's address from the IPAM sheet) */
@@ -163,8 +167,8 @@ function renderNotebook() {
 }
 function renderDevtabs() {
   const dt = $("devtabs"); dt.innerHTML = "";
-  const biz = ctx.T.sim.net.site === "business";
-  (biz ? BIZ_DEVICES : DEVICES).forEach(function (id) { const d = ctx.T.sim.d[id]; if (!d || (biz && d.boxed)) return; dt.appendChild(el("button", { type: "button", "data-d": id, "aria-pressed": String(id === ctx.open), onclick: function () { openDevice(id); } }, d.label)); });
+  const site = ctx.T.sim.net.site, biz = site === "business" || site === "campus";
+  (site === "campus" ? CAMPUS_DEVICES : biz ? BIZ_DEVICES : DEVICES).forEach(function (id) { const d = ctx.T.sim.d[id]; if (!d || (biz && d.boxed)) return; dt.appendChild(el("button", { type: "button", "data-d": id, "aria-pressed": String(id === ctx.open), onclick: function () { openDevice(id); } }, d.label)); });
   $("termtitle").textContent = "Terminal · " + ctx.T.sim.d[ctx.open].label;
 }
 function renderWin() { renderWindow($("win"), ctx); }

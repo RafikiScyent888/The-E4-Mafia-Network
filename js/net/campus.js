@@ -54,7 +54,7 @@ export const CAMPUS_LAYOUT = {
   acc1: { x: 100, y: 410, lab: "right", px: 460, py: 280, room: "data" }, acc2: { x: 370, y: 470, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 630, y: 410, lab: "right", px: 115, py: 655, room: "c3" }, acc4: { x: 860, y: 470, lab: "right", px: 115, py: 855, room: "c4" },
   sd1: { x: 60, y: 590, px: 650, py: 120, room: "svc", srv: { x: 165, px: 750, py: 120 } }, hd1: { x: 150, y: 700, px: 880, py: 120, room: "svc", srv: { x: 95, px: 905, py: 120 } }, pr1: { x: 250, y: 590, px: 765, py: 250, room: "svc", srv: { x: 302, px: 840, py: 250 } },   /* srv: once the file server is in, the data room is drawn wider (work order 9) */
   bn1: { x: 345, y: 700, px: 480, py: 455, room: "bench", srv: { x: 432, px: 565 } },   /* srv: on the logical diagram the 1F and 2F desks step aside for the servers' lanes down to their row (work order 9) */ bn2: { x: 440, y: 590, px: 740, py: 455, room: "bench", srv: { x: 495 } },
-  mgr: { x: 545, y: 700, px: 440, py: 655, room: "office", srv: { x: 565 } }, fin: { x: 640, y: 590, px: 650, py: 655, room: "office" }, pr3: { x: 745, y: 700, px: 860, py: 655, room: "office" },
+  mgr: { x: 545, y: 700, px: 440, py: 655, room: "office", srv: { x: 565 } }, fin: { x: 640, y: 600, px: 650, py: 655, room: "office" }, pr3: { x: 745, y: 700, px: 860, py: 655, room: "office" },
   tr1: { x: 815, y: 590, px: 540, py: 855, room: "train" }, tr2: { x: 960, y: 700, px: 780, py: 855, room: "train" },
   /* the Training Annex (work order 8): on the logical diagram a block of its own under the main building (the fibre between them drawn as
      a labelled stub at each end, as a diagram of two buildings shows it); on the floor plan its own band under the main building */

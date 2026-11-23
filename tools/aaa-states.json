@@ -1817,5 +1817,54 @@
   "page": "build.html",
   "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS.slice(0,3).flatMap(x=>x.tickets).map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS.slice(0,3).flatMap(x=>x.jobs).map(id=>[id,1]))})); window.__e4b.openJob('CP-J1',true,4242);})()",
   "after": "document.querySelector('#left [data-level=\"4\"]').click();"
+ },
+ {
+  "name": "campus tickets: CP-01 the card with Rafiki's records, the logical diagram, the finance PC's dead port",
+  "page": "index.html",
+  "ticket": "CP-01",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-01'); const v=c.T.v, P=v.plan, ip=P.sw[v.sw].ip, other={acc1:'sd1',acc2:'bn1',acc3:'mgr'}[v.sw]; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.getElementById('tk').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-01 over SSH from the other bench PC: the port err-disabled, port security's counters and the visitor's address",
+  "page": "index.html",
+  "ticket": "CP-01",
+  "seed": 3,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-01'); const v=c.T.v, P=v.plan, ip=P.sw[v.sw].ip, other={acc1:'sd1',acc2:'bn1',acc3:'mgr'}[v.sw]; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.querySelector('#devtabs [data-d='+other+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+ip,P.userPw,'enable',P.secret,'show interfaces status','show port-security interface gi0/'+v.port,'show port-security address'].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-01 the help desk PC's ipconfig, the floor plan, Mason's third rung",
+  "page": "index.html",
+  "ticket": "CP-01",
+  "seed": 6,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-01'); const v=c.T.v, P=v.plan, ip=P.sw[v.sw].ip, other={acc1:'sd1',acc2:'bn1',acc3:'mgr'}[v.sw]; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); document.getElementById('vPhy').click(); document.querySelector('#devtabs [data-d='+v.dev+']').click(); tab('Command Prompt'); k('ipconfig'); const w=c.T.opts.filter(o=>!o.right).map(o=>o.id); w.slice(0,4).forEach(x=>c.guess(x)); c.resetBoard(); c.guess(w[4]); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-01 a wrong fix (no shutdown alone), Mason on the fix",
+  "page": "index.html",
+  "ticket": "CP-01",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-01'); const v=c.T.v, P=v.plan, ip=P.sw[v.sw].ip, other={acc1:'sd1',acc2:'bn1',acc3:'mgr'}[v.sw]; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); c.guess('right'); document.querySelector('#devtabs [data-d='+other+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+ip,P.userPw,'enable',P.secret,'configure terminal','interface gi0/'+v.port,'no shutdown','end','show interfaces status'].forEach(k); [...document.querySelectorAll('#board button')].find(b=>/Ask Mason about the fix/.test(b.textContent)).click(); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-01 solved, the summary",
+  "page": "index.html",
+  "ticket": "CP-01",
+  "seed": 2,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-01'); const v=c.T.v, P=v.plan, ip=P.sw[v.sw].ip, other={acc1:'sd1',acc2:'bn1',acc3:'mgr'}[v.sw]; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); c.guess('right'); document.querySelector('#devtabs [data-d='+other+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+ip,P.userPw,'enable',P.secret,'configure terminal','interface gi0/'+v.port,'shutdown','no shutdown','end','show port-security interface gi0/'+v.port,'exit'].forEach(k); document.querySelector('#devtabs [data-d='+v.dev+']').click(); tab('Command Prompt'); k('ping 8.8.8.8'); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-01 on the troubleshooting shelf, the Campus shelf",
+  "page": "lab-bench.html",
+  "ticket": "CP-01",
+  "seed": 3,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); window.__e4.go('CP-01'); document.getElementById('left').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-01 on the service map, Rafiki HQ's card with its tickets",
+  "page": "service-map.html",
+  "ticket": "CP-01",
+  "seed": 6,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); window.__e4.go('CP-01'); document.querySelector('[data-site=hq]').dispatchEvent(new MouseEvent('click',{bubbles:true})); document.getElementById('card').scrollIntoView();"
  }
 ]

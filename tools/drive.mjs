@@ -12,12 +12,19 @@ const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), ".."
    private notes; run the drive with E4_PIN set to it. Without it the drive stops here, rather than pass the instructor checks unrun */
 const PIN = process.env.E4_PIN || "";
 if (!/^\d{4,}$/.test(PIN)) { console.log("FAIL\nset E4_PIN to the instructor PIN (in the owner's private notes) to run the drive"); process.exit(1); }
-const { HOME_TICKETS } = await import("../js/tickets/home.js"); const { OFFICE_TICKETS } = await import("../js/tickets/office.js"); const { BUSINESS_TICKETS } = await import("../js/tickets/business.js"); const EN = await import("../js/tickets/engine.js");
+const { HOME_TICKETS } = await import("../js/tickets/home.js"); const { OFFICE_TICKETS } = await import("../js/tickets/office.js"); const { BUSINESS_TICKETS } = await import("../js/tickets/business.js"); const { CAMPUS_TICKETS } = await import("../js/tickets/campus.js"); const EN = await import("../js/tickets/engine.js");
+const { BUSINESS_JOBS } = await import("../js/build/business.js");
 const { OFFICE_JOBS } = await import("../js/build/office.js");
+const { rng: rngOf, hash: hash0 } = await import("../js/net/util.js");
 const { JOBS } = await import("../js/build/jobs.js");
 /* three houses each, plus more until every variant of the fault (which end, which kind) has been driven through the page */
 function seedsFor(id) {
-  const def = HOME_TICKETS.concat(OFFICE_TICKETS, BUSINESS_TICKETS).find((d) => d.id === id); if (!def) return [11];   /* not built: the loop names it */
+  const def = HOME_TICKETS.concat(OFFICE_TICKETS, BUSINESS_TICKETS, CAMPUS_TICKETS).find((d) => d.id === id); if (!def) return [11];   /* not built: the loop names it */
+  if (def.level === 4) {   /* a campus takes seconds to build: its variant is picked from the seed alone, so the seeds for the missing ones are found without building any */
+    const pick = (s) => { const r = rngOf(hash0(def.id + ":" + s)); return r.pick(def.kinds); }, out = [11, 2025, 777777], have = new Set(out.map(pick));
+    for (let s = 1; have.size < def.kinds.length && s < 2000; s++) if (!have.has(pick(s))) { have.add(pick(s)); out.push(s); }
+    return out;
+  }
   const key = (T) => JSON.stringify([T.v.kind, T.v.end, T.v.kink]), out = [11, 2025, 777777], seen = new Set(out.map((s) => key(EN.open(def, s))));
   for (let s = 1; s < (def.level === 3 ? 24 : def.level === 2 ? 40 : 400); s++) {   /* an office takes longer to build: every variant shows within the first forty; a business longer still, within twenty-four (SB-04's guests first come at 12) */ const k = key(EN.open(def, s)); if (!seen.has(k)) { seen.add(k); out.push(s); } }
   return out;
@@ -35,8 +42,8 @@ async function page(ticket, seed, file) {
   const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
   /* a small-office ticket opens for a student who has finished Home: every home ticket solved, every home work order done; a
      small-business ticket for one who has finished the small office too */
-  const lvl = /^SB-/.test(ticket) ? 3 : /^SO-/.test(ticket) ? 2 : 1;
-  const homeT = lvl > 1 ? HOME_TICKETS.concat(lvl > 2 ? OFFICE_TICKETS : []).map((d) => d.id) : [], homeJ = lvl > 1 ? JOBS.filter((d) => !d.free).concat(lvl > 2 ? OFFICE_JOBS : []).map((d) => d.id) : [];
+  const lvl = /^CP-\d/.test(ticket) ? 4 : /^SB-/.test(ticket) ? 3 : /^SO-/.test(ticket) ? 2 : 1;   /* a campus ticket for one who has finished the small business too */
+  const homeT = lvl > 1 ? HOME_TICKETS.concat(lvl > 2 ? OFFICE_TICKETS : [], lvl > 3 ? BUSINESS_TICKETS : []).map((d) => d.id) : [], homeJ = lvl > 1 ? JOBS.filter((d) => !d.free).concat(lvl > 2 ? OFFICE_JOBS : [], lvl > 3 ? BUSINESS_JOBS : []).map((d) => d.id) : [];
   await ctx.addInitScript(([t, s, hT, hJ]) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify({ current: t, t: { [t]: { seed: s } }, solved: Object.fromEntries(hT.map((id) => [id, 1])) })); if (hJ.length) localStorage.setItem("e4-build-v1", JSON.stringify({ j: {}, done: Object.fromEntries(hJ.map((id) => [id, 1])) })); sessionStorage.setItem("seeded", "1"); } }, [ticket, seed, homeT, homeJ]);
   const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push(ticket + ": " + e.message));
   await p.goto(base + (file || "index.html")); await p.waitForTimeout(350);
@@ -845,13 +852,44 @@ Object.assign(PLAN, {
   })()
 });
 
-for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY || k === process.env.ONLY || (process.env.ONLY === "tickets-office" && /^SO-/.test(k)) || (process.env.ONLY === "tickets-business" && /^SB-/.test(k)))) for (const seed of seedsFor(id)) {
-  if (!HOME_TICKETS.concat(OFFICE_TICKETS, BUSINESS_TICKETS).some((d) => d.id === id)) { check(false, id + ": isn't among the built tickets"); continue; }
+/* the campus's tickets: the logins off Rafiki's records on the card, SSH from another desk PC on the same switch */
+const campOther = (v) => ({ acc1: "sd1", acc2: "bn1", acc3: "mgr" })[v.sw];
+const campLogin = async (p, v) => {
+  const ssh = await rec(p, "Remote logins (SSH)"), sws = await rec(p, "The switches"), sec = await rec(p, "Enable secret");
+  const m = ssh.match(/^user (\S+) · password (\S+)$/), host = v.plan.sw[v.sw].host, ip = (sws.match(new RegExp(host + " (\\d+\\.\\d+\\.\\d+\\.\\d+)")) || [])[1], s2 = (sec.match(/^(\S+)/) || [])[1];
+  check(!!m && m[1] === v.plan.user && m[2] === v.plan.userPw && ip === v.plan.sw[v.sw].ip && s2 === v.plan.secret, "Rafiki's records on the ticket give the SSH login, the " + v.swName + "'s address and the enable secret");
+  await dev(p, campOther(v)); await tab(p, "Command Prompt");
+  for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
+};
+const campConf = async (p, v, lines) => { await campLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "exit"])) await type(p, l); };
+Object.assign(PLAN, {
+  "CP-01": {
+    look: async (p, v) => {
+      /* the campus as the work orders left it, drawn as build mode draws it: every name clear, in both fonts */
+      const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "CP-01's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(60);
+      const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "CP-01's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+      await dysClear(p, "CP-01"); await planBothFonts(p, "CP-01");
+      await dev(p, v.dev); await tab(p, "Command Prompt"); await type(p, "ipconfig");
+      check(/Media disconnected/.test(await term(p)), "CP-01: ipconfig on the " + v.pc + " says Media disconnected");
+      await campLogin(p, v);
+      for (const l of ["show interfaces status", "show port-security interface gi0/" + v.port, "show port-security address"]) await type(p, l);
+      const o = await term(p); await type(p, "exit");
+      check(new RegExp("Gi0/" + v.port + "\\s.*err-disabled").test(o) && /Secure-shutdown/.test(o) && o.indexOf(v.visitor) >= 0, "CP-01: over SSH, the " + v.swName + " says the PC's port is err-disabled by port security, the visitor's address the last source");
+    },
+    wrong: async (p, v) => { await campConf(p, v, ["interface gi0/" + v.port, "no shutdown"]); },   /* opened without shutting it first: still err-disabled */
+    fix: async (p, v) => { await campConf(p, v, ["interface gi0/" + v.port, "shutdown", "no shutdown"]); },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.dev); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); }
+  }
+});
+
+for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY || k === process.env.ONLY || (process.env.ONLY === "tickets-office" && /^SO-/.test(k)) || (process.env.ONLY === "tickets-business" && /^SB-/.test(k)) || (process.env.ONLY === "tickets-campus" && /^CP-\d/.test(k)))) for (const seed of seedsFor(id)) {
+  if (!HOME_TICKETS.concat(OFFICE_TICKETS, BUSINESS_TICKETS, CAMPUS_TICKETS).some((d) => d.id === id)) { check(false, id + ": isn't among the built tickets"); continue; }
   let { p, ctx } = await page(id, seed);
   try {   /* a ticket that stops part way (a button missing, a click that times out) is a named failure, and the next ticket still runs */
   const v = await T(p, () => window.__e4.T.v), gw = await T(p, () => { const r = window.__e4.T.sim.d.router; return r ? r.lan.ip : null; });   /* the business has no home or office router: its gateways are in its records */
   check(await T(p, () => window.__e4.T.def.exhibits(window.__e4.T.sim, window.__e4.T.v)), id + " " + seed + ": fault present at load");
-  if (/^SB-/.test(id)) check((await T(p, () => window.__e4.T.seed)) === seed, id + " " + seed + ": opens on the business asked for, its fault showing there without moving on to another (" + v.kind + ")");   /* a fault that didn't show would be moved to the next business, and every variant could quietly become one */
+  if (/^SB-|^CP-\d/.test(id)) check((await T(p, () => window.__e4.T.seed)) === seed, id + " " + seed + ": opens on the business asked for, its fault showing there without moving on to another (" + v.kind + ")");   /* a fault that didn't show would be moved to the next business, and every variant could quietly become one */
   await plan.look(p, v);
   const ev0 = await p.$$eval("#notebook li", (l) => l.length); check(ev0 >= 1, id + " " + seed + ": the notebook recorded evidence (" + ev0 + ")");
   /* the board: rungs as the rule says */
@@ -882,7 +920,7 @@ for (const [id, plan] of Object.entries(PLAN).filter(([k]) => !process.env.ONLY 
   check(solvedNow, id + " " + seed + ": solved through the page");
   if (!solvedNow) { await ctx.close(); continue; }   /* the rest needs a solved ticket: record the failure by name, don't crash */
   /* the progress is kept */
-  await p.reload(); await p.waitForTimeout(350);
+  await p.reload(/^CP-\d/.test(id) ? { timeout: 15000 } : {}); await p.waitForTimeout(350);   /* a campus ticket rebuilds the campus from every work order: about four seconds */
   check(await p.$("#board .solved") !== null, id + ": still solved after a reload");
   const qtext = await p.$eval('#queue [data-t="' + id + '"]', (n) => n.textContent).catch(() => "(not in the queue)");   /* missing from the queue: a named failure, not a crash */
   check(/Solved 1×|solved 1×/.test(qtext), id + ": the queue counts it solved (" + qtext + ")");
@@ -951,6 +989,49 @@ if (!process.env.ONLY || process.env.ONLY === "tickets-business") {
       check(/Tickets at the small business/.test(await p.$eval("#card", (n) => n.textContent)) && !!(await p.$('#card [data-t="SB-01"]')), "business tickets: the map's small business site lists its tickets");
       check(/Site: Small business, /.test(await p.$eval("#labtitle", (n) => n.textContent)), "business tickets: the map's title names the small business's site");
     } catch (e) { check(false, "business tickets: stopped: " + String(e.message).split("\n")[0]); }
+    await ctx.close();
+  }
+}
+
+/* the campus's tickets on the desk: locked until the small business is finished (a campus ticket left as current opens HOME-01
+   instead), listed for one who has; the card, the title, Rafiki's records, the device buttons, the work orders' titles, the shelves
+   and the map */
+if (!process.env.ONLY || process.env.ONLY === "tickets-campus") {
+  {
+    const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
+    const so = Object.fromEntries(HOME_TICKETS.concat(OFFICE_TICKETS).map((d) => [d.id, 1])), dn = Object.fromEntries(JOBS.filter((d) => !d.free).concat(OFFICE_JOBS).map((d) => [d.id, 1]));
+    await ctx.addInitScript(([so, dn]) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify({ current: "CP-01", t: { "CP-01": { seed: 11 } }, solved: so })); localStorage.setItem("e4-build-v1", JSON.stringify({ j: {}, done: dn })); sessionStorage.setItem("seeded", "1"); } }, [so, dn]);
+    const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push("campus tickets locked: " + e.message)); await p.goto(base + "index.html"); await p.waitForTimeout(350);
+    if (plant) await p.evaluate(plant);
+    check((await T(p, () => window.__e4.T.def.id)) === "HOME-01", "campus tickets: a student still on the small business, CP-01 left as current, lands on HOME-01 (the level is locked)");
+    await p.click('#left [data-level="4"]'); await p.waitForTimeout(60);
+    check(!!(await p.$("#lockpanel")) && (await p.$$('#queue [data-t^="CP-"]')).length === 0, "campus tickets: for that student the campus's queue is the lock panel, no tickets");
+    await ctx.close();
+  }
+  {
+    const { p, ctx } = await page("CP-01", 2025);
+    p.setDefaultTimeout(15000);
+    try {
+      await p.click('#left [data-level="4"]').catch(() => {}); await p.waitForTimeout(60);
+      const q = await p.$$eval('#queue [data-t^="CP-"]', (l) => l.map((b) => b.dataset.t + ":" + (b.getAttribute("aria-disabled") === "true" ? "off" : "on")));
+      check(q.join(",") === CAMPUS_TICKETS.map((d) => d.id + ":on").join(","), "campus tickets: the level 4 queue lists the campus tickets built (" + q.join(",") + ")");
+      check(/^Tier 4 · Campus · tickets/.test(await p.$eval("#queue li.tier", (n) => n.textContent)) && /More tickets on the way/.test(await p.$eval("#queue", (n) => n.textContent)), "campus tickets: the queue's heading says Tier 4 · Campus, and more tickets on the way");
+      const jobs = await p.$$eval("#queue a.joblink", (l) => l.map((a) => [a.querySelector(".num").textContent, a.querySelector(".what").textContent]));
+      check(jobs.length === 10 && jobs.every((j) => /^CP-J\d+$/.test(j[0]) && j[1].length > 20), "campus tickets: the queue's ten work orders, each with its title (" + jobs.map((j) => j[0] + ":" + j[1].length).join(" ") + ")");
+      check(/campus network/.test(await p.$eval("#tk .from", (n) => n.textContent)) && /Tier 4 · Campus/.test(await p.$eval("#labtitle", (n) => n.textContent)), "campus tickets: the card says campus network, the title Tier 4 · Campus");
+      check(/^Rafiki's records$/.test(await p.$eval("#officeRecs h4", (n) => n.textContent).catch(() => "")), "campus tickets: the card carries Rafiki's records");
+      const devs = await p.$$eval("#devtabs button", (l) => l.map((b) => b.dataset.d));
+      check(["sd1", "fin", "acc3", "dist1", "core1", "edge", "anxc", "fsrv", "tech"].every((d) => devs.indexOf(d) >= 0) && devs.indexOf("router") < 0 && devs.indexOf("rtr") < 0, "campus tickets: the campus's devices have buttons, its own and no others (" + devs.join(" ") + ")");
+      const nT = CAMPUS_TICKETS.length, L4 = await p.$eval('#left [data-level="4"]', (n) => n.textContent);
+      check(new RegExp("^Level 4 · Campus0 of " + nT + " ticket" + (nT === 1 ? "" : "s") + ", 0 of 10 work orders done").test(L4), "campus tickets: Level 4 counts its tickets and work orders (" + L4 + ")");
+      await p.goto(base + "lab-bench.html"); await p.waitForTimeout(350);
+      const shelf = await p.$eval("#left", (n) => n.textContent);
+      check(/Campus(?! · locked)/.test(shelf) && !!(await p.$('#left [data-t="CP-01"]')), "campus tickets: the troubleshooting shelf lists CP-01 under Campus");
+      await p.goto(base + "service-map.html"); await p.waitForTimeout(350);
+      await p.click('[data-site="hq"]'); await p.waitForTimeout(60);
+      check(/Tickets at Rafiki HQ and the Training Annex/.test(await p.$eval("#card", (n) => n.textContent)) && !!(await p.$('#card [data-t="CP-01"]')), "campus tickets: the map's Rafiki HQ site lists its tickets");
+      check(/Site: Rafiki HQ and the Training Annex/.test(await p.$eval("#labtitle", (n) => n.textContent)), "campus tickets: the map's title names Rafiki HQ");
+    } catch (e) { check(false, "campus tickets: stopped: " + String(e.message).split("\n")[0]); }
     await ctx.close();
   }
 }
@@ -1615,7 +1696,7 @@ if (!process.env.ONLY || process.env.ONLY === "business" || process.env.ONLY ===
     await p.goto(base + "index.html"); await p.waitForTimeout(350);
     const L3 = await p.$eval('#left [data-level="3"]', (n) => n.textContent), L4 = await p.$eval('#left [data-level="4"]', (n) => n.textContent);
     check(/Finished: 15 of 15 tickets, 10 of 10 work orders/.test(L3), tag + "Level 3 says finished, 15 of 15 tickets and 10 of 10 work orders (" + L3 + ")");
-    check(L4 === "Level 4 · Campus0 of " + LEVELS[3].jobs.length + " work orders done · " + LEVELS[3].coming && !/built later/.test(L4) && !(await p.$eval('#left [data-level="4"]', (n) => n.parentNode.classList.contains("locked"))), tag + "Level 4 is open, counts its work orders, and says more are on the way (" + L4 + ")");
+    const nT4b = LEVELS[3].tickets.length; check(L4 === "Level 4 · Campus0 of " + nT4b + " ticket" + (nT4b === 1 ? "" : "s") + ", 0 of " + LEVELS[3].jobs.length + " work orders done · " + LEVELS[3].coming && !/built later/.test(L4) && !(await p.$eval('#left [data-level="4"]', (n) => n.parentNode.classList.contains("locked"))), tag + "Level 4 is open, counts its tickets and work orders, and says more are on the way (" + L4 + ")");
   } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
   await ctx.close();
 }
@@ -2289,7 +2370,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
       const { p, ctx } = await cpage("index.html", { net: solvedTo(3), build: { j: {}, done: doneTo(3) } }); const tag = "campus levels, the small business finished: ";
       try {
         const L = await lv(p, 4);
-        check(!L.locked && new RegExp("0 of " + LEVELS[3].jobs.length + " work orders done · more work orders and its tickets on the way").test(L.text), tag + "Level 4 is open on the Ticket Desk, counts its work orders and says more is coming (" + L.text + ")");
+        const nT4 = LEVELS[3].tickets.length; check(!L.locked && new RegExp("0 of " + nT4 + " ticket" + (nT4 === 1 ? "" : "s") + ", 0 of " + LEVELS[3].jobs.length + " work orders done · more tickets on the way").test(L.text), tag + "Level 4 is open on the Ticket Desk, counts its tickets and work orders and says more tickets are coming (" + L.text + ")");
         await p.click('#left [data-level="4"]'); await p.waitForTimeout(60);
         check((await p.$$('#left a[href="build.html#job=CP-J1"]')).length === 1, tag + "the desk links the campus's work orders into Build");
         await p.click('#left a[href="build.html#job=CP-J1"]'); await p.waitForTimeout(400);

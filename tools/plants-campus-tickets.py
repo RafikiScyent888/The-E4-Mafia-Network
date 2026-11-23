@@ -136,6 +136,11 @@ NODE += [
  ("CP-12: an address set by hand counts", "js/tickets/campus.js", "return CP12.fileRight(sim, v) && !!sim.d.fsrv.lx.dhcpd.enabled && online(sim, v.pc) && !!L && L.server === v.srv; },", "return CP12.fileRight(sim, v) && !!sim.d.fsrv.lx.dhcpd.enabled && online(sim, v.pc); },"),
  ("CP-12: dhcpd starts on a file with a mistake", "js/net/dhcpd.js", "  if (conf.errors.length) return { ok: false, log: log.concat(errorLines(conf)), conf: conf, listen: [], why: \"conf\" };", "  if (false) return { ok: false };"),
 ]
+NODE += [
+ ("CP-13: jumbo saved but not in effect counts", "js/tickets/campus.js", "return (saved ? w.startup.jumbo : w.jumbo) === 9000 && (saved || w.jumboRun === 9000); });", "return (saved ? w.startup.jumbo : w.jumbo) === 9000; });"),
+ ("CP-13: an MTU set only with ip link counts", "js/tickets/campus.js", "return e && e.mtu === 9000 && (saved || (f && f.mtu === 9000)); });", "return f && f.mtu === 9000; });"),
+ ("CP-13: a switch passes giants", "js/net/sim.js", "for (const h of P) if (len > this.swMtu(h.dev)) return { dev: h.dev, port: h.port }; return null; }.bind(this);", "return null; }.bind(this);"),
+]
 AAA = [
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "CP-01 the card with Rafiki's records"),
 ]

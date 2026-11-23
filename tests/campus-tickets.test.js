@@ -917,3 +917,70 @@ test("CP-12: the brief and every hint never name the right answer, a password or
     }
   }
 });
+
+/* ---------------------------------------------------------------- CP-13 */
+const CP13 = CAMPUS_TICKETS.find((d) => d.id === "CP-13");
+const sshSrv = (T, which, lines) => { const f = (l) => ({ t: "cmd", dev: "mgr", line: l }), p = T.v.plan; return [f("ssh " + p.srv.user + "@" + p.srv[which].ip), f(p.srv.pw)].concat(lines.map(f), [f("exit")]); };
+const sshSw = (T, id, lines) => { const f = (l) => ({ t: "cmd", dev: "mgr", line: l }), p = T.v.plan; return [f("ssh " + p.user + "@" + p.sw[id].ip), f(p.userPw), f("enable"), f(p.secret)].concat(lines.map(f), [f("exit")]); };
+const fix13 = (T) => T.v.kind === "switch" ? sshSw(T, T.v.sw, ["configure terminal", "system mtu jumbo 9000", "end", "copy running-config startup-config", "", "reload", ""]) : sshSrv(T, T.v.srv, ["sudo netplan set ethernets.eno2.mtu=9000", T.v.plan.srv.pw, "sudo netplan apply"]);
+const proof13 = (T) => sshSrv(T, "fsrv", ["ping -M do -s 8972 -c 3 " + T.v.bb]);
+
+test("CP-13: the fault shows in the commands: a plain ping between the servers' backup addresses answered, the big one not, the piece at 1500 saying so; nobody offline", () => {
+  for (const s of seedsOf(CP13)) {
+    const T = E.open(CP13, s), v = T.v;
+    assert.ok(CP13.exhibits(T.sim, v), s + " exhibits");
+    const o = out(T, sshSrv(T, "fsrv", ["ping -c 2 " + v.bb, "ping -M do -s 8972 -c 2 " + v.bb]));
+    assert.match(o, /2 packets transmitted, 2 received/); assert.match(o, /2 packets transmitted, 0 received|message too long/);
+    if (v.kind === "switch") assert.match(out(T, sshSw(T, v.sw, ["show system mtu"])), /System Jumbo MTU size is 1500 bytes/);
+    else assert.match(out(T, sshSrv(T, v.srv, ["ip link show eno2"])), /eno2: .*mtu 1500\b/);
+    assert.equal(T.fixed, false); assert.equal(T.proven, false);
+    for (const id of ["small", "big", "where"]) assert.ok(T.evidence.some((e) => e.id === id), s + " the notebook took " + id);
+    assert.equal(T.opts.length, 6); assert.equal(T.opts.filter((o) => o.right).length, 1); assert.ok(T.opts.filter((o) => !o.right).every((o) => o.why && o.why.length > 30));
+    assert.ok(T.opts.some((o) => !o.right && o.id === (v.kind === "switch" ? "server" : "switch")), s + " the other cause is a near miss");
+    const S = CP13.summary(v); assert.ok(S.cause.length > 80 && S.fix.length > 60);
+  }
+});
+
+test("CP-13: the piece put back to jumbo frames where it lasts fixes it; the big ping between the servers proves it, and a right diagnosis solves it", () => {
+  for (const s of seedsOf(CP13)) {
+    const T = E.open(CP13, s);
+    for (const a of fix13(T)) E.act(T, a); assert.equal(T.fixed, true, s + " fixed");
+    for (const a of proof13(T)) E.act(T, a); assert.equal(T.proven, true, s + " proven");
+    E.guess(T, T.opts.find((o) => o.right).id); assert.equal(T.solved, true);
+  }
+});
+
+test("CP-13: the tempting wrong fixes don't: jumbo set but the switch not reloaded, the server's MTU set with ip link only, the other server lowered to match", () => {
+  for (const s of seedsOf(CP13)) {
+    const open = () => E.open(CP13, s);
+    let T = open();
+    if (T.v.kind === "switch") { for (const a of sshSw(T, T.v.sw, ["configure terminal", "system mtu jumbo 9000", "end", "copy running-config startup-config", ""]).concat(proof13(T))) E.act(T, a); assert.equal(T.fixed, false, s + " not reloaded"); assert.ok(CP13.exhibits(T.sim, T.v)); }
+    else { for (const a of sshSrv(T, T.v.srv, ["sudo ip link set eno2 mtu 9000", T.v.plan.srv.pw]).concat(proof13(T))) E.act(T, a); assert.equal(T.fixed, false, s + " ip link only"); assert.match(T.partial || "", /isn't in its netplan file/); }
+    T = open(); const other = T.v.kind === "server" ? (T.v.srv === "fsrv" ? "bksrv" : "fsrv") : "bksrv";
+    for (const a of sshSrv(T, other, ["sudo netplan set ethernets.eno2.mtu=1500", T.v.plan.srv.pw, "sudo netplan apply"])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the other server lowered to 1500");
+  }
+});
+
+test("CP-13: the ladder climbs, and a saved ticket replays exactly", () => {
+  const T = E.open(CP13, seedsOf(CP13)[0]), wrongs = T.opts.filter((o) => !o.right).map((o) => o.id);
+  assert.equal(E.guess(T, wrongs[0]).rung, 0); assert.equal(E.guess(T, wrongs[1]).rung, 0); assert.equal(E.guess(T, wrongs[2]).rung, 1); assert.equal(E.guess(T, wrongs[3]).rung, 2);
+  E.resetBoard(T); assert.equal(E.guess(T, wrongs[4]).rung, 3); assert.equal(E.live(T).length, 2); assert.ok(E.live(T).some((o) => o.right));
+  const U = E.open(CP13, seedsOf(CP13, 1)[0]);
+  for (const a of fix13(U).concat(proof13(U))) E.act(U, a);
+  const R = E.restore(CP13, JSON.parse(JSON.stringify(E.save(U))));
+  assert.equal(R.fixed, U.fixed); assert.deepEqual(R.evidence, U.evidence); assert.equal(R.proven, U.proven); assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
+});
+
+test("CP-13: the brief and every hint never name the right answer, a password or the fix's command", () => {
+  for (const s of seedsOf(CP13)) {
+    const T = E.open(CP13, s), right = T.opts.find((o) => o.right).text.toLowerCase(), p = T.v.plan;
+    const texts = [CP13.rung1(T.v, T.sim), CP13.rung2(T.v, T.sim), ...CP13.fixHints(T.v, T.sim), CP13.brief(T.v, T.sim).quote, CP13.mason].map((x) => x.toLowerCase());
+    for (const x of texts) {
+      assert.ok(x.indexOf(right) < 0, x);
+      for (const bad of [p.secret, p.console, p.userPw, p.srv.pw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, "names a password: " + x);
+      for (const bad of ["system mtu jumbo", "netplan set", "ethernets.eno2"]) assert.ok(x.indexOf(bad) < 0, "names " + bad + ": " + x);
+    }
+    for (const x of [CP13.brief(T.v, T.sim).quote, CP13.mason].map((y) => y.toLowerCase())) for (const bad of ["mtu", "jumbo", "1500"]) assert.ok(x.indexOf(bad) < 0, "the brief or Mason's opener names " + bad + ": " + x);
+  }
+});

@@ -939,6 +939,9 @@ const cp12Login = async (p, v) => {
   await dev(p, "mgr"); await tab(p, "Command Prompt");
   for (const l of ["ssh " + (m ? m[3] : "?") + "@" + (m ? m[2] : "?"), m ? m[4] : "?"]) await type(p, l);
 };
+/* CP-13: the servers' addresses and login off the card; SSH from the manager's PC */
+const cp13Srv = async (p) => { const row = await rec(p, "The servers"), m = row.match(/^\S+ (\d+\.\d+\.\d+\.\d+) \(the file server.*?· \S+ (\d+\.\d+\.\d+\.\d+) \(the backup server\) · log in as (\S+), password (\S+)$/); check(!!m, "CP-13: Rafiki's records give both servers and their login"); return m ? { fsrv: m[1], bksrv: m[2], user: m[3], pw: m[4] } : { fsrv: "?", bksrv: "?", user: "?", pw: "?" }; };
+const cp13Login = async (p, S, which) => { await dev(p, "mgr"); await tab(p, "Command Prompt"); for (const l of ["ssh " + S.user + "@" + S[which], S.pw]) await type(p, l); };
 const campConf = async (p, v, lines) => { await campLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "exit"])) await type(p, l); };
 Object.assign(PLAN, {
   "CP-01": {
@@ -1163,6 +1166,33 @@ Object.assign(PLAN, {
       check(/^active$/m.test((await term(p)).split("sudo systemctl restart isc-dhcp-server").pop()), "CP-12: the DHCP service active after the file was put right"); await type(p, "exit");
     },
     proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); await type(p, "ping 8.8.8.8"); }
+  },
+  "CP-13": {
+    look: async (p, v) => {
+      const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "CP-13's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(60);
+      const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "CP-13's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+      await dysClear(p, "CP-13"); await planBothFonts(p, "CP-13");
+      const S = await cp13Srv(p);
+      await cp13Login(p, S, "bksrv"); await type(p, "ip addr show eno2"); const ob = (await term(p)).split("ip addr show eno2").pop(); await type(p, "exit");
+      v.bb13 = (ob.match(/inet (\d+\.\d+\.\d+\.\d+)\//) || [])[1];
+      check(v.bb13 === v.bb, "CP-13: the backup server's backup address read off ip addr on it (" + v.bb13 + ")");
+      await cp13Login(p, S, "fsrv"); for (const l of ["ping -c 2 " + v.bb13, "ping -M do -s 8972 -c 2 " + v.bb13, "ip link show eno2"]) await type(p, l); const of = (await term(p)).split("ping -c 2").pop(); await type(p, "exit");
+      check(/2 packets transmitted, 2 received/.test(of) && /2 packets transmitted, 0 received|message too long/.test(of.split("ping -M do")[1] || ""), "CP-13 " + v.kind + ": a plain ping between the servers answered, the big one not");
+      /* along the way: each server's backup port, each switch on the path */
+      const at = {}; at.fsrv = (of.match(/eno2: .*mtu (\d+)/) || [])[1]; at.bksrv = (ob.match(/eno2: .*mtu (\d+)/) || [])[1];
+      for (const sw of ["acc1", "dist1", "acc2"]) { await cp04Login(p, v, sw); await type(p, "show system mtu"); at[sw] = ((await term(p)).split("show system mtu").pop().match(/System Jumbo MTU size is (\d+)/) || [])[1]; await type(p, "exit"); }
+      v.low13 = Object.keys(at).filter((k) => at[k] === "1500");
+      check(v.low13.length === 1 && v.low13[0] === (v.sw || v.srv), "CP-13 " + v.kind + ": one piece on the path at 1500 (" + JSON.stringify(at) + ")");
+      v.S13 = S;
+    },
+    wrong: async (p, v) => { const k = v.low13[0]; if (/^(fsrv|bksrv)$/.test(k)) { await cp13Login(p, v.S13, k); await type(p, "sudo ip link set eno2 mtu 9000"); await type(p, v.S13.pw); await type(p, "exit"); } else await cp07Conf(p, v, k, ["system mtu jumbo 9000"]); },   /* in effect but not lasting, or saved but not reloaded */
+    fix: async (p, v) => {
+      const k = v.low13[0];
+      if (/^(fsrv|bksrv)$/.test(k)) { await cp13Login(p, v.S13, k); for (const l of ["sudo netplan set ethernets.eno2.mtu=9000", v.S13.pw, "sudo netplan apply", "exit"]) await type(p, l); return; }
+      await cp04Login(p, v, k); for (const l of ["configure terminal", "system mtu jumbo 9000", "end", "copy running-config startup-config", "", "reload", "", "exit"]) await type(p, l);
+    },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v), S = await cp13Srv(p); await cp13Login(p, S, "fsrv"); await type(p, "ping -M do -s 8972 -c 3 " + v.bb); await type(p, "exit"); }
   }
 });
 
@@ -1979,7 +2009,7 @@ if (!process.env.ONLY || process.env.ONLY === "business" || process.env.ONLY ===
     await p.goto(base + "index.html"); await p.waitForTimeout(350);
     const L3 = await p.$eval('#left [data-level="3"]', (n) => n.textContent), L4 = await p.$eval('#left [data-level="4"]', (n) => n.textContent);
     check(/Finished: 15 of 15 tickets, 10 of 10 work orders/.test(L3), tag + "Level 3 says finished, 15 of 15 tickets and 10 of 10 work orders (" + L3 + ")");
-    check(L4 === "Level 4 · Campus0 of " + LEVELS[3].jobs.length + " work orders done · " + LEVELS[3].coming && !/built later/.test(L4) && !(await p.$eval('#left [data-level="4"]', (n) => n.parentNode.classList.contains("locked"))), tag + "Level 4 is open, counts its work orders, and says more are on the way (" + L4 + ")");
+    const nT4b = LEVELS[3].tickets.length; check(L4 === "Level 4 · Campus0 of " + nT4b + " ticket" + (nT4b === 1 ? "" : "s") + ", 0 of " + LEVELS[3].jobs.length + " work orders done · " + LEVELS[3].coming && !/built later/.test(L4) && !(await p.$eval('#left [data-level="4"]', (n) => n.parentNode.classList.contains("locked"))), tag + "Level 4 is open, counts its tickets and work orders, and says more are on the way (" + L4 + ")");
   } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
   await ctx.close();
 }

@@ -12,7 +12,7 @@ import { coreLinks } from "../net/campus.js";
 import { dotMac, chanState } from "../net/swcli.js";
 import { rng, hash } from "../net/util.js";
 import { exec } from "../net/cmd.js";
-import { lxExec } from "../net/linux.js";
+import { lxExec, applyNetplan } from "../net/linux.js";
 import * as DHCPD from "../net/dhcpd.js";
 const DHCPD_CONF = DHCPD.CONF;
 
@@ -810,5 +810,66 @@ const CP12 = {
   }
 };
 
-export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07, CP08, CP09, CP10, CP11, CP12];
+/* ---------------------------------------------------------------- CP-13 */
+/* Last night's backup failed on every large file. The backup network (CP-J9) carries 9000-byte frames from the file server to the
+   backup server, every switch on the way set for jumbo frames and both servers' backup ports at 9000 in their netplan files. One piece
+   went back to 1500: a switch on the path, where the contractor took jumbo frames off while chasing his VPN trouble, saved and reloaded
+   (it drops the big frames as giants); or a server whose updates rewrote its netplan file and restarted it (it drops what's bigger than
+   its port takes). Small packets still pass, so a plain ping works; a big ping that mustn't be cut up doesn't. */
+const CP13_SW = { acc1: "the 1F access switch", dist1: "distribution switch 1", acc2: "the 2F access switch" };
+const CP13 = {
+  id: "CP-13", n: "13", level: 4, tier: "common", title: "Last night's backup failed on every large file", priority: 2, due: "4 h",
+  kinds: ["switch", "server"],
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("CP-13:" + seed)), kind = r.pick(CP13.kinds), sw = r.pick(["acc1", "dist1", "acc2"]), srv = r.pick(["bksrv", "fsrv"]);
+    if (kind === "switch") { const w = sim.d[sw].sw; delete w.jumbo; delete w.startup.jumbo; delete w.jumboRun; w.restart = "reload"; w.uptimeFixed = "1 day, 22 hours, 9 minutes"; }
+    else { const x = sim.d[srv]; delete x.lx.netplan.eno2.mtu; applyNetplan(sim, srv); x.boots = (x.boots || 0) + 1; }
+    sim.bump(); sim.relink(sim.links());
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, sw: kind === "switch" ? sw : null, swName: kind === "switch" ? CP13_SW[sw] : null, srv: kind === "server" ? srv : null, srvName: kind === "server" ? (srv === "bksrv" ? "the backup server" : "the file server") : null, mtu: p.backup.mtu, fb: p.srv.fsrv.bip, bb: p.srv.bksrv.bip } };
+  },
+  brief(v) { return { quote: "Last night's backup failed. The backup software's report: \"Connected to the backup server. Small files copied. Every file over a few kilobytes: transfer stalled, timed out.\" It ran fine the night before. " + (v.kind === "switch" ? "On Saturday the network contractor was working on the switches, chasing his trouble with next month's VPN, and saved what he did." : "The servers installed their updates on Sunday night and restarted themselves.") }; },
+  mason: "Small things get through and big things don't. Find out how big is too big, and where on the way it stops.",
+  affected: function () { return "fsrv"; },
+  options(v) {
+    const swo = { id: "switch", text: "A switch on the backup network's path is back at a 1500-byte MTU, so it drops the backup's large frames", why: "show system mtu on every switch on the path says jumbo " + v.mtu + ", in effect now. It's a server's backup port that's at 1500: ip link shows its MTU." };
+    const svo = { id: "server", text: "One server's backup port is back at a 1500-byte MTU, so the large frames don't fit it", why: "ip link on both servers shows their backup ports at " + v.mtu + ". It's a switch on the path that's back at 1500: show system mtu says so, and it counts the giants it dropped." };
+    return [
+      { id: "right", right: true, text: v.kind === "switch" ? swo.text : svo.text },
+      v.kind === "switch" ? svo : swo,
+      { id: "vlan", text: "The backup VLAN was taken off a trunk on the way", why: "A plain ping from the file server to the backup server's backup address answers: the VLAN is carried end to end. It's only the large frames that don't arrive." },
+      { id: "disk", text: "The backup server's disk is full", why: "A full disk wouldn't stop a ping: ping -M do -s 8972 from the file server fails, and a ping with the default size works. It's the size that matters." },
+      { id: "speed", text: "A link on the way dropped to 100 Mb/s, too slow for the backup", why: "A slow link still carries every frame, just slower: show interfaces status on the path's switches has every link at a-1000, and the small files copied quickly." },
+      { id: "dhcp", text: "The backup server lost its backup address when it restarted", why: "Its backup port has its address from its netplan file, not from DHCP, and a plain ping to that address answers." }
+    ];
+  },
+  rung1(v) { return "SSH to the file server (the records have the login): ping the backup server's backup address, then the same with ping -M do -s 8972. Then look along the way: each server's backup port (ip link), each switch on the path (show system mtu, show interfaces)."; },
+  rung2() { return "Every device on a path has to take a frame's size, or it drops it: a switch counts what's too big as giants, a server's port drops what's bigger than its MTU. A large ping that mustn't be cut up shows the smallest MTU on the way."; },
+  fixHints(v) { return ["The records have jumbo frames, " + v.mtu + " bytes, on every switch on the backup path and on both servers' backup ports, kept where they survive a restart.", v.kind === "switch" ? "A switch's jumbo MTU takes effect only after a reload, so save it first." : "A server's MTU set only with ip link is gone at its next restart; put it in its netplan file and apply it.", "Then from the file server: ping -M do -s 8972 the backup server's backup address."]; },
+  allRight(sim, saved) {
+    const sws = ["acc1", "dist1", "dist2", "acc2"].every(function (id) { const w = sim.d[id].sw; return (saved ? w.startup.jumbo : w.jumbo) === 9000 && (saved || w.jumboRun === 9000); });
+    const srvs = ["fsrv", "bksrv"].every(function (id) { const x = sim.d[id], e = x.lx.netplan.eno2, f = x.ifaces.find(function (q) { return q.name === "eno2"; }); return e && e.mtu === 9000 && (saved || (f && f.mtu === 9000)); });
+    return sws && srvs;
+  },
+  exhibits(sim, v) { return !CP13.allRight(sim) && ["sd1", "bn1", "mgr", "tr1"].every(function (d) { return online(sim, d); }); },
+  fixed(sim, v) { return CP13.allRight(sim) && CP13.allRight(sim, true) && ["sd1", "bn1", "mgr", "tr1"].every(function (d) { return online(sim, d); }); },
+  partial(v, sim) {
+    if (!CP13.allRight(sim, true)) return "The big frames get through now, but not in a way that lasts: " + (v.kind === "switch" ? "the switch's jumbo MTU isn't saved, so its next reload takes it back to 1500." : "the server's MTU isn't in its netplan file, so its next restart takes it back to 1500.");
+    return "It works, but not the way the records have it.";
+  },
+  proves(f, sim, v) { return (f.on === "fsrv" || f.on === "bksrv") && f.cmd === "ping" && !!f.df && f.size >= 8972 && f.replies > 0; },
+  proofText: "from a server, ping -M do -s 8972 to the other's backup address, answered",
+  evidence: [
+    { id: "small", test: function (f, v) { return f.on === "fsrv" && f.cmd === "ping" && !f.df && f.replies > 0 && f.ip === v.bb; }, text: function () { return "ping from the file server to the backup server's backup address: answered"; } },
+    { id: "big", test: function (f, v) { return (f.on === "fsrv" || f.on === "bksrv") && f.cmd === "ping" && !!f.df && f.size >= 8972 && !f.replies; }, text: function () { return "ping -M do -s 8972 between the servers: no reply"; } },
+    { id: "where", test: function (f, v) { const o = typeof f.out === "string" ? f.out : ""; return v.kind === "switch" ? f.on === v.sw && /System MTU size is 1500 bytes/.test(o) && !/[Jj]umbo MTU size is 9000/.test(o.split("next reload")[0]) : f.on === v.srv && /eno2: .*mtu 1500\b/.test(o); }, text: function (f, v) { return v.kind === "switch" ? "show system mtu on " + v.swName + ": 1500, no jumbo frames" : "ip link on " + v.srvName + ": eno2 at mtu 1500"; } }
+  ],
+  summary(v) {
+    return v.kind === "switch"
+      ? { cause: "Chasing his VPN trouble, the contractor took jumbo frames off " + v.swName + ", saved and reloaded it. It came back at 1500 bytes, on the backup network's path, and dropped every 9000-byte frame the servers sent as a giant. Small packets still fit, so the backup connected and copied small files, then stalled on the large ones.", fix: "On " + v.swName + ": system mtu jumbo " + v.mtu + ", saved, then reloaded to put it into effect. ping -M do -s 8972 between the servers' backup addresses answered." }
+      : { cause: "The updates on Sunday night rewrote " + v.srvName + "'s netplan file without the backup port's MTU, and restarted it: eno2 came back at 1500 bytes. The 9000-byte frames from the other server no longer fitted it, so the backup connected and copied small files, then stalled on the large ones.", fix: "On " + v.srvName + ": sudo netplan set ethernets.eno2.mtu=" + v.mtu + ", sudo netplan apply. eno2 at " + v.mtu + " again, in the file and in effect, and ping -M do -s 8972 between the servers' backup addresses answered." };
+  }
+};
+
+export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07, CP08, CP09, CP10, CP11, CP12, CP13];
 export const CAMPUS_COMING = [];

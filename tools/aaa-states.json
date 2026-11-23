@@ -2181,5 +2181,33 @@
   "ticket": "CP-12",
   "seed": 2,
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-12'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.srv.user+'@'+P.srv.fsrv.ip,P.srv.pw].forEach(k);}; c.guess('right'); const F=c.T.sim.d.fsrv.lx.files['/etc/dhcp/dhcpd.conf'].text.replace(/  range [^\\n]*\\n  option [^\\n]*\\n\\}\\n*$/, '  range '+v.net+'.21 '+v.net+'.254;\\n  option routers '+v.net+'.1;\\n}\\n'); c.act({t:'cmd',dev:'mgr',line:'ssh '+P.srv.user+'@'+P.srv.fsrv.ip}); c.act({t:'cmd',dev:'mgr',line:P.srv.pw}); c.act({t:'cmd',dev:'mgr',line:'sudo nano /etc/dhcp/dhcpd.conf'}); c.act({t:'cmd',dev:'mgr',line:P.srv.pw}); c.act({t:'cmd',dev:'mgr',line:'^O',text:F}); c.act({t:'cmd',dev:'mgr',line:'^X'}); c.act({t:'cmd',dev:'mgr',line:'sudo systemctl restart isc-dhcp-server'}); c.act({t:'cmd',dev:'mgr',line:'exit'}); document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); ['ipconfig /renew','ping 8.8.8.8'].forEach(k); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-13 the card, the file server: a plain ping and the big one",
+  "page": "index.html",
+  "ticket": "CP-13",
+  "seed": 1,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-13'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const srv=(w)=>{document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.srv.user+'@'+P.srv[w].ip,P.srv.pw].forEach(k);}; srv('fsrv'); ['ping -c 2 '+v.bb,'ping -M do -s 8972 -c 2 '+v.bb].forEach(k); document.getElementById('tk').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-13 the backup server: ip link and its netplan",
+  "page": "index.html",
+  "ticket": "CP-13",
+  "seed": 5,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-13'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const srv=(w)=>{document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.srv.user+'@'+P.srv[w].ip,P.srv.pw].forEach(k);}; srv('bksrv'); ['ip link show eno2','netplan get ethernets.eno2.mtu'].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-13 show system mtu on the 2F access switch, the floor plan, Mason's third rung",
+  "page": "index.html",
+  "ticket": "CP-13",
+  "seed": 4,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-13'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const srv=(w)=>{document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.srv.user+'@'+P.srv[w].ip,P.srv.pw].forEach(k);}; document.getElementById('vPhy').click(); document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw.acc2.ip,P.userPw,'enable',P.secret,'show system mtu'].forEach(k); const w=c.T.opts.filter(o=>!o.right).map(o=>o.id); w.slice(0,4).forEach(x=>c.guess(x)); c.resetBoard(); c.guess(w[4]); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-13 solved, the summary",
+  "page": "index.html",
+  "ticket": "CP-13",
+  "seed": 7,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-13'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const srv=(w)=>{document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.srv.user+'@'+P.srv[w].ip,P.srv.pw].forEach(k);}; c.guess('right'); srv(v.srv||'bksrv'); ['sudo netplan set ethernets.eno2.mtu=9000',P.srv.pw,'sudo netplan apply','exit'].forEach(k); srv('fsrv'); ['ping -M do -s 8972 -c 3 '+v.bb,'exit'].forEach(k); document.getElementById('board').scrollIntoView();"
  }
 ]

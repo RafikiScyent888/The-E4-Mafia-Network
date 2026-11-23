@@ -28,7 +28,7 @@ const LIST = HOME_TICKETS.map(item).concat(HOME_COMING.map(function (c) { return
   CAMPUS_TICKETS.map(item), CAMPUS_COMING.map(function (c) { return Object.assign({ built: false }, c); }));   /* every level's tickets; the queue shows the chosen level's */
 const DEVICES = ["pc", "switch", "msw", "pp", "mgr", "mjack", "ojack", "meet", "bsw", "mpc", "router", "modem", "printer", "tech", "injector", "camera", "tv", "mesh", "laptop", "phone", "guest"];   /* an undocumented box gets no button: find it on the floor plan */
 const BIZ_DEVICES = ["pc", "mgr", "bpc", "dpc1", "dpc2", "printer", "printer2", "intruder", "msw", "bsw", "rtr", "modem", "cab", "ap", "injector", "cinj1", "cam1", "cinj2", "cam2", "guest", "mphone", "tech"];   /* the business's, in the order the work orders brought them */
-const CAMPUS_DEVICES = ["sd1", "hd1", "bn1", "bn2", "mgr", "fin", "tr1", "tr2", "cl1", "cl2", "pr1", "pr3", "edge", "core1", "core2", "dist1", "dist2", "acc1", "acc2", "acc3", "acc4", "anxc", "anxa", "fsrv", "bksrv", "modem", "tech"];   /* the campus's: the desks first, then the gear from the edge down */
+const CAMPUS_DEVICES = ["sd1", "hd1", "bn1", "bn2", "mgr", "fin", "tr1", "tr2", "cl1", "cl2", "pr1", "pr3", "edge", "core1", "core2", "dist1", "dist2", "acc1", "acc2", "acc3", "acc4", "anxc", "anxa", "fsrv", "bksrv", "modem", "tech", "dsw"];   /* the campus's: the desks first, then the gear from the edge down */
 const $ = function (id) { return document.getElementById(id); };
 let replateMap = null;
 
@@ -168,7 +168,7 @@ function renderNotebook() {
 function renderDevtabs() {
   const dt = $("devtabs"); dt.innerHTML = "";
   const site = ctx.T.sim.net.site, biz = site === "business" || site === "campus";
-  (site === "campus" ? CAMPUS_DEVICES : biz ? BIZ_DEVICES : DEVICES).forEach(function (id) { const d = ctx.T.sim.d[id]; if (!d || (biz && d.boxed)) return; dt.appendChild(el("button", { type: "button", "data-d": id, "aria-pressed": String(id === ctx.open), onclick: function () { openDevice(id); } }, d.label)); });
+  (site === "campus" ? CAMPUS_DEVICES : biz ? BIZ_DEVICES : DEVICES).forEach(function (id) { const d = ctx.T.sim.d[id]; if (!d || ((biz || id === "dsw") && d.boxed)) return; dt.appendChild(el("button", { type: "button", "data-d": id, "aria-pressed": String(id === ctx.open), onclick: function () { openDevice(id); } }, d.label)); });
   $("termtitle").textContent = "Terminal · " + ctx.T.sim.d[ctx.open].label;
 }
 function renderWin() { renderWindow($("win"), ctx); }

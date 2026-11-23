@@ -549,7 +549,7 @@ export class Sim {
           if (P.macs.length + run.dyn.length < P.max) { if (P.sticky) P.macs.push({ mac: m.mac, sticky: true }); else run.dyn.push({ mac: m.mac, vlan: m.vlan }); continue; }
           if (run.seen.indexOf(m.mac) < 0) { run.viol++; run.seen.push(m.mac); }
           run.last = { mac: m.mac, vlan: m.vlan };
-          if (P.viol === "shutdown") { run.err = true; E = null; this.edgesChanged(); break; }
+          if (P.viol === "shutdown") { run.err = true; run.why = "psecure"; E = null; this.edgesChanged(); break; }   /* the reason, for show interfaces status err-disabled (a port BPDU guard shut once can be shut again by port security) */
         }
       }
     }
@@ -835,7 +835,7 @@ export class Sim {
   relink(before) { return this.withEdges(function () { return this.relink0(before); }); }   /* the whole pass on one set of links, worked out again only if it shuts a port */
   relinkIfChanged(before) { if (this._rlv === (this.ver || 0)) return; return this.relink(before); }   /* after a command: nothing changed since the last pass, so another would change nothing */   /* the whole pass on one set of links, worked out again only if it shuts a port */
   relink0(before) {
-    this.snoopTidy(); this.portSecurity(); this.bpduGuard(); this.hsrpTick();
+    this.snoopTidy(); this.bpduGuard(); this.portSecurity(); this.hsrpTick();   /* BPDU guard first: it acts on the first BPDU as the link comes up, before any frame from a new address reaches port security (CP-15) */
     /* a DHCP pool still being typed (a console in its dhcp-config mode): a device asks now and then, not on every line, so it doesn't
        catch the pool half made (its network typed, its default-router not yet: a lease with no gateway) */
     const cli = this.cli || {}, poolOpen = Object.keys(cli).some(function (k) { const st = cli[k]; return !!(st && st.S && st.S.mode === "dhcp"); });
@@ -999,17 +999,37 @@ export class Sim {
   /* BPDU guard after each change: a port with it on that hears another switch is shut down (err-disabled), until someone shuts it
      and opens it again */
   bpduGuard() {
-    let peers = null;
+    let peers = null; const hit = [];   /* every port that hears a BPDU is found first, then shut: two ports looped through a desk switch hear each other at the same moment, and both go (CP-15) */
     for (const id in this.d) {
       const x = this.d[id]; if (x.kind !== "mswitch" || !this.on(id)) continue;
       for (const n in x.sw.ports) {
         const p = x.sw.ports[n]; if (!p.stp || !p.stp.bpduguard || p.shutdown) continue;
         const run = psRunOf(x.sw, n); if (run.err) continue;
-        peers = peers || this.switchPeers(); const peer = peers[id + "|" + n]; if (!peer) continue;
+        peers = peers || this.switchPeers(); const peer = peers[id + "|" + n] || this.bpduThrough(id, n); if (!peer) continue;
         const fp = this.d[peer.dev].sw.ports[peer.port]; if (!fp || fp.routed || fp.shutdown) continue;
-        run.err = true; run.why = "bpduguard"; this.edgesChanged();
+        hit.push(run);
       }
     }
+    for (const run of hit) { run.err = true; run.why = "bpduguard"; }
+    if (hit.length) this.edgesChanged();
+  }
+  /* a managed switch heard through unmanaged ones (CP-15): an unmanaged switch passes BPDUs on like any other frame, so a port cabled
+     to one hears every managed switch port cabled to it, or to another unmanaged switch beyond it, its own switch's other ports too
+     (a loop through the desk switch). The first such port, or null */
+  bpduThrough(id, n) {
+    const k = +n.split("/")[1], p0 = k > 24 ? "SFP" + (k - 24) : String(k), c0 = this.cableAt(id, p0); if (!c0 || c0.kind !== "cat6" || !this.cableUp(c0)) return null;
+    const first = c0.a.dev === id && c0.a.port === p0 ? c0.b : c0.a; if (!this.d[first.dev] || this.d[first.dev].kind !== "switch" || !this.on(first.dev)) return null;
+    const seen = {}, q = [first.dev]; seen[first.dev] = true;
+    while (q.length) {
+      const u = q.shift();
+      for (const c of this.cablesOf(u)) {
+        if (c === c0 || c.kind !== "cat6" || !this.cableUp(c)) continue;
+        const o = c.a.dev === u ? c.b : c.a, x = this.d[o.dev]; if (!x || !this.on(o.dev)) continue;
+        if (x.kind === "mswitch") return { dev: o.dev, port: swPort(o.port) };
+        if (x.kind === "switch" && !seen[o.dev]) { seen[o.dev] = true; q.push(o.dev); }
+      }
+    }
+    return null;
   }
   /* what a switch's command line asks the network: its spanning tree for a VLAN, its routing protocol's routes */
   swLive(id) {
@@ -1389,6 +1409,12 @@ export class Sim {
     switch (act.t) {
       case "reseat": { const c = this.cable(act.cable), e = c[act.end]; if (c.kind === "coax") e.tight = true; else e.seated = true; res = { ok: true }; break; }
       case "unplug": { const c = this.cable(act.cable); c[act.end].seated = false; res = { ok: true }; break; }
+      case "unstray": {                                         /* a switch nobody recorded taken away (CP-15): its patch leads out, each run's plug back in the device the records have on it */
+        const S = this.net.extra.stray; if (!S || S.dev !== act.dev || !this.d[S.dev] || this.d[S.dev].boxed) { res = { ok: false }; break; }
+        this.net.cables = this.net.cables.filter(function (c) { return S.leads.indexOf(c.id) < 0; });
+        for (const m of S.moves) { const c = this.cable(m.cable); if (c) c[m.end] = { dev: m.dev, port: m.port, seated: true }; }
+        this.d[S.dev].boxed = true; res = { ok: true }; break;
+      }
       case "crossover": { const c = this.cable(act.cable); c.cond = "good"; c.wiring = "crossover"; c.a.seated = true; c.b.seated = true; res = { ok: true }; break; }   /* a crossover patch cable in its place */
       case "replace": { const c = this.cable(act.cable); c.cond = "good"; delete c.wiring; c.a.seated = true; c.b.seated = true; if (c.kind === "coax") { c.a.tight = true; c.b.tight = true; } res = { ok: true }; break; }
       case "tighten": { const c = this.cable(act.cable); c[act.end].tight = true; res = { ok: true }; break; }

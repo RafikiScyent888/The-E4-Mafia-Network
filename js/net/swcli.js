@@ -242,7 +242,7 @@ const SHOW = [
     ["arp", "IP ARP table", [["inspection", "Show ARP Inspection", function (S, a) { if (a[0] && /^i/i.test(a[0])) return daiInterfaces(S.sw); if (a[0] && !/^v/i.test(a[0])) return ["% Invalid input detected at '^' marker."]; return daiSummary(S.sw); }, { sub: [["interfaces", "Arp Inspection Interface Status"], ["vlan", "Arp Inspection VLAN"]] }]]]]],
   ["interfaces", "Interface status and configuration", function (S, args) {
     if (!args.length) return PORT_NAMES.slice(0, 4).reduce(function (a, n) { return a.concat(ifDetail(S.sw, n)); }, []).concat(["(showing the first four; name a port: show interfaces gi0/5)"]);
-    if (/^st/i.test(args[0])) return ifStatus(S.sw);
+    if (/^st/i.test(args[0])) return args[1] && /^e/i.test(args[1]) ? ifErrDisabled(S.sw) : args[1] ? ["% Invalid input detected at '^' marker."] : ifStatus(S.sw);
     if (/^tr$/i.test(args[0])) return ["% Ambiguous command:  \"show interfaces " + args[0] + "\""];
     if (/^tru/i.test(args[0])) return trunks(S.sw);
     if (/^tra/i.test(args[0])) return transceivers(S.sw);
@@ -786,6 +786,17 @@ function inventory(sw) {
   PORT_NAMES.forEach(function (n) { const l = sw.links[n]; if (l && l.module) L.push('NAME: "' + n + '", DESCR: "' + l.module + ' SFP' + (l.unsupported ? "+ (not supported in this slot)" : "") + '"', "PID: " + l.pid + (l.unsupported ? "" : "") + "   , VID: V01  , SN: ████████", ""); });
   return L;
 }
+/* show interfaces status err-disabled (CP-15): each err-disabled port with the reason, as the real one lists them */
+function ifErrDisabled(sw) {
+  const pad = function (s, n) { return (s + " ".repeat(n)).slice(0, n); };
+  const L = [pad("Port", 10) + pad("Name", 19) + pad("Status", 13) + pad("Reason", 18) + "Err-disabled Vlans"];
+  PORT_NAMES.forEach(function (n) {
+    const p = sw.ports[n], l = sw.links[n]; if (p.shutdown) return;
+    const why = errDisabled(sw, n) ? (sw.psRun[n].why === "bpduguard" ? "bpduguard" : "psecure-violation") : l && l.unsupported ? "gbic-invalid" : null;
+    if (why) L.push(pad(short(n), 10) + pad(p.desc, 19) + pad("err-disabled", 13) + why);
+  });
+  return L;
+}
 function ifStatus(sw) {
   const pad = function (s, n) { return (s + " ".repeat(n)).slice(0, n); };
   const L = [pad("Port", 10) + pad("Name", 19) + pad("Status", 13) + pad("Vlan", 11) + pad("Duplex", 7) + pad("Speed", 7) + "Type"];
@@ -875,7 +886,7 @@ function psTable(sw) {
 }
 function psDetail(sw, n) {
   const P = sw.ports[n].ps, r = (sw.psRun && sw.psRun[n]) || { viol: 0, last: null }, on = !!(P && P.on), A = psAddrs(sw, n), cap = { shutdown: "Shutdown", restrict: "Restrict", protect: "Protect" };
-  const st = !on ? "Secure-down" : errDisabled(sw, n) ? "Secure-shutdown" : status(sw, n)[0] === "up" ? "Secure-up" : "Secure-down";
+  const st = !on ? "Secure-down" : errDisabled(sw, n) ? (r.why === "bpduguard" ? "Secure-down" : "Secure-shutdown") : status(sw, n)[0] === "up" ? "Secure-up" : "Secure-down";   /* shut by BPDU guard (CP-15), not by port security: down, but not port security's shutdown */
   return ["Port Security              : " + (on ? "Enabled" : "Disabled"), "Port Status                : " + st, "Violation Mode             : " + cap[(P && P.viol) || "shutdown"], "Aging Time                 : 0 mins", "Aging Type                 : Absolute", "SecureStatic Address Aging : Disabled",
     "Maximum MAC Addresses      : " + ((P && P.max) || 1), "Total MAC Addresses        : " + A.length, "Configured MAC Addresses   : " + A.filter(function (x) { return x.type === "SecureConfigured"; }).length, "Sticky MAC Addresses       : " + A.filter(function (x) { return x.type === "SecureSticky"; }).length,
     "Last Source Address:Vlan   : " + (r.last ? r.last.mac + ":" + r.last.vlan : "0000.0000.0000:0"), "Security Violation Count   : " + r.viol];

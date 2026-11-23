@@ -1049,3 +1049,104 @@ test("CP-14: the brief and every hint never name the right answer, a password or
     }
   }
 });
+
+/* ---------------------------------------------------------------- CP-15 */
+const CP15 = CAMPUS_TICKETS.find((d) => d.id === "CP-15");
+/* from the manager's PC on the third floor (the bench is cut off): SSH to the 2F access switch, lines, out again */
+const on15 = (T, lines, save) => { const f = on("mgr"); return ssh(T, "mgr", T.v.swIp).concat([f("configure terminal")], lines.map(f), [f("end")], save ? [f("copy running-config startup-config"), f("")] : [], [f("exit")]); };
+const bounce15 = (T) => on15(T, T.v.ports.flatMap((n) => ["interface gi0/" + n, "shutdown", "no shutdown"]));
+const proof15 = (T) => [on("bn1")("ping 8.8.8.8")];
+const err15 = (T, n) => { const r = T.sim.d.acc2.sw.psRun["GigabitEthernet0/" + n]; return r && r.err ? r.why : null; };
+
+test("CP-15: the fault shows in the commands: the bench port(s) err-disabled by BPDU guard, port security not the reason; the bench PC still holding its address, its gateway silent", () => {
+  for (const s of seedsOf(CP15)) {
+    const T = E.open(CP15, s), v = T.v, f = on("mgr");
+    assert.ok(CP15.exhibits(T.sim, v), s + " exhibits");
+    assert.deepEqual(v.ports, v.kind === "customer" ? ["1"] : ["1", "2"]);
+    const ipc = out(T, [on("bn1")("ipconfig")]); assert.match(ipc, /IPv4 Address/, s + " the PC keeps its lease"); assert.doesNotMatch(ipc, /Media disconnected/, s + " its own link is up (to the switch on the bench)");
+    assert.match(out(T, [on("bn1")("ping " + v.plan.vlans.bench.gw)]), /Request timed out|Destination host unreachable/);
+    const o = out(T, ssh(T, "mgr", v.swIp).concat([f("show interfaces status"), f("show interfaces status err-disabled"), f("show port-security interface gi0/1"), f("exit")]));
+    for (const n of v.ports) { assert.match(o, new RegExp("^Gi0/" + n + "\\s.*err-disabled", "m"), s + " err-disabled " + n); assert.match(o, new RegExp("^Gi0/" + n + "\\s+\\S+\\s+err-disabled\\s+bpduguard", "m"), s + " the reason " + n); }
+    if (v.kind === "customer") { assert.match(o, /^Gi0\/2\s.*connected/m, s + " port 2 still up"); assert.ok(online(T.sim, "bn2")); }
+    assert.match(o, /Port Status\s+: Secure-down/); assert.match(o, /Security Violation Count\s+: 0/);
+    assert.equal(T.fixed, false);
+    assert.ok(T.evidence.some((e) => e.id === "stat") && T.evidence.some((e) => e.id === "why"), s + " the notebook took the evidence");
+    E.act(T, { t: "look", cable: v.runs[0], end: "b" }); assert.ok(T.evidence.some((e) => e.id === "look"), s + " looking at the bench cable is evidence");
+  }
+});
+
+test("CP-15: the board is one right answer and five near misses, each with its reason; each variant's answer is the other's near miss", () => {
+  const T = E.open(CP15, seedsOf(CP15)[0]);
+  assert.equal(T.opts.length, 6); assert.equal(T.opts.filter((o) => o.right).length, 1);
+  assert.ok(T.opts.filter((o) => !o.right).every((o) => o.why && o.why.length > 30));
+  for (const s of seedsOf(CP15)) { const U = E.open(CP15, s), other = U.v.kind === "customer" ? "loop" : "customer"; assert.ok(U.opts.some((o) => o.id === other && !o.right), s); }
+});
+
+test("CP-15: the switch taken away, then each shut port shut and opened again, fixes it; a bench PC's ping to the internet proves it, and a right diagnosis solves it", () => {
+  for (const s of seedsOf(CP15)) {
+    const T = E.open(CP15, s), v = T.v;
+    for (const a of proof15(T)) E.act(T, a); assert.equal(T.proven, false);
+    E.act(T, { t: "unstray", dev: "dsw" }); assert.equal(T.fixed, false, s + " taken away, the port(s) still shut");
+    assert.ok(v.ports.every((n) => err15(T, n) === "bpduguard"), s + " an err-disabled port waits to be shut and opened");
+    for (const a of bounce15(T)) E.act(T, a); assert.equal(T.fixed, true, s + " fixed");
+    assert.ok(T.sim.d.dsw.boxed && T.sim.cable("c-acc2-bn1").b.dev === "bn1" && !T.sim.cable("c-dsw-bn1"), s + " each run back in its PC, the lead gone");
+    for (const a of proof15(T)) E.act(T, a); assert.equal(T.proven, true);
+    E.guess(T, T.opts.find((o) => o.right).id); assert.equal(T.solved, true);
+  }
+});
+
+test("CP-15: the tempting wrong fixes don't: the port bounced with the switch still there, BPDU guard taken off, one cable of the loop pulled, port security off too (it works, and Mason says so), the switch away but BPDU guard left off", () => {
+  for (const s of seedsOf(CP15)) {
+    const open = () => E.open(CP15, s);
+    let T = open(); for (const a of bounce15(T)) E.act(T, a);
+    /* bounced with it still there: the customer's switch sends its own BPDUs, so straight back down; the loop's ports bounced one at a
+       time each come up while the other is still shut, so nothing comes back round, but both PCs' addresses do, and port security shuts
+       each; bounced together (a range), each hears the other's BPDUs again */
+    assert.equal(T.fixed, false); assert.ok(T.v.ports.every((n) => err15(T, n) === (T.v.kind === "customer" ? "bpduguard" : "psecure")), s + " bounced with it still there: straight back down");
+    if (T.v.kind === "loop") { T = open(); for (const a of on15(T, ["interface range gi0/1 - 2", "shutdown", "no shutdown"])) E.act(T, a); assert.equal(T.fixed, false); assert.ok(["1", "2"].every((n) => err15(T, n) === "bpduguard"), s + " the loop's ports bounced together: BPDU guard again"); }
+    T = open(); for (const a of on15(T, T.v.ports.flatMap((n) => ["interface gi0/" + n, "no spanning-tree bpduguard enable", "shutdown", "no shutdown"]))) E.act(T, a);
+    assert.equal(T.fixed, false); assert.ok(T.v.ports.every((n) => err15(T, n) === "psecure"), s + " BPDU guard off: port security shuts it instead (a second address)");
+    T = open(); for (const a of on15(T, T.v.ports.flatMap((n) => ["interface gi0/" + n, "spanning-tree bpduguard disable", "no port-security", "shutdown", "no shutdown"]).map((l) => l === "no port-security" ? "no switchport port-security" : l))) E.act(T, a);
+    for (const a of proof15(T)) E.act(T, a);
+    assert.equal(T.fixed, false); assert.equal(T.proven, false); assert.match(String(T.partial), /portfast and BPDU guard/, s + " it works with both protections off, and Mason says so");
+    T = open(); E.act(T, { t: "unstray", dev: "dsw" }); for (const a of on15(T, T.v.ports.flatMap((n) => ["interface gi0/" + n, "no spanning-tree bpduguard enable", "shutdown", "no shutdown"]), true)) E.act(T, a);
+    for (const a of proof15(T)) E.act(T, a);
+    assert.equal(T.fixed, false); assert.equal(T.proven, false); assert.match(String(T.partial), /BPDU guard/, s + " away, but BPDU guard left off: Mason says so");
+    if (T.v.kind === "loop") {
+      T = open(); E.act(T, { t: "unplug", cable: "c-acc2-bn2", end: "b" }); for (const a of on15(T, ["interface gi0/1", "shutdown", "no shutdown"])) E.act(T, a);
+      assert.equal(T.fixed, false); assert.equal(err15(T, "1"), "psecure", s + " one cable of the loop pulled: port 1 has both PCs behind it, and port security shuts it");
+    }
+  }
+});
+
+test("CP-15: BPDUs pass through an unmanaged switch: the loop variant's desk switch sends none of its own, and a single cable from it to a desk port trips nothing", () => {
+  const s = seedsOf(CP15).find((x) => E.open(CP15, x).v.kind === "loop"), T = E.open(CP15, s);
+  assert.equal(T.sim.d.dsw.kind, "switch");
+  E.act(T, { t: "unplug", cable: "c-acc2-bn2", end: "b" }); E.act(T, { t: "unplug", cable: "c-dsw-bn2", end: "a" });
+  for (const a of on15(T, ["interface gi0/1", "shutdown", "no shutdown"])) E.act(T, a);
+  assert.equal(err15(T, "1"), null, "one cable from the desk switch, one PC behind it: nothing heard, nothing shut");
+  assert.ok(online(T.sim, "bn1"));
+});
+
+test("CP-15: the ladder climbs, and a saved ticket replays exactly, the switch taken away included", () => {
+  const T = E.open(CP15, seedsOf(CP15)[0]), wrongs = T.opts.filter((o) => !o.right).map((o) => o.id);
+  assert.equal(E.guess(T, wrongs[0]).rung, 0); assert.equal(E.guess(T, wrongs[1]).rung, 0); assert.equal(E.guess(T, wrongs[2]).rung, 1); assert.equal(E.guess(T, wrongs[3]).rung, 2);
+  E.resetBoard(T); assert.equal(E.guess(T, wrongs[4]).rung, 3); assert.equal(E.live(T).length, 2); assert.ok(E.live(T).some((o) => o.right));
+  for (const s of seedsOf(CP15)) {
+    const U = E.open(CP15, s); E.act(U, { t: "unstray", dev: "dsw" }); for (const a of bounce15(U).concat(proof15(U))) E.act(U, a);
+    const R = E.restore(CP15, JSON.parse(JSON.stringify(E.save(U))));
+    assert.equal(R.fixed, U.fixed); assert.deepEqual(R.evidence, U.evidence); assert.equal(R.proven, U.proven); assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
+  }
+});
+
+test("CP-15: the brief and every hint never name the right answer, a password or the reason the switch gives", () => {
+  for (const s of seedsOf(CP15)) {
+    const T = E.open(CP15, s), right = T.opts.find((o) => o.right).text.toLowerCase(), p = T.v.plan;
+    const texts = [CP15.rung1(T.v, T.sim), CP15.rung2(T.v, T.sim), ...CP15.fixHints(T.v, T.sim), CP15.brief(T.v, T.sim).quote, CP15.mason].map((x) => x.toLowerCase());
+    for (const x of texts) {
+      assert.ok(x.indexOf(right) < 0, x);
+      for (const bad of [p.secret, p.console, p.userPw, p.srv.pw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, "names a password: " + x);
+    }
+    for (const x of [CP15.rung1(T.v, T.sim), CP15.brief(T.v, T.sim).quote, CP15.mason].map((y) => y.toLowerCase())) for (const bad of ["bpdu", "loop", "spanning"]) assert.ok(x.indexOf(bad) < 0, "rung 1, the brief or Mason names " + bad + ": " + x);
+  }
+});

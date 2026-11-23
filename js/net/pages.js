@@ -158,12 +158,13 @@ export function page(sim, id, key, opts) {
       const cx = sim.cable("c-coax"); cables.forEach(function (k) { if (k.cable === "c-coax") k.name = "Coax cable at the modem's CABLE IN"; });
       cables.push({ cable: "c-coax", end: "a", name: "Coax cable at the wall outlet (behind the TV stand)", acts: ["look", "tighten"] });
     }
-    const inj = x.kind === "injector" ? { power: !!x.power, std: x.std, swap: !sim.net.extra.build } : null;   /* in a build house the right injector comes out of the van, not a swap */
+    const inj = x.kind === "injector" ? { power: !!x.power, std: x.std, swap: !sim.net.extra.build } : null;
+    const stray = sim.net.extra.stray && sim.net.extra.stray.dev === id ? { label: sim.net.extra.stray.take } : null;   /* a switch nobody recorded (CP-15): it can be taken away, each cable back where the records have it */   /* in a build house the right injector comes out of the van, not a swap */
     const free = x.kind === "patchpanel" ? Array.from({ length: 24 }, function (_, i) { return String(i + 1); }).filter(function (p) { return !sim.cableAt(id, p); }) : null;   /* front ports a cord can move to */
     return { kind: "physical", still: STILL[id] ? "assets/stills/" + STILL[id] + ".jpg" : null, label: x.label, cables: cables, noModel: x.kind === "server" ? "This rack server's 3D model is still to be built: it waits for photographs of a real one. Its two network ports, port 1 (eno1) and port 2 (eno2), are on its back; their cables are listed here." : null, restart: x.kind !== "injector" && x.kind !== "patchpanel" && x.kind !== "jack", injector: inj, probe: x.kind === "patchpanel", freePorts: free,
       /* each SFP slot with a module, and the modules from the van; in build mode an empty slot too, and the van carries a 10 Gb/s SFP+ module as well (SO-J10) */
       sfp: x.kind === "mswitch" ? Object.keys(x.sfp || {}).filter(function (k) { return x.sfp[k] || sim.net.extra.build; }).map(function (k) { return { slot: k, type: x.sfp[k] || null, label: x.sfp[k] ? SFP_MODULES[x.sfp[k]].label : "empty, no module in it", swaps: (sim.net.extra.build ? ["1000BASE-SX", "1000BASE-LX", "10GBASE-SR"] : ["1000BASE-SX", "1000BASE-LX"]).filter(function (t) { return t !== x.sfp[k]; }) }; }) : null,
-      facts: { page: id + "-physical", rogue: id === "rogue", injector: inj, camera: id === "camera" ? sim.on("camera") : undefined } };
+      stray: stray, facts: { page: id + "-physical", rogue: id === "rogue", injector: inj, camera: id === "camera" ? sim.on("camera") : undefined } };
   }
   if (id === "router") {
     if (key === "status") {
@@ -341,6 +342,7 @@ export function physical(sim, act) {
   if (act.t === "repatch") { const r = done; return { text: r.ok === false ? r.err + ": nothing moved." : r.same ? "It's already in that port." : "Moved the patch cord to port " + act.port + " on the panel.", facts: { phys: "repatch", cable: act.cable, port: act.port, ok: r.ok !== false } }; }
   if (act.t === "crossover") return { text: "Swapped in a crossover patch cable (T568A at one end, T568B at the other).", facts: { phys: "crossover", cable: act.cable } };
   if (act.t === "unplug") return { text: "Unplugged it.", facts: { phys: "unplug", cable: act.cable, end: act.end } };
+  if (act.t === "unstray") return { text: done.ok ? "Took the " + String(sim.d[act.dev].label).replace(/^[A-Z](?=[a-z])/, function (m) { return m.toLowerCase(); }) + " away and plugged each cable back where the records have it." : "There's nothing here to take away.", facts: { phys: "unstray", dev: act.dev } };   /* CP-15 */
   if (act.t === "tighten") return { text: before === JSON.stringify([c.a, c.b, c.cond]) ? "Already snug: no change." : "Screwed the connector on finger-tight.", facts: { phys: "tighten", cable: act.cable, end: act.end } };
   if (act.t === "power") return { text: "Restarted the " + (/^[A-Z][a-z]+(\s|$)/.test(sim.d[act.dev].label) ? sim.d[act.dev].label[0].toLowerCase() + sim.d[act.dev].label.slice(1) : sim.d[act.dev].label) + ". It's back up a minute later.", facts: { phys: "power", dev: act.dev } };
   return { text: "", facts: {} };

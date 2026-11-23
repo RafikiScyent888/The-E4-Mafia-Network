@@ -480,6 +480,7 @@ function physicalPane(id, P, ctx, rerender) {
       el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "injector", dev: id, values: { power: !j.power } }); physLog[id]["power"] = (j.power ? "Unplugged its power adapter. " : "Plugged its power adapter in. ") + say(r); rerender(); } }, j.power ? "Unplug its power adapter" : "Plug its power adapter in"),
       j.swap ? el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "injector", dev: id, values: { swap: true } }); physLog[id]["power"] = "Swapped in a new 802.3af PoE injector, same cables and adapter. " + say(r); rerender(); } }, "Swap in a new 802.3af injector") : null));
   }
+  if (P.stray) wrap.appendChild(el("div", { class: "acts", style: "margin-top:10px" }, el("button", { type: "button", class: "btn ghost small", onclick: function () { const r = ctx.act({ t: "unstray", dev: id }); physLog[id]["power"] = r ? r.text : ""; rerender(); } }, P.stray.label)));   /* CP-15: a switch nobody recorded, taken away */
   wrap.appendChild(rr);
   return wrap;
 }

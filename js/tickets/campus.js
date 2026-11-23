@@ -8,7 +8,7 @@
    what a technician is given to log in. */
 import { CAMPUS_JOBS } from "../build/campus.js";
 import { online } from "../build/jobs.js";
-import { coreLinks } from "../net/campus.js";
+import { coreLinks, addDeskSwitch } from "../net/campus.js";
 import { dotMac, chanState } from "../net/swcli.js";
 import { rng, hash } from "../net/util.js";
 import { exec } from "../net/cmd.js";
@@ -922,5 +922,77 @@ const CP14 = {
   }
 };
 
-export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07, CP08, CP09, CP10, CP11, CP12, CP13, CP14];
+/* ---------------------------------------------------------------- CP-15 */
+/* BPDU guard, set on every desk port by CP-J1, shuts a desk port that hears a bridge protocol data unit: a desk port should only ever
+   have a computer on it. Two ways it happened at the technicians' bench, each the other's near miss on the board. "customer": a customer's
+   managed switch, in for repair, plugged into the bench's network cable with bench PC 1 on it, to download its firmware: it sends its
+   own BPDUs (spanning tree is on in every managed switch from the box), so the 2F access switch shut port 1. "loop": a little unmanaged
+   8-port switch put on the bench over the weekend, both bench runs and both PCs plugged into it: it sends no BPDUs of its own, but it
+   passes the 2F access switch's own from port 1 into port 2 and from port 2 into port 1 (a loop), so both went. The switch isn't in the
+   records or on the diagram; it's on the floor plan where it is, and its Physical tab takes it away. The fix: it taken away, then each
+   shut port shut and opened again; BPDU guard, portfast and port security left as the records have them. */
+const CP15_STORY = {
+  customer: function () { return "Bench PC 1 has had no network since this morning. The bench technician was testing a customer's switch that came in for repair: the switch went onto the bench's network cable, with bench PC 1 plugged into it, to download a firmware update for it. Nothing has been unplugged since. Bench PC 2, right beside it, is fine."; },
+  loop: function () { return "Neither bench PC has had any network since this morning. Over the weekend somebody tidied the technicians' bench and put a little 8-port switch on it, so the laptops being repaired can have a cable too: both of the bench's network cables and both PCs are plugged into it now. Nothing else on the second floor has a problem."; }
+};
+const CP15_PORTS = { customer: ["1"], loop: ["1", "2"] };
+const cp15Edge = function (q) { return !!q && !!q.stp && !!q.stp.bpduguard && !!q.stp.portfast; };   /* the records' desk port: portfast and BPDU guard */
+const CP15 = {
+  id: "CP-15", n: "15", level: 4, tier: "harder", title: "The technicians' bench off the network since this morning", priority: 2, due: "2 h",
+  kinds: ["customer", "loop"],   /* its variants, in the order a seed picks them (the tests find a campus for each) */
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("CP-15:" + seed)), kind = r.pick(CP15.kinds);
+    const ps = {}; CP15_PORTS.loop.forEach(function (n) { ps[n] = JSON.stringify(sim.d.acc2.sw.ports["GigabitEthernet0/" + n].ps); });   /* port security as the records left it, to hold the fix to */
+    addDeskSwitch(sim, kind);
+    sim.bump(); sim.relink(sim.links());
+    freeze(sim);
+    const ports = CP15_PORTS[kind], pcs = kind === "customer" ? ["bn1"] : ["bn1", "bn2"];
+    return { sim: sim, v: { kind: kind, plan: p, ports: ports, pcs: pcs, ps: ps, swName: "2F access switch", swIp: p.sw.acc2.ip, box: name(sim, "dsw"), pc: name(sim, "bn1"),
+      runs: pcs.map(function (pc) { return "c-acc2-" + pc; }) } };
+  },
+  brief(v) { return { quote: CP15_STORY[v.kind]() }; },
+  mason: "A desk port should only ever see a computer. Find out what the switch saw on the bench's port, then go and look at the bench.",
+  affected: function (v) { return v.pcs[0]; },
+  options(v) {
+    const one = { id: "customer", text: "A switch that sends its own BPDUs is on the bench's network cable, so BPDU guard shut that one port", why: "Both bench ports are err-disabled, and the desk switch is an unmanaged one: it sends no BPDUs of its own. The BPDUs it passed on were the 2F access switch's own, out of each bench port and back in at the other." };
+    const two = { id: "loop", text: "The bench's two network cables are joined through one switch, a loop, so BPDU guard shut both ports", why: "Only port 1 is err-disabled: port 2 is connected and bench PC 2 is online on it. Nothing joins the two cables; the customer's switch is on port 1's alone, and it sends BPDUs of its own." };
+    return [
+      { id: "right", right: true, text: v.kind === "customer" ? one.text : two.text },
+      v.kind === "customer" ? two : one,
+      { id: "psec", text: "Port security shut the bench port: a second device's address arrived on it", why: "show port-security interface has the port Secure-down with no violations: port security didn't shut it. show interfaces status err-disabled gives the reason it was: bpduguard." },
+      { id: "stp", text: "Spanning tree is blocking the bench port: it found a loop and chose that port to block", why: "A port spanning tree blocks stays up: show interfaces status calls it connected and spanning tree lists it BLK. This one is err-disabled: shut down, not blocked." },
+      { id: "cable", text: "The bench's network cable was damaged when it was moved onto the switch on the bench", why: "A damaged cable shows notconnect. show interfaces status says err-disabled: the switch shut the port itself, whatever is plugged into it." },
+      { id: "uplink", text: "The 2F access switch's uplinks went down", why: "show interfaces trunk on the 2F access switch lists both uplinks trunking, and the backup server on the same switch is still reachable." }
+    ];
+  },
+  rung1(v) { return "From a desk PC on another floor, SSH to the " + v.swName + " (the records have its address): show interfaces status, and show interfaces status err-disabled. Then the floor plan: what is on the technicians' bench?"; },
+  rung2() { return "BPDU guard shuts an edge port the moment a BPDU arrives on it: only switches send BPDUs, and only a switch, or a loop that brings a switch's own back in, puts one on a desk's port. The port stays err-disabled until somebody shuts it and opens it again, and if whatever sent the BPDU is still there, it goes straight back down."; },
+  fixHints(v) { return ["show interfaces status err-disabled on the " + v.swName + " says which protection shut " + (v.ports.length > 1 ? "each port" : "the port") + ".", "BPDU guard, portfast and port security are the records' settings on every desk port: keep them. Take away what is sending the BPDUs first: it's on the bench, and its Physical tab takes it away. Then shut each shut port and open it again.", "Then from a bench PC: a ping to the internet."]; },
+  exhibits(sim, v) { const sw = sim.d.acc2.sw; return v.ports.every(function (n) { const r = sw.psRun && sw.psRun["GigabitEthernet0/" + n]; return !!(r && r.err && r.why === "bpduguard"); }) && v.pcs.every(function (pc) { return !online(sim, pc); }) && online(sim, "mgr") && (v.kind === "loop" || online(sim, "bn2")); },
+  fixed(sim, v) {
+    const sw = sim.d.acc2.sw;
+    const ports = CP15_PORTS.loop.every(function (n) { const k = "GigabitEthernet0/" + n, r = sw.psRun && sw.psRun[k], st = sw.startup && sw.startup.ports[k]; return !(r && r.err) && !sw.ports[k].shutdown && cp15Edge(sw.ports[k]) && cp15Edge(st) && JSON.stringify(sw.ports[k].ps) === v.ps[n] && !!st && JSON.stringify(st.ps) === v.ps[n]; });
+    return ports && !!sim.d.dsw.boxed && online(sim, "bn1") && online(sim, "bn2") && online(sim, "mgr");
+  },
+  partial(v, sim) {
+    const sw = sim.d.acc2.sw, ks = CP15_PORTS.loop.map(function (n) { return "GigabitEthernet0/" + n; });
+    if (ks.some(function (k) { return !cp15Edge(sw.ports[k]); })) return "The bench is back, but not every bench port has portfast and BPDU guard the way the records set them on every desk port. The next switch somebody plugs in at the bench joins the campus's spanning tree, or loops it.";
+    if (ks.some(function (k) { const P = sw.ports[k].ps; return !P || !P.on; })) return "The bench is back, but port security isn't on every bench port the way the records have it: one address, sticky, shut down on a violation.";
+    if (!sim.d.dsw.boxed) return "It works, but the " + v.box + " is still on the bench's network, between the bench and the 2F access switch, where the records have nothing.";
+    if (ks.some(function (k) { const st = sw.startup && sw.startup.ports[k]; return !cp15Edge(st) || !st.ps || !st.ps.on; })) return "The bench is back, but the 2F access switch's saved configuration no longer protects the bench ports as the records set them: after a reload they're unprotected.";
+    return "It works, but not the way the records have it.";
+  },
+  proves(f, sim, v) { return f.cmd === "ping" && (f.dev === "bn1" || f.dev === "bn2") && f.replies > 0 && !!f.internet; },
+  proofText: "a ping from a bench PC to the internet that gets replies",
+  evidence: [
+    { id: "stat", test: function (f, v) { const o = devOut(f); return f.on === "acc2" && v.ports.every(function (n) { return new RegExp("^Gi0\\/" + n + "\\s.*err-disabled", "m").test(o); }); }, text: function (f, v) { return "show interfaces status on the 2F access switch: " + v.ports.map(function (n) { return "Gi0/" + n; }).join(" and ") + " err-disabled"; } },
+    { id: "why", test: function (f, v) { const o = devOut(f); return f.on === "acc2" && /Reason/.test(o) && v.ports.every(function (n) { return new RegExp("^Gi0\\/" + n + "\\s.*bpduguard", "m").test(o); }); }, text: function (f, v) { return "show interfaces status err-disabled on the 2F access switch: the reason, bpduguard"; } },
+    { id: "look", test: function (f, v) { return f.phys === "look" && v.runs.indexOf(f.cable) >= 0; }, text: function (f, v) { return "the bench's network cable" + (v.runs.length > 1 ? "s" : "") + ", looked at: in the " + v.box + ", not in a PC"; } }
+  ],
+  summary(v) {
+    return { cause: v.kind === "customer" ? "The customer's managed switch, plugged into the bench's network cable, sends BPDUs as every managed switch does from its box. Port 1 on the 2F access switch is a desk port, set with portfast and BPDU guard, so the first BPDU shut it (err-disabled, reason bpduguard), and bench PC 1, behind the customer's switch, lost the network." : "The unmanaged desk switch had both bench cables in it, joining the 2F access switch's ports 1 and 2 into a loop. It sends no BPDUs of its own, but it passed the access switch's own from each port into the other, and BPDU guard shut both (err-disabled, reason bpduguard). Without it, that loop would have flooded the floor.", fix: "The " + v.box + " taken away and each cable plugged back into its bench PC, then " + (v.ports.length > 1 ? "ports 1 and 2" : "port 1") + " on the 2F access switch shut and opened again (an err-disabled port waits for that). BPDU guard, portfast and port security stayed as the records have them." };
+  }
+};
+
+export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07, CP08, CP09, CP10, CP11, CP12, CP13, CP14, CP15];
 export const CAMPUS_COMING = [];

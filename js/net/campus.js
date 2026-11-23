@@ -62,8 +62,30 @@ export const CAMPUS_LAYOUT = {
   cl1: { x: 620, y: 1020, px: 540, py: 1075, room: "class" }, cl2: { x: 840, y: 1100, px: 780, py: 1075, room: "class" },
   /* the rack servers (work order 9): on the logical diagram a row of their own under the desks, each below its access switch; on the floor
      plan the file server in the data room, the backup server in the 2F closet beside its switch */
-  fsrv: { x: 0, y: 810, lab: "right", px: 600, py: 280, room: "data" }, bksrv: { x: 370, y: 810, lab: "right", px: 290, py: 455, room: "c2" }
+  fsrv: { x: 0, y: 810, lab: "right", px: 600, py: 280, room: "data" }, bksrv: { x: 370, y: 810, lab: "right", px: 290, py: 455, room: "c2" },
+  /* CP-15's switch on the bench, nobody's records: on the floor plan only, at the bench's far end */
+  dsw: { px: 880, py: 455, room: "bench" }
 };
+/* CP-15: a switch nobody recorded, on the technicians' bench. "customer": a customer's managed switch in for repair, from its box
+   (spanning tree on, as every managed switch comes), the bench's run from the 2F access switch's port 1 moved into its port 1 and bench
+   PC 1 into its port 2. "loop": a little unmanaged 8-port switch "so the laptops being repaired can have a cable too", both bench runs
+   (ports 1 and 2) in it, both bench PCs on it. The runs keep their ids: taking it away puts each run's plug back in its PC. */
+export function addDeskSwitch(sim, kind) {
+  const net = sim.net, r = rng(net.seed ^ 0x15b9), m = mac(r), L = net.rooms;
+  const lead = function (id, a, ap, b) { return { id: id, kind: "cat6", a: { dev: a, port: ap, seated: true }, b: { dev: b, port: "NIC", seated: true }, cond: "good", length: 2 }; };
+  if (kind === "customer") {
+    const mm = "00e0.4c77." + m.replace(/-/g, "").slice(8);
+    net.devices.dsw = { id: "dsw", kind: "mswitch", label: "Customer's switch", sub: "not on the diagram", on: true, undocumented: true, mac: mm, sw: newSwitch({ mac: mm }) };
+  } else net.devices.dsw = { id: "dsw", kind: "switch", label: "Desk switch", sub: "not on the diagram", on: true, undocumented: true, ports: 8 };
+  const moves = [], leads = [], pcs = kind === "customer" ? ["bn1"] : ["bn1", "bn2"];
+  pcs.forEach(function (pc, i) {
+    const c = net.cables.find(function (k) { return k.id === "c-acc2-" + pc; });
+    moves.push({ cable: c.id, end: "b", dev: pc, port: "NIC" }); c.b = { dev: "dsw", port: String(i + 1), seated: true };
+    const id = "c-dsw-" + pc; net.cables.push(lead(id, "dsw", String(pcs.length + i + 1), pc)); leads.push(id);
+  });
+  L.dsw = "bench"; sim.arp.dsw = {};
+  net.extra.stray = { dev: "dsw", moves: moves, leads: leads, take: kind === "customer" ? "Take the customer's switch off the network: bench PC 1's cable back in" : "Take the desk switch away: each bench PC's cable back in" };
+}
 export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 345], c2: [30, 365, 260, 545], bench: [260, 365, 980, 545], c3: [30, 565, 260, 745], office: [260, 565, 980, 745], c4: [30, 765, 330, 945], train: [330, 765, 980, 945], acomms: [30, 985, 400, 1205], class: [400, 985, 980, 1205] };   /* the Annex's band, below the main building (work order 8) */
 const swMac = function (hi, lo) { return "00e0.4c" + hi.toString(16).padStart(2, "0") + "." + lo.toString(16).padStart(4, "0"); };
 const run = function (sw, lines) { const S = session(sw); ["", "enable", "configure terminal"].concat(lines, ["end", "copy running-config startup-config", ""]).forEach(function (l) { exec(S, l); }); return sw; };

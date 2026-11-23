@@ -15,8 +15,8 @@ import { page, physical } from "../net/pages.js";
 import { rng, hash } from "../net/util.js";
 import { checkSheet, sheetRows } from "../net/ipam.js";
 
-const STATE_CHANGING = { cmd: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1, router: 1, client: 1, rogue: 1, print: 1, speed: 1, outside: 1, rejoin: 1, pcprinter: 1, forget: 1, join: 1, injector: 1, tftp: 1, crossover: 1, ipam: 1, tone: 1, repatch: 1, cablemap: 1, sfp: 1, polarity: 1, joinssid: 1, apnet: 1, radio: 1, cabinet: 1 };   /* print, speed and outside change nothing, but they draw on the same counter as ping, so replay needs them; the last four are the business's pages (its access point, the phones' Wi-Fi, the closet cabinet) */
-const PHYSICAL = { look: 1, test: 1, reseat: 1, unplug: 1, replace: 1, crossover: 1, tighten: 1, power: 1, tone: 1, probe: 1, repatch: 1, polarity: 1 };
+const STATE_CHANGING = { cmd: 1, reseat: 1, unplug: 1, replace: 1, tighten: 1, power: 1, router: 1, client: 1, rogue: 1, print: 1, speed: 1, outside: 1, rejoin: 1, pcprinter: 1, forget: 1, join: 1, injector: 1, tftp: 1, crossover: 1, ipam: 1, tone: 1, repatch: 1, cablemap: 1, sfp: 1, polarity: 1, unstray: 1, joinssid: 1, apnet: 1, radio: 1, cabinet: 1 };   /* print, speed and outside change nothing, but they draw on the same counter as ping, so replay needs them; the last four are the business's pages (its access point, the phones' Wi-Fi, the closet cabinet) */
+const PHYSICAL = { look: 1, test: 1, reseat: 1, unplug: 1, replace: 1, crossover: 1, tighten: 1, power: 1, tone: 1, probe: 1, repatch: 1, polarity: 1, unstray: 1 };   /* unstray: CP-15's switch nobody recorded, taken away */
 
 /* open a ticket on a seed; if a generated network ever failed to show its fault, move to the next seed */
 export function open(def, seed) {

@@ -34,6 +34,21 @@ NODE = [
  ("CP-01: a wrong option left without its reason", "js/tickets/campus.js", 'why: "The other desk on the same switch is online, and show interfaces trunk on " + s + " lists both uplinks trunking." }', 'why: "" }'),
  ("CP-01: the fault planted without the visitor's address as the last source", "js/tickets/campus.js", "seen: [dotMac(vm)], last: { mac: dotMac(vm), vlan: vid } };", "seen: [dotMac(vm)], last: null };"),
 ]
+NODE += [
+ ("CP-02: the template taken off altogether counts", "js/tickets/campus.js", "return !!O && !!O.passiveDefault && sameSet(O.active || [], v.ups); },", "return !!O && (!O.passiveDefault || sameSet(O.active || [], v.ups)); },"),
+ ("CP-02: one uplink of two counts", "js/tickets/campus.js", "return !!O && !!O.passiveDefault && sameSet(O.active || [], v.ups); },", "return !!O && !!O.passiveDefault && v.ups.some(function (n) { return (O.active || []).indexOf(n) >= 0; }); },"),
+ ("CP-02: the fix unsaved counts", "js/tickets/campus.js", "fixed(sim, v) { return CP02.ospfRight(sim, v) && CP02.ospfRight(sim, v, true) && ", "fixed(sim, v) { return CP02.ospfRight(sim, v) && "),
+ ("CP-02: a static route typed by hand counts", "js/tickets/campus.js", " && JSON.stringify(sim.d[v.dev].sw.routes || []) === v.routes && online(sim, v.pc)", " && online(sim, v.pc)"),
+ ("CP-02: a ping to the gateway proves it", "js/tickets/campus.js", 'return f.cmd === "ping" && f.dev === v.pc && f.replies > 0 && !!f.internet; },', 'return f.cmd === "ping" && f.dev === v.pc && f.replies > 0; },'),
+ ("CP-02: the template planted in the running configuration only", "js/tickets/campus.js", "[sw.ospf, sw.startup.ospf].forEach(function (O) { O.passiveDefault = true; O.active = []; });", "[sw.ospf].forEach(function (O) { O.passiveDefault = true; O.active = []; });"),
+ ("CP-02: rung 2 names the answer", "js/tickets/campus.js", "and still send no hellos: then nothing is learned across it.", "and still send no hellos (a passive interface): then nothing is learned across it."),
+ ("CP-02: a wrong option left without its reason", "js/tickets/campus.js", 'why: "show ip protocols on " + s + " still routes for its network statement, and show ip ospf interface brief still lists its interfaces in area 0." },', 'why: "" },'),
+ ("CP-02: show ip protocols never lists the passive interfaces", "js/net/swcli.js", 'O.passiveDefault ? ["  Passive Interface(s):", "    (every interface but " + ((O.active || []).map(short).join(", ") || "none") + ")"] : O.passive.length', 'false ? [] : O.passive.length'),
+]
+PAGE += [
+ ("CP-02: the Annex core's address left off the records", "js/tickets/campus.js", '" · the Annex: " + A.core.host + " " + A.core.ip + " · "', '" · the Annex: " + A.core.host + " · "'),
+ ("CP-02: show ip protocols never lists the passive interfaces", "js/net/swcli.js", 'O.passiveDefault ? ["  Passive Interface(s):", "    (every interface but " + ((O.active || []).map(short).join(", ") || "none") + ")"] : O.passive.length', 'false ? [] : O.passive.length'),
+]
 AAA = [
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "CP-01 the card with Rafiki's records"),
 ]

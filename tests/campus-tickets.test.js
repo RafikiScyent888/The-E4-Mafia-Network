@@ -124,3 +124,83 @@ test("Rafiki's records on the card carry every login, the switches' and the edge
   assert.match(out(T, ssh(T, "sd1", p.annex.acc.ip).concat([sd("show running-config")])), new RegExp("hostname " + p.annex.acc.host), "SSH to the Annex access switch"); E.act(T, sd("exit"));
   assert.match(out(T, [sd("ssh " + p.srv.user + "@" + p.srv.fsrv.ip), sd(p.srv.pw), sd("hostname")]), new RegExp(p.srv.fsrv.host), "SSH to the file server");
 });
+
+/* ---------------------------------------------------------------- CP-02 */
+const CP02 = CAMPUS_TICKETS.find((d) => d.id === "CP-02");
+const onDev = (T, lines, save) => { const v = T.v, f = on(v.pc); return [f("ssh " + v.plan.user + "@" + v.swIp), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("configure terminal")].concat(lines.map(f), [f("end")], save === false ? [] : [f("copy running-config startup-config"), f("")], [f("exit")]); };
+const unPassive = (T) => onDev(T, ["router ospf 1"].concat(T.v.ups.map((n) => "no passive-interface " + n)));
+const proof2 = (T) => [on(T.v.pc)("ping 8.8.8.8")];
+
+test("CP-02: the fault shows in the commands: the desk's traffic stopping at its gateway with no route, the switch with no neighbours, every interface passive, no gateway of last resort, its uplinks up", () => {
+  for (const s of seedsOf(CP02)) {
+    const T = E.open(CP02, s), v = T.v, f = on(v.pc);
+    assert.ok(CP02.exhibits(T.sim, v), s + " exhibits");
+    assert.match(out(T, [f("tracert 8.8.8.8")]), /reports: Destination net unreachable\./, s + " tracert stops at the gateway");
+    assert.match(out(T, [f("ipconfig")]), new RegExp("Default Gateway[ .]*: " + v.gw.replace(/\./g, "\\.")), s + " the desk still has its lease and gateway");
+    const o = out(T, [f("ssh " + v.plan.user + "@" + v.swIp), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("show ip ospf neighbor"), f("show ip protocols"), f("show ip route"), f("show ip interface brief")]);
+    assert.ok(!/FULL/.test(o), s + " no neighbours"); assert.match(o, /\(every interface but none\)/); assert.match(o, /Gateway of last resort is not set/);
+    for (const n of v.ups) assert.match(o, new RegExp("^" + n + "\\s.*\\bup\\s+up", "m"), s + " " + n + " up");
+    assert.equal(T.fixed, false);
+    for (const id of ["unreach", "nbr", "proto", "route", "brief"]) assert.ok(T.evidence.some((e) => e.id === id), s + " the notebook took " + id);
+    assert.equal(T.opts.length, 6); assert.equal(T.opts.filter((o) => o.right).length, 1); assert.ok(T.opts.filter((o) => !o.right).every((o) => o.why && o.why.length > 30));
+    const S = CP02.summary(v); assert.ok(S.cause.length > 80 && S.fix.length > 60);
+  }
+});
+
+test("CP-02: the ports facing the core taken out of the template, saved, fixes it; the desk's ping to the internet proves it, and a right diagnosis solves it", () => {
+  for (const s of seedsOf(CP02)) {
+    const T = E.open(CP02, s), v = T.v;
+    for (const a of proof2(T)) E.act(T, a); assert.equal(T.proven, false, s + " a ping before the fix proves nothing");
+    for (const a of unPassive(T)) E.act(T, a);
+    assert.equal(T.fixed, true, s + " fixed");
+    E.act(T, on(v.pc)("ping " + v.gw)); assert.equal(T.proven, false, s + " a ping to the gateway isn't the proof");
+    for (const a of proof2(T)) E.act(T, a); assert.equal(T.proven, true);
+    E.guess(T, T.opts.find((o) => o.right).id); assert.equal(T.solved, true);
+  }
+});
+
+test("CP-02: the tempting wrong fixes don't: the template taken off altogether, one uplink of two, a static route, the fix unsaved, the other distribution switch", () => {
+  for (const s of seedsOf(CP02, 2)) {
+    const open = () => E.open(CP02, s);
+    let T = open(); for (const a of onDev(T, ["router ospf 1", "no passive-interface default"])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the template off"); for (const a of proof2(T)) E.act(T, a); assert.equal(T.proven, false); assert.match(T.partial || "", /talks out of every interface/);
+    T = open(); for (const a of unPassive(T).slice(0, 0).concat(onDev(T, ["router ospf 1"].concat(T.v.ups.map((n) => "no passive-interface " + n)), false))) E.act(T, a);
+    assert.equal(T.fixed, false, s + " unsaved"); for (const a of proof2(T)) E.act(T, a); assert.match(T.partial || "", /hasn't saved it/);
+    T = open(); const nh = T.v.kind === "hq" ? coreLinks(T.v.plan).find((l) => l.b === "dist1").ia : null;
+    if (nh) { for (const a of onDev(T, ["ip route 0.0.0.0 0.0.0.0 " + nh])) E.act(T, a); assert.equal(T.fixed, false, s + " a static default"); for (const a of proof2(T)) E.act(T, a); assert.equal(T.proven, false); assert.match(T.partial || "", /static route/); }
+    if (T.v.kind === "hq") {
+      T = open(); for (const a of onDev(T, ["router ospf 1", "no passive-interface " + T.v.ups[0]])) E.act(T, a);
+      assert.equal(T.fixed, false, s + " one uplink of two"); for (const a of proof2(T)) E.act(T, a); assert.equal(T.proven, false); assert.match(T.partial || "", /still keeps OSPF quiet on/);
+      T = open(); const v = T.v, f = on(v.pc); for (const a of [f("ssh " + v.plan.user + "@" + v.plan.sw.dist2.ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("configure terminal"), f("router ospf 1"), f("no passive-interface default"), f("end"), f("exit")]) E.act(T, a);
+      assert.equal(T.fixed, false, s + " distribution switch 2 changed instead"); assert.ok(CP02.exhibits(T.sim, T.v));
+    } else {
+      T = open(); for (const a of onDev(T, ["router ospf 1", "no passive-interface vlan " + T.v.plan.annex.cls.id])) E.act(T, a);
+      assert.equal(T.fixed, false, s + " the classroom's VLAN interface instead"); assert.ok(CP02.exhibits(T.sim, T.v));
+    }
+  }
+});
+
+test("CP-02: the ladder climbs, and a saved ticket replays exactly", () => {
+  const T = E.open(CP02, seedsOf(CP02)[0]), wrongs = T.opts.filter((o) => !o.right).map((o) => o.id);
+  assert.equal(E.guess(T, wrongs[0]).rung, 0); assert.equal(E.guess(T, wrongs[1]).rung, 0); assert.equal(E.guess(T, wrongs[2]).rung, 1); assert.equal(E.guess(T, wrongs[3]).rung, 2);
+  E.resetBoard(T); assert.equal(E.guess(T, wrongs[4]).rung, 3); assert.equal(E.live(T).length, 2); assert.ok(E.live(T).some((o) => o.right));
+  for (const s of seedsOf(CP02, 1)) {
+    const U = E.open(CP02, s), v = U.v;
+    for (const a of [on(v.pc)("tracert 8.8.8.8")].concat(unPassive(U), proof2(U))) E.act(U, a);
+    const R = E.restore(CP02, JSON.parse(JSON.stringify(E.save(U))));
+    assert.equal(R.fixed, U.fixed); assert.deepEqual(R.evidence, U.evidence); assert.equal(R.proven, U.proven); assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
+  }
+});
+
+test("CP-02: the brief and every hint never name the right answer, a password, a VLAN number or the fix's command", () => {
+  for (const s of seedsOf(CP02)) {
+    const T = E.open(CP02, s), right = T.opts.find((o) => o.right).text.toLowerCase(), p = T.v.plan;
+    const texts = [CP02.rung1(T.v, T.sim), CP02.rung2(T.v, T.sim), ...CP02.fixHints(T.v, T.sim), CP02.brief(T.v, T.sim).quote, CP02.mason].map((x) => x.toLowerCase());
+    for (const x of texts) {
+      assert.ok(x.indexOf(right) < 0, x);
+      for (const bad of [p.secret, p.console, p.userPw, p.srv.pw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, "names a password: " + x);
+      for (const n of Object.values(p.vlans).map((V) => String(V.id)).concat([String(p.train.id), String(p.annex.cls.id)])) assert.ok(!new RegExp("\\b" + n + "\\b").test(x), "names VLAN " + n + ": " + x);
+      for (const cmd of ["passive", "router ospf", "copy running-config", "gi0/19", "gi0/20", "gi0/25"]) assert.ok(x.indexOf(cmd) < 0, "names " + cmd + ": " + x);
+    }
+  }
+});

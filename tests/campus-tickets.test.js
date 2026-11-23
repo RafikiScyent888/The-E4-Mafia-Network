@@ -415,6 +415,9 @@ test("CP-05: the tempting wrong fixes don't: a default typed on the edge router 
     assert.equal(T.fixed, false, s + " the other variant's fix"); assert.ok(CP05.exhibits(T.sim, T.v));
     T = open(); for (const a of onEdge(T, T.v.kind === "originate" ? ["router ospf 1", "default-information originate"] : ["interface " + T.v.wan, "ip address dhcp"], false)) E.act(T, a);
     assert.equal(T.fixed, false, s + " unsaved"); for (const a of proof5(T)) E.act(T, a); assert.match(T.partial || "", /hasn't saved it/);
+    /* the real fix, with a default typed on the edge router on top of it: it works, and Mason names the typed route */
+    T = open(); for (const a of fix5(T).concat(onEdge(T, ["ip route 0.0.0.0 0.0.0.0 " + T.sim.net.isp.gw]))) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the fix with a typed default on top"); for (const a of proof5(T)) E.act(T, a); assert.equal(T.proven, false); assert.match(T.partial || "", /typed into the edge router/);
   }
 });
 

@@ -255,5 +255,71 @@ const CP03 = {
   }
 };
 
-export const CAMPUS_TICKETS = [CP01, CP02, CP03];
+/* ---------------------------------------------------------------- CP-04 */
+/* Saturday's reload of distribution switch 1 (a firmware update): while it was down, distribution switch 2 took every gateway, as it
+   should. When switch 1 came back it took them all back but one floor's: that group's line on switch 1 was changed during the test and
+   saved, either preempt taken off (to stop it flapping) or the priority taken back to the default (where it ties with switch 2's, and
+   the tie goes to the higher address, switch 2's). Nothing is down: the floor's traffic goes to switch 2, across the bundle from
+   where spanning tree sends that VLAN, and the monitoring has flagged it. */
+const CP04_VLANS = { svc: "the service desk's VLAN", bench: "the bench VLAN", office: "the office VLAN", train: "the training VLAN" };
+const sbRec = function (sim, id, vid, saved) { const sw = sim.d[id].sw, w = saved ? sw.startup : sw, r = w && w.svis && w.svis[String(vid)]; return r && r.standby ? r.standby[String(vid)] || null : null; };
+const sbKey = function (sim, vid) { const S = sim.hsrpState(); return Object.keys(S).find(function (k) { return S[k].members.some(function (m) { return m.id === "dist1" && m.iface === "Vlan" + vid; }); }); };
+const sbActive = function (sim, vid) { const S = sim.hsrpState(), k = sbKey(sim, vid); return k && S[k].active ? S[k].active.id : null; };
+const CP04 = {
+  id: "CP-04", n: "04", level: 4, tier: "common", title: "Distribution switch 2 still the gateway after Saturday's reload", priority: 3, due: "1 day",
+  kinds: ["preempt", "priority"],
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("CP-04:" + seed)), kind = r.pick(CP04.kinds), vk = r.pick(["svc", "bench", "office", "train"]), V = vlanOf(p, vk);
+    const d2 = JSON.stringify([sbRec(sim, "dist2", V.id), sbRec(sim, "dist2", V.id, true)]);
+    /* the test's change, saved */
+    const sw = sim.d.dist1.sw; [sw, sw.startup].forEach(function (w) { const G = w.svis[String(V.id)].standby[String(V.id)]; if (kind === "preempt") delete G.preempt; else delete G.pri; });
+    /* the reload: switch 2 took the group while switch 1 was down, and keeps it */
+    sim.bump(); sim.relink(sim.links());
+    sim.net.extra.hsrp[sbKey(sim, V.id)] = "dist2"; sim.hsrpTick();
+    sw.restart = "reload"; sw.uptimeFixed = "2 days, 1 hour, 6 minutes"; sim.d.dist2.sw.uptimeFixed = "5 weeks, 2 days, 7 hours, 41 minutes";
+    sim.bump();
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, vk: vk, plan: p, vid: V.id, vname: CP04_VLANS[vk], gw: V.gw, d2: d2, own2: V.gw.replace(/\.1$/, ".3") } };
+  },
+  brief(v) { return { quote: "The monitoring flagged it this morning: distribution switch 2 has been the active gateway for " + v.vname + " since Saturday night. Nobody on that floor has complained. On Saturday distribution switch 1 had its firmware updated and was reloaded; the contractor tested a failover first, and every other VLAN's gateway went back to switch 1 when it came up. The records have switch 1 active for every VLAN." }; },
+  mason: "Nothing's broken, so nobody will tell you what's wrong. The two switches will, if you put their answers side by side.",
+  affected: function () { return "dist1"; },
+  options(v) {
+    const pre = { id: "preempt", text: "Distribution switch 1 no longer preempts for that group, so it stays standby however high its priority", why: "show standby brief on distribution switch 1 has the P beside that group: it preempts. Its priority is what keeps it standby: no higher than switch 2's." };
+    const pri = { id: "priority", text: "Distribution switch 1's priority for that group is back at the default, no higher than switch 2's, and the tie goes to switch 2's higher address", why: "show standby brief on distribution switch 1 has that group at priority 110, as the records have it. What's missing is the P: it never takes the role back." };
+    return [
+      { id: "right", right: true, text: v.kind === "preempt" ? pre.text : pri.text },
+      v.kind === "preempt" ? pri : pre,
+      { id: "down", text: "Distribution switch 1's interface for that VLAN didn't come back up after the reload", why: "show standby brief on distribution switch 1 lists the group as Standby, not Init, and show ip interface brief has the VLAN's interface up and up." },
+      { id: "split", text: "The two switches' groups for that VLAN have different numbers, so each is in a group of its own", why: "Both switches show the same group number, and each names the other: switch 2 active, switch 1 standby." },
+      { id: "stp", text: "Spanning tree made distribution switch 2 the root for that VLAN after the reload, and the gateway followed it", why: "Standby doesn't follow spanning tree, and show spanning-tree for that VLAN on distribution switch 1 still says this bridge is the root." },
+      { id: "booting", text: "Distribution switch 1 is still starting up after the firmware update", why: "show version on distribution switch 1 has it up two days, it answers SSH, and it's active for every other VLAN." }
+    ];
+  },
+  rung1() { return "SSH to both distribution switches (the records have their addresses): show standby brief on each, and put the flagged VLAN's lines side by side: who's active, each one's priority, the P."; },
+  rung2() { return "A standby router takes the active role back only if it preempts and its priority is higher than the active router's. With equal priorities the higher address wins."; },
+  fixHints(v) { return ["On distribution switch 1, compare the flagged group's line in show standby brief with every other group's line: something is different.", "Put that group back as the records have every group on switch 1: its priority above switch 2's, and preempt. Switch 2 needs nothing.", "Save it. Then show standby brief on distribution switch 1: it should be active for the group again."]; },
+  right1(sim, v, saved) { const G = sbRec(sim, "dist1", v.vid, saved); return !!G && G.pri === 110 && !!G.preempt && G.ip === v.gw; },
+  exhibits(sim, v) { return sbActive(sim, v.vid) === "dist2" && !CP04.right1(sim, v) && ["sd1", "bn1", "mgr", "tr1"].every(function (d) { return online(sim, d); }); },
+  fixed(sim, v) { return CP04.right1(sim, v) && CP04.right1(sim, v, true) && sbActive(sim, v.vid) === "dist1" && JSON.stringify([sbRec(sim, "dist2", v.vid), sbRec(sim, "dist2", v.vid, true)]) === v.d2 && ["sd1", "bn1", "mgr", "tr1"].every(function (d) { return online(sim, d); }); },
+  partial(v, sim) {
+    if (JSON.stringify([sbRec(sim, "dist2", v.vid), sbRec(sim, "dist2", v.vid, true)]) !== v.d2) return "Distribution switch 1 is active again, but switch 2's settings for the group have changed: the records have switch 2 at the default, standing by. The fault was on switch 1.";
+    if (!CP04.right1(sim, v)) return "Distribution switch 1 is active again, but only because switch 2 dropped out for a moment: switch 1's settings for the group are still wrong, so after the next reload switch 2 keeps it again.";
+    if (!CP04.right1(sim, v, true)) return "Distribution switch 1 is active again, but it hasn't saved the change: after the next reload the group stays on switch 2 again.";
+    return "It works, but not the way the records have it.";
+  },
+  proves(f, sim, v) { return f.on === "dist1" && new RegExp("^Vl" + v.vid + "\\s+" + v.vid + "\\s+\\d+\\s+.{2}Active\\s+local\\b", "m").test(devOut(f)); },
+  proofText: "show standby brief on distribution switch 1: active for the flagged VLAN's group",
+  evidence: [
+    { id: "sb2", test: function (f, v) { return f.on === "dist2" && new RegExp("^Vl" + v.vid + "\\s+" + v.vid + "\\s+\\d+\\s+.{2}Active\\s+local\\b", "m").test(devOut(f)); }, text: function (f, v) { return "show standby brief on distribution switch 2: active for Vl" + v.vid; } },
+    { id: "sb1", test: function (f, v) { return f.on === "dist1" && new RegExp("^Vl" + v.vid + "\\s+" + v.vid + "\\s+\\d+\\s+.{2}Standby\\b", "m").test(devOut(f)); }, text: function (f, v) { return "show standby brief on distribution switch 1: standby for Vl" + v.vid + (v.kind === "preempt" ? ", priority 110 but no P" : ", P but priority 100") + ", active for every other VLAN"; } },
+    { id: "ver", test: function (f) { return f.on === "dist1" && /uptime is 2 days/.test(devOut(f)); }, text: function () { return "show version on distribution switch 1: up two days, returned to ROM by reload"; } },
+    { id: "run", test: function (f, v) { const o = devOut(f); return f.on === "dist1" && new RegExp("interface Vlan" + v.vid + "\\b").test(o) && new RegExp("standby " + v.vid + " ip ").test(o); }, text: function (f, v) { return "show running-config on distribution switch 1: interface Vlan" + v.vid + "'s standby lines, " + (v.kind === "preempt" ? "no preempt among them" : "no priority among them"); } }
+  ],
+  summary(v) {
+    return { cause: "During Saturday's failover test the contractor changed distribution switch 1's standby settings for " + v.vname + " and saved: " + (v.kind === "preempt" ? "he took preempt off, so switch 1 never takes the active role back, however high its priority." : "he took its priority back to the default, 100, the same as switch 2's, and with equal priorities the higher address, switch 2's, wins.") + " While switch 1 reloaded, switch 2 became active for every group; when switch 1 came back it took every group back but that one.", fix: "On distribution switch 1, interface vlan " + v.vid + ": " + (v.kind === "preempt" ? "standby " + v.vid + " preempt" : "standby " + v.vid + " priority 110") + ", then saved. Switch 1 took the group back at once and switch 2 stood by, as the records have it." };
+  }
+};
+
+export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04];
 export const CAMPUS_COMING = [];

@@ -883,6 +883,19 @@ const cp03Login = async (p, v) => {
   for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
 };
 const cp03Conf = async (p, v, lines) => { await cp03Login(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
+/* CP-04: the flagged VLAN off the card (the brief names it in words); SSH from the service desk to either distribution switch */
+const cp04Vlan = async (p, v) => {
+  const label = { svc: "Service desk VLAN", bench: "Bench VLAN", office: "Office VLAN", train: "Training VLAN" }[v.vk], row = await rec(p, label), m = row.match(/^(\d+) · /);
+  check(!!m && +m[1] === v.vid, "CP-04: Rafiki's records give the flagged VLAN's number (" + row + ")");
+  return m ? m[1] : "?";
+};
+const cp04Login = async (p, v, which) => {
+  const ssh = await rec(p, "Remote logins (SSH)"), sws = await rec(p, "The switches"), sec = await rec(p, "Enable secret");
+  const m = ssh.match(/^user (\S+) · password (\S+)$/), ip = (sws.match(new RegExp(v.plan.sw[which].host + " (\\d+\\.\\d+\\.\\d+\\.\\d+)")) || [])[1], s2 = (sec.match(/^(\S+)/) || [])[1];
+  await dev(p, "sd1"); await tab(p, "Command Prompt");
+  for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
+};
+const cp04Conf = async (p, v, lines) => { await cp04Login(p, v, "dist1"); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
 const campConf = async (p, v, lines) => { await campLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "exit"])) await type(p, l); };
 Object.assign(PLAN, {
   "CP-01": {
@@ -938,6 +951,28 @@ Object.assign(PLAN, {
     wrong: async (p, v) => { const V = await cp03Vlan(p, v); await cp03Conf(p, v, ["interface vlan " + V.id, "no standby " + V.id]); },   /* distribution switch 1 out of the group: switch 2 answers alone */
     fix: async (p, v) => { const V = await cp03Vlan(p, v); await cp03Conf(p, v, ["interface vlan " + V.id, "standby " + V.id + " ip " + V.gw]); },
     proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); }
+  },
+  "CP-04": {
+    look: async (p, v) => {
+      const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "CP-04's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(60);
+      const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "CP-04's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+      await dysClear(p, "CP-04"); await planBothFonts(p, "CP-04");
+      const vid = await cp04Vlan(p, v);
+      await cp04Login(p, v, "dist2"); await type(p, "show standby brief"); const o2 = (await term(p)).split("show standby brief").pop(); await type(p, "exit");
+      await cp04Login(p, v, "dist1"); await type(p, "show standby brief"); await type(p, "show version"); const o1 = (await term(p)).split("show standby brief").pop(); await type(p, "exit");
+      check(new RegExp("^Vl" + vid + "\\s+" + vid + "\\s+\\d+\\s+.{2}Active\\s+local", "m").test(o2) && new RegExp("^Vl" + vid + "\\s+" + vid + "\\s+\\d+\\s+.{2}Standby", "m").test(o1) && /uptime is 2 days/.test(o1), "CP-04 " + v.kind + ": switch 2 active for the flagged VLAN, switch 1 standby, up two days");
+    },
+    wrong: async (p, v) => { const vid = await cp04Vlan(p, v); await cp04Conf(p, v, ["interface vlan " + vid, v.kind === "preempt" ? "standby " + vid + " priority 120" : "standby " + vid + " preempt"]); },   /* the other variant's fix: not this one's */
+    fix: async (p, v) => {
+      const vid = await cp04Vlan(p, v);
+      if (v.kind === "preempt") { await cp04Conf(p, v, ["interface vlan " + vid, "standby " + vid + " preempt"]); return; }
+      await cp04Login(p, v, "dist1"); await type(p, "show standby brief"); const o = (await term(p)).split("show standby brief").pop(); await type(p, "exit");   /* the priority the records give every group on switch 1: read off its other lines */
+      const pri = ((o.split("\n").find((l) => /^Vl\d+\s+\d+\s+\d+\s+P Active\s+local/.test(l)) || "").match(/^Vl\d+\s+\d+\s+(\d+)/) || [])[1] || "?";
+      check(pri === "110", "CP-04: switch 1's priority for its other groups read off show standby brief (" + pri + ")");
+      await cp04Conf(p, v, ["interface vlan " + vid, "standby " + vid + " priority " + pri]);
+    },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await cp04Login(p, v, "dist1"); await type(p, "show standby brief"); await type(p, "exit"); }
   }
 });
 

@@ -1245,7 +1245,7 @@ if (!process.env.ONLY || process.env.ONLY === "tickets-business") {
 /* the campus's tickets on the desk: locked until the small business is finished (a campus ticket left as current opens HOME-01
    instead), listed for one who has; the card, the title, Rafiki's records, the device buttons, the work orders' titles, the shelves
    and the map */
-if (!process.env.ONLY || process.env.ONLY === "tickets-campus") {
+if (!process.env.ONLY || process.env.ONLY === "tickets-campus" || process.env.ONLY === "campus-desk") {   /* campus-desk: just this block, for the desk's plants */
   {
     const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
     const so = Object.fromEntries(HOME_TICKETS.concat(OFFICE_TICKETS).map((d) => [d.id, 1])), dn = Object.fromEntries(JOBS.filter((d) => !d.free).concat(OFFICE_JOBS).map((d) => [d.id, 1]));

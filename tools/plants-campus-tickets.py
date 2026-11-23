@@ -13,16 +13,16 @@ PAGE = [
  ("the shelves leave out the campus's tickets", "js/desk/left.js", "      if (isOpen(4)) ctx.list.filter(function (t) { return t.level === 4; })", "      if (false) ctx.list.filter(function (t) { return t.level === 4; })"),
  ("the map's Rafiki HQ site lists no tickets", "js/desk/left.js", ' || ((s.id === "hq" || s.id === "annex") && isOpen(4))) {', ") {"),
  ("the campus's work orders left without their titles in the queue (as live before the Ticket Desk)", "js/desk/levels.js", "BUSINESS_JOBS, BUSINESS_TICKETS, CAMPUS_JOBS, CAMPUS_TICKETS).forEach", "BUSINESS_JOBS, BUSINESS_TICKETS, CAMPUS_TICKETS).forEach"),
- ("Level 4 says nothing more is coming, with 14 tickets still to build", "js/desk/levels.js", ', planned: 25, coming: "more tickets on the way" },', ", planned: 25 },"),
- ("the records' SSH login without its password", "js/tickets/campus.js", '["Remote logins (SSH)", "user " + p.user + " · password " + p.userPw],', '["Remote logins (SSH)", "user " + p.user],'),
- ("the records leave out the access switches' addresses", "js/tickets/campus.js", '["dist1", "dist2", "acc1", "acc2", "acc3", "acc4"].map(at)', '["dist1", "dist2"].map(at)'),
- ("the port opened without shutting it brings it back from err-disabled", "js/net/swcli.js", '} else { S.sw.ports[n].shutdown = false; const st = status(S.sw, ', '} else { S.sw.ports[n].shutdown = false; if (S.sw.psRun && S.sw.psRun[n]) S.sw.psRun[n].err = false; const st = status(S.sw, '),
+ ("Level 4 says nothing more is coming, with tickets still to build", "js/desk/levels.js", ', planned: 25, coming: "more tickets on the way" },', ", planned: 25 },"),
+ ("CP-01: the records' SSH login without its password", "js/tickets/campus.js", '["Remote logins (SSH)", "user " + p.user + " · password " + p.userPw],', '["Remote logins (SSH)", "user " + p.user],'),
+ ("CP-01: the records leave out the access switches' addresses", "js/tickets/campus.js", '["dist1", "dist2", "acc1", "acc2", "acc3", "acc4"].map(at)', '["dist1", "dist2"].map(at)'),
+ ("CP-01: the port opened without shutting it brings it back from err-disabled (on the page)", "js/net/swcli.js", '} else { S.sw.ports[n].shutdown = false; const st = status(S.sw, ', '} else { S.sw.ports[n].shutdown = false; if (S.sw.psRun && S.sw.psRun[n]) S.sw.psRun[n].err = false; const st = status(S.sw, '),
 ]
 # each built ticket left off the desk, from the ticket list as it stands (so a new ticket needs nothing here)
 _src = open("js/tickets/campus.js").read()
 _m = re.search(r"export const CAMPUS_TICKETS = \[([^\]]*)\];", _src)
 _ids = [x.strip() for x in _m.group(1).split(",")]
-PAGE += [(t[:2] + "-" + t[2:] + " left off the desk", "js/tickets/campus.js", _m.group(0), "export const CAMPUS_TICKETS = [" + ", ".join(x for x in _ids if x != t) + "];") for t in _ids]
+PAGE += [(t[:2] + "-" + t[2:] + ": left off the desk", "js/tickets/campus.js", _m.group(0), "export const CAMPUS_TICKETS = [" + ", ".join(x for x in _ids if x != t) + "];") for t in _ids]
 NODE = [
  ("CP-01: port security switched off counts as fixed", "js/tickets/campus.js", "&& CP01.secured(sw.ports[n], v) && CP01.secured(st, v) && online(", "&& online("),
  ("CP-01: the saved copy's port security weakened counts", "js/tickets/campus.js", "&& CP01.secured(sw.ports[n], v) && CP01.secured(st, v) && online(", "&& CP01.secured(sw.ports[n], v) && online("),
@@ -143,7 +143,9 @@ def run(kind, name, f, a, b, extra=None):
     bak = f + ".plant-bak"; shutil.copy(f, bak)
     open(f, "w").write(src.replace(a, b))
     try:
-        if kind == "page": r = subprocess.run(["node", "tools/drive.mjs"], env=dict(os.environ, ONLY=os.environ.get("DRIVE_ONLY", "tickets-campus")), capture_output=True, text=True, timeout=5400)
+        # a plant named for one ticket ("CP-03: ...") runs that ticket's drive; a plant on the desk runs the desk's checks; DRIVE_ONLY overrides
+        mt = re.match(r"(CP-\d\d):", name)
+        if kind == "page": r = subprocess.run(["node", "tools/drive.mjs"], env=dict(os.environ, ONLY=os.environ.get("DRIVE_ONLY", mt.group(1) if mt else "campus-desk")), capture_output=True, text=True, timeout=5400)
         elif kind == "node": r = subprocess.run(["node", "--test", "tests/campus-tickets.test.js"], env=dict(os.environ, SEEDS=os.environ.get("SEEDS", "4")), capture_output=True, text=True, timeout=5400)
         else: r = subprocess.run(["node", "tools/aaa.mjs", "tools/aaa-states.json"], env=dict(os.environ, ONLY=extra), capture_output=True, text=True, timeout=5400)
         out = r.stdout.strip().splitlines()

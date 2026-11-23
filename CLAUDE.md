@@ -4143,8 +4143,43 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
   (/29 or /28: the ends still ping each other, but OSPF won't make neighbours of ends whose masks differ) or an address in another block
   (.37, .38 or .41: the ends can't reach each other). Rafiki's records now give the fibre's addressing ("The fibre between the buildings").
   Wrong fixes: half the fix, a static default on the Annex core (no way back for the replies), the port bounced, unsaved.
+- **CP-12, the desk restarted this morning has no network:** the contractor added next month's meeting-room network to the DHCP
+  server's file (CP-J10's dhcpd on the file server) from his change sheet with a mistake in the new block, and restarted it: dhcpd refused
+  the file and stayed failed. Every desk with a lease keeps working; the one restarted this morning is on 169.254. Evidence on the server
+  (SSH from a desk, sudo): `systemctl status`, `journalctl`, `dhcpd -t` naming the line. The fix: the block put right as the change sheet
+  in the brief gives it, the service started, the desk asking again. Wrong fixes, each tested: a restart with the file as it is, the file
+  put right but not restarted, the new block taken out, an address set on the desk by hand.
+- **CP-13, last night's backup failed on every large file:** one piece of CP-J9's backup network back at 1500: a switch on the path (jumbo
+  frames taken off for the contractor's VPN trouble, saved and reloaded: it drops the big frames as giants), or a server whose updates
+  rewrote its netplan file (its backup port at 1500). A plain ping between the servers' backup addresses works; `ping -M do -s 8972` doesn't.
+  The drive reads each piece's MTU along the way (`show system mtu`, `ip link`). Wrong fixes: jumbo set on the switch but not reloaded, the
+  server's MTU set with `ip link` only (gone at the next restart), the other server lowered to match.
+- **CP-14, the Annex cut off since its fibre module was replaced:** Friday's replacement module from the spares drawer in the Annex core's
+  fibre slot: a 1000BASE-SX (850 nm, multimode, against core switch 2's 1000BASE-LX on single-mode: notconnect, no light), or an SFP+
+  10GBASE-SR (a 10 Gb/s module in a 1 Gb/s slot: err-disabled, unsupported). Rafiki's records now give the fibre's modules ("a 1000BASE-LX
+  module at each end"). Evidence over SSH from a classroom PC (`show interfaces status`, `show interfaces transceiver`, `show inventory`)
+  and the module looked at on the Physical tab. The fix: a 1000BASE-LX from the van. Wrong fixes: the other wrong module, the LC pair
+  swapped at the Annex end, the port bounced. Its drive: 87 checks.
+- **CP-15, the technicians' bench off the network since this morning** (BPDU guard, the last campus ticket: it needs a device of its own).
+  Two variants, each the other's near miss: a customer's managed switch in for repair (from its box, spanning tree on) on the bench's
+  network cable with bench PC 1 behind it, so BPDU guard shut the 2F access switch's port 1; or a little unmanaged 8-port switch with both
+  bench cables and both PCs in it, which sends no BPDUs of its own but carries the access switch's own from port 1 into port 2 and back (a
+  loop), so both went. The switch is `dsw` (`addDeskSwitch` in `js/net/campus.js`): not in the records or on the logical diagram, on the
+  floor plan at the bench's far end, with a device button; its Physical tab takes it away (`unstray`: its leads out, each run's plug back in
+  its PC, the switch boxed). The fix: taken away, then each shut port shut and opened again; BPDU guard, portfast and port security as the
+  records have them. Wrong fixes, each tested: bounced with the switch still there (the customer's: straight back down by BPDU guard; the
+  loop's one at a time: each port comes up while the other is still shut, so nothing comes round, but both PCs' addresses do, and port
+  security shuts it; together, BPDU guard again); BPDU guard taken off (port security shuts it instead); one cable of the loop pulled (port
+  security); both protections off (it works, and Mason says so); the switch away but BPDU guard off, or off in the saved copy only, or port
+  security off. With it, for every level:
+  - BPDU guard acts before port security in each pass (it acts on the first BPDU as the link comes up).
+  - An unmanaged switch passes BPDUs on: a port cabled to one hears every managed switch port beyond it (`bpduThrough`), its own
+    switch's other ports too. Every port that hears one is found first, then all are shut (two ports looped hear each other at once).
+  - `show interfaces status err-disabled` lists each err-disabled port with its reason (bpduguard, psecure-violation, gbic-invalid);
+    port security records its reason; `show port-security interface` says Secure-down, not Secure-shutdown, for a port BPDU guard shut.
 - **Plants per ticket:** `tools/plants-campus-tickets.py` (in a throwaway copy). A page plant named for a ticket ("CP-03: ...") runs that
-  ticket's drive; the desk's plants run `ONLY=campus-desk`; `KINDS=node` (or page, aaa) runs one kind.
+  ticket's drive and a Node plant that ticket's tests (`--test-name-pattern`); the desk's plants run `ONLY=campus-desk`; `KINDS=node` (or
+  page, aaa) runs one kind.
 
 ## Objectives
 

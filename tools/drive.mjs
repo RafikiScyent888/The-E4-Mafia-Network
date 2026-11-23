@@ -931,6 +931,14 @@ const cp11Login = async (p, v) => {
   await dev(p, v.pc); await tab(p, "Command Prompt");
   for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
 };
+/* CP-15: SSH to the 2F access switch from the manager's PC (the bench is cut off), everything read off the card */
+const cp15Login = async (p) => {
+  const ssh = await rec(p, "Remote logins (SSH)"), sws = await rec(p, "The switches"), sec = await rec(p, "Enable secret");
+  const m = ssh.match(/^user (\S+) · password (\S+)$/), ip = (sws.match(/RIT-ACC-2F (\d+\.\d+\.\d+\.\d+)/) || [])[1], s2 = (sec.match(/^(\S+)/) || [])[1];
+  await dev(p, "mgr"); await tab(p, "Command Prompt");
+  for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
+};
+const cp15Bounce = async (p, v) => { await cp15Login(p); for (const l of ["configure terminal"].concat(v.ports.flatMap((n) => ["interface gi0/" + n, "shutdown", "no shutdown"]), ["end", "exit"])) await type(p, l); };
 const cp11Conf = async (p, v, lines) => { await cp11Login(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
 /* CP-12: SSH from the manager's PC (it works) to the file server, its login off the card */
 const cp12Login = async (p, v) => {
@@ -1211,6 +1219,33 @@ Object.assign(PLAN, {
     wrong: async (p, v) => { await dev(p, "anxc"); await tab(p, "Physical"); if (v.kind === "sx") await p.click('.cabs li:has-text("ibre") button:text-is("Swap the LC pair over at this end")'); else await p.click('.phys button:text-is("Swap in a 1000BASE-SX module")'); await p.waitForTimeout(60); },
     fix: async (p, v) => { await dev(p, "anxc"); await tab(p, "Physical"); await p.click('.phys button:text-is("Swap in a ' + v.mod14 + ' module")'); await p.waitForTimeout(60); },
     proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); }
+  },
+  "CP-15": {
+    look: async (p, v) => {
+      check(!(await p.$('#net [data-d="dsw"]')), "CP-15: the " + v.box + " isn't on the logical diagram (it isn't in the records)");
+      const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "CP-15's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(60);
+      const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "CP-15's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+      const BX = (await import("../js/net/campus.js")).CAMPUS_ROOM_BOX.bench;
+      const at = await p.$eval('#plan [data-d="dsw"] rect.tile', (r) => { const b = r.getBBox(), m = r.getCTM(), s = r.ownerSVGElement.getCTM(); const x = b.x + b.width / 2, y = b.y + b.height / 2; const q = s.inverse().multiply(m); return [q.a * x + q.c * y + q.e, q.b * x + q.d * y + q.f]; }).catch(() => [0, 0]);
+      check(at[0] > BX[0] && at[0] < BX[2] && at[1] > BX[1] && at[1] < BX[3], "CP-15's floor plan: the " + v.box + " is drawn on the technicians' bench (" + at.map(Math.round) + ")");
+      await dysClear(p, "CP-15"); await planBothFonts(p, "CP-15"); await p.click("#vLog"); await p.waitForTimeout(40);
+      await cp15Login(p); for (const l of ["show interfaces status", "show interfaces status err-disabled", "show port-security interface gi0/1"]) await type(p, l);
+      const o = (await term(p)).split("show interfaces status").slice(1).join("show interfaces status"); await type(p, "exit");
+      check(v.ports.every((n) => new RegExp("^Gi0/" + n + "\\s+\\S+\\s+err-disabled\\s+bpduguard", "m").test(o)) && (v.kind === "loop" || /^Gi0\/2\s.*connected/m.test(o)), "CP-15 " + v.kind + ": over SSH, the bench port" + (v.ports.length > 1 ? "s" : "") + " err-disabled, the reason bpduguard");
+      check(/Port Status\s+: Secure-down/.test(o) && /Security Violation Count\s+: 0/.test(o), "CP-15: port security says it didn't shut the port");
+      await dev(p, "dsw"); await tab(p, "Physical"); await p.click('.cabs li:has-text("2F access switch") button:text-is("Look at the plug") >> nth=0'); await p.waitForTimeout(60);
+    },
+    /* the port(s) shut and opened with the switch still on the bench: straight back down (the loop's, one at a time: port security) */
+    wrong: async (p, v) => { await cp15Bounce(p, v); },
+    afterWrong: async (p) => { const v = await T(p, () => window.__e4.T.v), why = await T(p, () => { const sw = window.__e4.T.sim.d.acc2.sw, v = window.__e4.T.v; return v.ports.map((n) => { const r = sw.psRun["GigabitEthernet0/" + n]; return r && r.err ? r.why : null; }); });
+      check(why.every((w) => w === (v.kind === "customer" ? "bpduguard" : "psecure")), "CP-15 " + v.kind + ": bounced with the switch still there, the port" + (v.ports.length > 1 ? "s go" : " goes") + " straight back down (" + why.join(", ") + ")"); },
+    fix: async (p, v) => {
+      await dev(p, "dsw"); await tab(p, "Physical"); await p.click('.phys button:has-text("Take the")'); await p.waitForTimeout(80);
+      check(!(await p.$('#devtabs [data-d="dsw"]')) && /Taken away/.test(await p.$eval(".phys", (n) => n.textContent).catch(() => "")), "CP-15: taken away, the " + v.box + " has no device button, and its tab says it's gone");
+      await cp15Bounce(p, v);
+    },
+    proof: async (p) => { await dev(p, "bn1"); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); }
   }
 });
 

@@ -1119,6 +1119,20 @@ test("CP-15: the tempting wrong fixes don't: the port bounced with the switch st
   }
 });
 
+test("CP-15: weakened where it doesn't show today: BPDU guard off in the saved copy only, port security off on a bench port; and a ping from another floor proves nothing", () => {
+  for (const s of seedsOf(CP15)) {
+    const open = () => { const T = E.open(CP15, s); E.act(T, { t: "unstray", dev: "dsw" }); return T; };
+    let T = open(); for (const a of on15(T, ["interface gi0/1", "no spanning-tree bpduguard enable"], true).concat(on15(T, ["interface gi0/1", "spanning-tree bpduguard enable"]), bounce15(T))) E.act(T, a);
+    for (const a of proof15(T)) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the saved copy without BPDU guard"); assert.match(String(T.partial), /saved configuration/, s + " Mason names the saved copy");
+    T = open(); for (const a of on15(T, ["interface gi0/1", "no switchport port-security"]).concat(bounce15(T))) E.act(T, a);
+    for (const a of proof15(T)) E.act(T, a);
+    assert.equal(T.fixed, false, s + " port security off"); assert.match(String(T.partial), /port security/, s + " Mason names port security");
+    T = open(); for (const a of bounce15(T)) E.act(T, a); assert.equal(T.fixed, true);
+    E.act(T, on("mgr")("ping 8.8.8.8")); assert.equal(T.proven, false, s + " a ping from the manager's PC isn't the bench's proof");
+  }
+});
+
 test("CP-15: BPDUs pass through an unmanaged switch: the loop variant's desk switch sends none of its own, and a single cable from it to a desk port trips nothing", () => {
   const s = seedsOf(CP15).find((x) => E.open(CP15, x).v.kind === "loop"), T = E.open(CP15, s);
   assert.equal(T.sim.d.dsw.kind, "switch");

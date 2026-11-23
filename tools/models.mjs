@@ -394,6 +394,34 @@ CO.push(async () => {
   await led(p, "SO-10 back office switch SFP1 after the swap", "SFP1", "link", "green");
   await ctx.close();
 });
+/* CP-15 on the desk: campus 11 (the loop), the unmanaged desk switch drawn with plugs in ports 1 to 4 and none in 5 to 8, LINK 1 and 2
+   dark (the 2F access switch's ports 1 and 2 shut by BPDU guard), LINK 3 and 4 lit (the bench PCs); campus 2025 (the customer's switch),
+   the managed switch drawn with plugs in its ports 1 and 2, port 1's light dark and port 2's lit, and the 2F access switch's port 1 dark
+   with port 2 (bench PC 2) lit */
+CO.push(async () => {
+  for (const [seed, kind] of [[11, "loop"], [2025, "customer"]]) {
+    const ctx = await GL.newContext({ viewport: { width: 900, height: 1000 }, reducedMotion: "reduce" });
+    await ctx.addInitScript((seed) => { try { sessionStorage.setItem("e4-instructor", "1"); if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify({ current: "CP-15", t: { "CP-15": { seed: seed } }, solved: {} })); sessionStorage.setItem("seeded", "1"); } } catch (e) { } }, seed);
+    const p = await ctx.newPage(); p.on("pageerror", (e) => errs.push("desk CP-15: " + e.message));
+    await p.goto(base + "index.html", { timeout: 60000 }); await p.waitForFunction(() => window.__e4 && window.__e4.T && window.__e4.T.def.id === "CP-15", null, { timeout: 60000 }).catch(() => {});
+    if (plant) await p.evaluate(plant);
+    check(await p.evaluate(() => window.__e4.T.def.id === "CP-15" && window.__e4.T.v.kind).catch(() => null) === kind, "CP-15 models: the desk opened CP-15 on campus " + seed + " (" + kind + ")");
+    if (kind === "loop") {
+      await physical(p, "dsw", "Ports close-up");
+      for (const port of ["1", "2", "3", "4", "5", "6", "7", "8"]) { const q = await plugAt(p, port); check(!q.missing && q.plug === (+port <= 4), "CP-15 desk switch: port " + port + (+port <= 4 ? " has its plug " : " is empty ") + JSON.stringify(q)); }
+      for (const n of ["1", "2"]) await led(p, "CP-15 desk switch LINK " + n + " (the access switch's port shut)", null, "LINK " + n, "off");
+      for (const n of ["3", "4"]) await led(p, "CP-15 desk switch LINK " + n + " (a bench PC)", null, "LINK " + n, "green");
+    } else {
+      await physical(p, "dsw", "Front close-up");
+      for (const port of ["1", "2", "3"]) { const q = await plugAt(p, port); check(!q.missing && q.plug === (port !== "3"), "CP-15 customer's switch: port " + port + (port !== "3" ? " has its plug " : " is empty ") + JSON.stringify(q)); }
+      await led(p, "CP-15 customer's switch port 1 (the access switch's port shut)", "1", "link", "off");
+      await physical(p, "dsw", "Lower row lights"); await led(p, "CP-15 customer's switch port 2 (bench PC 1)", "2", "link", "green");
+      await physical(p, "acc2", "Front close-up"); await led(p, "CP-15 2F access switch port 1 (err-disabled)", "1", "link", "off");
+      await physical(p, "acc2", "Lower row lights"); await led(p, "CP-15 2F access switch port 2 (bench PC 2)", "2", "link", "green");
+    }
+    await ctx.close();
+  }
+});
 /* SO-J10 in build mode, office 2025: the back office switch out of its box with its SFP slots empty; an SX put in through the
    page, drawn with its black bail and no cord, its light dark; the closet's module, the run and the closet's port opened, and
    the slot drawn with its cord and lit */

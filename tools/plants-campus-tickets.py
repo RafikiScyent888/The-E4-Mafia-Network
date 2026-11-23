@@ -148,6 +148,23 @@ NODE += [
 PAGE += [
  ("CP-14: the fibre's modules left off the records", "js/tickets/campus.js", " · single-mode fibre, a 1000BASE-LX module at each end\"],", "\"],"),
 ]
+NODE += [
+ ("CP-15: BPDUs stop at an unmanaged switch", "js/net/sim.js", 'const peer = peers[id + "|" + n] || this.bpduThrough(id, n); if (!peer) continue;', 'const peer = peers[id + "|" + n]; if (!peer) continue;'),
+ ("CP-15: port security acts before BPDU guard", "js/net/sim.js", "this.snoopTidy(); this.bpduGuard(); this.portSecurity(); this.hsrpTick();", "this.snoopTidy(); this.portSecurity(); this.bpduGuard(); this.hsrpTick();"),
+ ("CP-15: each port shut the moment it's found (the loop's second escapes)", "js/net/sim.js", "        hit.push(run);", '        run.err = true; run.why = "bpduguard"; this.edgesChanged();'),
+ ("CP-15: BPDU guard taken off counts as fixed", "js/tickets/campus.js", "&& !sw.ports[k].shutdown && cp15Edge(sw.ports[k]) && cp15Edge(st) &&", "&& !sw.ports[k].shutdown &&"),
+ ("CP-15: the saved copy weakened counts", "js/tickets/campus.js", "&& !sw.ports[k].shutdown && cp15Edge(sw.ports[k]) && cp15Edge(st) &&", "&& !sw.ports[k].shutdown && cp15Edge(sw.ports[k]) &&"),
+ ("CP-15: port security changed counts", "js/tickets/campus.js", "&& JSON.stringify(sw.ports[k].ps) === v.ps[n] && !!st && JSON.stringify(st.ps) === v.ps[n]; });", "&& !!st; });"),
+ ("CP-15: a ping from another floor proves it", "js/tickets/campus.js", 'return f.cmd === "ping" && (f.dev === "bn1" || f.dev === "bn2") && f.replies > 0 && !!f.internet; },', 'return f.cmd === "ping" && f.replies > 0 && !!f.internet; },'),
+ ("CP-15: the reason given as port security's for every err-disabled port", "js/net/swcli.js", '(sw.psRun[n].why === "bpduguard" ? "bpduguard" : "psecure-violation")', '"psecure-violation"'),
+ ("CP-15: port security says it shut a port BPDU guard shut", "js/net/swcli.js", '(r.why === "bpduguard" ? "Secure-down" : "Secure-shutdown")', '"Secure-shutdown"'),
+ ("CP-15: taking the switch away leaves its leads in", "js/net/sim.js", "        this.net.cables = this.net.cables.filter(function (c) { return S.leads.indexOf(c.id) < 0; });\n", ""),
+]
+PAGE += [
+ ("CP-15: the switch on the bench has no way to take it away", "js/desk/window.js", "  if (P.stray) wrap.appendChild(", "  if (false) wrap.appendChild("),
+ ("CP-15: the switch on the bench left off the floor plan", "js/net/campus.js", '  dsw: { px: 880, py: 455, room: "bench" }\n', ""),
+ ("CP-15: show interfaces status err-disabled not understood", "js/net/swcli.js", "return args[1] && /^e/i.test(args[1]) ? ifErrDisabled(S.sw) : args[1] ? [\"% Invalid input detected at '^' marker.\"] : ifStatus(S.sw);", "return ifStatus(S.sw);"),
+]
 AAA = [
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "CP-01 the card with Rafiki's records"),
 ]
@@ -164,7 +181,7 @@ def run(kind, name, f, a, b, extra=None):
         # a plant named for one ticket ("CP-03: ...") runs that ticket's drive; a plant on the desk runs the desk's checks; DRIVE_ONLY overrides
         mt = re.match(r"(CP-\d\d):", name)
         if kind == "page": r = subprocess.run(["node", "tools/drive.mjs"], env=dict(os.environ, ONLY=os.environ.get("DRIVE_ONLY", mt.group(1) if mt else "campus-desk")), capture_output=True, text=True, timeout=5400)
-        elif kind == "node": r = subprocess.run(["node", "--test", "tests/campus-tickets.test.js"], env=dict(os.environ, SEEDS=os.environ.get("SEEDS", "4")), capture_output=True, text=True, timeout=5400)
+        elif kind == "node": r = subprocess.run(["node", "--test"] + (["--test-name-pattern=" + mt.group(1)] if mt else []) + ["tests/campus-tickets.test.js"], env=dict(os.environ, SEEDS=os.environ.get("SEEDS", "4")), capture_output=True, text=True, timeout=5400)   # a plant named for one ticket runs that ticket's tests
         else: r = subprocess.run(["node", "tools/aaa.mjs", "tools/aaa-states.json"], env=dict(os.environ, ONLY=extra), capture_output=True, text=True, timeout=5400)
         out = r.stdout.strip().splitlines()
         if kind == "aaa": r.returncode = 1 if any(l.startswith("FAIL overall") for l in out) else 0   # the contrast tool's verdict is its last line, not its exit code

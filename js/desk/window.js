@@ -457,7 +457,7 @@ function physicalPane(id, P, ctx, rerender) {
       b(K.locked ? "Unlock it" : "Lock it", { locked: !K.locked }, K.locked ? "Unlocked it: the keyway turned back." : "Locked it: the keyway turned across."),
       b(K.key ? "Take the key out" : "Put the key in", { key: !K.key }, K.key ? "Took the key out: you have it." : "Put the key back in the lock.")));
     wrap.appendChild(cr);
-  } else if (P.cables.length) wrap.appendChild(ul); else wrap.appendChild(el("p", { class: "note" }, "No cables: this device is on Wi-Fi."));
+  } else if (P.cables.length) wrap.appendChild(ul); else wrap.appendChild(el("p", { class: "note" }, P.gone ? "Taken away: it's off the network, with nothing of it plugged in." : "No cables: this device is on Wi-Fi."));
   if (P.sfp && P.sfp.length) {   /* the switch's SFP modules (SO-10): each one, and the other kind of 1 Gb/s module from the van */
     const sr = el("p", { class: "res", role: "status" }); if (physLog[id]["sfp"]) sr.textContent = physLog[id]["sfp"]; else sr.hidden = true;
     P.sfp.forEach(function (m) {

@@ -2238,5 +2238,34 @@
   "ticket": "CP-14",
   "seed": 3,
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-14'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; c.guess('right'); c.act({t:'sfp',dev:'anxc',slot:v.slot,type:'1000BASE-LX'}); document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); k('ping 8.8.8.8'); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-15 the card, the 2F access switch's err-disabled ports and their reason",
+  "page": "index.html",
+  "ticket": "CP-15",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-15'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; login(); ['show interfaces status','show interfaces status err-disabled','show port-security interface gi0/1'].forEach(k); document.getElementById('tk').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-15 the switch on the bench: its Physical tab, a cable looked at",
+  "page": "index.html",
+  "ticket": "CP-15",
+  "seed": 2025,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-15'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; document.querySelector('#devtabs [data-d=dsw]').click(); tab('Physical'); c.act({t:'look',cable:v.runs[0],end:'b'}); document.querySelector('.side').scrollIntoView();",
+  "nogl": true
+ },
+ {
+  "name": "campus tickets: CP-15 the floor plan with the switch on the bench, Mason's third rung",
+  "page": "index.html",
+  "ticket": "CP-15",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-15'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; document.getElementById('vPhy').click(); const w=c.T.opts.filter(o=>!o.right).map(o=>o.id); w.slice(0,4).forEach(x=>c.guess(x)); c.resetBoard(); c.guess(w[4]); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-15 solved, the summary",
+  "page": "index.html",
+  "ticket": "CP-15",
+  "seed": 2025,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-15'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; c.guess('right'); c.act({t:'unstray',dev:'dsw'}); login(); ['configure terminal'].concat(v.ports.flatMap(n=>['interface gi0/'+n,'shutdown','no shutdown']),['end','exit']).forEach(k); document.querySelector('#devtabs [data-d=bn1]').click(); tab('Command Prompt'); k('ping 8.8.8.8'); document.getElementById('board').scrollIntoView();"
  }
 ]

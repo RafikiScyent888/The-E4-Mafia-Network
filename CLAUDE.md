@@ -4105,6 +4105,42 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
   switch 1, active for the group. The drive reads 110 off switch 1's lines for its other groups (the records don't give priorities).
   Wrong fixes: the other variant's fix, switch 2 lowered (switch 1 preempts only in the priority variant), switch 2 bounced (switch 1
   active, Mason says only because switch 2 dropped out), unsaved.
+- **CP-05, no internet anywhere on the campus, though everything inside works:** the edge router stopped handing its default into OSPF.
+  Two causes, each saved on the edge router, each the other's near miss: `default-information originate` tidied away (it still has the
+  provider's default), or its internet port left on the line's address typed by hand after the provider's visit (no lease, so no default
+  of its own to originate). Every desk's gateway answers Destination net unreachable; distribution switch 1 has both cores FULL and no
+  gateway of last resort; SSH to the edge router (it still has routes back) shows which. Rafiki's records now say the internet port takes
+  its address, and the provider's default, by DHCP. Wrong fixes: a default typed on the edge router (works in the port variant, and Mason
+  says the provider can change its gateway), one on distribution switch 1 (the core has no way out either), the other variant's fix,
+  unsaved.
+- **CP-06, monitoring says the root bridge moved to an access switch:** the contractor's "standard settings" gave one floor's access switch
+  a bridge priority for its VLAN (0, 4096, 8192 or 20480) below distribution switch 1's; it won the root election. Nothing is down. The
+  proof is `show spanning-tree vlan` on distribution switch 1: this bridge is the root. Wrong fixes: switch 1 lowered further (Mason: if
+  switch 1 fails, the access switch wins, not switch 2), the access switch raised above switch 1 but not to the default, unsaved, another
+  VLAN's priority taken off. `spanning-tree vlan N priority 32768` counts as the default.
+- **CP-07, monitoring flags the bundle between the distribution switches:** the contractor's standardising left both ends of the LACP
+  bundle passive (neither starts it: every link (I), Po1 down at both ends) or forced one end on (it bundles alone, `-` for protocol; the
+  other end hears no LACP and stands alone). The records have both ends active, so one end active facing a passive one works and Mason
+  says one end still only waits. The drive reads which ends to change off their configurations.
+- **CP-08, the bundle between the distribution switches running on one link:** one member changed by itself (a VLAN taken off its allowed
+  list, or its native VLAN back to 1) and saved: suspended (s), the bundle up on the other. The drive finds the suspended link and the line
+  that differs from Port-channel1's. Wrong fixes: the port-channel changed to match the link, the link bounced, the link taken out of the
+  bundle, unsaved.
+- **CP-09, an OSPF neighbour on distribution switch 1 not coming up:** one uplink's IP MTU lowered for a VPN test (EXSTART with that core),
+  or core switch 1's router ID copied onto distribution switch 1 (no neighbour with core 1). The engine already models both (`ospf.js`).
+  Nothing is down. Wrong fixes: the other uplink lowered too, a different router ID typed (works, and Mason says the records let each
+  router pick its own), the uplink bounced, unsaved.
+- **CP-10, a desk on one floor gets no address since the weekend:** both distribution switches' relay for one floor's VLAN put back from an
+  old change sheet: to the edge router's old address (its pools went in CP-J10), the backup server's (one digit off the file server's), or
+  none. The desk was restarted and gave itself 169.254; the other desk on the floor keeps its lease. The DHCP server's log has nothing from
+  the floor. The fix: both relays, saved, then the desk asks again (the proof renews first). Wrong fixes: one switch only (Mason: with it
+  off, the floor gets nothing), an address by hand, unsaved, the edge router as the relay.
+- **CP-11, the Annex cut off after its core switch was tidied:** the Annex core's end of the fibre re-addressed and saved: a wider mask
+  (/29 or /28: the ends still ping each other, but OSPF won't make neighbours of ends whose masks differ) or an address in another block
+  (.37, .38 or .41: the ends can't reach each other). Rafiki's records now give the fibre's addressing ("The fibre between the buildings").
+  Wrong fixes: half the fix, a static default on the Annex core (no way back for the replies), the port bounced, unsaved.
+- **Plants per ticket:** `tools/plants-campus-tickets.py` (in a throwaway copy). A page plant named for a ticket ("CP-03: ...") runs that
+  ticket's drive; the desk's plants run `ONLY=campus-desk`; `KINDS=node` (or page, aaa) runs one kind.
 
 ## Objectives
 

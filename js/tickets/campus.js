@@ -38,6 +38,7 @@ export function campusRecords(v, sim) {
     ["Enable secret", p.secret + " (every switch and the edge router)"],
     ["Console password", p.console],
     ["Remote logins (SSH)", "user " + p.user + " · password " + p.userPw],
+    ["The fibre between the buildings", "core switch 2 " + A.link.hqIf.replace("GigabitEthernet", "Gi") + " " + A.link.hqIp + " · the Annex core " + A.link.anxIf.replace("GigabitEthernet", "Gi") + " " + A.link.anxIp + " · mask " + A.link.mask + ", routed, in OSPF"],
     ["The servers", S.fsrv.host + " " + S.fsrv.ip + " (the file server and the DHCP server) · " + S.bksrv.host + " " + S.bksrv.ip + " (the backup server) · log in as " + S.user + ", password " + S.pw],
     ["The desks", "1F the service desk and the help desk on the 1F access switch's ports 1 and 2 · 2F bench PCs 1 and 2 on the 2F switch's 1 and 2 · 3F the manager and finance on the 3F switch's 1 and 2 · 4F training PCs 1 and 2 on the 4F switch's 1 and 2 · the Annex classroom PCs on its access switch's 1 and 2"],
     ["The desk ports", "port security on every desk port: sticky, one address, shut down on a violation; portfast and BPDU guard"]
@@ -679,5 +680,59 @@ const CP10 = {
   }
 };
 
-export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07, CP08, CP09, CP10];
+/* ---------------------------------------------------------------- CP-11 */
+/* The Annex core's end of the fibre re-addressed in a tidy-up "from the IPAM sheet", and saved. Either the mask was typed wider than the
+   link's (the two ends still reach each other, a ping across answers, but OSPF won't make neighbours of two ends with different masks),
+   or the address typed is outside the link's block altogether (the ends can't reach each other at all). Either way the Annex core has
+   no neighbour, no routes out, and the classroom reaches nothing beyond its building. Core switch 2's end is as it was. */
+const CP11 = {
+  id: "CP-11", n: "11", level: 4, tier: "common", title: "The Annex cut off after its core switch was tidied", priority: 1, due: "1 h",
+  kinds: ["mask", "addr"],
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("CP-11:" + seed)), kind = r.pick(CP11.kinds), L = p.annex.link, pc = r.pick(["cl1", "cl2"]);
+    const mask = r.pick(["255.255.255.248", "255.255.255.240"]), addr = L.anxIp.replace(/\.(\d+)$/, function (m, d) { return "." + (+d + r.pick([3, 4, 7])); });   /* a usable address in another block (.37, .38, .41), never a block's own address or its broadcast */
+    const sw = sim.d.anxc.sw; [sw, sw.startup].forEach(function (w) { const q = w.ports[L.anxIf]; if (kind === "mask") q.mask = mask; else q.ip = addr; });
+    sim.bump(); sim.relink(sim.links());
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, pc: pc, pcName: name(sim, pc), port: L.anxIf, short: L.anxIf.replace("GigabitEthernet", "Gi"), ip: L.anxIp, peer: L.hqIp, mask: L.mask, badMask: kind === "mask" ? mask : null, badIp: kind === "addr" ? addr : null, swIp: p.annex.core.ip } };
+  },
+  brief(v) { return { quote: "Since Monday the Training Annex's classroom can't reach anything outside its own building: not the internet, not the file server at HQ. The " + v.pcName + " still has its address. HQ is fine. Over the weekend the network contractor tidied the Annex core switch's addressing \"to match the IPAM sheet\", and saved; the fibre and both modules were checked last month." }; },
+  mason: "Start at the classroom and walk out towards HQ. Where does it stop, and does each end of that link agree about the link?",
+  affected: function (v) { return v.pc; },
+  options(v) {
+    const mk = { id: "mask", text: "The Annex core's end of the fibre has a different mask from core switch 2's, so OSPF won't make them neighbours", why: "show running-config on the Annex core has the fibre port at the link's mask; it's the address that's outside the link's block, so the two ends can't reach each other at all (a ping across fails)." };
+    const ad = { id: "addr", text: "The Annex core's end of the fibre has an address outside the link's block, so the two ends can't reach each other", why: "A ping from the Annex core to core switch 2's end of the link answers: they reach each other. The address is in the link's block; what differs is the mask." };
+    return [
+      { id: "right", right: true, text: v.kind === "mask" ? mk.text : ad.text },
+      v.kind === "mask" ? ad : mk,
+      { id: "fibre", text: "The fibre between the buildings is down", why: "show interfaces status on the Annex core has its fibre port connected, and show ip interface brief has it up and up." },
+      { id: "passive", text: "The tidy-up made the Annex core's fibre port passive under OSPF", why: "show ip protocols on the Annex core lists every interface passive but the fibre port, as the records have it." },
+      { id: "module", text: "The modules at the two ends are different kinds since last month's check", why: "The link is up at both ends: show interfaces status says connected, which a mismatched pair of modules never would." },
+      { id: "gateway", text: "The classroom PCs' gateway was changed in the tidy-up", why: "ipconfig on the " + v.pcName + " shows the gateway the records give, and a ping to it answers: the Annex core is reachable, it just has no way on." }
+    ];
+  },
+  rung1(v) { return "From the " + v.pcName + ": tracert to an address at HQ. Then SSH to the Annex core (the records have its address): show ip ospf neighbor, show ip interface brief, show running-config for the fibre port; compare it with what the records give for the fibre, and ping core switch 2's end."; },
+  rung2() { return "Two ends of a routed link must be in the same block, with the same mask, to talk at all and to become OSPF neighbours: OSPF checks the mask in every hello and ignores a neighbour whose mask differs."; },
+  fixHints(v) { return ["The records give both ends of the fibre, and its mask. Put the Annex core's end beside them.", "Correct the Annex core's end to the records; core switch 2's end is right.", "Save it. Then from the " + v.pcName + ": a ping to the internet."]; },
+  portRight(sim, v, saved) { const sw = sim.d.anxc.sw, w = saved ? sw.startup : sw, q = w.ports[v.port]; return q.ip === v.ip && q.mask === v.mask; },
+  exhibits(sim, v) { return !CP11.portRight(sim, v) && !online(sim, v.pc) && online(sim, "mgr"); },
+  fixed(sim, v) { return CP11.portRight(sim, v) && CP11.portRight(sim, v, true) && online(sim, "cl1") && online(sim, "cl2") && online(sim, "mgr"); },
+  partial(v, sim) {
+    if (!CP11.portRight(sim, v, true)) return "The classroom is out again, but the Annex core hasn't saved it: after its next reload the fibre port is wrong again.";
+    return "It works, but not the way the records have it.";
+  },
+  proves(f, sim, v) { return f.cmd === "ping" && (f.dev === "cl1" || f.dev === "cl2") && f.replies > 0 && !!f.internet; },
+  proofText: "a ping from a classroom PC to the internet that gets replies",
+  evidence: [
+    { id: "unreach", test: function (f, v) { return (f.dev === "cl1" || f.dev === "cl2") && ((f.cmd === "ping" && f.kind === "net-unreachable") || (f.cmd === "tracert" && !!f.stopAt)); }, text: function (f) { return (f.cmd === "tracert" ? "tracert" : "ping") + " from a classroom PC: the Annex core answers Destination net unreachable"; } },
+    { id: "nbr", test: function (f) { const o = devOut(f); return f.on === "anxc" && /Neighbor ID\s+Pri\s+State/.test(o) && !/FULL|EXSTART/.test(o); }, text: function () { return "show ip ospf neighbor on the Annex core: no neighbour"; } },
+    { id: "run", test: function (f, v) { return f.on === "anxc" && new RegExp("interface " + v.port + "\\b[\\s\\S]*?ip address " + (v.badIp || v.ip).replace(/\./g, "\\.") + " " + (v.badMask || v.mask).replace(/\./g, "\\.")).test(devOut(f)); }, text: function (f, v) { return "show running-config on the Annex core: the fibre port at " + (v.badIp || v.ip) + " " + (v.badMask || v.mask) + ", against the records' " + v.ip + " " + v.mask; } },
+    { id: "peer", test: function (f, v) { return f.on === "anxc" && f.cmd !== "ping" && new RegExp("ping " + v.peer.replace(/\./g, "\\.")).test(String(f.line || "")); }, text: function (f, v) { return "ping from the Annex core to core switch 2's end, " + v.peer + ": " + (v.kind === "mask" ? "it answers" : "nothing"); } }
+  ],
+  summary(v) {
+    return { cause: "Tidying the Annex core's addressing, the contractor typed its end of the fibre as " + (v.badIp || v.ip) + " " + (v.badMask || v.mask) + " and saved; the records, and core switch 2's end, have " + v.ip + " " + v.mask + ". " + (v.kind === "mask" ? "The two ends still reached each other, but OSPF compares masks in its hellos and won't make neighbours of ends that differ." : "The address was outside the link's block, so the two ends couldn't reach each other at all.") + " With no neighbour the Annex core learned no routes, and the classroom reached nothing beyond its building.", fix: "On the Annex core, interface " + v.short + ": ip address " + v.ip + " " + v.mask + ", then saved. The neighbour with core switch 2 came up FULL and the classroom reached the internet." };
+  }
+};
+
+export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07, CP08, CP09, CP10, CP11];
 export const CAMPUS_COMING = [];

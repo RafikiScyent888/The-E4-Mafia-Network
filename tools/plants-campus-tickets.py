@@ -123,6 +123,13 @@ NODE += [
  ("CP-10: an address set by hand counts", "js/tickets/campus.js", " && sim.d[v.pc].ifaces[0].lease && sim.d[v.pc].ifaces[0].lease.server === v.srv && [", " && ["),
  ("CP-10: the desk never asks again at the start", "js/tickets/campus.js", 'exec(sim, pc, "ipconfig /release"); exec(sim, pc, "ipconfig /renew");   /* Monday morning', '/* Monday morning'),
 ]
+NODE += [
+ ("CP-11: the fix unsaved counts", "js/tickets/campus.js", "fixed(sim, v) { return CP11.portRight(sim, v) && CP11.portRight(sim, v, true) && ", "fixed(sim, v) { return CP11.portRight(sim, v) && "),
+ ("CP-11: two ends with different masks become neighbours", "js/net/ospf.js", "a.f.area === b.f.area && a.f.mask === b.f.mask && ", "a.f.area === b.f.area && "),
+]
+PAGE += [
+ ("CP-11: the fibre's addressing left off the records", "js/tickets/campus.js", '    ["The fibre between the buildings", ', '    false && ["The fibre between the buildings", '),
+]
 AAA = [
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "CP-01 the card with Rafiki's records"),
 ]

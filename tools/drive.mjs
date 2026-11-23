@@ -924,6 +924,14 @@ const cp10Login = async (p, v, which) => {
   for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
 };
 const cp10Conf = async (p, v, which, lines) => { await cp10Login(p, v, which); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
+/* CP-11: SSH from a classroom PC to the Annex core (its own gateway), the address off the card */
+const cp11Login = async (p, v) => {
+  const ssh = await rec(p, "Remote logins (SSH)"), sws = await rec(p, "The switches"), sec = await rec(p, "Enable secret");
+  const m = ssh.match(/^user (\S+) · password (\S+)$/), ip = (sws.match(new RegExp(v.plan.annex.core.host + " (\\d+\\.\\d+\\.\\d+\\.\\d+)")) || [])[1], s2 = (sec.match(/^(\S+)/) || [])[1];
+  await dev(p, v.pc); await tab(p, "Command Prompt");
+  for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
+};
+const cp11Conf = async (p, v, lines) => { await cp11Login(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
 const campConf = async (p, v, lines) => { await campLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "exit"])) await type(p, l); };
 Object.assign(PLAN, {
   "CP-01": {
@@ -1102,6 +1110,25 @@ Object.assign(PLAN, {
     wrong: async (p, v) => { await cp10Conf(p, v, "dist1", v.lines10); await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); },   /* one switch only: the desk gets its address, Mason says the other still doesn't relay */
     fix: async (p, v) => { for (const d of ["dist1", "dist2"]) await cp10Conf(p, v, d, v.lines10); },
     proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); await type(p, "ping 8.8.8.8"); }
+  },
+  "CP-11": {
+    look: async (p, v) => {
+      const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "CP-11's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(60);
+      const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "CP-11's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+      await dysClear(p, "CP-11"); await planBothFonts(p, "CP-11");
+      const row = await rec(p, "The fibre between the buildings"), m = row.match(/the Annex core (Gi\S+) (\d+\.\d+\.\d+\.\d+) · mask (\S+),/);
+      check(!!m && m[2] === v.ip && m[3] === v.mask, "CP-11: Rafiki's records give the Annex core's end of the fibre (" + row + ")");
+      v.ip11 = m ? m[2] + " " + m[3] : "?"; v.if11 = m ? m[1].toLowerCase() : "?";
+      await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "tracert " + v.plan.srv.fsrv.ip);
+      check(/reports: Destination net unreachable\./.test(await term(p)), "CP-11 " + v.kind + ": tracert from the " + v.pcName + " turned back at the Annex core");
+      await cp11Login(p, v); for (const l of ["show ip ospf neighbor", "show running-config"]) await type(p, l);
+      const o = (await term(p)).split("show ip ospf neighbor").pop(); await type(p, "exit");
+      check(!/FULL/.test(o) && new RegExp("ip address " + (v.badIp || v.ip).replace(/\./g, "\\.") + " " + (v.badMask || v.mask).replace(/\./g, "\\.")).test(o), "CP-11 " + v.kind + ": over SSH, the Annex core has no neighbour, its fibre port not as the records have it");
+    },
+    wrong: async (p, v) => { await cp11Conf(p, v, ["interface " + v.if11, "shutdown", "no shutdown"]); },
+    fix: async (p, v) => { await cp11Conf(p, v, ["interface " + v.if11, "ip address " + v.ip11]); },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); }
   }
 });
 

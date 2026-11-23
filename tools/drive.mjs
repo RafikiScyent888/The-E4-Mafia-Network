@@ -916,6 +916,14 @@ const cp06Login = async (p, v, which) => {
 };
 const cp06Conf = async (p, v, lines) => { await cp06Login(p, v, v.sw); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
 const cp07Conf = async (p, v, which, lines) => { await cp04Login(p, v, which); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
+/* CP-10: SSH from the other desk on the floor (it still has its address) to either distribution switch */
+const cp10Login = async (p, v, which) => {
+  const ssh = await rec(p, "Remote logins (SSH)"), sws = await rec(p, "The switches"), sec = await rec(p, "Enable secret");
+  const m = ssh.match(/^user (\S+) · password (\S+)$/), ip = (sws.match(new RegExp(v.plan.sw[which].host + " (\\d+\\.\\d+\\.\\d+\\.\\d+)")) || [])[1], s2 = (sec.match(/^(\S+)/) || [])[1];
+  await dev(p, v.other); await tab(p, "Command Prompt");
+  for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
+};
+const cp10Conf = async (p, v, which, lines) => { await cp10Login(p, v, which); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
 const campConf = async (p, v, lines) => { await campLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "exit"])) await type(p, l); };
 Object.assign(PLAN, {
   "CP-01": {
@@ -1075,6 +1083,25 @@ Object.assign(PLAN, {
     wrong: async (p, v) => { await cp07Conf(p, v, "dist1", ["interface " + v.short.toLowerCase(), "shutdown", "no shutdown"]); },   /* bounced: the same again */
     fix: async (p, v) => { await cp07Conf(p, v, "dist1", v.fix9 || ["?"]); },
     proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await cp04Login(p, v, "dist1"); await type(p, "show ip ospf neighbor"); await type(p, "exit"); }
+  },
+  "CP-10": {
+    look: async (p, v) => {
+      const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "CP-10's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(60);
+      const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "CP-10's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+      await dysClear(p, "CP-10"); await planBothFonts(p, "CP-10");
+      await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ipconfig /all");
+      check(/Autoconfiguration IPv4 Address[ .]*: 169\.254\./.test(await term(p)), "CP-10 " + v.kind + ": the " + v.pcName + " on 169.254");
+      const row = await rec(p, v.label), vid = (row.match(/^(\d+) · /) || [])[1], srv = ((await rec(p, "The servers")).match(/^\S+ (\d+\.\d+\.\d+\.\d+) \(the file server and the DHCP server\)/) || [])[1];
+      check(+vid === v.vid && srv === v.srv, "CP-10: Rafiki's records give the floor's VLAN and the DHCP server's address");
+      await cp10Login(p, v, "dist1"); await type(p, "show running-config"); const o = (await term(p)).split("show running-config").pop(); await type(p, "exit");
+      const blk = (o.split("interface Vlan" + vid + "\n")[1] || "").split("!")[0], old = (blk.match(/ip helper-address (\S+)/) || [])[1];
+      v.lines10 = ["interface vlan " + vid].concat(old && old !== srv ? ["no ip helper-address " + old] : [], ["ip helper-address " + srv]);
+      check(old !== srv, "CP-10 " + v.kind + ": over SSH, distribution switch 1 relays the floor's VLAN " + (old ? "to " + old : "nowhere") + ", not to the DHCP server");
+    },
+    wrong: async (p, v) => { await cp10Conf(p, v, "dist1", v.lines10); await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); },   /* one switch only: the desk gets its address, Mason says the other still doesn't relay */
+    fix: async (p, v) => { for (const d of ["dist1", "dist2"]) await cp10Conf(p, v, d, v.lines10); },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ipconfig /renew"); await type(p, "ping 8.8.8.8"); }
   }
 });
 

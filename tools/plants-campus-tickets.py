@@ -39,7 +39,7 @@ NODE += [
  ("CP-02: one uplink of two counts", "js/tickets/campus.js", "return !!O && !!O.passiveDefault && sameSet(O.active || [], v.ups); },", "return !!O && !!O.passiveDefault && v.ups.some(function (n) { return (O.active || []).indexOf(n) >= 0; }); },"),
  ("CP-02: the fix unsaved counts", "js/tickets/campus.js", "fixed(sim, v) { return CP02.ospfRight(sim, v) && CP02.ospfRight(sim, v, true) && ", "fixed(sim, v) { return CP02.ospfRight(sim, v) && "),
  ("CP-02: a static route typed by hand counts", "js/tickets/campus.js", " && JSON.stringify(sim.d[v.dev].sw.routes || []) === v.routes && online(sim, v.pc)", " && online(sim, v.pc)"),
- ("CP-02: a ping to the gateway proves it", "js/tickets/campus.js", 'return f.cmd === "ping" && f.dev === v.pc && f.replies > 0 && !!f.internet; },\n  proofText: "a ping from the desk to', 'return f.cmd === "ping" && f.dev === v.pc && f.replies > 0; },\n  proofText: "a ping from the desk to'),
+ ("CP-02: a ping to the gateway proves it", "js/tickets/campus.js", 'return f.cmd === "ping" && f.dev === v.pc && f.replies > 0 && !!f.internet; },\n  proofText: "a ping from the desk to the internet that gets replies",', 'return f.cmd === "ping" && f.dev === v.pc && f.replies > 0; },\n  proofText: "a ping from the desk to the internet that gets replies",'),
  ("CP-02: the template planted in the running configuration only", "js/tickets/campus.js", "[sw.ospf, sw.startup.ospf].forEach(function (O) { O.passiveDefault = true; O.active = []; });", "[sw.ospf].forEach(function (O) { O.passiveDefault = true; O.active = []; });"),
  ("CP-02: rung 2 names the answer", "js/tickets/campus.js", "and still send no hellos: then nothing is learned across it.", "and still send no hellos (a passive interface): then nothing is learned across it."),
  ("CP-02: a wrong option left without its reason", "js/tickets/campus.js", 'why: "show ip protocols on " + s + " still routes for its network statement, and show ip ospf interface brief still lists its interfaces in area 0." },', 'why: "" },'),
@@ -116,6 +116,12 @@ NODE += [
  ("CP-09: any router ID that works counts", "js/tickets/campus.js", 'return !w.ports["GigabitEthernet0/19"].mtu && !w.ports["GigabitEthernet0/20"].mtu && !w.ospf.rid; },', 'return !w.ports["GigabitEthernet0/19"].mtu && !w.ports["GigabitEthernet0/20"].mtu && w.ospf.rid !== v.coreRid; },'),
  ("CP-09: an MTU mismatch still forms FULL", "js/net/ospf.js", '(m.f.mtu || 1500) !== (o.f.mtu || 1500) ? "EXSTART" : "FULL";', '"FULL";'),
  ("CP-09: two routers with one ID become neighbours", "js/net/ospf.js", " && routers[a.id].rid !== routers[b.id].rid; };", "; };"),
+]
+NODE += [
+ ("CP-10: the fix unsaved counts", "js/tickets/campus.js", "fixed(sim, v) { return CP10.relayRight(sim, v) && CP10.relayRight(sim, v, true) && ", "fixed(sim, v) { return CP10.relayRight(sim, v) && "),
+ ("CP-10: one switch relaying is enough", "js/tickets/campus.js", 'return ["dist1", "dist2"].every(function (id) { const sw = sim.d[id].sw, w = saved ? sw.startup : sw, h = w.svis[String(v.vid)].helpers || []; return h.length === 1 && h[0] === v.srv; }); },', 'return ["dist1", "dist2"].some(function (id) { const sw = sim.d[id].sw, w = saved ? sw.startup : sw, h = w.svis[String(v.vid)].helpers || []; return h.length === 1 && h[0] === v.srv; }); },'),
+ ("CP-10: an address set by hand counts", "js/tickets/campus.js", " && sim.d[v.pc].ifaces[0].lease && sim.d[v.pc].ifaces[0].lease.server === v.srv && [", " && ["),
+ ("CP-10: the desk never asks again at the start", "js/tickets/campus.js", 'exec(sim, pc, "ipconfig /release"); exec(sim, pc, "ipconfig /renew");   /* Monday morning', '/* Monday morning'),
 ]
 AAA = [
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "CP-01 the card with Rafiki's records"),

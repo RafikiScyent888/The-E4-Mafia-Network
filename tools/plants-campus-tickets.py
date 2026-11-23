@@ -63,6 +63,17 @@ PAGE += [
  ("CP-03: the VLAN plan on the card leaves out the gateways", "js/tickets/campus.js", '(x.net ? " · " + x.net + "/24 · gateway " + x.gw : "")', '(x.net ? " · " + x.net + "/24" : "")'),
  ("CP-03: show standby brief shows no virtual address", "js/net/swcli.js", '+ pad(q.standby, 16) + (q.vip || "unknown");', '+ pad(q.standby, 16) + "unknown";'),
 ]
+NODE += [
+ ("CP-04: the fix unsaved counts", "js/tickets/campus.js", "fixed(sim, v) { return CP04.right1(sim, v) && CP04.right1(sim, v, true) && ", "fixed(sim, v) { return CP04.right1(sim, v) && "),
+ ("CP-04: switch 1 active by any means counts", "js/tickets/campus.js", "fixed(sim, v) { return CP04.right1(sim, v) && CP04.right1(sim, v, true) && ", "fixed(sim, v) { return CP04.right1(sim, v, true) && "),
+ ("CP-04: switch 2's settings changed counts", "js/tickets/campus.js", ' && JSON.stringify([sbRec(sim, "dist2", v.vid), sbRec(sim, "dist2", v.vid, true)]) === v.d2 && ["sd1", "bn1", "mgr", "tr1"].every(function (d) { return online(sim, d); }); },', ' && ["sd1", "bn1", "mgr", "tr1"].every(function (d) { return online(sim, d); }); },'),
+ ("CP-04: a priority of 110 alone counts, without preempt", "js/tickets/campus.js", "return !!G && G.pri === 110 && !!G.preempt && G.ip === v.gw; },", "return !!G && G.pri === 110 && G.ip === v.gw; },"),
+ ("CP-04: the standby router takes over without preempt", "js/net/sim.js", "else if (best.id !== cur.id && best.preempt && best.pri > cur.pri) A[k] = best.id;", "else if (best.id !== cur.id && best.pri > cur.pri) A[k] = best.id;"),
+ ("CP-04: the brief names the fix", "js/tickets/campus.js", "the contractor tested a failover first, and every other VLAN's gateway went back to switch 1 when it came up.", "the contractor tested a failover first, and took preempt off one group, and every other VLAN's gateway went back to switch 1 when it came up."),
+]
+PAGE += [
+ ("CP-04: show standby brief leaves out the P", "js/net/swcli.js", "+ pad(q.pri, 4) + (q.preempt ? \"P \" : \"  \") + pad(q.state, 8)", "+ pad(q.pri, 4) + \"  \" + pad(q.state, 8)"),
+]
 AAA = [
  ("the records' passwords faint", "css/e4.css", ".office-recs dd { margin: 0; color: var(--ink);", ".office-recs dd { margin: 0; color: #9aa3b5;", "CP-01 the card with Rafiki's records"),
 ]

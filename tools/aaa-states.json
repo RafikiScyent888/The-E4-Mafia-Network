@@ -1929,5 +1929,33 @@
   "ticket": "CP-03",
   "seed": 5,
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-03'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d='+v.other+']').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw.dist1.ip,P.userPw,'enable',P.secret].forEach(k);}; c.guess('right'); login(); ['configure terminal','interface vlan '+v.vid,'standby '+v.vid+' ip '+v.gw,'end','copy running-config startup-config','','show standby brief','exit'].forEach(k); document.querySelector('#devtabs [data-d='+v.pc+']').click(); tab('Command Prompt'); k('ping 8.8.8.8'); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-04 the card, show standby brief on distribution switch 2",
+  "page": "index.html",
+  "ticket": "CP-04",
+  "seed": 11,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-04'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=(w)=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw[w].ip,P.userPw,'enable',P.secret].forEach(k);}; login('dist2'); k('show standby brief'); document.getElementById('tk').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-04 distribution switch 1: show standby brief and show version",
+  "page": "index.html",
+  "ticket": "CP-04",
+  "seed": 2,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-04'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=(w)=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw[w].ip,P.userPw,'enable',P.secret].forEach(k);}; login('dist1'); ['show standby brief','show version'].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-04 the floor plan, Mason's third rung",
+  "page": "index.html",
+  "ticket": "CP-04",
+  "seed": 2025,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-04'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=(w)=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw[w].ip,P.userPw,'enable',P.secret].forEach(k);}; document.getElementById('vPhy').click(); const w=c.T.opts.filter(o=>!o.right).map(o=>o.id); w.slice(0,4).forEach(x=>c.guess(x)); c.resetBoard(); c.guess(w[4]); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-04 solved, the summary",
+  "page": "index.html",
+  "ticket": "CP-04",
+  "seed": 3,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-04'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=(w)=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw[w].ip,P.userPw,'enable',P.secret].forEach(k);}; c.guess('right'); login('dist1'); ['configure terminal','interface vlan '+v.vid,v.kind==='preempt'?'standby '+v.vid+' preempt':'standby '+v.vid+' priority 110','end','copy running-config startup-config','','show standby brief','exit'].forEach(k); document.getElementById('board').scrollIntoView();"
  }
 ]

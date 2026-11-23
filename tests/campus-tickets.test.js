@@ -168,6 +168,10 @@ test("CP-02: the tempting wrong fixes don't: the template taken off altogether, 
     assert.equal(T.fixed, false, s + " unsaved"); for (const a of proof2(T)) E.act(T, a); assert.match(T.partial || "", /hasn't saved it/);
     T = open(); const nh = T.v.kind === "hq" ? coreLinks(T.v.plan).find((l) => l.b === "dist1").ia : null;
     if (nh) { for (const a of onDev(T, ["ip route 0.0.0.0 0.0.0.0 " + nh])) E.act(T, a); assert.equal(T.fixed, false, s + " a static default"); for (const a of proof2(T)) E.act(T, a); assert.equal(T.proven, false); assert.match(T.partial || "", /static route/); }
+    /* the real fix, and a static default typed on top of it: it works, and isn't the records' */
+    T = open(); const nh2 = T.v.kind === "hq" ? coreLinks(T.v.plan).find((l) => l.b === "dist1").ia : T.v.plan.annex.link.hqIp;
+    for (const a of unPassive(T).concat(onDev(T, ["ip route 0.0.0.0 0.0.0.0 " + nh2]))) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the fix with a static default on top"); for (const a of proof2(T)) E.act(T, a); assert.equal(T.proven, false); assert.match(T.partial || "", /static route/);
     if (T.v.kind === "hq") {
       T = open(); for (const a of onDev(T, ["router ospf 1", "no passive-interface " + T.v.ups[0]])) E.act(T, a);
       assert.equal(T.fixed, false, s + " one uplink of two"); for (const a of proof2(T)) E.act(T, a); assert.equal(T.proven, false); assert.match(T.partial || "", /still keeps OSPF quiet on/);
@@ -273,5 +277,77 @@ test("CP-03: the brief and every hint never name the right answer, a password, a
       for (const n of Object.values(p.vlans).map((V) => String(V.id)).concat([String(p.train.id), String(p.annex.cls.id)])) assert.ok(!new RegExp("\\b" + n + "\\b").test(x), "names VLAN " + n + ": " + x);
       for (const bad of [T.v.gw, T.v.typo, "standby " + T.v.vid, "interface vlan", "copy running-config"]) assert.ok(x.indexOf(bad) < 0, "names " + bad + ": " + x);
     }
+  }
+});
+
+/* ---------------------------------------------------------------- CP-04 */
+const CP04 = CAMPUS_TICKETS.find((d) => d.id === "CP-04");
+const onD = (T, which, lines, save) => { const v = T.v, f = on("sd1"); return [f("ssh " + v.plan.user + "@" + v.plan.sw[which].ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("configure terminal")].concat(lines.map(f), [f("end")], save === false ? [] : [f("copy running-config startup-config"), f("")], [f("exit")]); };
+const fix4 = (T) => onD(T, "dist1", ["interface vlan " + T.v.vid, T.v.kind === "preempt" ? "standby " + T.v.vid + " preempt" : "standby " + T.v.vid + " priority 110"]);
+const proof4 = (T) => { const v = T.v, f = on("sd1"); return [f("ssh " + v.plan.user + "@" + v.plan.sw.dist1.ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("show standby brief"), f("exit")]; };
+
+test("CP-04: the fault shows in the commands: switch 2 active for the flagged VLAN, switch 1 standby with its priority or preempt changed, up two days by reload; nobody offline", () => {
+  for (const s of seedsOf(CP04)) {
+    const T = E.open(CP04, s), v = T.v, f = on("sd1");
+    assert.ok(CP04.exhibits(T.sim, v), s + " exhibits");
+    const o2 = out(T, [f("ssh " + v.plan.user + "@" + v.plan.sw.dist2.ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("show standby brief"), f("exit")]);
+    assert.match(o2, new RegExp("^Vl" + v.vid + "\\s+" + v.vid + "\\s+100\\s{3}Active\\s+local", "m"), s + " switch 2 active");
+    const o1 = out(T, [f("ssh " + v.plan.user + "@" + v.plan.sw.dist1.ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("show standby brief"), f("show version"), f("show running-config"), f("exit")]);
+    assert.match(o1, new RegExp("^Vl" + v.vid + "\\s+" + v.vid + "\\s+" + (v.kind === "preempt" ? "110\\s{3}" : "100 P ") + "Standby\\b", "m"), s + " switch 1 standby, " + v.kind);
+    assert.match(o1, /uptime is 2 days/); assert.match(o1, /returned to ROM by reload/);
+    assert.equal(T.fixed, false); assert.equal(T.proven, false, s + " show standby brief before the fix proves nothing");
+    for (const id of ["sb2", "sb1", "ver", "run"]) assert.ok(T.evidence.some((e) => e.id === id), s + " the notebook took " + id);
+    assert.equal(T.opts.length, 6); assert.equal(T.opts.filter((o) => o.right).length, 1); assert.ok(T.opts.filter((o) => !o.right).every((o) => o.why && o.why.length > 30));
+    assert.ok(T.opts.some((o) => !o.right && o.id === (v.kind === "preempt" ? "priority" : "preempt")), s + " the other cause is a near miss");
+    const S = CP04.summary(v); assert.ok(S.cause.length > 80 && S.fix.length > 60);
+  }
+});
+
+test("CP-04: switch 1's group put back as the records have it, saved, fixes it; show standby brief on switch 1 proves it, and a right diagnosis solves it", () => {
+  for (const s of seedsOf(CP04)) {
+    const T = E.open(CP04, s);
+    for (const a of fix4(T)) E.act(T, a);
+    assert.equal(T.fixed, true, s + " fixed");
+    for (const a of proof4(T)) E.act(T, a); assert.equal(T.proven, true, s + " proven");
+    E.guess(T, T.opts.find((o) => o.right).id); assert.equal(T.solved, true);
+  }
+});
+
+test("CP-04: the tempting wrong fixes don't: the other variant's fix, switch 2 lowered or bounced, the fix unsaved", () => {
+  for (const s of seedsOf(CP04)) {
+    const open = () => E.open(CP04, s);
+    let T = open(); for (const a of onD(T, "dist1", ["interface vlan " + T.v.vid, T.v.kind === "preempt" ? "standby " + T.v.vid + " priority 120" : "standby " + T.v.vid + " preempt"])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the other variant's fix"); assert.ok(CP04.exhibits(T.sim, T.v), s + " switch 2 still active");
+    T = open(); for (const a of onD(T, "dist2", ["interface vlan " + T.v.vid, "standby " + T.v.vid + " priority 90"])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " switch 2 lowered"); for (const a of proof4(T)) E.act(T, a);
+    if (T.v.kind === "priority") assert.match(T.partial || "", /switch 2's settings for the group have changed/, s + " switch 1 preempts over the lowered switch 2"); else assert.ok(CP04.exhibits(T.sim, T.v), s + " switch 1 doesn't preempt: switch 2 stays active");
+    T = open(); for (const a of onD(T, "dist2", ["interface vlan " + T.v.vid, "shutdown", "no shutdown"])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " switch 2 bounced"); for (const a of proof4(T)) E.act(T, a); assert.equal(T.proven, false); assert.match(T.partial || "", /only because switch 2 dropped out/);
+    T = open(); for (const a of fix4(T).slice(0, 0).concat(onD(T, "dist1", ["interface vlan " + T.v.vid, T.v.kind === "preempt" ? "standby " + T.v.vid + " preempt" : "standby " + T.v.vid + " priority 110"], false))) E.act(T, a);
+    assert.equal(T.fixed, false, s + " unsaved"); for (const a of proof4(T)) E.act(T, a); assert.match(T.partial || "", /hasn't saved the change/);
+  }
+});
+
+test("CP-04: the ladder climbs, and a saved ticket replays exactly", () => {
+  const T = E.open(CP04, seedsOf(CP04)[0]), wrongs = T.opts.filter((o) => !o.right).map((o) => o.id);
+  assert.equal(E.guess(T, wrongs[0]).rung, 0); assert.equal(E.guess(T, wrongs[1]).rung, 0); assert.equal(E.guess(T, wrongs[2]).rung, 1); assert.equal(E.guess(T, wrongs[3]).rung, 2);
+  E.resetBoard(T); assert.equal(E.guess(T, wrongs[4]).rung, 3); assert.equal(E.live(T).length, 2); assert.ok(E.live(T).some((o) => o.right));
+  const U = E.open(CP04, seedsOf(CP04, 1)[0]);
+  for (const a of fix4(U).concat(proof4(U))) E.act(U, a);
+  const R = E.restore(CP04, JSON.parse(JSON.stringify(E.save(U))));
+  assert.equal(R.fixed, U.fixed); assert.deepEqual(R.evidence, U.evidence); assert.equal(R.proven, U.proven); assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
+});
+
+test("CP-04: the brief and every hint never name the right answer, a password, a VLAN number or the fix's command", () => {
+  for (const s of seedsOf(CP04)) {
+    const T = E.open(CP04, s), right = T.opts.find((o) => o.right).text.toLowerCase(), p = T.v.plan;
+    const texts = [CP04.rung1(T.v, T.sim), CP04.rung2(T.v, T.sim), ...CP04.fixHints(T.v, T.sim), CP04.brief(T.v, T.sim).quote, CP04.mason].map((x) => x.toLowerCase());
+    for (const x of texts) {
+      assert.ok(x.indexOf(right) < 0, x);
+      for (const bad of [p.secret, p.console, p.userPw, p.srv.pw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, "names a password: " + x);
+      for (const n of Object.values(p.vlans).map((V) => String(V.id)).concat([String(p.train.id), String(p.annex.cls.id)])) assert.ok(!new RegExp("\\b" + n + "\\b").test(x), "names VLAN " + n + ": " + x);
+      for (const bad of ["standby " + T.v.vid, "priority 110", "interface vlan", "copy running-config"]) assert.ok(x.indexOf(bad) < 0, "names " + bad + ": " + x);
+    }
+    for (const x of [CP04.brief(T.v, T.sim).quote, CP04.mason].map((y) => y.toLowerCase())) for (const bad of ["preempt", "priority"]) assert.ok(x.indexOf(bad) < 0, "the brief or Mason's opener names " + bad + ": " + x);
   }
 });

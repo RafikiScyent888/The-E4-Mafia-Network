@@ -64,7 +64,7 @@ export const CAMPUS_LAYOUT = {
      plan the file server in the data room, the backup server in the 2F closet beside its switch */
   fsrv: { x: 0, y: 810, lab: "right", px: 600, py: 280, room: "data" }, bksrv: { x: 370, y: 810, lab: "right", px: 290, py: 455, room: "c2" },
   /* CP-15's switch on the bench, nobody's records: on the floor plan only, at the bench's far end */
-  dsw: { px: 880, py: 455, room: "bench" }
+  dsw: { px: 900, py: 420, room: "bench" }
 };
 /* CP-15: a switch nobody recorded, on the technicians' bench. "customer": a customer's managed switch in for repair, from its box
    (spanning tree on, as every managed switch comes), the bench's run from the 2F access switch's port 1 moved into its port 1 and bench

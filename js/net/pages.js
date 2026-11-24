@@ -8,7 +8,7 @@ import { portName as printedPort, SFP_MODULES } from "./sim.js";
 const STILL = { pc: "pc", laptop: "laptop", intruder: "laptop", router: "router", switch: "switch", modem: "modem", printer: "printer", camera: "camera", tv: "tv", mesh: "mesh", meet: "switch", mpc: "pc", mgr: "pc", hire: "pc", bpc: "pc", sd1: "pc", hd1: "pc", bn1: "pc", bn2: "pc", fin: "pc", pr1: "printer", pr3: "printer" };   /* the business's back PC (the treatment room's, the kitchen's) too; the office's back office (SO-04) and the manager's PC (SO-08): the same housings */
 
 export function tabsFor(sim, id) {
-  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || k === "injector" || k === "mswitch" || k === "brouter" || k === "techlaptop" || k === "patchpanel" || k === "jack" || k === "bap" || k === "dcam" || k === "cabinet" || k === "server" ? [["physical", "Physical"]] : [];   /* a rack server (work order 9): its ports and cables, its 3D model to come */   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
+  const k = sim.d[id].kind, P = STILL[id] || id === "rogue" || id === "dsw" || k === "injector" || k === "mswitch" || k === "brouter" || k === "techlaptop" || k === "patchpanel" || k === "jack" || k === "bap" || k === "dcam" || k === "cabinet" || k === "server" ? [["physical", "Physical"]] : [];   /* a rack server (work order 9): its ports and cables, its 3D model to come */   /* the old router in HOME-10 is in the house; a hotspot outside it isn't */
   const T = {
     pc: [["cmd", "Command Prompt"], ["settings", "Network settings"], ["printers", "Printers"], ["browser", "Web browser"]],   /* a business PC's browser: how the ceiling access point's page is reached */
     laptop: [["cmd", "Command Prompt"], ["wifi", "Wi-Fi"]],

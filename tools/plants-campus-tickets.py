@@ -163,7 +163,7 @@ NODE += [
 ]
 PAGE += [
  ("CP-15: the switch on the bench has no way to take it away", "js/desk/window.js", "  if (P.stray) wrap.appendChild(", "  if (false) wrap.appendChild("),
- ("CP-15: the switch on the bench left off the floor plan", "js/net/campus.js", '  dsw: { px: 880, py: 455, room: "bench" }\n', ""),
+ ("CP-15: the switch on the bench left off the floor plan", "js/net/campus.js", '  dsw: { px: 900, py: 420, room: "bench" }\n', ""),
  ("CP-15: show interfaces status err-disabled not understood", "js/net/swcli.js", "return args[1] && /^e/i.test(args[1]) ? ifErrDisabled(S.sw) : args[1] ? [\"% Invalid input detected at '^' marker.\"] : ifStatus(S.sw);", "return ifStatus(S.sw);"),
 ]
 AAA = [

@@ -1070,6 +1070,9 @@ Object.assign(PLAN, {
       const bad = ["dist1", "dist2"].filter((d) => !/^1\s+Po1\(SU\)\s+LACP\s+Gi0\/21\(P\)\s+Gi0\/22\(P\)/m.test(o[d]));
       check(bad.length >= 1 && (v.kind === "passive" ? ["dist1", "dist2"].every((d) => /channel-group 1 mode passive/.test(o[d])) : /channel-group 1 mode on/.test(o[v.side])), "CP-07 " + v.kind + ": over SSH, the bundle isn't negotiated with both links at " + bad.join(" and ") + ", the channel-group lines changed");
       v.ends = v.kind === "passive" ? ["dist1", "dist2"] : ["dist1", "dist2"].filter((d) => /channel-group 1 mode on/.test(o[d]));   /* the ends to put back, as read from their configurations */
+      /* the members' flags: both passive, every link stands alone (I) at both ends; one end forced on, the other end hears no LACP and its links stand alone */
+      const alone = (d) => /Gi0\/21\(I\)/.test(o[d]) && /Gi0\/22\(I\)/.test(o[d]);
+      check(v.kind === "passive" ? ["dist1", "dist2"].every(alone) : ["dist1", "dist2"].filter((d) => v.ends.indexOf(d) < 0).every(alone), "CP-07 " + v.kind + ": show etherchannel summary has the links standing alone (I) where LACP gets no answer");
     },
     wrong: async (p, v) => { for (const d of ["dist1", "dist2"]) await cp07Conf(p, v, d, ["interface range gi0/21 - 22", "channel-group 1 mode on"]); },   /* both forced on: up, but not negotiated */
     fix: async (p, v) => { for (const d of v.ends) await cp07Conf(p, v, d, ["interface range gi0/21 - 22", "channel-group 1 mode active"]); },

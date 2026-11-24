@@ -487,6 +487,9 @@ test("CP-06: the tempting wrong fixes don't: distribution switch 1 lowered furth
     assert.equal(T.fixed, false, s + " unsaved"); for (const a of proof6(T)) E.act(T, a); assert.match(T.partial || "", /hasn't saved it/);
     T = open(); const other = [T.v.plan.vlans.svc.id, T.v.plan.vlans.bench.id].find((x) => x !== T.v.vid); for (const a of onSw6(T, T.v.swIp, ["no spanning-tree vlan " + other + " priority"])) E.act(T, a);
     assert.equal(T.fixed, false, s + " another VLAN's"); assert.ok(CP06.exhibits(T.sim, T.v));
+    /* the real fix, with distribution switch 1 lowered further on top: it works, and Mason names the distribution switches' priorities */
+    T = open(); for (const a of fix6(T).concat(onSw6(T, T.v.plan.sw.dist1.ip, ["spanning-tree vlan " + T.v.vid + " priority 0"]))) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the fix with switch 1 lowered as well"); for (const a of proof6(T)) E.act(T, a); assert.equal(T.proven, false); assert.match(T.partial || "", /changing the distribution switches' priorities/);
   }
 });
 

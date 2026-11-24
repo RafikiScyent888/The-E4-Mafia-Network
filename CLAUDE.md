@@ -4181,6 +4181,53 @@ The owner, asked to choose before anything is built: **"Go with your recommendat
   ticket's drive and a Node plant that ticket's tests (`--test-name-pattern`); the desk's plants run `ONLY=campus-desk`; `KINDS=node` (or
   page, aaa) runs one kind.
 
+## Level 5, the enterprise: the plan approved 24 November 2026
+
+The owner, 24 November 2026: **"Yes to the Level 5 plan, build it out"** (Network+ V9 objectives read from the doc that day, unchanged).
+Ten work orders, smallest first, each starting from the one before it done (the first from the campus as CP-J10 left it): (1) NTP and
+syslog from every device to a Linux server; (2) SNMP monitoring and a mirrored port captured with tcpdump; (3) a branch office over a
+leased line; (4) an acquired branch on EIGRP, and route selection across static, OSPF and EIGRP; (5) a second provider and BGP at the
+edge; (6) a firewall with inside, outside and screened-subnet zones; (7) a site-to-site VPN to the branch; (8) a remote-access VPN; (9) a
+cloud VPC with subnets, security groups and a cloud gateway reached by VPN; (10) the data centre's spine and leaf. Then 15 tickets, faults
+in each. Photographs asked for: a firewall appliance, a rack router with modular slots. Level 5 carries `planned: 25` and its `coming`
+words until all 25 are built; it opens once the campus is finished (before EN-J1, it said "built later").
+
+### EN-J1, time and logs for the whole network (built 24 November 2026, on `save/level5`)
+
+- **The job:** Rafiki: the Annex's link dropped and no switch's log agrees on the time. Every switch and the edge router (`GEAR`: edge,
+  core1, core2, dist1, dist2, acc1 to acc4, anxc, anxa) on the file server's clock and logging to it. Lines: the server serves time (chrony
+  locked to the internet, allowing the campus); every device synchronized to it; the server takes syslog (rsyslog on UDP 514); every device
+  sends to it at informational and a line from each has arrived; everyone still works; all saved. The limits give each device's SSH address
+  (`gearAddr`: the records' management addresses; the cores and the edge router at their links), the server's login, both files' paths, and
+  the addresses the gear sends from (the campus's /16).
+- **The file server's services** (`js/net/svc.js`, `svcKit` in `js/net/campus.js`): Ubuntu's own chrony.conf and rsyslog.conf
+  (`CHRONY_DEFAULT`, `RSYSLOG_DEFAULT`), chrony and rsyslog running and enabled, a syslog with the server's own lines. A service runs with
+  its file as it read it at its last start (`startRun`), so an edit waits for `systemctl restart`. chrony answers a client only if an
+  `allow` covers the address its request comes from and no `deny` does; it has time to give only with a source (pool or server) and the
+  internet reachable (a provider outage takes it away). rsyslog takes the network's messages once `imudp` is loaded and an input opened
+  (the new `module`/`input` lines or the old `$ModLoad`/`$UDPServerRun`); a TCP input alone, or another port, hears nothing from the gear.
+- **The server's command line** (`js/net/linux.js`): `chronyc sources|tracking|clients|activity` (clients needs root), `ss`/`netstat`,
+  `tail`, `grep`, `logger`, `timedatectl`, `/var/log/syslog`; systemctl and journalctl for both services; a reboot starts what's enabled.
+- **The gear** (`js/net/swcli.js`, `rtcli.js`): `ntp server`, `logging host` (and `logging <address>`), `logging trap`, their `no` forms,
+  saved like the rest; `show ntp status|associations`, `show clock` (the network's time once synchronized; until then its own count since
+  boot, from midnight 1 March 1993, marked `*`), `show logging` (the buffer, the trap level, each host and how many lines went), `send log
+  [level] text` (no level is debugging). Leaving configuration mode logs `%SYS-5-CONFIG_I`; a line at or under the trap level goes to every
+  log host (`devLog` puts it on `sw.logq`; `cmd.js` `drainLogs` delivers it after the command, from the address the route leaves by). The
+  server writes "day time source line" in /var/log/syslog. A line sent before the server listened is gone: test once both ends are ready.
+- **The tempting wrong ways, each failing its own line for its own cause** (`tests/enterprise-jobs.test.js`): an allow for one /24 (the
+  cores, the router and the Annex refused); the allow written, chrony not restarted; TCP reception instead of UDP; rsyslog not restarted;
+  the gear pointed at the server's backup address; the edge router told where to log before the server listened; a trap level of errors;
+  a device unsaved; chrony or rsyslog stopped; chrony's pool lines commented out; the provider down; rsyslog on another port; one switch
+  logging to the backup address; a `deny` for the management network. Other right ways pass: the /16 as two /17s, rsyslog's old-style
+  lines, `logging <address>`, a test line by hand.
+- **Checks:** `tests/enterprise-jobs.test.js` (6 tests); `ONLY=enterprise node tools/drive.mjs` 83 checks: the lock (one campus ticket
+  short: locked), the desk's link into Build, EN-J1 on three campuses entirely through the page (nano on chrony's and rsyslog's files on the
+  server's console, every device over SSH from the service desk PC), the server's view (`grep CONFIG_I`: a line from all 11 addresses;
+  `sudo chronyc clients`: all 11) and the edge router's (`show ntp associations`, `show clock`, `show logging`), both drawings in both fonts,
+  the reload. The campus finished block now expects Level 5 open. Contrast: 5 states ("enterprise: EN-J1 ..." and "levels: build, the
+  enterprise's work orders"). Plants: `tools/plants-enterprise-node.py` (in a throwaway copy, `SEEDS=1`), `tools/plants-enterprise-page.py`
+  (`E4_PIN` and `CHROME` set).
+
 ## Objectives
 
 Read from the owner's "All updated Objectives" Google Doc

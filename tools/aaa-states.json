@@ -2267,5 +2267,35 @@
   "ticket": "CP-15",
   "seed": 2025,
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-15'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=()=>{document.querySelector('#devtabs [data-d=mgr]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+v.swIp,P.userPw,'enable',P.secret].forEach(k);}; c.guess('right'); c.act({t:'unstray',dev:'dsw'}); login(); ['configure terminal'].concat(v.ports.flatMap(n=>['interface gi0/'+n,'shutdown','no shutdown']),['end','exit']).forEach(k); document.querySelector('#devtabs [data-d=bn1]').click(); tab('Command Prompt'); k('ping 8.8.8.8'); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "enterprise: EN-J1 at the start, the first check, the file server's console: chronyc sources locked to the internet, chrony's file with no allow line",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('EN-J1',true,4242); const J=c.T, p=J.v.plan, fs=p.srv.fsrv.ip; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const ta=()=>document.querySelector('.term .nano-text'); const key=(x)=>ta().dispatchEvent(new KeyboardEvent('keydown',{key:x,ctrlKey:true,bubbles:true})); const srv=()=>{document.querySelector('#devtabs [data-d=fsrv]').click(); tab('Console'); ['',p.srv.user,p.srv.pw].forEach(l=>k(l));}; const desk=()=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt');}; c.check(); srv(); ['chronyc sources','grep -v \"^#\" /etc/chrony/chrony.conf'].forEach(l=>k(l));",
+  "wait": "(() => { const t = document.querySelector('.term'); return !!t && document.fonts.status === 'loaded' && Math.abs(t.scrollTop + t.clientHeight - t.scrollHeight) < 3; })()"
+ },
+ {
+  "name": "enterprise: EN-J1 part way, nano on chrony's file with sudo, the allow line typed in",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('EN-J1',true,4242); const J=c.T, p=J.v.plan, fs=p.srv.fsrv.ip; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const ta=()=>document.querySelector('.term .nano-text'); const key=(x)=>ta().dispatchEvent(new KeyboardEvent('keydown',{key:x,ctrlKey:true,bubbles:true})); const srv=()=>{document.querySelector('#devtabs [data-d=fsrv]').click(); tab('Console'); ['',p.srv.user,p.srv.pw].forEach(l=>k(l));}; const desk=()=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt');}; srv(); k('sudo nano /etc/chrony/chrony.conf'); k(p.srv.pw); ta().value = ta().value.replace('# Log files location.', 'allow '+fs.split('.').slice(0,2).join('.')+'.0.0/16\\n\\n# Log files location.'); ta().dispatchEvent(new Event('input'));",
+  "wait": "(() => !!document.querySelector('.term .nano') && document.fonts.status === 'loaded')()"
+ },
+ {
+  "name": "enterprise: EN-J1 part way, the edge router pointed at the file server before chrony allows it: show ntp status unsynchronized, Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('EN-J1',true,4242); const J=c.T, p=J.v.plan, fs=p.srv.fsrv.ip; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const ta=()=>document.querySelector('.term .nano-text'); const key=(x)=>ta().dispatchEvent(new KeyboardEvent('keydown',{key:x,ctrlKey:true,bubbles:true})); const srv=()=>{document.querySelector('#devtabs [data-d=fsrv]').click(); tab('Console'); ['',p.srv.user,p.srv.pw].forEach(l=>k(l));}; const desk=()=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt');}; (async()=>{ const E=await import('./js/build/enterprise.js'); desk(); ['ssh '+p.user+'@'+E.gearAddr(p,'edge'),p.userPw,'enable',p.secret,'configure terminal','ntp server '+fs,'logging host '+fs,'end','show ntp status','show ntp associations','show logging | include Logging to'].forEach(l=>k(l)); for(let i=0;i<5;i++) c.check(); })()",
+  "wait": "(() => { const t = document.querySelector('.term'); return !!t && document.fonts.status === 'loaded' && Math.abs(t.scrollTop + t.clientHeight - t.scrollHeight) < 3; })()"
+ },
+ {
+  "name": "enterprise: EN-J1 done, every line met, the file server's console: a configuration line from every device in /var/log/syslog, chrony's clients",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('EN-J1',true,4242); const J=c.T, p=J.v.plan, fs=p.srv.fsrv.ip; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const ta=()=>document.querySelector('.term .nano-text'); const key=(x)=>ta().dispatchEvent(new KeyboardEvent('keydown',{key:x,ctrlKey:true,bubbles:true})); const srv=()=>{document.querySelector('#devtabs [data-d=fsrv]').click(); tab('Console'); ['',p.srv.user,p.srv.pw].forEach(l=>k(l));}; const desk=()=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt');}; J.def.solve(J.v,J.sim).forEach(a=>c.act(a)); c.check(); srv(); ['tail -n 12 /var/log/syslog','sudo chronyc clients',p.srv.pw].forEach(l=>k(l));",
+  "wait": "(() => { const t = document.querySelector('.term'); return !!t && document.fonts.status === 'loaded' && Math.abs(t.scrollTop + t.clientHeight - t.scrollHeight) < 3; })()"
+ },
+ {
+  "name": "levels: build, the enterprise's work orders (more on the way)",
+  "page": "build.html",
+  "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS.slice(0,4).flatMap(x=>x.tickets).map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS.slice(0,4).flatMap(x=>x.jobs).map(id=>[id,1]))})); window.__e4b.openJob('EN-J1',true,4242);})()",
+  "after": "document.querySelector('#left [data-level=\"5\"]').click();"
  }
 ]

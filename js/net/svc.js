@@ -106,7 +106,8 @@ export function ntpState(sim, dev) {
   if (!list.length) return { synced: false, servers: [], why: "none" };
   const tried = list.map(function (ip) {
     const p = pathFrom(sim, dev, ip); if (!p.ok) return { ip: ip, why: "unreachable" };
-    const srv = sim.d[p.owner] && sim.d[p.owner].kind === "server" ? p.owner : null; if (!srv || !svcOf(sim, srv, "chrony")) return { ip: ip, why: "no-ntp" };
+    const srv = sim.d[p.owner] && sim.d[p.owner].kind === "server" ? p.owner : null, ch = srv ? svcOf(sim, srv, "chrony") : null;
+    if (!ch || ch.state !== "active") return { ip: ip, why: "no-ntp" };   /* no chrony there, or stopped: nothing answers on port 123 */
     if (!chronyServes(sim, srv, p.src)) return { ip: ip, why: "refused", srv: srv, src: p.src };
     if (!serverSynced(sim, srv)) return { ip: ip, why: "unsynced", srv: srv, src: p.src };
     return { ip: ip, ok: true, srv: srv, src: p.src };

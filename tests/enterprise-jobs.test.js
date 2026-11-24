@@ -81,6 +81,43 @@ test("EN-J1: the tempting wrong ways each fail their own line for their own caus
   }
 });
 
+test("EN-J1: more wrong ways: a service stopped, the server's own clock lost, another port, the wrong log host, a deny line, the provider down; the trap level and send log's level; the running configuration", () => {
+  const s = seeds[0], o = () => B.open(EJ1, s), p = o().v.plan, fs = p.srv.fsrv.ip;
+  const sudo = (J, l) => { const r = B.act(J, L(l)); if (/\[sudo\] password/.test((r && r.out) || "")) B.act(J, L(J.v.plan.srv.pw)); };
+  const done = () => run(o(), EJ1.solve(o().v));
+  const chronyText = (x) => x.text && x.line === "^O" && /^allow /m.test(x.text), rsysText = (x) => x.text && x.line === "^O" && /input\(type="imudp"/.test(x.text);
+  /* chrony stopped after the work: the server serves no time, and the gear's requests go unanswered */
+  let J = done(); sudo(J, "sudo systemctl stop chrony");
+  assert.equal(line(J, "serve").cause, "stopped", "chrony stopped"); assert.equal(line(J, "sync").cause, "wrong", "nothing answers on 123");
+  /* rsyslog stopped */
+  J = done(); sudo(J, "sudo systemctl stop rsyslog"); assert.equal(line(J, "listen").cause, "stopped", "rsyslog stopped");
+  /* chrony's pool lines commented out: the server has no time of its own to give */
+  J = run(o(), solveWith(o(), (a) => a.map((x) => chronyText(x) ? Object.assign({}, x, { text: chronyWith(allowOf(p, 16)).replace(/^pool /gm, "#pool ") }) : x)));
+  assert.equal(line(J, "serve").cause, "nosync", "no sources"); assert.equal(line(J, "sync").cause, "unsynced");
+  /* the provider down: the server loses the internet's time, and so does everything taking time from it */
+  J = done(); J.sim.net.isp.outage = true;
+  assert.equal(line(J, "serve").cause, "nosync", "the provider down"); assert.equal(line(J, "sync").cause, "unsynced");
+  /* rsyslog listening on another port */
+  J = run(o(), solveWith(o(), (a) => a.map((x) => rsysText(x) ? Object.assign({}, x, { text: UDP.replace('input(type="imudp" port="514")', 'input(type="imudp" port="10514")') }) : x)));
+  assert.equal(line(J, "listen").cause, "port", "port 10514"); assert.equal(line(J, "send").cause, "nothing");
+  /* one switch logging to the file server's backup address instead */
+  J = done(); run(J, gear(J, "acc2", ["no logging host " + fs, "logging host " + p.srv.fsrv.bip]));
+  assert.equal(line(J, "send").cause, "wronghost", "the backup address");
+  /* chrony allowing the campus but denying the management network */
+  J = run(o(), solveWith(o(), (a) => a.map((x) => chronyText(x) ? Object.assign({}, x, { text: chronyWith(allowOf(p, 16) + "\ndeny " + p.vlans.mgmt.net + "/24") }) : x)));
+  assert.equal(line(J, "serve").cause, "narrow", "a deny line"); assert.equal(line(J, "sync").cause, "refused");
+  /* the trap level: at errors, neither a change to the configuration nor an informational line goes; back at informational, the change does */
+  J = done(); const src3 = SV.pathFrom(J.sim, "acc3", fs).src, from3 = () => J.sim.d.fsrv.lx.syslog.filter((l) => l.split(" ")[3] === src3).length, n3 = from3();
+  run(J, gear(J, "acc3", ["logging trap errors", "do send log 6 an informational line"], false)); assert.equal(from3(), n3, "nothing sent at trap errors");
+  run(J, gear(J, "acc3", ["logging trap informational"], false)); assert.equal(from3(), n3 + 1, "the change to the configuration sent once back at informational");
+  /* send log with no level is debugging, under the trap level; with level 6 it goes */
+  J = done(); run(J, gear(J, "acc2", ["do send log hello from the bench", "do send log 6 hello again"], false));
+  assert.ok(!J.sim.d.fsrv.lx.syslog.some((l) => /hello from the bench/.test(l)), "send log with no level stays on the switch"); assert.ok(J.sim.d.fsrv.lx.syslog.some((l) => /USERLOG_INFO: .*hello again/.test(l)), "send log 6 arrives");
+  /* the running configuration says it: a switch and the edge router */
+  const show = (id) => gear(J, id, ["do show running-config | include ntp", "do show running-config | include logging"], false).map((a) => (B.act(J, a) || {}).out || "").join("");
+  for (const id of ["acc1", "edge"]) { const out = show(id); assert.match(out, new RegExp("^ntp server " + fs.replace(/\./g, "\\.") + "$", "m"), id + " ntp server"); assert.match(out, new RegExp("^logging host " + fs.replace(/\./g, "\\.") + "$", "m"), id + " logging host"); }
+});
+
 test("EN-J1: other right ways pass: allow for the whole network spelled out per subnet, rsyslog's old-style lines, logging <address>, a test line by hand", () => {
   const s = seeds[0], o = () => B.open(EJ1, s), p = o().v.plan, fs = p.srv.fsrv.ip, b2 = fs.split(".").slice(0, 2).join(".");
   const OLD = SV.RSYSLOG_DEFAULT.replace('#module(load="imudp")\n#input(type="imudp" port="514")', '$ModLoad imudp\n$UDPServerRun 514');

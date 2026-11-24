@@ -2071,8 +2071,8 @@ if (!process.env.ONLY || process.env.ONLY === "business" || process.env.ONLY ===
 }
 
 /* the campus complete (23 November 2026: its 10 work orders and 15 tickets all built, CP-15 the last): with every ticket solved and every
-   work order but the last done, finishing the last one finishes Level 4; the enterprise level is still built later (campus-desk too: the
-   desk's plants on the levels need it) */
+   work order but the last done, finishing the last one finishes Level 4 and opens the enterprise level (24 November 2026: EN-J1 built;
+   before that, it said the enterprise level was built later) (campus-desk too: the desk's plants on the levels need it) */
 if (!process.env.ONLY || process.env.ONLY === "campus" || process.env.ONLY === "tickets-campus" || process.env.ONLY === "campus-desk") {
   const { LEVELS } = await import("../js/desk/levels.js");
   const net = { t: {}, solved: Object.fromEntries(LEVELS.slice(0, 4).flatMap((L) => L.tickets).map((id) => [id, 1])) };
@@ -2092,11 +2092,12 @@ if (!process.env.ONLY || process.env.ONLY === "campus" || process.env.ONLY === "
     await p.evaluate((id) => { const c = window.__e4b; c.openJob(id, true, 2026); const J = c.T; J.def.solve(J.v, J.sim).forEach((a) => c.act(a)); }, lastJob);
     await p.click("#doCheck"); await p.waitForTimeout(400);   /* the real button: it's what counts a job done */
     const box = await p.$eval("#check", (n) => n.textContent);
-    check(/Level 4 finished/.test(box) && /Enterprise is still being built/.test(box) && !/on the way|so far/.test(box), tag + lastJob + "'s done box says Level 4 is finished and the enterprise level is still being built (" + box.slice(box.indexOf("Level 4"), box.indexOf("Level 4") + 70) + ")");
+    check(/Level 4 finished/.test(box) && /The enterprise level is open: level 5/.test(box) && !/on the way|so far|still being built/.test(box), tag + lastJob + "'s done box says Level 4 is finished and the enterprise level is open (" + box.slice(box.indexOf("Level 4"), box.indexOf("Level 4") + 70) + ")");
     await p.goto(base + "index.html", { timeout: 60000 }); await p.waitForTimeout(350);
     const L4 = await p.$eval('#left [data-level="4"]', (n) => n.textContent), L5 = await p.$eval('#left [data-level="5"]', (n) => n.textContent);
     check(/Finished: 15 of 15 tickets, 10 of 10 work orders/.test(L4), tag + "Level 4 says finished, 15 of 15 tickets and 10 of 10 work orders (" + L4 + ")");
-    check(/built later/.test(L5), tag + "Level 5 says it's built later (" + L5 + ")");
+    const nT5 = LEVELS[4].tickets.length, nJ5 = LEVELS[4].jobs.length, parts5 = [nT5 ? "0 of " + nT5 + " ticket" + (nT5 === 1 ? "" : "s") : "", "0 of " + nJ5 + " work order" + (nJ5 === 1 ? "" : "s")].filter(Boolean).join(", ");
+    check(L5 === "Level 5 · Enterprise" + parts5 + " done" + (LEVELS[4].coming ? " · " + LEVELS[4].coming : "") && !/built later/.test(L5) && !(await p.$eval('#left [data-level="5"]', (n) => n.parentNode.classList.contains("locked"))), tag + "Level 5 is open, counts its tickets and work orders, and says more are on the way (" + L5 + ")");
   } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
   await ctx.close();
 }
@@ -2957,6 +2958,126 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
         await planBothFonts(p, tag + "the campus");
       } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
     }
+    await ctx.close();
+  }
+}
+
+/* Level 5, the enterprise (24 November 2026, the owner: "Yes to the Level 5 plan, build it out"): the lock, then each work order on three
+   campuses, every step through the page's own terminals. EN-J1: the file server's chrony and rsyslog set up in nano on its console, then
+   every switch and the edge router by SSH from the service desk PC; proved from the gear's side and from the server's */
+if (!process.env.ONLY || process.env.ONLY === "enterprise") {
+  const { LEVELS } = await import("../js/desk/levels.js");
+  const { GEAR, gearAddr } = await import("../js/build/enterprise.js");
+  const SV = await import("../js/net/svc.js");
+  const solvedTo = (n) => ({ t: {}, solved: Object.fromEntries(LEVELS.slice(0, n).flatMap((L) => L.tickets).map((id) => [id, 1])) });
+  const doneTo = (n) => Object.fromEntries(LEVELS.slice(0, n).flatMap((L) => L.jobs).map((id) => [id, 1]));
+  async function epage(file, o) {
+    const ctx = await B.newContext({ viewport: { width: 1400, height: 900 } });
+    await ctx.addInitScript((o) => { if (!sessionStorage.getItem("seeded")) { localStorage.setItem("e4-network-v1", JSON.stringify(o.net)); localStorage.setItem("e4-build-v1", JSON.stringify(o.build)); sessionStorage.setItem("seeded", "1"); } }, o);
+    const p = await ctx.newPage(); p.setDefaultTimeout(20000); p.on("pageerror", (e) => errs.push("enterprise " + file + ": " + e.message));   /* an enterprise work order rebuilds the finished campus first: a few seconds */
+    await p.goto(base + file, { timeout: 60000 }); await p.waitForTimeout(350);
+    if (plant) await p.evaluate(plant);
+    return { p, ctx };
+  }
+  const lv = (p, n) => p.$eval('#left [data-level="' + n + '"]', (b) => ({ text: b.textContent, locked: b.parentNode.classList.contains("locked"), dashed: getComputedStyle(b).borderStyle === "dashed", lock: !!b.querySelector('.lk[aria-hidden="true"]') }));
+  if (!process.env.JOB || process.env.JOB === "lock") {
+    {   /* the campus all but finished (one ticket left): Level 5 locked */
+      const net = solvedTo(4); delete net.solved[LEVELS[3].tickets[LEVELS[3].tickets.length - 1]];
+      const { p, ctx } = await epage("build.html", { net, build: { j: {}, done: doneTo(4) } }); const tag = "enterprise levels, the campus one ticket short: ";
+      try {
+        const L = await lv(p, 5);
+        check(L.locked && L.lock && L.dashed && /Locked: opens when Campus is finished/.test(L.text), tag + "Level 5 is locked, marked three ways (" + L.text + ")");
+        await p.click('#left [data-level="5"]'); await p.waitForTimeout(60);
+        check(await p.$$eval("#queue button.locked", (l) => l.length >= 1 && l.every((b) => b.getAttribute("aria-disabled") === "true")), tag + "its work orders are listed, locked");
+      } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+      await ctx.close();
+    }
+    {
+      const { p, ctx } = await epage("index.html", { net: solvedTo(4), build: { j: {}, done: doneTo(4) } }); const tag = "enterprise levels, the campus finished: ";
+      try {
+        const L = await lv(p, 5);
+        const nT5 = LEVELS[4].tickets.length, nJ5 = LEVELS[4].jobs.length, parts5 = [nT5 ? "0 of " + nT5 + " ticket" + (nT5 === 1 ? "" : "s") : "", "0 of " + nJ5 + " work order" + (nJ5 === 1 ? "" : "s")].filter(Boolean).join(", ");
+        check(!L.locked && L.text === "Level 5 · Enterprise" + parts5 + " done · " + LEVELS[4].coming, tag + "Level 5 is open on the Ticket Desk, counts its work orders and says more are coming (" + L.text + ")");
+        await p.click('#left [data-level="5"]'); await p.waitForTimeout(60);
+        check((await p.$$('#left a[href="build.html#job=EN-J1"]')).length === 1, tag + "the desk links the enterprise's work orders into Build");
+        await p.click('#left a[href="build.html#job=EN-J1"]'); await p.waitForTimeout(400);
+        await p.waitForFunction(() => window.__e4b && window.__e4b.T && window.__e4b.T.def.id === "EN-J1", null, { timeout: 30000 }).catch(() => {});
+        check((await BJ(p, () => window.__e4b.T.def.id)) === "EN-J1" && /Level 5 · Enterprise/.test(await p.$eval("#labtitle", (n) => n.textContent)), tag + "the link opens EN-J1 in Build, titled Level 5 · Enterprise");
+      } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0]); }
+      await ctx.close();
+    }
+  }
+  const step = async (p, a) => {
+    if (a.t === "cmd" && a.cli && (a.dev === "fsrv" || a.dev === "bksrv")) {   /* a rack server's own console, nano in it */
+      if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== a.dev) { await dev(p, a.dev); await tab(p, "Console"); }
+      if (a.line === "^O") { await p.fill(".term .nano-text", a.text); await p.press(".term .nano-text", "Control+o"); await p.click(".term .nano-ok"); await p.waitForTimeout(40); return; }
+      if (a.line === "^X") { await p.press(".term .nano-text", "Control+x"); await p.waitForTimeout(40); return; }
+      return type(p, a.line);
+    }
+    if (a.t === "cmd" && !a.cli) { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== a.dev) { await dev(p, a.dev); await tab(p, "Command Prompt"); } return type(p, a.line); }
+    throw new Error("no page step for " + JSON.stringify(a));
+  };
+  const esc = (x) => String(x).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const refused = /% Invalid|% Incomplete|% Ambiguous|Permission denied|Connection refused|command not found|Failed to/;
+  for (const job of LEVELS[4].jobs.filter((k) => !process.env.JOB || k === process.env.JOB)) for (const seed of [11, 2025, 777777]) {
+    const { p, ctx } = await epage("build.html", { net: solvedTo(4), build: { current: job, j: { [job]: { seed } }, done: doneTo(4) } });
+    const tag = "enterprise " + job + " " + seed + ": ";
+    try {
+      await p.waitForFunction(() => window.__e4b && window.__e4b.T, null, { timeout: 30000 });
+      const plan = await BJ(p, () => window.__e4b.T.sim.net.plan), S = plan.srv, fs = S.fsrv.ip, b16 = fs.split(".").slice(0, 2).join(".") + ".0.0/16";
+      check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed && /Level 5 · Enterprise/.test(await p.$eval("#labtitle", (n) => n.textContent)), tag + "opens the job on the campus asked for, under Level 5 · Enterprise");
+      const lim = await p.$eval(".limits", (n) => n.textContent);
+      const need = job === "EN-J1" ? [plan.secret, plan.user, plan.userPw, S.user, S.pw, S.fsrv.host, fs, SV.CHRONY_CONF, SV.RSYSLOG_CONF, "/var/log/syslog", b16].concat(GEAR.map((id) => gearAddr(plan, id))) : [plan.secret];
+      check(need.every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the campus's records the job needs" + (need.filter((x) => lim.indexOf(x) < 0).length ? " (missing " + need.filter((x) => lim.indexOf(x) < 0).join(", ") + ")" : ""));
+      const first = await checkJob(p);
+      check((await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do");
+      if (job === "EN-J1") check(/chrony\.conf on the file server: no allow line/.test(first) && /show running-config \| include ntp on the edge router: nothing/.test(first) && /rsyslog\.conf: the imudp lines start with #/.test(first) && /show logging on the edge router: no Logging to line/.test(first), tag + "the first check says what it saw, line by line: chrony's file with no allow line, the edge router with no NTP server, rsyslog's UDP lines commented out, the edge router with no log host");
+      const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
+      let nano = 0, ntp = 0;
+      for (const a of sol) {
+        if (job === "EN-J1" && a.line === "^O" && !nano) {   /* nano open on chrony's file: its whole path, what it read */
+          const st = await p.evaluate(() => ({ path: document.querySelector(".term .nano-path").textContent, status: document.querySelector(".term .nano-status").textContent }));
+          check(st.path === SV.CHRONY_CONF && /^\[ Read \d+ lines \]$/.test(st.status), tag + "nano on chrony's file: its whole path, [ Read ... lines ] (" + st.path + ", " + st.status + ")");
+        }
+        await step(p, a);
+        if (job !== "EN-J1") continue;
+        if (a.line === "^O" && !nano++) check(/^\[ Wrote \d+ lines \]$/.test(await p.$eval(".term .nano-status", (n) => n.textContent)), tag + "nano wrote chrony's file out: [ Wrote ... lines ]");
+        if (a.line === "chronyc sources") check(/^\^\* \S+/m.test((await term(p)).split("chronyc sources").pop()), tag + "chronyc sources on the file server's console: locked to an internet time server (^*)");
+        if (a.line === "sudo ss -ulpn") { const o = (await term(p)).split("sudo ss -ulpn").pop(); check(/0\.0\.0\.0:514 .*"rsyslogd"/.test(o) && /0\.0\.0\.0:123 .*"chronyd"/.test(o), tag + "sudo ss -ulpn on the file server: rsyslogd on UDP 514 and chronyd on 123, open to the network"); }
+        if (a.line === "show ntp status" && !ntp++) check(new RegExp("Clock is synchronized, stratum 3, reference is " + esc(fs) + "\\b").test((await term(p)).split("show ntp status").pop()), tag + "show ntp status on the edge router, over SSH: synchronized to the file server, stratum 3");
+      }
+      const tconsole = await term(p);
+      check(!refused.test(tconsole), tag + "no line was refused on the file server's console" + (refused.test(tconsole) ? " (" + tconsole.match(refused)[0] + ")" : ""));
+      if (job === "EN-J1") check((new Set((tconsole.split("tail -n 20").pop().match(/^Nov \d+ [\d:]+ (10\.[\d.]+) \d+: .*%SYS-5-CONFIG_I/gm) || []).map((l) => l.split(" ")[3]))).size >= 5, tag + "tail on the file server: configuration lines arriving from the gear's addresses");
+      await dev(p, "sd1"); await tab(p, "Command Prompt"); const tdesk = await term(p);
+      check(!refused.test(tdesk), tag + "no line was refused at the service desk PC" + (refused.test(tdesk) ? " (" + tdesk.match(refused)[0] + ")" : ""));
+      const t = await checkJob(p), n = await BJ(p, () => window.__e4b.T.def.reqs.length);
+      check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
+      if (job === "EN-J1") {   /* from the server's side, over SSH from the service desk: a line from every device, chrony serving every one; from the gear's: the edge router */
+        const L = (l) => step(p, { t: "cmd", dev: "sd1", line: l });
+        for (const l of ["ssh " + S.user + "@" + fs, S.pw, "grep CONFIG_I /var/log/syslog", "sudo chronyc clients", S.pw, "timedatectl"]) await L(l);
+        const o = await term(p), g = o.slice(o.lastIndexOf("grep CONFIG_I"), o.lastIndexOf("sudo chronyc clients")), c = o.slice(o.lastIndexOf("sudo chronyc clients"), o.lastIndexOf("timedatectl")), td = o.slice(o.lastIndexOf("timedatectl"));
+        const from = new Set((g.match(/^Nov \d+ [\d:]+ (10\.[\d.]+) \d+: /gm) || []).map((l) => l.split(" ")[3])), served = (c.match(/^10\.[\d.]+\s+\d+\s+0\s/gm) || []).length;
+        check(from.size === GEAR.length, tag + "grep CONFIG_I /var/log/syslog on the file server: a configuration line from each of the " + GEAR.length + " devices' addresses (" + from.size + ")");
+        check(served === GEAR.length, tag + "sudo chronyc clients on the file server: all " + GEAR.length + " devices asking it for time (" + served + ")");
+        check(/System clock synchronized: yes/.test(td) && /NTP service: active/.test(td), tag + "timedatectl on the file server: its own clock synchronized, NTP active");
+        await L("exit");
+        for (const l of ["ssh " + plan.user + "@" + gearAddr(plan, "edge"), plan.userPw, "enable", plan.secret, "show ntp associations", "show clock", "show logging"]) await L(l);
+        const e = await term(p), as = e.slice(e.lastIndexOf("show ntp associations"), e.lastIndexOf("show clock")), ck = e.slice(e.lastIndexOf("show clock"), e.lastIndexOf("show logging")), lg = e.slice(e.lastIndexOf("show logging"));
+        check(new RegExp("^\\*~" + esc(fs) + "\\s").test(as.split("\n").find((l) => /^\*~/.test(l)) || ""), tag + "show ntp associations on the edge router: the file server, configured (~) and its peer (*)");
+        check(/^\d\d:\d\d:\d\d\.\d{3} UTC Sun Nov 22 2026$/m.test(ck), tag + "show clock on the edge router: the network's date, not marked * as its own count");
+        check(new RegExp("Logging to " + esc(fs) + "  \\(udp port 514").test(lg) && /Trap logging: level informational/.test(lg), tag + "show logging on the edge router: logging to the file server over UDP 514, at informational");
+        await L("exit");
+      }
+      await p.click("#vLog"); await p.waitForTimeout(60);
+      const pn = await labelsClear(p, "net"); check(pn.n > 0 && !pn.out.length, tag + "the logical diagram: every port name and device name on it, clear of each other and every tile" + (pn.out.length ? " (" + pn.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(40);
+      const fp = await labelsClear(p, "plan"); check(fp.n > 0 && !fp.out.length, tag + "the floor plan: all " + fp.n + " names of devices and rooms on it, clear of each other and of every tile" + (fp.out.length ? " (" + fp.out.join("; ") + ")" : ""));
+      await dysClear(p, tag + "the finished job");
+      await planBothFonts(p, tag + "the finished job");
+      await p.reload({ timeout: 60000 }); await p.waitForTimeout(350); await p.waitForFunction(() => window.__e4b && window.__e4b.T, null, { timeout: 30000 });
+      check(/Job .* done/.test(await p.$eval("#check", (n) => n.textContent)) && /done 1×|Done 1×/.test(await p.$eval('#queue [data-j="' + job + '"]', (n) => n.textContent)), tag + "still done after a reload, and the list counts it");
+    } catch (e) { check(false, tag + "stopped: " + String(e.message).split("\n")[0] + (process.env.STACK ? " " + (String(e.stack).match(/drive\.mjs:\d+/g) || []).join(" ") : "")); }
     await ctx.close();
   }
 }

@@ -760,6 +760,10 @@ test("CP-10: the tempting wrong fixes don't: one switch only, the desk given an 
     assert.equal(T.fixed, false, s + " distribution switch 1 only"); assert.match(T.partial || "", /only one distribution switch relays/);
     T = open(); const a0 = T.v.vnet + "200"; E.act(T, { t: "client", dev: T.v.pc, values: { mode: "static", ip: a0, mask: T.v.plan.mask, gw: T.v.vnet + "1", dns: [T.v.plan.srv.fsrv.ip] } }); for (const a of [on(T.v.pc)("ping 8.8.8.8")]) E.act(T, a);
     assert.equal(T.fixed, false, s + " an address by hand");
+    /* both relays put right and saved, then the desk given an address by hand instead of asking again: it works, and isn't the fix */
+    T = open(); for (const a of onR(T, "dist1", relayLines(T)).concat(onR(T, "dist2", relayLines(T)))) E.act(T, a);
+    E.act(T, { t: "client", dev: T.v.pc, values: { mode: "static", ip: a0, mask: T.v.plan.mask, gw: T.v.vnet + "1", dns: [T.v.plan.srv.fsrv.ip] } }); E.act(T, on(T.v.pc)("ping 8.8.8.8"));
+    assert.equal(T.fixed, false, s + " the relays put right, then the desk given an address by hand");
     T = open(); for (const a of onR(T, "dist1", relayLines(T), false).concat(onR(T, "dist2", relayLines(T), false), proof10(T))) E.act(T, a);
     assert.equal(T.fixed, false, s + " unsaved"); assert.match(T.partial || "", /hasn't saved the change/);
     T = open(); const edge = coreLinks(T.v.plan)[0].ia; for (const a of onR(T, "dist1", ["interface vlan " + T.v.vid, "ip helper-address " + edge]).concat(onR(T, "dist2", ["interface vlan " + T.v.vid, "ip helper-address " + edge]), proof10(T))) E.act(T, a);

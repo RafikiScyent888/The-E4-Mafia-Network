@@ -2071,8 +2071,9 @@ if (!process.env.ONLY || process.env.ONLY === "business" || process.env.ONLY ===
 }
 
 /* the campus complete (23 November 2026: its 10 work orders and 15 tickets all built, CP-15 the last): with every ticket solved and every
-   work order but the last done, finishing the last one finishes Level 4; the enterprise level is still built later */
-if (!process.env.ONLY || process.env.ONLY === "campus" || process.env.ONLY === "tickets-campus") {
+   work order but the last done, finishing the last one finishes Level 4; the enterprise level is still built later (campus-desk too: the
+   desk's plants on the levels need it) */
+if (!process.env.ONLY || process.env.ONLY === "campus" || process.env.ONLY === "tickets-campus" || process.env.ONLY === "campus-desk") {
   const { LEVELS } = await import("../js/desk/levels.js");
   const net = { t: {}, solved: Object.fromEntries(LEVELS.slice(0, 4).flatMap((L) => L.tickets).map((id) => [id, 1])) };
   const lastJob = LEVELS[3].jobs[LEVELS[3].jobs.length - 1];

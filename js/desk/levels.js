@@ -19,6 +19,7 @@ import { BUSINESS_JOBS } from "../build/business.js";
 import { BUSINESS_TICKETS } from "../tickets/business.js";
 import { CAMPUS_JOBS } from "../build/campus.js";
 import { CAMPUS_TICKETS } from "../tickets/campus.js";
+import { ENTERPRISE_JOBS } from "../build/enterprise.js";
 
 export const LEVELS = [
   { n: 1, id: "home", name: "Home", the: "the home level", tickets: HOME_TICKETS.map(function (t) { return t.id; }), jobs: JOBS.filter(function (d) { return !d.free; }).map(function (d) { return d.id; }) },
@@ -33,9 +34,11 @@ export const LEVELS = [
      by stage, smallest first: the work orders all live by 22 November 2026, then the tickets one at a time, the last (CP-15) live
      23 November 2026, so it no longer carries planned */
   { n: 4, id: "campus", name: "Campus", the: "the campus", tickets: CAMPUS_TICKETS.map(function (t) { return t.id; }), jobs: CAMPUS_JOBS.map(function (d) { return d.id; }) },
-  { n: 5, id: "enterprise", name: "Enterprise", the: "the enterprise level", tickets: [], jobs: [], later: true }
+  /* 10 work orders and 15 tickets, as planned 24 November 2026 (the owner: "Yes to the Level 5 plan, build it out"), going live stage by
+     stage, smallest first */
+  { n: 5, id: "enterprise", name: "Enterprise", the: "the enterprise level", tickets: [], jobs: ENTERPRISE_JOBS.map(function (d) { return d.id; }), planned: 25, coming: "more work orders and its tickets on the way" }
 ];
-const TITLES = {}; HOME_TICKETS.concat(JOBS, OFFICE_JOBS, OFFICE_TICKETS, BUSINESS_JOBS, BUSINESS_TICKETS, CAMPUS_JOBS, CAMPUS_TICKETS).forEach(function (d) { TITLES[d.id] = d.title; });
+const TITLES = {}; HOME_TICKETS.concat(JOBS, OFFICE_JOBS, OFFICE_TICKETS, BUSINESS_JOBS, BUSINESS_TICKETS, CAMPUS_JOBS, CAMPUS_TICKETS, ENTERPRISE_JOBS).forEach(function (d) { TITLES[d.id] = d.title; });
 export function titleOf(id) { return TITLES[id] || ""; }
 const OPEN_HERE = "e4-levels-open";
 const read = function (k) { try { return JSON.parse(localStorage.getItem(k) || "null") || {}; } catch (e) { return {}; } };

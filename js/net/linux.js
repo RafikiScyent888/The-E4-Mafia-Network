@@ -5,6 +5,7 @@
    in netplan stays, as on the real thing. Plain functions over the simulation, no page code: tested under Node. */
 import { isIp, sameSubnet, maskBits, broadcast, network, lpad, pad, hash } from "./util.js";
 import * as D from "./dhcpd.js";
+import * as SV from "./svc.js";
 
 export const LX_HELP = [
   ["ip a  (ip addr, ip -br a)", "this server's ports, their state, MTU and addresses"],
@@ -36,6 +37,20 @@ export const LX_HELP_DHCP = [
   ["systemctl status isc-dhcp-server", "running or not, since when, and its last messages"],
   ["journalctl -u isc-dhcp-server", "everything it has said (-n 20 for the last twenty lines)"],
   ["dhcp-lease-list", "the addresses it has handed out, to whom"]
+];
+/* on a server running the network's time and log services (Level 5, work order 1) */
+export const LX_HELP_SVC = [
+  ["sudo nano /etc/chrony/chrony.conf", "chrony's settings: its time sources, and who it serves (allow)"],
+  ["chronyc sources", "the time sources chrony uses, and the one it's locked to (^*)"],
+  ["chronyc tracking", "how this server's clock is doing"],
+  ["sudo chronyc clients", "the computers and gear taking their time from this server"],
+  ["sudo nano /etc/rsyslog.conf", "rsyslog's settings: whether it takes messages from the network (imudp, port 514)"],
+  ["sudo systemctl restart chrony", "start a service again with its file as it is now (rsyslog too)"],
+  ["systemctl status rsyslog", "a service running or not, and its last messages (chrony too)"],
+  ["sudo ss -ulpn", "the UDP ports this server listens on, and what for (-tlpn: TCP)"],
+  ["tail -n 20 /var/log/syslog", "the last lines logged here, the network gear's included"],
+  ["grep <words> /var/log/syslog", "the lines with those words in them (a switch's address, say)"],
+  ["logger <words>", "write a line into the log yourself"]
 ];
 export const NETPLAN_FILE = "/etc/netplan/50-cloud-init.yaml";
 const MAX_MTU = 9216, MIN_MTU = 68;
@@ -93,7 +108,7 @@ function run(sim, id, st, line, root) {
       return done(["logout"], { closed: true, facts: { logout: true } });
     }
     case "clear": return done([], { clear: true });
-    case "help": return done(["Commands you can use on this server:", ""].concat(LX_HELP.concat(x.lx.dhcpd ? LX_HELP_DHCP : []).map(function (h) { return "  " + pad(h[0], 40) + h[1]; })));
+    case "help": return done(["Commands you can use on this server:", ""].concat(LX_HELP.concat(x.lx.dhcpd ? LX_HELP_DHCP : [], x.lx.svc ? LX_HELP_SVC : []).map(function (h) { return "  " + pad(h[0], 40) + h[1]; })));
     case "hostname": return done([x.host]);
     case "whoami": return done([root ? "root" : st.user]);
     case "uname": return done([args[0] === "-a" ? "Linux " + x.host + " 6.8.0-49-generic #49-Ubuntu SMP PREEMPT_DYNAMIC Mon Nov  4 02:06:24 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux" : "Linux"]);
@@ -109,6 +124,12 @@ function run(sim, id, st, line, root) {
     case "journalctl": return done(journalctl(sim, id, args));
     case "dhcpd": return done(dhcpdCmd(sim, id, args));
     case "dhcp-lease-list": return done(leaseList(sim, id));
+    case "chronyc": return done(chronyc(sim, id, args, root), { facts: { chronyc: args[0] || "" } });
+    case "ss": case "netstat": return done(ssCmd(sim, id, args, root, c));
+    case "tail": return done(tail(sim, id, args, root));
+    case "grep": return done(grep(sim, id, args, root));
+    case "logger": { const m = line.replace(/^logger\s*/, "").replace(/^(-t\s+\S+\s*)/, "").replace(/^["']|["']$/g, ""); if (x.lx.svc) syslogLocal(sim, id, (st.user || "root") + ": " + m); return done([]); }
+    case "timedatectl": return done(timedatectl(sim, id));
     case "reboot": case "shutdown": {
       if (c === "shutdown" && !(args[0] === "-r")) return done(["(This server stays on: it's in use. To restart it: sudo reboot)"]);
       if (!root) return done(["Failed to set wall message, ignoring: Interactive authentication required.", "Call to Reboot failed: Interactive authentication required."]);
@@ -277,6 +298,7 @@ export function applyNetplan(sim, id) {
 export function reboot(sim, id) {
   applyNetplan(sim, id); const x = sim.d[id]; x.boots = (x.boots || 0) + 1;
   const S = x.lx.dhcpd; if (S) { if (S.state === "active") dhcpdStop(sim, id); if (S.enabled) dhcpdStart(sim, id); }   /* a service enabled starts at boot; one that isn't stays off */
+  Object.keys(x.lx.svc || {}).forEach(function (u) { const V = x.lx.svc[u]; if (V.state === "active") svcStop(sim, id, u); if (V.enabled) svcStart(sim, id, u); });
 }
 
 /* ------------------------------------------------------------ ping, Linux's */
@@ -331,12 +353,13 @@ function ping(sim, id, a, facts) {
 function fileText(sim, id, path) {
   const x = sim.d[id], F = x.lx.files || {};
   if (path === D.LEASES && x.lx.dhcpd) return leasesText(sim, id);
+  if (path === SV.SYSLOG && x.lx.svc) return (x.lx.syslog || []).join("\n") + "\n";
   return F[path] ? F[path].text : null;
 }
 function stamp(sim, id, path) { const F = sim.d[id].lx.files || {}; return F[path] && F[path].at ? F[path].at : "Nov 20 16:24"; }
 const nLines = function (t) { const L = String(t).split("\n"); if (L.length && L[L.length - 1] === "") L.pop(); return L.length; };
 /* the clock in the server's logs: Sunday morning, moving on a few seconds with everything done */
-function clock(sim) { const s = 10 * 3600 + 42 * 60 + 7 + (sim.n || 0) * 3, two = function (v) { return (v < 10 ? "0" : "") + v; }; return { day: "Nov 22", hms: two(Math.floor(s / 3600) % 24) + ":" + two(Math.floor(s / 60) % 60) + ":" + two(s % 60), s: s }; }
+export function clock(sim) { const s = 10 * 3600 + 42 * 60 + 7 + (sim.n || 0) * 3, two = function (v) { return (v < 10 ? "0" : "") + v; }; return { day: "Nov 22", hms: two(Math.floor(s / 3600) % 24) + ":" + two(Math.floor(s / 60) % 60) + ":" + two(s % 60), s: s }; }
 export function editState(st) {
   const E = st && st.edit; if (!E) return null;
   return { path: E.path, text: E.text, ro: !E.root, isNew: !!E.isNew, status: E.status || "" };
@@ -399,6 +422,7 @@ function systemctl(sim, id, a, root) {
   if (verb === "daemon-reload") return root ? [] : ["Failed to reload daemon: Interactive authentication required."];
   if (!/^(status|start|stop|restart|enable|disable|is-active|is-enabled|is-failed|reload|try-restart|reload-or-restart)$/.test(verb)) return ["Unknown command verb '" + verb + "'."];
   if (!unit) return verb === "status" ? ["(systemctl status lists every service on a real server; name one: systemctl status isc-dhcp-server)"] : ["Too few arguments."];
+  if (x.lx.svc && x.lx.svc[unit]) return svcCtl(sim, id, verb, unit, opts.indexOf("--now") >= 0, root);
   if (unit !== D.UNIT || !S) return verb === "status" ? ["Unit " + unit + ".service could not be found."] : /^is-/.test(verb) ? [verb === "is-enabled" ? "Failed to get unit file state for " + unit + ".service: No such file or directory" : "inactive"] : ["Failed to " + verb + " " + unit + ".service: Unit " + unit + ".service not found."];
   const now = opts.indexOf("--now") >= 0;
   if (verb === "status") return status(sim, id);
@@ -436,6 +460,7 @@ function journalctl(sim, id, a) {
     else if (/^-n\d+$/.test(w)) n = +w.slice(2);
   }
   if (unit) unit = unit.replace(/\.service$/, "");
+  if (unit && x.lx.svc && x.lx.svc[unit]) { const J = x.lx.svc[unit].journal || []; return J.length ? (n ? J.slice(-n) : J.slice(-200)) : ["-- No entries --"]; }
   if (!S || (unit && unit !== D.UNIT)) return ["-- No entries --"];
   const J = S.journal; return J.length ? (n ? J.slice(-n) : J.slice(-200)) : ["-- No entries --"];
 }
@@ -482,4 +507,116 @@ export function dhcpdRefused(sim, id, giaddr, mac, o) {
 export function dhcpdRelease(sim, id, mac) {
   const S = sim.d[id].lx.dhcpd, m = D.macNorm(mac), l = (S.leases || []).find(function (q) { return D.macNorm(q.mac) === m && !q.released; }); if (!l) return;
   l.released = true; if (S.pid) journal(sim, id, "dhcpd[" + S.pid + "]", ["DHCPRELEASE of " + l.ip + " from " + m + " (" + l.host + ") via " + l.via + " (found)"]);
+}
+
+/* ------------------------------------------------------------ chrony and rsyslog (Level 5, work order 1) */
+function sjournal(sim, id, unit, who, lines) { const V = sim.d[id].lx.svc[unit], J = V.journal || (V.journal = []), k = clock(sim), h = sim.d[id].host; lines.forEach(function (l) { J.push(k.day + " " + k.hms + " " + h + " " + who + ": " + l); }); if (J.length > 300) J.splice(0, J.length - 300); }
+export function syslogLocal(sim, id, line) { const x = sim.d[id], L = x.lx.syslog || (x.lx.syslog = []), k = clock(sim); L.push(k.day + " " + k.hms + " " + x.host + " " + line); if (L.length > 400) L.splice(0, L.length - 400); }
+/* start a service as systemd does: it reads its file now. chronyd stops on a line it can't parse; rsyslogd runs on, saying what it skipped */
+export function svcStart(sim, id, unit) {
+  const x = sim.d[id], V = x.lx.svc[unit], U = SV.UNITS[unit], k = clock(sim), run = SV.startRun(sim, id, unit);
+  V.pid = (V.pid || 800) + 11 + (hash(id + unit + V.pid) % 7); V.since = k;
+  sjournal(sim, id, unit, "systemd[1]", ["Starting " + unit + ".service - " + U.desc + "..."]);
+  if (unit === "chrony" && run.bad.length) {
+    const line = String(run.text).split("\n").findIndex(function (l) { return l.replace(/#.*$/, "").trim() === run.bad[0]; }) + 1;
+    sjournal(sim, id, unit, "chronyd[" + V.pid + "]", ["Could not parse " + run.bad[0].split(/\s+/)[0] + " directive at line " + line + " in file " + SV.CHRONY_CONF]);
+    sjournal(sim, id, unit, "systemd[1]", [unit + ".service: Control process exited, code=exited, status=1/FAILURE", unit + ".service: Failed with result 'exit-code'.", "Failed to start " + unit + ".service - " + U.desc + "."]);
+    V.state = "failed"; V.run = null; changed(sim); return;
+  }
+  if (unit === "chrony") sjournal(sim, id, unit, "chronyd[" + V.pid + "]", ["chronyd version 4.5 starting (+CMDMON +NTP +REFCLOCK +RTC +PRIVDROP +SCFILTER +SIGND +ASYNCDNS +NTS +SECHASH +IPV6 -DEBUG)", "Loaded seccomp filter (level 1)"]);
+  else {
+    if (run.unloaded) sjournal(sim, id, unit, "rsyslogd", ["input module name '" + run.unloaded + "' is unknown [v8.2312.0 try https://www.rsyslog.com/e/2209 ]", "error during parsing file " + SV.RSYSLOG_CONF + ", on or before line " + (String(run.text).split("\n").findIndex(function (l) { return /^\s*input\(/.test(l); }) + 1) + ": parameter 'type' not known -- typo in config file? [v8.2312.0 try https://www.rsyslog.com/e/2207 ]"]);
+    sjournal(sim, id, unit, "rsyslogd", ["imuxsock: Acquired UNIX socket '/run/systemd/journal/syslog' (fd 3) from systemd.  [v8.2312.0]", "rsyslogd's groupid changed to 102", "rsyslogd's userid changed to 102", "[origin software=\"rsyslogd\" swVersion=\"8.2312.0\" x-pid=\"" + V.pid + "\" x-info=\"https://www.rsyslog.com\"] start"]);
+  }
+  sjournal(sim, id, unit, "systemd[1]", ["Started " + unit + ".service - " + U.desc + "."]);
+  V.state = "active"; V.run = run; syslogLocal(sim, id, "systemd[1]: Started " + unit + ".service - " + U.desc + ".");
+  if (unit === "chrony" && SV.serverSynced(sim, id)) sjournal(sim, id, unit, "chronyd[" + V.pid + "]", ["Selected source 185.125.190.57 (ntp.ubuntu.com)", "System clock TAI offset set to 37 seconds"]);
+  changed(sim);
+}
+export function svcStop(sim, id, unit) {
+  const V = sim.d[id].lx.svc[unit], U = SV.UNITS[unit];
+  if (V.state === "active") { sjournal(sim, id, unit, "systemd[1]", ["Stopping " + unit + ".service - " + U.desc + "..."]); if (unit === "chrony") sjournal(sim, id, unit, "chronyd[" + V.pid + "]", ["chronyd exiting"]); sjournal(sim, id, unit, "systemd[1]", [unit + ".service: Deactivated successfully.", "Stopped " + unit + ".service - " + U.desc + "."]); }
+  V.state = "inactive"; V.run = null; changed(sim);
+}
+function svcCtl(sim, id, verb, unit, now, root) {
+  const V = sim.d[id].lx.svc[unit], U = SV.UNITS[unit];
+  if (verb === "status") return svcStatus(sim, id, unit);
+  if (verb === "is-active") return [V.state];
+  if (verb === "is-failed") return [V.state === "failed" ? "failed" : V.state];
+  if (verb === "is-enabled") return [V.enabled ? "enabled" : "disabled"];
+  if (!root) return ["Failed to " + verb + " " + unit + ".service: Interactive authentication required.", "See system logs and 'systemctl status " + unit + ".service' for details."];
+  if (verb === "start") { if (V.state !== "active") svcStart(sim, id, unit); return []; }
+  if (verb === "stop") { svcStop(sim, id, unit); return []; }
+  if (verb === "restart" || verb === "reload" || verb === "reload-or-restart" || (verb === "try-restart" && V.state === "active")) { svcStop(sim, id, unit); svcStart(sim, id, unit); return []; }
+  if (verb === "try-restart") return [];
+  if (verb === "enable") { const out = V.enabled ? [] : ["Created symlink /etc/systemd/system/multi-user.target.wants/" + unit + ".service → " + U.file + "."]; V.enabled = true; if (now && V.state !== "active") svcStart(sim, id, unit); changed(sim); return out; }
+  const out = V.enabled ? ["Removed \"/etc/systemd/system/multi-user.target.wants/" + unit + ".service\"."] : []; V.enabled = false; if (now) svcStop(sim, id, unit); changed(sim); return out;
+}
+function svcStatus(sim, id, unit) {
+  const V = sim.d[id].lx.svc[unit], U = SV.UNITS[unit], up = V.state === "active", failed = V.state === "failed", k = V.since;
+  const when = k ? "since " + (k.day === "Nov 20" ? "Fri 2026-11-20 " : "Sun 2026-11-22 ") + k.hms + " UTC; " + ago(sim, k) : "";
+  const L = [(failed ? "× " : up ? "● " : "○ ") + unit + ".service - " + U.desc, "     Loaded: loaded (" + U.file + "; " + (V.enabled ? "enabled" : "disabled") + "; preset: enabled)",
+    "     Active: " + (up ? "active (running) " + when : failed ? "failed (Result: exit-code) " + when : "inactive (dead)" + (k ? " " + when : "")), "       Docs: " + U.docs];
+  if (up) L.push("   Main PID: " + V.pid + " (" + U.proc + ")", "      Tasks: " + (unit === "chrony" ? 2 : 4) + " (limit: 38149)", "     Memory: " + (unit === "chrony" ? "1.9M" : "3.2M") + " (peak: 4.1M)", "        CPU: 31ms", "     CGroup: /system.slice/" + unit + ".service", "             └─" + V.pid + " " + U.exe + (unit === "chrony" ? " -F 1" : ""));
+  const J = (V.journal || []).slice(-10); return J.length ? L.concat([""], J) : L;
+}
+/* chronyc: what chrony says about its sources, its clock, and who has asked it for time */
+const SOURCES = [["prod-ntp-3.ntp1.ps5.canonical.com", "-103us[ -165us] +/-   23ms"], ["prod-ntp-4.ntp4.ps5.canonical.com", "+612us[ +612us] +/-   44ms"], ["alphyn.canonical.com", "+329us[ +329us] +/-   57ms"], ["time.cloudflare.com", "-241us[ -241us] +/-   12ms"]];
+function chronyc(sim, id, a, root) {
+  const V = sim.d[id].lx.svc && sim.d[id].lx.svc.chrony; if (!V) return ["chronyc: command not found"];
+  const cmd = (a[0] || "").toLowerCase(); if (!cmd) return ["(chronyc waits for commands on a real server; give one: chronyc sources, chronyc tracking, sudo chronyc clients)"];
+  if (V.state !== "active") return ["506 Cannot talk to daemon"];
+  const ok = SV.serverSynced(sim, id), pad = function (x, w) { return (String(x) + " ".repeat(w)).slice(0, w); };
+  if (cmd === "sources" || cmd === "sourcestats") {
+    if (!V.run.sources.length) return ["MS Name/IP address         Stratum Poll Reach LastRx Last sample", "==============================================================================="];
+    return ["MS Name/IP address         Stratum Poll Reach LastRx Last sample", "==============================================================================="].concat(SOURCES.map(function (q, i) { return (ok ? (i === 0 ? "^* " : i === 2 ? "^+ " : "^- ") : "^? ") + pad(q[0], 27) + "  2   6   " + (ok ? "377" : "  0") + "    " + (ok ? String(19 + i * 2).padStart(2) + "   " + q[1] : " -     +0ns[   +0ns] +/-    0ns"); }));
+  }
+  if (cmd === "tracking") return ok ? ["Reference ID    : B97DBE39 (prod-ntp-3.ntp1.ps5.canonical.com)", "Stratum         : 3", "Ref time (UTC)  : Sun Nov 22 " + clock(sim).hms + " 2026", "System time     : 0.000012345 seconds fast of NTP time", "Last offset     : -0.000062194 seconds", "RMS offset      : 0.000104871 seconds", "Frequency       : 4.112 ppm slow", "Residual freq   : -0.002 ppm", "Skew            : 0.071 ppm", "Root delay      : 0.022917226 seconds", "Root dispersion : 0.000823711 seconds", "Update interval : 64.3 seconds", "Leap status     : Normal"]
+    : ["Reference ID    : 00000000 ()", "Stratum         : 0", "Ref time (UTC)  : Thu Jan 01 00:00:00 1970", "System time     : 0.000000000 seconds fast of NTP time", "Last offset     : +0.000000000 seconds", "RMS offset      : 0.000000000 seconds", "Frequency       : 0.000 ppm slow", "Residual freq   : +0.000 ppm", "Skew            : 0.000 ppm", "Root delay      : 1.000000000 seconds", "Root dispersion : 1.000000000 seconds", "Update interval : 0.0 seconds", "Leap status     : Not synchronised"];
+  if (cmd === "clients") {
+    if (!root) return ["501 Not authorised"];
+    const rows = Object.keys(sim.d).filter(function (d) { const q = sim.d[d]; return (q.kind === "mswitch" || q.kind === "brouter") && q.sw && (q.sw.ntp || []).length; }).map(function (d) { return SV.ntpState(sim, d); }).filter(function (n) { return n.synced && n.srv === id; });
+    return ["Hostname                      NTP   Drop Int IntL Last     Cmd   Drop Int  Last", "==============================================================================="].concat(rows.map(function (n) { return pad(n.src, 29) + "   12      0   6   -    35       0      0   -     -"; }));
+  }
+  if (cmd === "activity") return ["200 OK", (ok ? 4 : 0) + " sources online", "0 sources offline", "0 sources doing burst (return to online)", "0 sources doing burst (return to offline)", (ok ? 0 : 4) + " sources with unknown address"];
+  return ["Unrecognized command"];
+}
+function timedatectl(sim, id) {
+  const ok = SV.serverSynced(sim, id), V = sim.d[id].lx.svc && sim.d[id].lx.svc.chrony, k = clock(sim);
+  return ["               Local time: Sun 2026-11-22 " + k.hms + " UTC", "           Universal time: Sun 2026-11-22 " + k.hms + " UTC", "                 RTC time: Sun 2026-11-22 " + k.hms, "                Time zone: Etc/UTC (UTC, +0000)", "System clock synchronized: " + (ok ? "yes" : "no"), "              NTP service: " + (V && V.state === "active" ? "active" : "inactive"), "          RTC in local TZ: no"];
+}
+/* ss: the ports this server listens on (the process names only to root, as on the real thing) */
+function ssCmd(sim, id, a, root, c) {
+  const fl = a.join(""), udp = /u/.test(fl) || !/t/.test(fl), tcp = /t/.test(fl), x = sim.d[id], V = x.lx.svc || {}, ch = V.chrony, rs = V.rsyslog, dh = x.lx.dhcpd;
+  const pad = function (s, w) { return (String(s) + " ".repeat(w)).slice(0, w); }, who = function (n, pid, fd) { return root ? 'users:(("' + n + '",pid=' + pid + ",fd=" + fd + "))" : ""; };
+  const L = [pad("State", 7) + pad("Recv-Q", 7) + pad("Send-Q", 7) + pad("Local Address:Port", 26) + pad("Peer Address:Port", 18) + "Process"];
+  const row = function (st, la, pa, pr) { L.push(pad(st, 7) + pad("0", 7) + pad(st === "LISTEN" ? "4096" : "0", 7) + pad(la, 26) + pad(pa, 18) + pr); };
+  if (udp) {
+    row("UNCONN", "127.0.0.53%lo:53", "0.0.0.0:*", who("systemd-resolve", 612, 13));
+    if (dh && dh.state === "active") row("UNCONN", "0.0.0.0:67", "0.0.0.0:*", who("dhcpd", dh.pid, 7));
+    if (ch && ch.state === "active" && ch.run && ch.run.allow.length) row("UNCONN", "0.0.0.0:123", "0.0.0.0:*", who("chronyd", ch.pid, 7));
+    if (ch && ch.state === "active") row("UNCONN", "127.0.0.1:323", "0.0.0.0:*", who("chronyd", ch.pid, 5));
+    if (rs && rs.state === "active" && rs.run && rs.run.udp) { row("UNCONN", "0.0.0.0:" + rs.run.udp, "0.0.0.0:*", who("rsyslogd", rs.pid, 6)); row("UNCONN", "[::]:" + rs.run.udp, "[::]:*", who("rsyslogd", rs.pid, 7)); }
+  }
+  if (tcp) {
+    row("LISTEN", "127.0.0.53%lo:53", "0.0.0.0:*", who("systemd-resolve", 612, 14)); row("LISTEN", "0.0.0.0:22", "0.0.0.0:*", who("sshd", 1033, 3));
+    if (rs && rs.state === "active" && rs.run && rs.run.tcp) row("LISTEN", "0.0.0.0:" + rs.run.tcp, "0.0.0.0:*", who("rsyslogd", rs.pid, 8));
+  }
+  return L;
+}
+/* tail and grep, on a file (the log is readable without sudo here: the admin user is in the adm group, as on Ubuntu) */
+function readable(sim, id, f, root) { if (f === NETPLAN_FILE && !root) return { err: f + ": Permission denied" }; const t = f === "/etc/hostname" ? sim.d[id].host + "\n" : fileText(sim, id, f); return t == null ? { err: f + ": No such file or directory" } : { text: t }; }
+function tail(sim, id, a, root) {
+  let n = 10, follow = false; const files = [];
+  for (let i = 0; i < a.length; i++) { const w = a[i]; if (w === "-n") n = parseInt(a[++i], 10) || 10; else if (/^-n\d+$/.test(w)) n = +w.slice(2); else if (/^-\d+$/.test(w)) n = +w.slice(1); else if (w === "-f" || w === "-F") follow = true; else if (w[0] !== "-") files.push(w); }
+  if (!files.length) return ["(tail waits for typing here on a real server; name a file: tail /var/log/syslog)"];
+  const r = readable(sim, id, files[0], root); if (r.err) return ["tail: cannot open '" + files[0] + "' for reading: " + r.err.split(": ").pop()];
+  const L = r.text.replace(/\n$/, "").split("\n").slice(-n); return follow ? L.concat(["(tail -f keeps following the file on a real server; here it shows the last lines: run it again to see new ones)"]) : L;
+}
+function grep(sim, id, a, root) {
+  const flags = a.filter(function (w) { return /^-[a-zA-Z]+$/.test(w); }).join(""), rest = a.filter(function (w) { return !/^-[a-zA-Z]+$/.test(w); });
+  if (rest.length < 2) return ["Usage: grep [OPTION]... PATTERNS [FILE]...", "Try 'grep --help' for more information."];
+  const pat = rest.slice(0, -1).join(" ").replace(/^["']|["']$/g, ""), f = rest[rest.length - 1], r = readable(sim, id, f, root); if (r.err) return ["grep: " + r.err];
+  const i = /i/.test(flags), m = r.text.split("\n").filter(function (l) { return l && (i ? l.toLowerCase().indexOf(pat.toLowerCase()) >= 0 : l.indexOf(pat) >= 0); });
+  return /c/.test(flags) ? [String(m.length)] : m;
 }

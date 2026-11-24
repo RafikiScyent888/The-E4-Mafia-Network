@@ -9,7 +9,8 @@ import { reload as reloadSwitch, duplexEnds, carries, ownAddrs, psRunOf, errDisa
 import { solve as ospfSolve, wildMatch as ospfMatch, ifCost as ospfCost } from "./ospf.js";
 import { solve as stpSolve, costOf as stpCost } from "./stp.js";
 import * as RT from "./rtcli.js";
-import { applyNetplan, reboot as rebootServer, dhcpdHears, dhcpdPick, dhcpdLease, dhcpdRefused, dhcpdRelease } from "./linux.js";
+import { applyNetplan, reboot as rebootServer, dhcpdHears, dhcpdPick, dhcpdLease, dhcpdRefused, dhcpdRelease, clock as lxClock } from "./linux.js";
+import * as SVC from "./svc.js";
 
 /* each radio has its own hardware address: the 5 GHz one is the next number up */
 function bump(m) { const p = m.split("-"); p[5] = ((parseInt(p[5], 16) + 1) & 255).toString(16).padStart(2, "0"); return p.join("-"); }
@@ -1035,6 +1036,8 @@ export class Sim {
   swLive(id) {
     const self = this;
     return function (k, v) {
+      if (k === "ntp") return SVC.ntpState(self, id);   /* time and logs (Level 5, work order 1) */
+      if (k === "clock") return lxClock(self);
       if (k === "stp") { const all = self.stpAll(); return all[v] ? { result: all[v].result, ports: all[v].ports.filter(function (q) { return q.sw === id; }), me: id } : null; }
       if (k === "stpvlans") return Object.keys(self.stpAll()).map(Number).filter(function (w) { return self.d[id].sw.vlans[w]; });
       if (k === "learned") return self.learned(id);
@@ -1247,6 +1250,8 @@ export class Sim {
   rtLive(id) {
     const self = this, x = this.d[id];
     return function (k, n) {
+      if (k === "ntp") return SVC.ntpState(self, id);   /* time and logs (Level 5, work order 1) */
+      if (k === "clock") return lxClock(self);
       if (k === "wan") { const w = self.rtWan(id); return w && w.iface === n ? w.lease : null; }
       if (k === "leases") return (x.leases || []).slice();
       if (k === "nat") return (x.xlate || []).slice();

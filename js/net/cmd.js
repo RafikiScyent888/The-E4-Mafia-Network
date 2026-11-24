@@ -4,6 +4,8 @@
    exactly (renew and release change state; pings draw from the same random
    source on replay). */
 import * as LX from "./linux.js";
+import { clock as lxClock } from "./linux.js";
+import * as SVC from "./svc.js";
 import { isIp, isApipa, isLoopback, sameSubnet, hash, pad, lpad } from "./util.js";
 import * as SW from "./swcli.js";
 import * as RT from "./rtcli.js";
@@ -123,6 +125,8 @@ function consoleTarget(sim, id) {
   const far = c.a.dev === id ? c.b.dev : c.a.dev; return sim.d[far].kind === "mswitch" || sim.d[far].kind === "brouter" ? far : null;
 }
 /* what a switch's own ping reaches: anything that answers (Windows computers don't, by default) */
+/* the lines a switch or router logged with that command, sent to its log hosts through the network (Level 5, work order 1) */
+function drainLogs(sim, id) { const sw = sim.d[id] && sim.d[id].sw; if (!sw || !sw.logq || !sw.logq.length) return; const q = sw.logq, k = lxClock(sim); sw.logq = []; q.forEach(function (m) { SVC.deliver(sim, id, m.host, m.line, k); }); }
 function reachFrom(sim, sw) {
   return function (ip) { const r = sim.route(sw, ip); if (r.fail) return false; if (r.local || r.routed) { const k = sim.d[r.owner[0]].kind; return !(k === "pc" || k === "laptop"); } return !!(r.internet || r.modem); };
 }
@@ -180,7 +184,7 @@ function serial(sim, id, raw) {
   if (!tgt) return { out: "(Nothing answers on COM3: the console cable isn't joined to a powered switch's or router's CONSOLE port.)\n", facts: { cmd: "serial", connected: false }, serial: true };
   sync(sim, tgt);
   if (!st || st.sw !== tgt) st = sim.cli[id] = { S: SW.session(sim.d[tgt].sw, opts(sim, tgt, "console")), sw: tgt, via: "console" };
-  const r = SW.exec(st.S, raw); st.prompt = r.prompt; r.out = linkNews(sim, tgt, r.out);
+  const r = SW.exec(st.S, raw); st.prompt = r.prompt; r.out = linkNews(sim, tgt, r.out); drainLogs(sim, tgt);
   /* once a session, as the console log shows it: looked for as the console wakes (its first line, or a bare Enter), not after every
      line (17 November 2026: it worked the whole network out each time, and a campus work order's start types hundreds of lines) */
   const look = !st.dupLooked || raw.trim() === ""; st.dupLooked = true;
@@ -238,7 +242,7 @@ function remote(sim, id, raw, k, text) {
     return { out: st.via === "ssh" ? "Permission denied, please try again.\n" : "% Login invalid\n", facts: { cmd: st.via, dev: id, denied: true, user: A.user }, secret: true, cli: true };
   }
   sync(sim, st.sw);
-  const r = SW.exec(st.S, raw); r.out = linkNews(sim, st.sw, r.out);
+  const r = SW.exec(st.S, raw); r.out = linkNews(sim, st.sw, r.out); drainLogs(sim, st.sw);
   if (st.S.mode === "gone") { delete sim.cli[k]; return { out: lines(r.out.filter(function (l) { return !/con0 is now available|Press RETURN/.test(l); })).replace(/\n+$/, "\n") + (st.via === "ssh" ? "Connection to " + st.host + " closed.\n" : "\nConnection to host lost.\n"), facts: { cmd: st.via, closed: true } }; }
   st.prompt = r.prompt;
   return { out: lines(r.out), facts: { cmd: st.via, dev: id, on: st.sw, line: raw.trim(), mode: st.S.mode, out: r.out.join("\n") }, secret: !!r.secret, cli: true, keep: r.keep };   /* on: the switch or router that printed it */

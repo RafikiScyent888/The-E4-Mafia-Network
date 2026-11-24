@@ -7,6 +7,7 @@ import { JOBS, JOBS_COMING, NAME, IN } from "./jobs.js";
 import { OFFICE_JOBS } from "./office.js";
 import { BUSINESS_JOBS } from "./business.js";
 import { CAMPUS_JOBS } from "./campus.js";
+import { ENTERPRISE_JOBS } from "./enterprise.js";
 import * as B from "./engine.js";
 import { HELP } from "../net/cmd.js";
 import { portsOf, portName, FIXED_ROOM, runLength, COPPER_MAX } from "../net/sim.js";
@@ -21,7 +22,7 @@ import { ipamSheet as sheetForm } from "../desk/ipamui.js";
 import { cableMap } from "../desk/cablemapui.js";
 
 const KEY = "e4-build-v1";
-const ALL = JOBS.concat(OFFICE_JOBS, BUSINESS_JOBS, CAMPUS_JOBS);   /* every level's work orders */
+const ALL = JOBS.concat(OFFICE_JOBS, BUSINESS_JOBS, CAMPUS_JOBS, ENTERPRISE_JOBS);   /* every level's work orders */
 const DEFS = {}; ALL.forEach(function (d) { DEFS[d.id] = d; });
 const ORDER = ["modem", "router", "rtr", "switch", "pp", "msw", "bsw", "cab", "pc", "mgr", "bpc", "dpc1", "dpc2", "hire", "printer", "mpc", "ojack", "mjack", "tv", "injector", "injector2", "ap", "camera", "mesh", "phone", "laptop", "guest", "cinj1", "cam1", "cinj2", "cam2", "mphone", "edge", "core1", "core2", "dist1", "dist2", "acc1", "acc2", "acc3", "acc4", "sd1", "hd1", "pr1", "bn1", "bn2", "fin", "pr3", "tr1", "tr2", "anxc", "anxa", "cl1", "cl2", "fsrv", "bksrv", "tech"];   /* the campus's after the business's */
 const ROOM_ORDER = ["living", "office", "kitchen", "garage", "upstairs", "landing", "porch"];

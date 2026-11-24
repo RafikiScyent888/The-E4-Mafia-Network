@@ -135,7 +135,7 @@ const CJ1 = {
 /* the VLANs in use (the ones with addresses), as the records list them; each has its own spanning tree */
 const USED = ["svc", "bench", "office", "servers", "printers", "mgmt"];
 const DISTS = [["dist1", "distribution switch 1"], ["dist2", "distribution switch 2"]];
-const said = function (sim, id) { return id === "dist1" || id === "dist2" ? DISTS.find(function (d) { return d[0] === id; })[1] : id === "anxc" ? "the Annex core switch" : id === "anxa" ? "the Annex access switch" : name(sim, id); };   /* the Annex's switches (work order 8) as said mid-sentence */
+export const said = function (sim, id) { return id === "dist1" || id === "dist2" ? DISTS.find(function (d) { return d[0] === id; })[1] : id === "anxc" ? "the Annex core switch" : id === "anxa" ? "the Annex access switch" : name(sim, id); };   /* the Annex's switches (work order 8) as said mid-sentence */
 const cmpBid = function (a, b) { return a.prio - b.prio || (a.mac < b.mac ? -1 : a.mac > b.mac ? 1 : 0); };
 /* each VLAN in use: its root, and each switch's bridge ID in it */
 function trees(sim, v) {
@@ -361,7 +361,7 @@ function relayCauses(sim, v) {
     C("noway", !!k && h.indexOf(t.edge) >= 0, "VLAN " + (k ? p.vlans[k].id : "") + "'s requests reach the edge router, but its answer can't get back to distribution switch 1", "The answers get back.", at + " show ip dhcp binding on the edge router: nothing new.")];
 }
 const at1 = function (p, id) { return id === "dist1" ? p.vlans.mgmt.gw : p.sw[id].ip; };   /* from CP-J4 on, distribution switch 1 answers at the management VLAN's gateway */
-function reachCauses(sim, v) {
+export function reachCauses(sim, v) {
   const p = v.plan, gone = ["dist1", "dist2", "acc1", "acc2", "acc3"].find(function (id) { const r = sim.route("sd1", at1(p, id)); return !r.routed && !r.local; });
   const who = !gone ? "A switch" : /^dist/.test(gone) ? said(sim, gone).replace(/^d/, "D") : "The " + said(sim, gone);
   return workCauses(sim, v).concat([C("switch", !!gone, who + " doesn't answer from the service desk", "Every switch answers.", gone ? "ping " + at1(p, gone) + " from the service desk PC: no reply." : "")]);

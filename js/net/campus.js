@@ -15,6 +15,7 @@ import { rng, mac } from "./util.js";
 import { newSwitch, session, exec } from "./swcli.js";
 import { newRouter } from "./rtcli.js";
 import * as DH from "./dhcpd.js";
+import * as SV from "./svc.js";
 
 const SECRETS = ["Core!Riser7", "Dist#Uplink4", "Bench*Floor22", "Riser&Fibre9", "Data!Room31", "Tier3#Mgmt8"];
 const CONSOLES = ["Console#HQ5", "Serial!Rack2", "Blue*Line44", "Con0!Desk9"];
@@ -257,4 +258,21 @@ export function makeCampus(seed) {
     roomNames: { data: "Data room (1F)", svc: "Service desk (1F)", c2: "2F closet", bench: "Technicians' bench (2F)", c3: "3F closet", office: "Management (3F)", c4: "4F closet", train: "Training room (4F)", acomms: "Annex comms room", class: "Classroom (Annex)" }, floors: CAMPUS_FLOORS, runs: CAMPUS_RUN, fibre: CAMPUS_FIBRE,
     extra: { build: true }
   };
+}
+
+/* Level 5, work order 1: the file server's time and log services as the installer left them (Ubuntu's chrony and rsyslog, running and
+   enabled since the server went in on Friday): chrony keeps the server's own time from the internet's pool and serves nobody; rsyslog
+   logs only what happens on the server itself, its network reception commented out */
+export function svcKit(net) {
+  const x = net.devices.fsrv, F = x.lx.files || (x.lx.files = {}), since = { day: "Nov 20", hms: "16:31:02", s: -113338 };
+  F[SV.CHRONY_CONF] = { text: SV.CHRONY_DEFAULT, at: "Nov 20 16:20" }; F[SV.RSYSLOG_CONF] = { text: SV.RSYSLOG_DEFAULT, at: "Nov 20 16:20" };
+  const j = function (who, L) { return L.map(function (l) { return "Nov 20 16:31:02 " + x.host + " " + who + ": " + l; }); };
+  x.lx.svc = {
+    chrony: { state: "active", enabled: true, since: since, pid: 811, run: Object.assign({ text: SV.CHRONY_DEFAULT }, SV.parseChrony(SV.CHRONY_DEFAULT)),
+      journal: j("systemd[1]", ["Starting chrony.service - chrony, an NTP client/server..."]).concat(j("chronyd[811]", ["chronyd version 4.5 starting (+CMDMON +NTP +REFCLOCK +RTC +PRIVDROP +SCFILTER +SIGND +ASYNCDNS +NTS +SECHASH +IPV6 -DEBUG)", "Loaded seccomp filter (level 1)"]), j("systemd[1]", ["Started chrony.service - chrony, an NTP client/server."]), j("chronyd[811]", ["Selected source 185.125.190.57 (ntp.ubuntu.com)", "System clock TAI offset set to 37 seconds"])) },
+    rsyslog: { state: "active", enabled: true, since: since, pid: 798, run: Object.assign({ text: SV.RSYSLOG_DEFAULT }, SV.parseRsyslog(SV.RSYSLOG_DEFAULT)),
+      journal: j("systemd[1]", ["Starting rsyslog.service - System Logging Service..."]).concat(j("rsyslogd", ["imuxsock: Acquired UNIX socket '/run/systemd/journal/syslog' (fd 3) from systemd.  [v8.2312.0]", "[origin software=\"rsyslogd\" swVersion=\"8.2312.0\" x-pid=\"798\" x-info=\"https://www.rsyslog.com\"] start"]), j("systemd[1]", ["Started rsyslog.service - System Logging Service."])) }
+  };
+  x.lx.syslog = ["Nov 22 09:17:01 " + x.host + " CRON[2211]: (root) CMD (cd / && run-parts --report /etc/cron.hourly)", "Nov 22 10:17:01 " + x.host + " CRON[2344]: (root) CMD (cd / && run-parts --report /etc/cron.hourly)",
+    "Nov 22 10:30:12 " + x.host + " systemd[1]: Starting apt-daily.service - Daily apt download activities...", "Nov 22 10:30:19 " + x.host + " systemd[1]: apt-daily.service: Deactivated successfully.", "Nov 22 10:30:19 " + x.host + " systemd[1]: Finished apt-daily.service - Daily apt download activities."];
 }

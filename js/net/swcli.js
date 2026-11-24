@@ -84,7 +84,7 @@ export function errDisabled(sw, n) { return !!(sw.psRun && sw.psRun[n] && sw.psR
 export function psOf(p) { return p.ps || (p.ps = { on: false, max: 1, viol: "shutdown", sticky: false, macs: [] }); }
 /* a MAC address as the switch writes it: aaaa.bbbb.cccc */
 export function dotMac(m) { const h = String(m || "").replace(/[^0-9a-f]/gi, "").toLowerCase(); return h.length === 12 ? h.slice(0, 4) + "." + h.slice(4, 8) + "." + h.slice(8) : null; }
-const CONFIG_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "vlan1", "gateway", "ports", "banner", "vlans", "svis", "snoop", "dai", "pcs", "stp", "jumbo"];   /* jumbo: the system jumbo MTU set (work order 9); it takes effect at the next reload (jumboRun) */   /* keyGen: which set of RSA keys it holds (each crypto key generate makes a new one) */
+const CONFIG_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "vlan1", "gateway", "ports", "banner", "vlans", "svis", "snoop", "dai", "pcs", "stp", "jumbo", "ntp", "logHosts", "logTrap"];   /* jumbo: the system jumbo MTU set (work order 9); it takes effect at the next reload (jumboRun) */   /* keyGen: which set of RSA keys it holds (each crypto key generate makes a new one) */
 /* each kind of device with this command line (this switch; the business router, rtcli.js) registers what's its own: its
    command tree, its prompts, what its configuration is made of, a factory-fresh one, and how its configuration reads */
 const OS = {};
@@ -272,7 +272,9 @@ const SHOW = [
     return ["% Key pair was generated at: 10:12:44 UTC Oct 11 2026", "Key name: " + sw.hostname + "." + (sw.domain || "local"), "Key type: RSA KEYS " + sw.rsa + " bits", " Usage: General Purpose Key", " Key is not exportable. Redundancy enabled.", " Fingerprint (SHA256, as SSH clients show it): " + hostKey(sw)];
   }]]]]]]],
   ["history", "Display the session command history", function (S) { return S.history.slice(-10).map(function (h) { return "  " + h; }); }],
-  ["clock", "Display the system clock", function () { return ["*10:42:07.311 UTC Sun Oct 11 2026"]; }],
+  ["clock", "Display the system clock", function (S) { return [clockText(S)]; }],
+  ["ntp", "Network time protocol", [["status", "NTP status", function (S) { return ntpStatus(S); }], ["associations", "NTP associations", function (S) { return ntpAssoc(S); }]]],
+  ["logging", "Show the contents of logging buffers", function (S) { return loggingShow(S); }],
   ["users", "Display information about terminal lines", function (S) { return ["    Line       User       Host(s)              Idle       Location", S.via === "console" ? "*  0 con 0                idle                 00:00:00" : "*  1 vty 0                idle                 00:00:00 (remote)"]; }],
   ["ssh", "Status of SSH server connections", function (S) { return S.sw.rsa ? ["%No SSHv2 server connections running."] : ["%SSH has not been enabled: no RSA keys"]; }]
 ];
@@ -302,6 +304,7 @@ const EXEC_PRIV = [
   }],
   ["show", "Show running system information", SHOW],
   ["ping", "Send echo messages", function (S, a) { return pingOut(S, a); }],
+  ["send", "Send a message", [["log", "Logging destinations", function (S, a, raw) { return sendLog(S, raw); }, { sub: [["<0-7>", "Severity level (optional, debugging if left out)"], ["LINE", "Message text"]] }]]],
   ["clear", "Reset functions", [["counters", "Clear counters on one or all interfaces", function (S) { S.pending = { kind: "confirm", then: function () { return []; } }; return ["Clear \"show interface\" counters on all interfaces [confirm]"]; }]]]
 ];
 const CONFIG = [
@@ -354,9 +357,13 @@ const CONFIG = [
     ["mode", "Spanning tree operating mode", [["rapid-pvst", "Per-Vlan rapid spanning tree mode", function (S) { stpOf(S.sw).mode = "rapid-pvst"; return []; }], ["pvst", "Per-Vlan spanning tree mode", function (S) { stpOf(S.sw).mode = "pvst"; return []; }]]],
     ["vlan", "VLAN Switch Spanning Tree", function (S, a) { return stpVlanCmd(S, a, false); }, { sub: [["WORD", "vlan range, example: 1,3-5,7,9-11"]] }]]],
   ["banner", "Define a login banner", [["motd", "Set Message of the Day banner", function (S, a, raw) { return bannerStart(S, raw); }]]],
+  ["ntp", "Configure NTP", [["server", "Configure NTP server", function (S, a) { return ntpServer(S, a, true); }, { sub: [["A.B.C.D", "IP address of peer"]] }]]],
+  ["logging", "Modify message logging facilities", function (S, a) { return loggingCmd(S, a, true); }, { sub: [["A.B.C.D", "IP address of the logging host"], ["host", "Set syslog server IP address and parameters"], ["trap", "Set syslog server logging level"]] }],
   ["do", "To run exec commands in config mode", function (S, a, raw) { const was = S.mode; S.mode = "priv"; const r = run(S, raw.replace(/^\s*do\s+/i, "")); S.mode = was; return r.lines; }],
   ["no", "Negate a command or set its defaults", [
     ["hostname", "Set system's network name", function (S) { S.sw.hostname = "Switch"; return []; }],
+    ["ntp", "Configure NTP", [["server", "Configure NTP server", function (S, a) { return ntpServer(S, a, false); }]]],
+    ["logging", "Modify message logging facilities", function (S, a) { return loggingCmd(S, a, false); }],
     ["enable", "Modify enable password parameters", [["secret", "Assign the privileged level secret", function (S) { S.sw.enableSecret = null; return []; }], ["password", "Assign the privileged level password", function (S) { S.sw.enablePassword = null; return []; }]]],
     ["ip", "Global IP configuration subcommands", [["default-gateway", "Specify default gateway", function (S) { S.sw.gateway = null; return []; }], ["domain-name", "Define the default domain name", function (S) { S.sw.domain = null; return []; }],
       ["dhcp", "Configure DHCP", [["snooping", "DHCP Snooping", [["vlan", "DHCP Snooping vlan", function (S, a) { const L = vlanList(a.join("")); if (!L) return a.length ? ["% Invalid input detected at '^' marker."] : ["% Incomplete command."]; S.sw.snoop.vlans = S.sw.snoop.vlans.filter(function (v) { return L.indexOf(v) < 0; }); return []; }]],
@@ -641,6 +648,86 @@ function pingOut(S, a) {
   return ["Type escape sequence to abort.", "Sending 5, 100-byte ICMP Echos to " + a[0] + ", timeout is 2 seconds:", ok ? "!!!!!" : ".....", ok ? "Success rate is 100 percent (5/5), round-trip min/avg/max = 1/1/2 ms" : "Success rate is 0 percent (0/5)"];
 }
 
+/* ------------------------------------------------------------ time and logs (Level 5, work order 1) */
+/* NTP servers and syslog hosts, as the real gear takes them: ntp server <address>; logging host <address> (or logging <address>);
+   logging trap <level>, informational from the box. What the clock says, and whether a log line gets to its host, the network decides
+   (S.live: "ntp", "clock"). A line is logged as configuration mode is left (%SYS-5-CONFIG_I) and by send log; it goes to every log host
+   if its severity is at or under the trap level, onto sw.logq, which the network delivers after the command */
+const SEV = ["emergencies", "alerts", "critical", "errors", "warnings", "notifications", "informational", "debugging"];
+const CFG_MODE = function (m) { return !!m && !/^(user|priv|login|gone)$/.test(m); };
+const sevOf = function (w) { w = String(w || "").toLowerCase(); if (/^\d$/.test(w)) return +w <= 7 ? +w : -1; if (w.length < 2) return -1; return SEV.findIndex(function (s) { return s.indexOf(w) === 0; }); };
+const trapOf = function (sw) { return sw.logTrap == null ? 6 : sw.logTrap; };
+function ntpOf(S) { return (S.live && S.live("ntp")) || { synced: false, servers: [], why: "none" }; }
+const two = function (v) { return (v < 10 ? "0" : "") + v; };
+const MON = { Nov: "Nov" };
+/* the device's time: the network's when it keeps time from a server, otherwise its own count since it booted (no clock of its own: it
+   starts at midnight, 1 March 1993, as the real gear does, marked with a * as not authoritative) */
+function timeOf(S) {
+  const k = (S.live && S.live("clock")) || { day: "Nov 22", hms: "10:42:07", s: 38527 }, n = ntpOf(S), ms = "." + String(100 + (k.s * 37) % 900).slice(0, 3);
+  if (n.synced) return { star: "", day: k.day, hms: k.hms + ms, dow: "Sun", year: "2026" };
+  const up = Math.max(0, k.s - 38400 + 2520); return { star: "*", day: "Mar  1", hms: two(Math.floor(up / 3600) % 24) + ":" + two(Math.floor(up / 60) % 60) + ":" + two(up % 60) + ms, dow: "Mon", year: "1993" };
+}
+function clockText(S) { const t = timeOf(S); return t.star + t.hms + " UTC " + t.dow + " " + t.day.replace(/\s+/, " ") + " " + t.year; }
+export function devLog(S, sev, mnem, text) {
+  const sw = S.sw; if (!sw) return; const t = timeOf(S);
+  sw.logSeq = (sw.logSeq || 0) + 1; const line = sw.logSeq + ": " + t.star + t.day + " " + t.hms + ": %" + mnem + ": " + text;
+  const B = sw.logbuf || (sw.logbuf = []); B.push(line); if (B.length > 60) B.splice(0, B.length - 60);
+  if (sev > trapOf(sw)) return;
+  (sw.logHosts || []).forEach(function (h) { (sw.logq || (sw.logq = [])).push({ host: h, line: line }); sw.logSent = sw.logSent || {}; sw.logSent[h] = (sw.logSent[h] || 0) + 1; });
+}
+function ntpServer(S, a, on) {
+  if (!a.length) return ["% Incomplete command."]; if (!ip4(a[0])) return ["% Invalid input detected at '^' marker."];
+  const L = (S.sw.ntp || []).filter(function (x) { return x !== a[0]; }); if (on) L.push(a[0]); S.sw.ntp = L; return [];
+}
+function loggingCmd(S, a, on) {
+  if (!a.length) return on ? ["% Incomplete command."] : [];
+  const w = a[0].toLowerCase();
+  if (w === "trap" || "trap".indexOf(w) === 0 && w.length >= 2) {
+    if (!on) { S.sw.logTrap = null; return []; }
+    if (!a[1]) return ["% Incomplete command."]; const k = sevOf(a[1]); if (k < 0) return ["% Invalid input detected at '^' marker."]; S.sw.logTrap = k === 6 ? null : k; return [];
+  }
+  const host = (w === "host" || ("host".indexOf(w) === 0 && w.length >= 2)) ? a[1] : a[0];
+  if (!host) return ["% Incomplete command."]; if (!ip4(host)) return ["% Invalid input detected at '^' marker."];
+  const L = (S.sw.logHosts || []).filter(function (x) { return x !== host; }); if (on) L.push(host); S.sw.logHosts = L; return [];
+}
+function sendLog(S, raw) {
+  const m = /^\s*\S+\s+\S+\s*(.*)$/.exec(raw) || ["", ""], rest = m[1].trim(); if (!rest) return ["% Incomplete command."];
+  const sv = /^(\d)\s+(.+)$/.exec(rest), sev = sv && +sv[1] <= 7 ? +sv[1] : 7, text = sv && +sv[1] <= 7 ? sv[2] : rest;
+  devLog(S, sev, "SYS-" + sev + "-USERLOG_" + ["EMERG", "ALERT", "CRIT", "ERR", "WARNING", "NOTICE", "INFO", "DEBUG"][sev], "Message from " + (S.via === "console" ? "tty0" : "tty2") + "(user id: ): " + text.replace(/^"|"$/g, ""));
+  return [];
+}
+function ntpStatus(S) {
+  const n = ntpOf(S), t = timeOf(S);
+  if (!(S.sw.ntp || []).length) return ["%NTP is not enabled."];
+  return n.synced ? ["Clock is synchronized, stratum " + n.stratum + ", reference is " + n.ref, "nominal freq is 250.0000 Hz, actual freq is 250.0000 Hz, precision is 2**18", "ntp uptime is 152300 (1/100 of seconds), resolution is 4000", "reference time is E8F1A3C2.4D2F1B10 (" + t.hms + " UTC " + t.dow + " " + t.day.replace(/\s+/, " ") + " " + t.year + ")", "clock offset is 0.5132 msec, root delay is 1.03 msec", "root dispersion is 3.21 msec, peer dispersion is 1.15 msec", "loopfilter state is 'CTRL' (Normal Controlled Loop), drift is 0.000000000 s/s", "system poll interval is 64, last update was 35 sec ago."]
+    : ["Clock is unsynchronized, stratum 16, no reference clock", "nominal freq is 250.0000 Hz, actual freq is 250.0000 Hz, precision is 2**18", "ntp uptime is 152300 (1/100 of seconds), resolution is 4000", "reference time is 00000000.00000000 (00:00:00.000 UTC Mon Jan 1 1900)", "clock offset is 0.0000 msec, root delay is 0.00 msec", "root dispersion is 0.00 msec, peer dispersion is 0.00 msec", "loopfilter state is 'NSET' (Never set), drift is 0.000000000 s/s", "system poll interval is 64, never updated."];
+}
+function ntpAssoc(S) {
+  const list = S.sw.ntp || []; if (!list.length) return ["%NTP is not enabled."];
+  const n = ntpOf(S), pad = function (x, w) { return (String(x) + " ".repeat(w)).slice(0, w); }, by = {}; (n.servers || []).forEach(function (t) { by[t.ip] = t; });
+  const L = ["  address         ref clock       st   when   poll reach  delay  offset   disp"];
+  list.forEach(function (ip) { const t = by[ip] || {}, ok = n.synced && n.ref === ip; L.push((ok ? "*~" : "~ ") + pad(ip, 16) + pad(ok ? "91.189.91.157" : ".INIT.", 16) + (ok ? " 2" : "16") + "     " + (ok ? "35" : " -") + "     64   " + (ok ? "377" : "  0") + "  " + (ok ? "1.031   0.513  1.147" : "0.000   0.000 15937.")); });
+  return L.concat([" * sys.peer, # selected, + candidate, - outlyer, x falseticker, ~ configured"]);
+}
+function loggingShow(S) {
+  const sw = S.sw, B = sw.logbuf || [], hosts = sw.logHosts || [], sent = sw.logSent || {}, total = Object.keys(sent).reduce(function (a, h) { return a + sent[h]; }, 0);
+  const L = ["Syslog logging: enabled (0 messages dropped, 0 messages rate-limited, 0 flushes, 0 overruns, xml disabled, filtering disabled)", "", "No Active Message Discriminator.", "",
+    "    Console logging: level debugging, " + B.length + " messages logged, xml disabled,", "                     filtering disabled", "    Monitor logging: level debugging, 0 messages logged, xml disabled,", "                     filtering disabled",
+    "    Buffer logging:  level debugging, " + B.length + " messages logged, xml disabled,", "                    filtering disabled", "    Exception Logging: size (4096 bytes)", "    Count and timestamp logging messages: disabled", "    Persistent logging: disabled", "", "No active filter modules.", "",
+    "    Trap logging: level " + SEV[trapOf(sw)] + ", " + total + " message lines logged"];
+  hosts.forEach(function (h) { L.push("        Logging to " + h + "  (udp port 514, audit disabled,", "              link up),", "              " + (sent[h] || 0) + " message lines logged,", "              0 message lines rate-limited,", "              0 message lines dropped-by-MD,", "              xml disabled, sequence number disabled", "              filtering disabled"); });
+  if (hosts.length) L.push("        Logging Source-Interface:       VRF Name:");
+  return L.concat(["", "Log Buffer (8192 bytes):", ""], B);
+}
+function svcLines(sw, L) {
+  const t = sw.logTrap, h = sw.logHosts || [], n = sw.ntp || [];
+  if (t != null) L.push("logging trap " + SEV[t]);
+  h.forEach(function (x) { L.push("logging host " + x); });
+  if (t != null || h.length) L.push("!");
+  n.forEach(function (x) { L.push("ntp server " + x); }); if (n.length) L.push("!");
+}
+export { svcLines };
+
 /* the switch's own addresses: each of its interfaces on a VLAN with an address, up (VLAN 1 as it always was) */
 export function ownAddrs(sw) {
   fix(sw); const out = [];
@@ -692,6 +779,7 @@ function runningConfig(sw, startup) {
   if ((sw.routes || []).length) L.push("!");
   if (sw.gateway) L.push("ip default-gateway " + sw.gateway, "!");
   if (sw.banner != null) L.push("banner motd ^C" + sw.banner + "^C", "!");   /* shown with ^C as its delimiter, whatever was typed */
+  svcLines(sw, L);
   L.push("line con 0"); if (sw.con.timeout) L.push(" exec-timeout " + sw.con.timeout[0] + " " + sw.con.timeout[1]); if (sw.con.password) L.push(" password " + pw(sw.con.password)); if (sw.con.login) L.push(sw.con.login === "local" ? " login local" : " login");
   L.push("line vty 0 15"); if (sw.vty.acl) L.push(" access-class " + sw.vty.acl + " in"); if (sw.vty.timeout) L.push(" exec-timeout " + sw.vty.timeout[0] + " " + sw.vty.timeout[1]); if (sw.vty.password) L.push(" password " + pw(sw.vty.password)); if (sw.vty.login) L.push(sw.vty.login === "local" ? " login local" : " login"); L.push(" transport input " + sw.vty.transport);
   L.push("!", "end");
@@ -1040,7 +1128,8 @@ export function exec(S, raw) {
     else { const keep = []; let on = false; out.forEach(function (l) { if (/^\S/.test(l)) on = re.test(l); if (on) keep.push(l); }); out = keep; }
     return ask(S, out);
   }
-  const r = run(S, raw);
+  const was = S.mode, r = run(S, raw);
+  if (CFG_MODE(was) && S.mode === "priv") devLog(S, 5, "SYS-5-CONFIG_I", "Configured from console by " + (S.via === "console" ? "console" : "vty0"));
   return ask(S, r.lines);
 }
 /* a command that asks a question (a password, a confirmation) ends with it: it becomes the prompt */

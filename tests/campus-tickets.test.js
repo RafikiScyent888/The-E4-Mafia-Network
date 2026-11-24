@@ -517,6 +517,76 @@ test("CP-06: the brief and every hint never name the right answer, a password, a
   }
 });
 
+/* ---------------------------------------------------------------- CP-07 */
+const CP07 = CAMPUS_TICKETS.find((d) => d.id === "CP-07");
+const onDx = (T, which, lines, save) => { const v = T.v, f = on("sd1"); return [f("ssh " + v.plan.user + "@" + v.plan.sw[which].ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("configure terminal")].concat(lines.map(f), [f("end")], save === false ? [] : [f("copy running-config startup-config"), f("")], [f("exit")]); };
+const ends7 = (T) => (T.v.kind === "passive" ? ["dist1", "dist2"] : [T.v.side]);
+const fix7 = (T) => ends7(T).flatMap((d) => onDx(T, d, ["interface range gi0/21 - 22", "channel-group 1 mode active"]));
+const proof7 = (T) => { const v = T.v, f = on("sd1"); return [f("ssh " + v.plan.user + "@" + v.plan.sw.dist1.ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("show etherchannel summary"), f("exit")]; };
+
+test("CP-07: the fault shows in the commands: the bundle not formed at one end or both, the links standing alone and connected, the channel-group lines changed; nobody offline", () => {
+  for (const s of seedsOf(CP07)) {
+    const T = E.open(CP07, s), v = T.v, f = on("sd1");
+    assert.ok(CP07.exhibits(T.sim, v), s + " exhibits");
+    const sum = {}; for (const d of ["dist1", "dist2"]) sum[d] = out(T, [f("ssh " + v.plan.user + "@" + v.plan.sw[d].ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("show etherchannel summary"), f("show interfaces status"), f("show running-config"), f("exit")]);
+    if (v.kind === "passive") for (const d of ["dist1", "dist2"]) { assert.match(sum[d], /Po1\(SD\)\s+LACP\s+Gi0\/21\(I\)\s+Gi0\/22\(I\)/, s + " " + d); assert.match(sum[d], /channel-group 1 mode passive/); }
+    else { const other = v.side === "dist1" ? "dist2" : "dist1"; assert.match(sum[v.side], /Po1\(SU\)\s+-\s+Gi0\/21\(P\)\s+Gi0\/22\(P\)/); assert.match(sum[v.side], /channel-group 1 mode on/); assert.match(sum[other], /Po1\(SD\)\s+LACP\s+Gi0\/21\(I\)\s+Gi0\/22\(I\)/); }
+    for (const d of ["dist1", "dist2"]) { assert.match(sum[d], /^Gi0\/21\s.*connected/m); assert.match(sum[d], /^Gi0\/22\s.*connected/m); }
+    assert.equal(T.fixed, false); assert.equal(T.proven, false);
+    for (const id of ["ec", "run", "stat"]) assert.ok(T.evidence.some((e) => e.id === id), s + " the notebook took " + id);
+    assert.equal(T.opts.length, 6); assert.equal(T.opts.filter((o) => o.right).length, 1); assert.ok(T.opts.filter((o) => !o.right).every((o) => o.why && o.why.length > 30));
+    assert.ok(T.opts.some((o) => !o.right && o.id === (v.kind === "passive" ? "on" : "passive")), s + " the other cause is a near miss");
+    const S = CP07.summary(v); assert.ok(S.cause.length > 80 && S.fix.length > 60);
+  }
+});
+
+test("CP-07: the changed ends back to active, saved, fix it; show etherchannel summary proves it, and a right diagnosis solves it", () => {
+  for (const s of seedsOf(CP07)) {
+    const T = E.open(CP07, s);
+    for (const a of fix7(T)) E.act(T, a); assert.equal(T.fixed, true, s + " fixed");
+    for (const a of proof7(T)) E.act(T, a); assert.equal(T.proven, true, s + " proven");
+    E.guess(T, T.opts.find((o) => o.right).id); assert.equal(T.solved, true);
+  }
+});
+
+test("CP-07: the tempting wrong fixes don't: one end only (passive), both ends forced on, the forced end only set to passive, the fix unsaved, a link bounced", () => {
+  for (const s of seedsOf(CP07)) {
+    const open = () => E.open(CP07, s);
+    let T = open();
+    if (T.v.kind === "passive") { for (const a of onDx(T, "dist1", ["interface range gi0/21 - 22", "channel-group 1 mode active"])) E.act(T, a); assert.equal(T.fixed, false, s + " one end only"); for (const a of proof7(T)) E.act(T, a); assert.equal(T.proven, false); assert.match(T.partial || "", /One end still only waits/); }
+    else { for (const a of onDx(T, T.v.side, ["interface range gi0/21 - 22", "channel-group 1 mode passive"])) E.act(T, a); assert.equal(T.fixed, false, s + " the forced end set to passive"); for (const a of proof7(T)) E.act(T, a); assert.match(T.partial || "", /One end still only waits/); }
+    T = open(); for (const d of ["dist1", "dist2"]) for (const a of onDx(T, d, ["interface range gi0/21 - 22", "channel-group 1 mode on"])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " both forced on");
+    T = open(); for (const a of ends7(T).flatMap((d) => onDx(T, d, ["interface range gi0/21 - 22", "channel-group 1 mode active"], false))) E.act(T, a);
+    assert.equal(T.fixed, false, s + " unsaved"); for (const a of proof7(T)) E.act(T, a); assert.match(T.partial || "", /hasn't saved its change/);
+    T = open(); for (const a of onDx(T, "dist1", ["interface gi0/22", "shutdown", "no shutdown"])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " a link bounced"); assert.ok(CP07.exhibits(T.sim, T.v));
+  }
+});
+
+test("CP-07: the ladder climbs, and a saved ticket replays exactly", () => {
+  const T = E.open(CP07, seedsOf(CP07)[0]), wrongs = T.opts.filter((o) => !o.right).map((o) => o.id);
+  assert.equal(E.guess(T, wrongs[0]).rung, 0); assert.equal(E.guess(T, wrongs[1]).rung, 0); assert.equal(E.guess(T, wrongs[2]).rung, 1); assert.equal(E.guess(T, wrongs[3]).rung, 2);
+  E.resetBoard(T); assert.equal(E.guess(T, wrongs[4]).rung, 3); assert.equal(E.live(T).length, 2); assert.ok(E.live(T).some((o) => o.right));
+  const U = E.open(CP07, seedsOf(CP07, 1)[0]);
+  for (const a of fix7(U).concat(proof7(U))) E.act(U, a);
+  const R = E.restore(CP07, JSON.parse(JSON.stringify(E.save(U))));
+  assert.equal(R.fixed, U.fixed); assert.deepEqual(R.evidence, U.evidence); assert.equal(R.proven, U.proven); assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
+});
+
+test("CP-07: the brief and every hint never name the right answer, a password or the fix's command", () => {
+  for (const s of seedsOf(CP07)) {
+    const T = E.open(CP07, s), right = T.opts.find((o) => o.right).text.toLowerCase(), p = T.v.plan;
+    const texts = [CP07.rung1(T.v, T.sim), CP07.rung2(T.v, T.sim), ...CP07.fixHints(T.v, T.sim), CP07.brief(T.v, T.sim).quote, CP07.mason].map((x) => x.toLowerCase());
+    for (const x of texts) {
+      assert.ok(x.indexOf(right) < 0, x);
+      for (const bad of [p.secret, p.console, p.userPw, p.srv.pw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, "names a password: " + x);
+      for (const bad of ["channel-group", "mode active", "mode passive", "mode on", "copy running-config"]) assert.ok(x.indexOf(bad) < 0, "names " + bad + ": " + x);
+    }
+    for (const x of [CP07.brief(T.v, T.sim).quote, CP07.mason].map((y) => y.toLowerCase())) for (const bad of ["passive", "lacp", "forced"]) assert.ok(x.indexOf(bad) < 0, "the brief or Mason's opener names " + bad + ": " + x);
+  }
+});
+
 /* every campus ticket shows its fault on the campus it was asked for, in every variant: a ticket moves to another campus when its fault
    doesn't show, so a rule that stopped one variant showing would otherwise go unnoticed (the tests would just meet the other variants) */
 for (const def of CAMPUS_TICKETS) test(def.id + ": the fault shows on every campus asked for, every variant (no campus skipped)", () => {

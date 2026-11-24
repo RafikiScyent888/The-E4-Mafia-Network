@@ -9,7 +9,7 @@
 import { CAMPUS_JOBS } from "../build/campus.js";
 import { online } from "../build/jobs.js";
 import { coreLinks } from "../net/campus.js";
-import { dotMac } from "../net/swcli.js";
+import { dotMac, chanState } from "../net/swcli.js";
 import { rng, hash } from "../net/util.js";
 import { exec } from "../net/cmd.js";
 
@@ -446,5 +446,64 @@ const CP06 = {
   }
 };
 
-export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06];
+/* ---------------------------------------------------------------- CP-07 */
+/* The bundle between the distribution switches (CP-J3: gi0/21 and gi0/22 at each end, LACP active at both) flagged by the monitoring
+   after the contractor's "standardising". Either both ends went to passive (two passive ends never start LACP: each port stands alone,
+   Po1 down at both, spanning tree blocking one of the two links), or one end was forced to "on", which bundles without LACP while the
+   other end, still active, hears no LACP and stands alone (Po1 up at one end, down at the other). Nothing is down for the desks. */
+const CP07_SIDE = { dist1: "distribution switch 1", dist2: "distribution switch 2" };
+const chanModes = function (sim, id, saved) { const sw = sim.d[id].sw, w = saved ? sw.startup : sw; return ["GigabitEthernet0/21", "GigabitEthernet0/22"].map(function (n) { const p = w && w.ports[n]; return p && p.chan ? p.chan.mode : null; }); };
+const chanUp = function (sim, id) { const x = sim.d[id], sw = Object.assign({}, x.sw, { links: sim.switchLinks(id) }); return ["GigabitEthernet0/21", "GigabitEthernet0/22"].every(function (n) { return chanState(sw, n) === "P"; }); };
+const CP07 = {
+  id: "CP-07", n: "07", level: 4, tier: "common", title: "Monitoring flags the bundle between the distribution switches", priority: 3, due: "1 day",
+  kinds: ["passive", "on"],
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("CP-07:" + seed)), kind = r.pick(CP07.kinds), side = r.pick(["dist1", "dist2"]);
+    const set = function (id, mode) { const sw = sim.d[id].sw; [sw, sw.startup].forEach(function (w) { ["GigabitEthernet0/21", "GigabitEthernet0/22"].forEach(function (n) { w.ports[n].chan.mode = mode; }); }); };
+    if (kind === "passive") { set("dist1", "passive"); set("dist2", "passive"); } else set(side, "on");
+    sim.bump(); sim.relink(sim.links());
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, side: kind === "on" ? side : null, sideName: kind === "on" ? CP07_SIDE[side] : null, plan: p } };
+  },
+  brief(v) { return { quote: "The monitoring flagged the link between the two distribution switches this morning: \"Port-channel1 " + (v.kind === "passive" ? "down on both switches" : "down on " + CP07_SIDE[v.side === "dist1" ? "dist2" : "dist1"] + ", up on " + v.sideName) + "\". Nobody has noticed anything. Last night the network contractor was \"standardising the link settings\" on the distribution switches, and saved. The records have the two links between them bundled into one, both ends negotiating it." }; },
+  mason: "Two ends of one link have to agree. Ask each end what it thinks it's doing, then ask it about the other.",
+  affected: function () { return "dist1"; },
+  options(v) {
+    const pas = { id: "passive", text: "Both ends of the bundle wait for the other to start the negotiation, so neither does and each link stands alone", why: "show etherchannel summary on " + (v.side ? v.sideName : "distribution switch 1") + " shows no negotiation at all at that end: its ports are bundled by force. The other end, still negotiating, gets no answer." };
+    const on = { id: "on", text: "One end is forced into the bundle without negotiating, so the other end, still negotiating, hears nothing and stands alone", why: "show running-config at both ends has the bundle waiting for the other end to start the negotiation: neither is forced. Two waiting ends never start it, so neither end bundles." };
+    return [
+      { id: "right", right: true, text: v.kind === "passive" ? pas.text : on.text },
+      v.kind === "passive" ? on : pas,
+      { id: "cable", text: "One of the two links between the distribution switches is unplugged or broken", why: "show interfaces status at each end has gi0/21 and gi0/22 connected: both links are up. It's the bundle that hasn't formed." },
+      { id: "vlans", text: "The two links carry different VLANs, so one is suspended from the bundle", why: "A link suspended for mismatched settings shows (s) in show etherchannel summary; these show (I), standing alone, " + (v.kind === "on" ? "or (P) at the forced end, " : "") + "and show running-config gives both links the same trunk settings." },
+      { id: "speed", text: "One link runs at a different speed, and a bundle won't take mismatched members", why: "show interfaces status at both ends has both links at a-1000, full duplex: the same speed. A mismatched member would be suspended (s), not standing alone (I)." },
+      { id: "stp", text: "Spanning tree blocked the bundle because it saw a loop", why: "Spanning tree blocks one of the two separate links because there's no bundle; it doesn't stop a bundle forming. show etherchannel summary says why it hasn't: the negotiation." }
+    ];
+  },
+  rung1() { return "SSH to both distribution switches (the records have their addresses): show etherchannel summary on each, then show running-config for the two links at each end."; },
+  rung2() { return "A bundle that negotiates needs at least one end to start the negotiation: two ends that only wait never begin. And an end forced into the bundle doesn't negotiate at all, so an end that does hears nothing from it."; },
+  fixHints() { return ["Compare the two links' bundle lines at each end with what the records have: both ends negotiating, both starting it.", "Change only what was changed, on both links of the end (or ends) that differ.", "Save each switch you change. Then show etherchannel summary at both ends: the bundle up, both links in it."]; },
+  modesRight(sim, saved) { return ["dist1", "dist2"].every(function (id) { return chanModes(sim, id, saved).every(function (m) { return m === "active"; }); }); },
+  exhibits(sim, v) { return !CP07.modesRight(sim) && !(chanUp(sim, "dist1") && chanUp(sim, "dist2")) && ["sd1", "bn1", "mgr", "tr1"].every(function (d) { return online(sim, d); }); },
+  fixed(sim, v) { return CP07.modesRight(sim) && CP07.modesRight(sim, true) && chanUp(sim, "dist1") && chanUp(sim, "dist2") && ["sd1", "bn1", "mgr", "tr1"].every(function (d) { return online(sim, d); }); },
+  partial(v, sim) {
+    if (!CP07.modesRight(sim)) return "The bundle is up, but not as the records have it: both ends start the negotiation, so either can bring it back after the other restarts. " + (["dist1", "dist2"].some(function (id) { return chanModes(sim, id).some(function (m) { return m === "on"; }); }) ? "An end forced on doesn't negotiate at all, and a mismatch there goes unnoticed." : "One end still only waits.");
+    if (!CP07.modesRight(sim, true)) return "The bundle is up, but a distribution switch hasn't saved its change: after its next reload, the same.";
+    return "It works, but not the way the records have it.";
+  },
+  proves(f, sim, v) { return (f.on === "dist1" || f.on === "dist2") && /^1\s+Po1\(SU\)\s+LACP\s+Gi0\/21\(P\)\s+Gi0\/22\(P\)/m.test(devOut(f)); },
+  proofText: "show etherchannel summary: Po1 up and in use, negotiated, both links in it",
+  evidence: [
+    { id: "ec", test: function (f) { const o = devOut(f); return (f.on === "dist1" || f.on === "dist2") && /^1\s+Po1\(S[DU]\)/m.test(o) && !/^1\s+Po1\(SU\)\s+LACP\s+Gi0\/21\(P\)\s+Gi0\/22\(P\)/m.test(o); }, text: function (f) { return "show etherchannel summary on " + CP07_SIDE[f.on] + ": " + (devOut(f).match(/^1\s+Po1.*$/m) || [""])[0].replace(/\s+/g, " ").replace(/^1 /, ""); } },
+    { id: "run", test: function (f, v) { const o = devOut(f); return (f.on === "dist1" || f.on === "dist2") && /channel-group 1 mode (passive|on)/.test(o); }, text: function (f, v) { return "show running-config: the links' channel-group lines, " + (v.kind === "passive" ? "mode passive" : "mode on at one end"); } },
+    { id: "stat", test: function (f) { const o = devOut(f); return (f.on === "dist1" || f.on === "dist2") && /^Gi0\/21\s.*connected/m.test(o) && /^Gi0\/22\s.*connected/m.test(o); }, text: function () { return "show interfaces status: gi0/21 and gi0/22 both connected"; } }
+  ],
+  summary(v) {
+    return v.kind === "passive"
+      ? { cause: "The contractor's standardising set both ends of the bundle to LACP passive, and saved. A passive port answers LACP but never starts it, so with both ends waiting neither began: each link stood alone (I), Po1 was down at both ends, and spanning tree blocked one of the two links.", fix: "On both distribution switches, interface range gi0/21 - 22: channel-group 1 mode active, as the records have it, then saved. LACP came up and both links joined Po1 at each end." }
+      : { cause: "The contractor's standardising forced " + v.sideName + "'s end of the bundle on, without LACP, and saved. That end bundled its links by force; the other end, still running LACP active, heard no LACP back and left each link standing alone (I). A forced end also can't notice a mismatch, which is why the records have both ends negotiating.", fix: "On " + v.sideName + ", interface range gi0/21 - 22: channel-group 1 mode active, as the records have it, then saved. LACP came up and both links joined Po1 at each end." };
+  }
+};
+
+export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07];
 export const CAMPUS_COMING = [];

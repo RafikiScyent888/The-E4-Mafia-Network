@@ -1062,6 +1062,22 @@ Object.assign(PLAN, {
     wrong: async (p, v) => { await cp07Conf(p, v, v.side, ["interface " + (v.sus8 || "?").toLowerCase(), "shutdown", "no shutdown"]); },   /* bounced: still suspended */
     fix: async (p, v) => { await cp07Conf(p, v, v.side, ["interface " + (v.sus8 || "?").toLowerCase(), v.fix8 || "?"]); },
     proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await cp04Login(p, v, v.side); await type(p, "show etherchannel summary"); await type(p, "exit"); }
+  },
+  "CP-09": {
+    look: async (p, v) => {
+      const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "CP-09's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(60);
+      const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "CP-09's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+      await dysClear(p, "CP-09"); await planBothFonts(p, "CP-09");
+      await cp04Login(p, v, "dist1"); for (const l of ["show ip ospf neighbor", "show ip protocols", "show running-config"]) await type(p, l);
+      const o = (await term(p)).split("show ip ospf neighbor").pop(); await type(p, "exit");
+      const mtuIf = (o.match(/interface (GigabitEthernet0\/\d+)\n(?:(?!!)[^\n]*\n)*? ip mtu \d+/) || [])[1], rid = /^ router-id \S+/m.test(o);
+      v.fix9 = mtuIf ? ["interface " + mtuIf.replace("GigabitEthernet", "gi"), "no ip mtu"] : rid ? ["router ospf 1", "no router-id"] : null;
+      check(!!v.fix9 && (v.kind === "mtu" ? /EXSTART/.test(o) && mtuIf === v.port : (o.match(/FULL/g) || []).length === 1), "CP-09 " + v.kind + ": over SSH, distribution switch 1 shows the neighbour not FULL and the line added (" + (v.fix9 || []).join("; ") + ")");
+    },
+    wrong: async (p, v) => { await cp07Conf(p, v, "dist1", ["interface " + v.short.toLowerCase(), "shutdown", "no shutdown"]); },   /* bounced: the same again */
+    fix: async (p, v) => { await cp07Conf(p, v, "dist1", v.fix9 || ["?"]); },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await cp04Login(p, v, "dist1"); await type(p, "show ip ospf neighbor"); await type(p, "exit"); }
   }
 });
 

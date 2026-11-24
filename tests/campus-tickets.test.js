@@ -656,6 +656,71 @@ test("CP-08: the brief and every hint never name the right answer, a password, a
   }
 });
 
+/* ---------------------------------------------------------------- CP-09 */
+const CP09 = CAMPUS_TICKETS.find((d) => d.id === "CP-09");
+const fix9 = (T) => onDx(T, "dist1", T.v.kind === "mtu" ? ["interface " + T.v.short.toLowerCase(), "no ip mtu"] : ["router ospf 1", "no router-id"]);
+const proof9 = (T) => { const v = T.v, f = on("sd1"); return [f("ssh " + v.plan.user + "@" + v.plan.sw.dist1.ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("show ip ospf neighbor"), f("exit")]; };
+
+test("CP-09: the fault shows in the commands: one core switch not FULL on distribution switch 1 (EXSTART, or missing), the added line in its configuration; nobody offline", () => {
+  for (const s of seedsOf(CP09)) {
+    const T = E.open(CP09, s), v = T.v, f = on("sd1");
+    assert.ok(CP09.exhibits(T.sim, v), s + " exhibits");
+    const o = out(T, [f("ssh " + v.plan.user + "@" + v.plan.sw.dist1.ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("show ip ospf neighbor"), f("show ip protocols"), f("show running-config"), f("exit")]);
+    if (v.kind === "mtu") { assert.match(o, new RegExp("EXSTART\\S*\\s+\\S+\\s+\\S+\\s+" + v.port)); assert.match(o, new RegExp("ip mtu " + v.mtu)); }
+    else { assert.equal((o.match(/FULL/g) || []).length, 1, s + " one FULL"); assert.match(o, new RegExp("Router ID " + v.coreRid.replace(/\./g, "\\."))); }
+    assert.equal(T.fixed, false); assert.equal(T.proven, false);
+    for (const id of ["nbr", "run", "proto"]) assert.ok(T.evidence.some((e) => e.id === id), s + " the notebook took " + id);
+    assert.equal(T.opts.length, 6); assert.equal(T.opts.filter((o) => o.right).length, 1); assert.ok(T.opts.filter((o) => !o.right).every((o) => o.why && o.why.length > 30));
+    assert.ok(T.opts.some((o) => !o.right && o.id === (v.kind === "mtu" ? "rid" : "mtu")), s + " the other cause is a near miss");
+    const S = CP09.summary(v); assert.ok(S.cause.length > 80 && S.fix.length > 60);
+  }
+});
+
+test("CP-09: the contractor's line taken off, saved, fixes it; show ip ospf neighbor proves it, and a right diagnosis solves it", () => {
+  for (const s of seedsOf(CP09)) {
+    const T = E.open(CP09, s);
+    for (const a of fix9(T)) E.act(T, a); assert.equal(T.fixed, true, s + " fixed");
+    for (const a of proof9(T)) E.act(T, a); assert.equal(T.proven, true, s + " proven");
+    E.guess(T, T.opts.find((o) => o.right).id); assert.equal(T.solved, true);
+  }
+});
+
+test("CP-09: the tempting wrong fixes don't: the other uplink matched to it, a different router ID typed, the uplink bounced, the fix unsaved", () => {
+  for (const s of seedsOf(CP09)) {
+    const open = () => E.open(CP09, s);
+    let T = open();
+    if (T.v.kind === "mtu") { const other = T.v.port === "GigabitEthernet0/19" ? "gi0/20" : "gi0/19"; for (const a of onDx(T, "dist1", ["interface " + other, "ip mtu " + T.v.mtu])) E.act(T, a); assert.equal(T.fixed, false, s + " the other uplink lowered too"); }
+    else { for (const a of onDx(T, "dist1", ["router ospf 1", "router-id 10.255.255.1"])) E.act(T, a); assert.equal(T.fixed, false, s + " another router ID typed"); for (const a of proof9(T)) E.act(T, a); assert.equal(T.proven, false); assert.match(T.partial || "", /isn't as the records have it/, s + " both FULL, and Mason says why it isn't the fix"); }
+    T = open(); for (const a of onDx(T, "dist1", ["interface " + T.v.short.toLowerCase(), "shutdown", "no shutdown"])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the uplink bounced"); assert.ok(CP09.exhibits(T.sim, T.v));
+    T = open(); for (const a of onDx(T, "dist1", T.v.kind === "mtu" ? ["interface " + T.v.short.toLowerCase(), "no ip mtu"] : ["router ospf 1", "no router-id"], false)) E.act(T, a);
+    assert.equal(T.fixed, false, s + " unsaved"); for (const a of proof9(T)) E.act(T, a); assert.match(T.partial || "", /hasn't saved it/);
+  }
+});
+
+test("CP-09: the ladder climbs, and a saved ticket replays exactly", () => {
+  const T = E.open(CP09, seedsOf(CP09)[0]), wrongs = T.opts.filter((o) => !o.right).map((o) => o.id);
+  assert.equal(E.guess(T, wrongs[0]).rung, 0); assert.equal(E.guess(T, wrongs[1]).rung, 0); assert.equal(E.guess(T, wrongs[2]).rung, 1); assert.equal(E.guess(T, wrongs[3]).rung, 2);
+  E.resetBoard(T); assert.equal(E.guess(T, wrongs[4]).rung, 3); assert.equal(E.live(T).length, 2); assert.ok(E.live(T).some((o) => o.right));
+  const U = E.open(CP09, seedsOf(CP09, 1)[0]);
+  for (const a of fix9(U).concat(proof9(U))) E.act(U, a);
+  const R = E.restore(CP09, JSON.parse(JSON.stringify(E.save(U))));
+  assert.equal(R.fixed, U.fixed); assert.deepEqual(R.evidence, U.evidence); assert.equal(R.proven, U.proven); assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
+});
+
+test("CP-09: the brief and every hint never name the right answer, a password or the fix's command", () => {
+  for (const s of seedsOf(CP09)) {
+    const T = E.open(CP09, s), right = T.opts.find((o) => o.right).text.toLowerCase(), p = T.v.plan;
+    const texts = [CP09.rung1(T.v, T.sim), CP09.rung2(T.v, T.sim), ...CP09.fixHints(T.v, T.sim), CP09.brief(T.v, T.sim).quote, CP09.mason].map((x) => x.toLowerCase());
+    for (const x of texts) {
+      assert.ok(x.indexOf(right) < 0, x);
+      for (const bad of [p.secret, p.console, p.userPw, p.srv.pw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, "names a password: " + x);
+      for (const bad of ["ip mtu", "router-id", "copy running-config", T.v.coreRid]) assert.ok(x.indexOf(bad) < 0, "names " + bad + ": " + x);
+    }
+    for (const x of [CP09.brief(T.v, T.sim).quote, CP09.mason].map((y) => y.toLowerCase())) for (const bad of ["mtu", "router id"]) assert.ok(x.indexOf(bad) < 0, "the brief or Mason's opener names " + bad + ": " + x);
+  }
+});
+
 /* every campus ticket shows its fault on the campus it was asked for, in every variant: a ticket moves to another campus when its fault
    doesn't show, so a rule that stopped one variant showing would otherwise go unnoticed (the tests would just meet the other variants) */
 for (const def of CAMPUS_TICKETS) test(def.id + ": the fault shows on every campus asked for, every variant (no campus skipped)", () => {

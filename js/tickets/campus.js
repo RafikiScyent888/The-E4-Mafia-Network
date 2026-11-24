@@ -562,5 +562,65 @@ const CP08 = {
   }
 };
 
-export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07, CP08];
+/* ---------------------------------------------------------------- CP-09 */
+/* One of distribution switch 1's two OSPF neighbours (the core switches, one on each uplink, CP-J5) not FULL, flagged by the
+   monitoring. Nothing is down: the other uplink carries everything. Either the contractor, testing for a VPN, lowered one uplink's IP
+   MTU (the two ends' MTUs differ, so the pair never gets past exchanging their databases: EXSTART), or a router ID was set on
+   distribution switch 1 from a configuration copied off core switch 1 (two routers with one ID never become neighbours). Saved. */
+const CP09_UP = { "GigabitEthernet0/19": "core1", "GigabitEthernet0/20": "core2" };
+const ospfNbr = function (sim, core) { const L = sim.ospfLive("dist1"), c = sim.ospfLive(core); return ((L && L.nbrs) || []).find(function (q) { return q.rid === (c && c.rid); }) || null; };
+const CP09 = {
+  id: "CP-09", n: "09", level: 4, tier: "common", title: "An OSPF neighbour on distribution switch 1 not coming up", priority: 3, due: "1 day",
+  kinds: ["mtu", "rid"],
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("CP-09:" + seed)), kind = r.pick(CP09.kinds), port = kind === "rid" ? "GigabitEthernet0/19" : r.pick(["GigabitEthernet0/19", "GigabitEthernet0/20"]), core = CP09_UP[port];
+    const mtu = r.pick([1400, 1476, 1492]), sw = sim.d.dist1.sw, coreRid = sim.ospfLive("core1").rid;
+    [sw, sw.startup].forEach(function (w) { if (kind === "mtu") w.ports[port].mtu = mtu; else w.ospf.rid = coreRid; });
+    sim.bump(); sim.relink(sim.links());
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, port: port, short: port.replace("GigabitEthernet", "Gi"), core: core, coreName: core === "core1" ? "core switch 1" : "core switch 2", mtu: kind === "mtu" ? mtu : null, coreRid: coreRid } };
+  },
+  brief(v) { return { quote: v.kind === "mtu"
+    ? "The monitoring flagged distribution switch 1 this morning: \"OSPF neighbour " + v.coreName + ": state EXSTART for 14 hours\". Nothing is down, and nobody has noticed. Yesterday the network contractor was on distribution switch 1 testing settings for next month's VPN to the branch, and saved before he left."
+    : "The monitoring flagged distribution switch 1 this morning: \"OSPF neighbour " + v.coreName + ": lost\". Nothing is down, and nobody has noticed. Yesterday the network contractor tidied distribution switch 1's routing settings, copying a few lines across from the core switches' configurations \"to keep them consistent\", and saved." }; },
+  mason: "A neighbour that won't come up has a reason it can't agree with you. Look at what each end says about itself on that link.",
+  affected: function () { return "dist1"; },
+  options(v) {
+    const mtu = { id: "mtu", text: "The two ends of that link have different IP MTUs, so the pair can't finish exchanging their databases", why: "show running-config on distribution switch 1 has no ip mtu on either uplink: both are at the default, like the core's. The pair isn't stuck exchanging databases; it never forms at all." };
+    const rid = { id: "rid", text: "Distribution switch 1 has the same router ID as " + v.coreName + ", so the two never become neighbours", why: "show ip protocols on distribution switch 1 gives a router ID no other router has. The neighbour gets as far as EXSTART, so they've agreed who's who; it's the database exchange that stalls." };
+    return [
+      { id: "right", right: true, text: v.kind === "mtu" ? mtu.text : rid.text },
+      v.kind === "mtu" ? rid : mtu,
+      { id: "link", text: "The uplink to " + v.coreName + " is down", why: "show ip interface brief on distribution switch 1 has " + v.short + " up and up, and a ping to " + v.coreName + "'s end of the link answers." },
+      { id: "passive", text: "OSPF is set passive on distribution switch 1's uplink to " + v.coreName, why: "show ip protocols on distribution switch 1 lists every interface passive but the two uplinks, as the records have it: both uplinks send hellos." },
+      { id: "area", text: "That uplink is in a different OSPF area from " + v.coreName + "'s end", why: "show ip ospf interface brief on distribution switch 1 has both uplinks in area 0, and so does its network statement: one area, as the records have it." },
+      { id: "cost", text: "The uplink's OSPF cost was raised, so " + v.coreName + " is no longer used", why: "A cost decides which path routes use; it doesn't stop a neighbour forming. show ip ospf interface brief has both uplinks at the same cost, and the neighbour itself is what's missing." }
+    ];
+  },
+  rung1(v) { return "SSH to distribution switch 1 (the records have its address): show ip ospf neighbor, show ip protocols, show ip ospf interface brief, then show running-config for its two uplinks. Compare the uplink to " + v.coreName + " with the other one."; },
+  rung2() { return "Two routers become OSPF neighbours only if they agree: the same area, subnet and mask on the link, different router IDs, and, to finish exchanging their databases, the same largest packet size (MTU) at both ends."; },
+  fixHints(v) { return ["Put the two uplinks' lines side by side in show running-config, and read show ip protocols: what differs from the records, and from the other uplink?", "Take off what the contractor added that the records don't have; the core switches need nothing.", "Save it. Then show ip ospf neighbor on distribution switch 1: both core switches FULL."]; },
+  d1Right(sim, v, saved) { const sw = sim.d.dist1.sw, w = saved ? sw.startup : sw; return !w.ports["GigabitEthernet0/19"].mtu && !w.ports["GigabitEthernet0/20"].mtu && !w.ospf.rid; },
+  exhibits(sim, v) { const q = ospfNbr(sim, v.core); return !CP09.d1Right(sim, v) && (!q || !/^FULL/.test(q.state)) && ["sd1", "bn1", "mgr", "tr1", "cl1"].every(function (d) { return online(sim, d); }); },
+  fixed(sim, v) { return CP09.d1Right(sim, v) && CP09.d1Right(sim, v, true) && ["core1", "core2"].every(function (c) { const q = ospfNbr(sim, c); return !!q && /^FULL/.test(q.state); }) && ["sd1", "bn1", "mgr", "tr1", "cl1"].every(function (d) { return online(sim, d); }); },
+  partial(v, sim) {
+    if (!CP09.d1Right(sim, v)) return "Both neighbours are FULL, but distribution switch 1 isn't as the records have it: they keep every uplink at the default MTU and let each router pick its own ID. Whatever was set to get there will catch someone out later.";
+    if (!CP09.d1Right(sim, v, true)) return "Both neighbours are FULL, but distribution switch 1 hasn't saved it: after its next reload, the same.";
+    return "It works, but not the way the records have it.";
+  },
+  proves(f, sim, v) { const o = devOut(f); return f.on === "dist1" && /Neighbor ID\s+Pri\s+State/.test(o) && (o.match(/FULL/g) || []).length >= 2 && !/EXSTART/.test(o); },
+  proofText: "show ip ospf neighbor on distribution switch 1: both core switches FULL",
+  evidence: [
+    { id: "nbr", test: function (f, v) { const o = devOut(f); return f.on === "dist1" && /Neighbor ID\s+Pri\s+State/.test(o) && (v.kind === "mtu" ? /EXSTART/.test(o) : (o.match(/FULL/g) || []).length === 1); }, text: function (f, v) { return v.kind === "mtu" ? "show ip ospf neighbor on distribution switch 1: " + v.coreName + " stuck in EXSTART" : "show ip ospf neighbor on distribution switch 1: one core switch FULL, " + v.coreName + " missing"; } },
+    { id: "run", test: function (f, v) { const o = devOut(f); return f.on === "dist1" && (v.kind === "mtu" ? new RegExp("ip mtu " + v.mtu + "\\b").test(o) : new RegExp("router-id " + v.coreRid.replace(/\./g, "\\.")).test(o)); }, text: function (f, v) { return v.kind === "mtu" ? "show running-config on distribution switch 1: ip mtu " + v.mtu + " on " + v.short : "show running-config on distribution switch 1: router-id " + v.coreRid + " under router ospf 1"; } },
+    { id: "proto", test: function (f, v) { return f.on === "dist1" && new RegExp("Router ID " + (v.kind === "rid" ? v.coreRid.replace(/\./g, "\\.") : "\\S+")).test(devOut(f)) && /Routing Protocol is "ospf/.test(devOut(f)); }, text: function (f, v) { return "show ip protocols on distribution switch 1: its router ID" + (v.kind === "rid" ? ", " + v.coreRid + ", " + v.coreName + "'s own" : ""); } }
+  ],
+  summary(v) {
+    return v.kind === "mtu"
+      ? { cause: "Testing for next month's VPN, the contractor set ip mtu " + v.mtu + " on distribution switch 1's uplink to " + v.coreName + " and saved. OSPF checks the MTU while two routers exchange their databases: with 1500 at the core's end and " + v.mtu + " at this end they never got past it, stuck in EXSTART, and that link carried no routes.", fix: "On distribution switch 1, interface " + v.short + ": no ip mtu, back to the default like the core's end, then saved. The neighbour came up FULL." }
+      : { cause: "Copying lines across from the core switches' configurations, the contractor gave distribution switch 1 router-id " + v.coreRid + ", core switch 1's own, and saved. Two OSPF routers with the same ID never become neighbours, so that uplink carried no routes.", fix: "On distribution switch 1, under router ospf 1: no router-id, so it picks its own again, then saved. The neighbour came up FULL." };
+  }
+};
+
+export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07, CP08, CP09];
 export const CAMPUS_COMING = [];

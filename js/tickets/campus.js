@@ -453,6 +453,8 @@ const CP06 = {
    other end, still active, hears no LACP and stands alone (Po1 up at one end, down at the other). Nothing is down for the desks. */
 const CP07_SIDE = { dist1: "distribution switch 1", dist2: "distribution switch 2" };
 const chanModes = function (sim, id, saved) { const sw = sim.d[id].sw, w = saved ? sw.startup : sw; return ["GigabitEthernet0/21", "GigabitEthernet0/22"].map(function (n) { const p = w && w.ports[n]; return p && p.chan ? p.chan.mode : null; }); };
+const PORT_DEFAULTS = { mode: "dynamic auto", access: 1, native: 1, allowed: "all", nonegotiate: false };   /* a switch port as it comes from the box (swcli's PORT_VLAN) */
+const chanStateOf = function (sim, id, n) { const x = sim.d[id], sw = Object.assign({}, x.sw, { links: sim.switchLinks(id) }); return chanState(sw, n); };
 const chanUp = function (sim, id) { const x = sim.d[id], sw = Object.assign({}, x.sw, { links: sim.switchLinks(id) }); return ["GigabitEthernet0/21", "GigabitEthernet0/22"].every(function (n) { return chanState(sw, n) === "P"; }); };
 const CP07 = {
   id: "CP-07", n: "07", level: 4, tier: "common", title: "Monitoring flags the bundle between the distribution switches", priority: 3, due: "1 day",
@@ -505,5 +507,60 @@ const CP07 = {
   }
 };
 
-export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07];
+/* ---------------------------------------------------------------- CP-08 */
+/* One link of the bundle between the distribution switches suspended: chasing something else, someone changed a trunk setting on one
+   member port by itself, and saved. A member has to match its port-channel's trunk settings, so that link is suspended (s): the
+   bundle stays up on the other link alone, at half its speed. Either a VLAN taken off the one link's allowed list, or its native VLAN
+   taken back to the default. */
+const CP08 = {
+  id: "CP-08", n: "08", level: 4, tier: "common", title: "The bundle between the distribution switches running on one link", priority: 3, due: "1 day",
+  kinds: ["vlan", "native"],
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("CP-08:" + seed)), kind = r.pick(CP08.kinds), side = r.pick(["dist1", "dist2"]), n = r.pick(["GigabitEthernet0/21", "GigabitEthernet0/22"]);
+    const sw = sim.d[side].sw, pc = JSON.stringify([sim.d.dist1.sw.pcs, sim.d.dist2.sw.pcs]);
+    const drop = r.pick([p.backup.id, p.vlans.printers.id, p.train.id]);
+    [sw, sw.startup].forEach(function (w) { const q = w.ports[n]; if (kind === "vlan") q.allowed = q.allowed.filter(function (x) { return x !== drop; }); else q.native = 1; });
+    sim.bump(); sim.relink(sim.links());
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, side: side, sideName: CP07_SIDE[side], port: n, short: n.replace("GigabitEthernet", "Gi"), drop: kind === "vlan" ? drop : null, pc: pc } };
+  },
+  brief(v) { return { quote: "The monitoring flagged the link between the two distribution switches this morning: \"Port-channel1 bandwidth halved on " + v.sideName + "\". Nothing is down, and nobody has noticed. Yesterday the network contractor was chasing a slow transfer between the floors and \"tried a few things\" on the distribution switches; he says he put everything back, and saved." }; },
+  mason: "A bundle is only as good as its members agreeing. Find the one that doesn't, then find what it disagrees about.",
+  affected: function (v) { return v.side; },
+  options(v) {
+    const vl = { id: "vlan", text: "One link of the bundle carries a different list of VLANs from the bundle, so it's suspended from it", why: "show running-config has both links' allowed VLANs the same as the port-channel's. What differs on the suspended link is its native VLAN." };
+    const nat = { id: "native", text: "One link of the bundle has a different native VLAN from the bundle, so it's suspended from it", why: "show running-config has both links' native VLAN the same as the port-channel's. What differs on the suspended link is the VLANs it's allowed to carry." };
+    return [
+      { id: "right", right: true, text: v.kind === "vlan" ? vl.text : nat.text },
+      v.kind === "vlan" ? nat : vl,
+      { id: "cable", text: "One of the two links is unplugged or broken", why: "show interfaces status on " + v.sideName + " has both links connected: a dead link shows notconnect, and show etherchannel summary would mark it down (D), not suspended (s)." },
+      { id: "negotiate", text: "One end stopped negotiating the bundle, so both links stand alone", why: "show etherchannel summary on " + v.sideName + " has the bundle up (SU) with one link in it (P): negotiation works. The other link is suspended (s), which is about its settings, not the negotiation." },
+      { id: "speed", text: "One link runs at 100 Mb/s, and the bundle won't take a slower member", why: "show interfaces status has both links at a-1000, full duplex: the same speed." },
+      { id: "stp", text: "Spanning tree blocked one of the two links because it saw a loop", why: "Spanning tree sees the bundle as one port, Po1, and shows it forwarding. A link inside a bundle is never blocked on its own; the suspended one was taken out of the bundle for its settings." }
+    ];
+  },
+  rung1(v) { return "SSH to " + v.sideName + " (the records have its address): show etherchannel summary, then show running-config for the port-channel and for each of its links."; },
+  rung2() { return "A link joins a bundle only if its trunk settings match the port-channel's exactly: its mode, its native VLAN, the VLANs it's allowed to carry. One that differs is suspended, and the bundle runs without it."; },
+  fixHints(v) { return ["Put the suspended link's trunk lines beside the port-channel's: one line differs.", "Make the link match the port-channel, not the other way round: the port-channel is as the records have it.", "Save it. Then show etherchannel summary on " + v.sideName + ": both links in the bundle."]; },
+  memberRight(sim, v, saved) { const sw = sim.d[v.side].sw, w = saved ? sw.startup : sw, q = w.ports[v.port], pc = w.pcs[1], val = function (o, k) { return JSON.stringify(o[k] === undefined ? PORT_DEFAULTS[k] : o[k]); }; return ["mode", "native", "allowed"].every(function (k) { return val(q, k) === val(pc, k); }); },
+  exhibits(sim, v) { return !CP08.memberRight(sim, v) && chanStateOf(sim, v.side, v.port) === "s" && ["sd1", "bn1", "mgr", "tr1"].every(function (d) { return online(sim, d); }); },
+  fixed(sim, v) { return CP08.memberRight(sim, v) && CP08.memberRight(sim, v, true) && JSON.stringify([sim.d.dist1.sw.pcs, sim.d.dist2.sw.pcs]) === v.pc && chanUp(sim, "dist1") && chanUp(sim, "dist2") && ["sd1", "bn1", "mgr", "tr1"].every(function (d) { return online(sim, d); }); },
+  partial(v, sim) {
+    if (JSON.stringify([sim.d.dist1.sw.pcs, sim.d.dist2.sw.pcs]) !== v.pc) return "Both links are in the bundle again, but the port-channel was changed to match the link: the records have the bundle as it was, and every VLAN and the native VLAN on it as before.";
+    if (!CP08.memberRight(sim, v, true)) return "Both links are in the bundle again, but " + v.sideName + " hasn't saved it: after its next reload the link is suspended again.";
+    return "It works, but not the way the records have it.";
+  },
+  proves(f, sim, v) { return f.on === v.side && /^1\s+Po1\(SU\)\s+LACP\s+Gi0\/21\(P\)\s+Gi0\/22\(P\)/m.test(devOut(f)); },
+  proofText: "show etherchannel summary on that switch: both links in the bundle",
+  evidence: [
+    { id: "ec", test: function (f, v) { return f.on === v.side && new RegExp(v.short.replace("/", "\\/") + "\\(s\\)").test(devOut(f)); }, text: function (f, v) { return "show etherchannel summary on " + v.sideName + ": " + v.short + " suspended (s), the bundle up on the other link"; } },
+    { id: "run", test: function (f, v) { const o = devOut(f); return f.on === v.side && new RegExp("interface " + v.port + "\\b").test(o) && /interface Port-channel1\b/.test(o); }, text: function (f, v) { return "show running-config on " + v.sideName + ": " + v.short + "'s trunk lines against Port-channel1's"; } },
+    { id: "stat", test: function (f, v) { const o = devOut(f); return f.on === v.side && /^Gi0\/21\s.*connected/m.test(o) && /^Gi0\/22\s.*connected/m.test(o); }, text: function (f, v) { return "show interfaces status on " + v.sideName + ": both links connected"; } }
+  ],
+  summary(v) {
+    return { cause: "Chasing a slow transfer, the contractor changed " + v.short + " on " + v.sideName + " by itself, " + (v.kind === "vlan" ? "taking VLAN " + v.drop + " off its allowed list" : "taking its native VLAN back to the default, 1") + ", and saved. A link has to match its port-channel's trunk settings to stay in the bundle, so " + v.short + " was suspended and Po1 ran on the other link alone, at half its speed.", fix: "On " + v.sideName + ", interface " + v.short + ": " + (v.kind === "vlan" ? "switchport trunk allowed vlan add " + v.drop : "switchport trunk native vlan " + v.plan.vlans.native.id) + ", the same as Port-channel1, then saved. The link rejoined the bundle (P)." };
+  }
+};
+
+export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07, CP08];
 export const CAMPUS_COMING = [];

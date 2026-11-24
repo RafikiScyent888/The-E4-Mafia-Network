@@ -587,6 +587,75 @@ test("CP-07: the brief and every hint never name the right answer, a password or
   }
 });
 
+/* ---------------------------------------------------------------- CP-08 */
+const CP08 = CAMPUS_TICKETS.find((d) => d.id === "CP-08");
+const line8 = (T) => (T.v.kind === "vlan" ? "switchport trunk allowed vlan add " + T.v.drop : "switchport trunk native vlan " + T.v.plan.vlans.native.id);
+const fix8 = (T) => onDx(T, T.v.side, ["interface " + T.v.short.toLowerCase(), line8(T)]);
+const proof8 = (T) => { const v = T.v, f = on("sd1"); return [f("ssh " + v.plan.user + "@" + v.plan.sw[v.side].ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("show etherchannel summary"), f("exit")]; };
+
+test("CP-08: the fault shows in the commands: one link suspended, the bundle up on the other, both connected, the link's trunk line differing from the port-channel's; nobody offline", () => {
+  for (const s of seedsOf(CP08)) {
+    const T = E.open(CP08, s), v = T.v, f = on("sd1");
+    assert.ok(CP08.exhibits(T.sim, v), s + " exhibits");
+    const o = out(T, [f("ssh " + v.plan.user + "@" + v.plan.sw[v.side].ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("show etherchannel summary"), f("show interfaces status"), f("show running-config"), f("exit")]);
+    assert.match(o, new RegExp("Po1\\(SU\\)\\s+LACP\\s+.*" + v.short.replace("/", "\\/") + "\\(s\\)"), s + " the link suspended");
+    const blk = (o.split("interface " + v.port + "\n")[1] || "").split("!")[0];
+    assert.ok(v.kind === "vlan" ? blk.indexOf("allowed vlan") >= 0 && !new RegExp("\\b" + v.drop + "\\b").test(blk.match(/allowed vlan (\S+)/)[1]) : !/native vlan/.test(blk), s + " its trunk line differs: " + blk);
+    assert.equal(T.fixed, false); assert.equal(T.proven, false);
+    for (const id of ["ec", "run", "stat"]) assert.ok(T.evidence.some((e) => e.id === id), s + " the notebook took " + id);
+    assert.equal(T.opts.length, 6); assert.equal(T.opts.filter((o) => o.right).length, 1); assert.ok(T.opts.filter((o) => !o.right).every((o) => o.why && o.why.length > 30));
+    assert.ok(T.opts.some((o) => !o.right && o.id === (v.kind === "vlan" ? "native" : "vlan")), s + " the other cause is a near miss");
+    const S = CP08.summary(v); assert.ok(S.cause.length > 80 && S.fix.length > 60);
+  }
+});
+
+test("CP-08: the link made to match the port-channel, saved, fixes it; show etherchannel summary proves it, and a right diagnosis solves it", () => {
+  for (const s of seedsOf(CP08)) {
+    const T = E.open(CP08, s);
+    for (const a of fix8(T)) E.act(T, a); assert.equal(T.fixed, true, s + " fixed");
+    for (const a of proof8(T)) E.act(T, a); assert.equal(T.proven, true, s + " proven");
+    E.guess(T, T.opts.find((o) => o.right).id); assert.equal(T.solved, true);
+  }
+});
+
+test("CP-08: the tempting wrong fixes don't: the port-channel changed to match the link, the link bounced, the link taken out of the bundle, the fix unsaved", () => {
+  for (const s of seedsOf(CP08)) {
+    const open = () => E.open(CP08, s);
+    let T = open(); for (const a of onDx(T, T.v.side, ["interface port-channel 1", T.v.kind === "vlan" ? "switchport trunk allowed vlan remove " + T.v.drop : "no switchport trunk native vlan"])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the port-channel matched to the link");
+    T = open(); for (const a of onDx(T, T.v.side, ["interface " + T.v.short.toLowerCase(), "shutdown", "no shutdown"])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the link bounced"); assert.ok(CP08.exhibits(T.sim, T.v));
+    T = open(); for (const a of onDx(T, T.v.side, ["interface " + T.v.short.toLowerCase(), "no channel-group"])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the link out of the bundle");
+    T = open(); for (const a of onDx(T, T.v.side, ["interface " + T.v.short.toLowerCase(), line8(T)], false)) E.act(T, a);
+    assert.equal(T.fixed, false, s + " unsaved"); for (const a of proof8(T)) E.act(T, a); assert.match(T.partial || "", /hasn't saved it/);
+  }
+});
+
+test("CP-08: the ladder climbs, and a saved ticket replays exactly", () => {
+  const T = E.open(CP08, seedsOf(CP08)[0]), wrongs = T.opts.filter((o) => !o.right).map((o) => o.id);
+  assert.equal(E.guess(T, wrongs[0]).rung, 0); assert.equal(E.guess(T, wrongs[1]).rung, 0); assert.equal(E.guess(T, wrongs[2]).rung, 1); assert.equal(E.guess(T, wrongs[3]).rung, 2);
+  E.resetBoard(T); assert.equal(E.guess(T, wrongs[4]).rung, 3); assert.equal(E.live(T).length, 2); assert.ok(E.live(T).some((o) => o.right));
+  const U = E.open(CP08, seedsOf(CP08, 1)[0]);
+  for (const a of fix8(U).concat(proof8(U))) E.act(U, a);
+  const R = E.restore(CP08, JSON.parse(JSON.stringify(E.save(U))));
+  assert.equal(R.fixed, U.fixed); assert.deepEqual(R.evidence, U.evidence); assert.equal(R.proven, U.proven); assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
+});
+
+test("CP-08: the brief and every hint never name the right answer, a password, a VLAN number, the link or the fix's command", () => {
+  for (const s of seedsOf(CP08)) {
+    const T = E.open(CP08, s), right = T.opts.find((o) => o.right).text.toLowerCase(), p = T.v.plan;
+    const texts = [CP08.rung1(T.v, T.sim), CP08.rung2(T.v, T.sim), ...CP08.fixHints(T.v, T.sim), CP08.brief(T.v, T.sim).quote, CP08.mason].map((x) => x.toLowerCase());
+    for (const x of texts) {
+      assert.ok(x.indexOf(right) < 0, x);
+      for (const bad of [p.secret, p.console, p.userPw, p.srv.pw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, "names a password: " + x);
+      for (const n of Object.values(p.vlans).map((V) => String(V.id)).concat([String(p.train.id), String(p.annex.cls.id), String(p.backup.id)])) assert.ok(!new RegExp("\\b" + n + "\\b").test(x), "names VLAN " + n + ": " + x);
+      for (const bad of ["switchport", "copy running-config", T.v.short.toLowerCase()]) assert.ok(x.indexOf(bad) < 0, "names " + bad + ": " + x);
+    }
+    for (const x of [CP08.brief(T.v, T.sim).quote, CP08.mason].map((y) => y.toLowerCase())) for (const bad of ["native", "allowed", "suspend"]) assert.ok(x.indexOf(bad) < 0, "the brief or Mason's opener names " + bad + ": " + x);
+  }
+});
+
 /* every campus ticket shows its fault on the campus it was asked for, in every variant: a ticket moves to another campus when its fault
    doesn't show, so a rule that stopped one variant showing would otherwise go unnoticed (the tests would just meet the other variants) */
 for (const def of CAMPUS_TICKETS) test(def.id + ": the fault shows on every campus asked for, every variant (no campus skipped)", () => {

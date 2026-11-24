@@ -2041,5 +2041,33 @@
   "ticket": "CP-07",
   "seed": 5,
   "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-07'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=(d)=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw[d].ip,P.userPw,'enable',P.secret].forEach(k);}; c.guess('right'); (v.kind==='passive'?['dist1','dist2']:[v.side]).forEach(function(d){ login(d); ['configure terminal','interface range gi0/21 - 22','channel-group 1 mode active','end','copy running-config startup-config','','exit'].forEach(k); }); login('dist1'); ['show etherchannel summary','exit'].forEach(k); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-08 the card, show etherchannel summary: one link suspended",
+  "page": "index.html",
+  "ticket": "CP-08",
+  "seed": 3,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-08'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=(d)=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw[d].ip,P.userPw,'enable',P.secret].forEach(k);}; login(v.side); k('show etherchannel summary'); document.getElementById('tk').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-08 the switch's configuration, the link against the port-channel",
+  "page": "index.html",
+  "ticket": "CP-08",
+  "seed": 1,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-08'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=(d)=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw[d].ip,P.userPw,'enable',P.secret].forEach(k);}; login(v.side); ['show interfaces status','show running-config'].forEach(k); document.querySelector('.side').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-08 the floor plan, Mason's third rung",
+  "page": "index.html",
+  "ticket": "CP-08",
+  "seed": 2025,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-08'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=(d)=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw[d].ip,P.userPw,'enable',P.secret].forEach(k);}; document.getElementById('vPhy').click(); const w=c.T.opts.filter(o=>!o.right).map(o=>o.id); w.slice(0,4).forEach(x=>c.guess(x)); c.resetBoard(); c.guess(w[4]); document.getElementById('board').scrollIntoView();"
+ },
+ {
+  "name": "campus tickets: CP-08 solved, the summary",
+  "page": "index.html",
+  "ticket": "CP-08",
+  "seed": 4,
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4; c.go('CP-08'); const v=c.T.v, P=v.plan; const k=(x)=>{const i=document.querySelector('.term .cmdin'); i.value=x; i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const login=(d)=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt'); ['ssh '+P.user+'@'+P.sw[d].ip,P.userPw,'enable',P.secret].forEach(k);}; c.guess('right'); login(v.side); ['configure terminal','interface '+v.short.toLowerCase(),v.kind==='vlan'?'switchport trunk allowed vlan add '+v.drop:'switchport trunk native vlan '+P.vlans.native.id,'end','copy running-config startup-config','','show etherchannel summary','exit'].forEach(k); document.getElementById('board').scrollIntoView();"
  }
 ]

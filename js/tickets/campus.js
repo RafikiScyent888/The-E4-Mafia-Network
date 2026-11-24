@@ -384,5 +384,67 @@ const CP05 = {
   }
 };
 
-export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05];
+/* ---------------------------------------------------------------- CP-06 */
+/* An access switch made the root of spanning tree for its floor's VLAN: the contractor's "standard settings" on it carried a bridge
+   priority for that VLAN below distribution switch 1's (CP-J2 made switch 1 root, switch 2 the next, every access switch at the
+   default). Nothing is down: the access switch's two uplinks now both forward, and the bundle between the distribution switches is
+   blocked for that VLAN, so their standby hellos and anything between them go round through the access switch. The monitoring flagged
+   the new root. */
+const CP06_KIND = {
+  acc1: { vlan: "svc", floor: "1F", label: "Service desk VLAN", vname: "the service desk's VLAN" },
+  acc2: { vlan: "bench", floor: "2F", label: "Bench VLAN", vname: "the bench VLAN" },
+  acc3: { vlan: "office", floor: "3F", label: "Office VLAN", vname: "the office VLAN" },
+  acc4: { vlan: "train", floor: "4F", label: "Training VLAN", vname: "the training VLAN" }
+};
+const stpPrio = function (sim, id, vid, saved) { const sw = sim.d[id].sw, w = saved ? sw.startup : sw, s = w && w.stp; return s && s.prio && s.prio[vid] != null ? s.prio[vid] : 32768; };
+const stpRoot = function (sim, vid) { const all = sim.stpAll(), T = all[vid], B = T && T.result.bridges.dist1; return B ? B.root : null; };
+const CP06 = {
+  id: "CP-06", n: "06", level: 4, tier: "common", title: "Monitoring says the root bridge moved to an access switch", priority: 3, due: "1 day",
+  kinds: ["acc1", "acc2", "acc3", "acc4"],
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("CP-06:" + seed)), kind = r.pick(CP06.kinds), K = CP06_KIND[kind], V = vlanOf(p, K.vlan), prio = r.pick([0, 4096, 8192, 20480]);
+    const dist = JSON.stringify(["dist1", "dist2"].map(function (d) { return [stpPrio(sim, d, V.id), stpPrio(sim, d, V.id, true)]; }));
+    const sw = sim.d[kind].sw; [sw, sw.startup].forEach(function (w) { w.stp = w.stp || { mode: "rapid-pvst", prio: {} }; w.stp.prio = w.stp.prio || {}; w.stp.prio[V.id] = prio; });
+    sim.bump(); sim.relink(sim.links());
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, sw: kind, swName: K.floor + " access switch", floor: K.floor, label: K.label, vname: K.vname, vid: V.id, prio: prio, swIp: p.sw[kind].ip, dist: dist } };
+  },
+  brief(v) { return { quote: "The monitoring flagged a spanning-tree topology change on " + v.vname + " overnight, and since then it reports the root bridge for that VLAN as the " + v.swName + ". Nobody has noticed anything wrong. Last night the network contractor was on the " + v.swName + ", putting on \"the standard settings\", and saved. The records have distribution switch 1 as the root for every VLAN, and distribution switch 2 as the one to take over." }; },
+  mason: "Nothing's down, so ask the switches. Spanning tree is an election: find out who won, and what they voted with.",
+  affected: function (v) { return v.sw; },
+  options(v) {
+    const s = "the " + v.swName;
+    return [
+      { id: "right", right: true, text: "The " + v.swName + " has a bridge priority for the VLAN below distribution switch 1's, so it won the root election" },
+      { id: "mac", text: "The " + v.swName + " won on its lower hardware address: the priorities are all the same", why: "show spanning-tree on distribution switch 1 gives its own priority below the default, and the root's as lower still. Priority decides the election before any address does." },
+      { id: "uplink", text: "Distribution switch 1 lost the root because its link to " + s + " went down", why: "show spanning-tree on distribution switch 1 has its port towards " + s + " up and forwarding, as its root port: the link is up, and the root is on the far side of it." },
+      { id: "dist2", text: "Distribution switch 2 took the root overnight and passed it to " + s, why: "show spanning-tree on distribution switch 2 shows its own priority as the records have it, and the same root as everyone else. The root isn't passed on: every switch elects the lowest bridge ID it hears." },
+      { id: "guard", text: "The settings took BPDU guard off " + s + "'s uplinks, so they now take part in the election", why: "The uplinks are trunks: BPDU guard and portfast are for the desk ports, and show running-config has the desk ports still with both. Every switch's uplinks take part in the election; what decides it is the bridge ID." },
+      { id: "mode", text: s.charAt(0).toUpperCase() + s.slice(1) + " was left running a different kind of spanning tree from the others, so it doesn't hear them", why: "show spanning-tree on " + s + " says rstp, as on every other switch, and lists its uplinks as designated: it hears the others, and they've accepted it as the root." }
+    ];
+  },
+  rung1(v) { return "SSH to distribution switch 1 and to the " + v.swName + " (the records have both addresses): show spanning-tree for the flagged VLAN on each. Who's the root, and what are the Bridge ID priorities?"; },
+  rung2() { return "Every switch elects the lowest bridge ID it hears as the root: the priority first, then the address only if the priorities tie. A switch meant never to be the root keeps the default priority."; },
+  fixHints(v) { return ["show running-config on the " + v.swName + ": its spanning-tree lines.", "Take off whatever makes the " + v.swName + " win: the records have every access switch at the default. Distribution switch 1 doesn't need anything.", "Save it. Then show spanning-tree for that VLAN on distribution switch 1: it should be the root again."]; },
+  exhibits(sim, v) { return stpRoot(sim, v.vid) === v.sw && ["sd1", "bn1", "mgr", "tr1"].every(function (d) { return online(sim, d); }); },
+  fixed(sim, v) { return stpPrio(sim, v.sw, v.vid) === 32768 && stpPrio(sim, v.sw, v.vid, true) === 32768 && JSON.stringify(["dist1", "dist2"].map(function (d) { return [stpPrio(sim, d, v.vid), stpPrio(sim, d, v.vid, true)]; })) === v.dist && stpRoot(sim, v.vid) === "dist1" && ["sd1", "bn1", "mgr", "tr1"].every(function (d) { return online(sim, d); }); },
+  partial(v, sim) {
+    if (JSON.stringify(["dist1", "dist2"].map(function (d) { return [stpPrio(sim, d, v.vid), stpPrio(sim, d, v.vid, true)]; })) !== v.dist) return "Distribution switch 1 is the root again, but by changing the distribution switches' priorities: the " + v.swName + " is still set to beat distribution switch 2, so if switch 1 fails the access switch becomes the root, not switch 2.";
+    if (stpPrio(sim, v.sw, v.vid) !== 32768) return "Distribution switch 1 is the root again, but the " + v.swName + " isn't at the default priority the records have for every access switch: it's still placed in the election where it shouldn't be.";
+    if (stpPrio(sim, v.sw, v.vid, true) !== 32768) return "Distribution switch 1 is the root again, but the " + v.swName + " hasn't saved it: after its next reload it wins again.";
+    return "It works, but not the way the records have it.";
+  },
+  proves(f, sim, v) { return f.on === "dist1" && new RegExp("^VLAN0*" + v.vid + "\\b[\\s\\S]*?Root ID\\s+Priority\\s+\\d+\\s+Address\\s+\\S+\\s+This bridge is the root", "m").test(devOut(f)); },
+  proofText: "show spanning-tree for the VLAN on distribution switch 1: this bridge is the root",
+  evidence: [
+    { id: "d1", test: function (f, v) { const o = devOut(f); return f.on === "dist1" && new RegExp("^VLAN0*" + v.vid + "\\b").test(o) && new RegExp("Root ID\\s+Priority\\s+" + (v.prio + v.vid) + "\\b").test(o); }, text: function (f, v) { return "show spanning-tree on distribution switch 1: the VLAN's root has priority " + (v.prio + v.vid) + ", below its own"; } },
+    { id: "acc", test: function (f, v) { const o = devOut(f); return f.on === v.sw && new RegExp("^VLAN0*" + v.vid + "\\b[\\s\\S]*?This bridge is the root", "m").test(o); }, text: function (f, v) { return "show spanning-tree on the " + v.swName + ": this bridge is the root for the VLAN"; } },
+    { id: "run", test: function (f, v) { return f.on === v.sw && new RegExp("spanning-tree vlan " + v.vid + " priority " + v.prio + "\\b").test(devOut(f)); }, text: function (f, v) { return "show running-config on the " + v.swName + ": a spanning-tree priority for the VLAN, " + v.prio; } }
+  ],
+  summary(v) {
+    return { cause: "The contractor's \"standard settings\" gave the " + v.swName + " a spanning-tree priority of " + v.prio + " for " + v.vname + ", below distribution switch 1's, and saved. The lowest bridge ID wins the root election, so the access switch became the root: its uplinks both forwarding, the bundle between the distribution switches blocked for that VLAN, their traffic for it going round through the access switch.", fix: "On the " + v.swName + ": no spanning-tree vlan " + v.vid + " priority, back to the default the records have for every access switch, then saved. Distribution switch 1 won the election again, distribution switch 2 next." };
+  }
+};
+
+export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06];
 export const CAMPUS_COMING = [];

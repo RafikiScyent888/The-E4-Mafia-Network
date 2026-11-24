@@ -906,6 +906,15 @@ const cp05Login = async (p, v) => {
   for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
 };
 const cp05Conf = async (p, v, lines) => { await cp05Login(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
+/* CP-06: the flagged VLAN off the card; SSH from the service desk to distribution switch 1 or the access switch */
+const cp06Vlan = async (p, v) => { const row = await rec(p, v.label), m = row.match(/^(\d+) · /); check(!!m && +m[1] === v.vid, "CP-06: Rafiki's records give the flagged VLAN's number (" + row + ")"); return m ? m[1] : "?"; };
+const cp06Login = async (p, v, which) => {
+  const ssh = await rec(p, "Remote logins (SSH)"), sws = await rec(p, "The switches"), sec = await rec(p, "Enable secret");
+  const m = ssh.match(/^user (\S+) · password (\S+)$/), ip = (sws.match(new RegExp(v.plan.sw[which].host + " (\\d+\\.\\d+\\.\\d+\\.\\d+)")) || [])[1], s2 = (sec.match(/^(\S+)/) || [])[1];
+  await dev(p, "sd1"); await tab(p, "Command Prompt");
+  for (const l of ["ssh " + (m ? m[1] : "?") + "@" + (ip || "?"), m ? m[2] : "?", "enable", s2 || "?"]) await type(p, l);
+};
+const cp06Conf = async (p, v, lines) => { await cp06Login(p, v, v.sw); for (const l of ["configure terminal"].concat(lines, ["end", "copy running-config startup-config", "", "exit"])) await type(p, l); };
 const campConf = async (p, v, lines) => { await campLogin(p, v); for (const l of ["configure terminal"].concat(lines, ["end", "exit"])) await type(p, l); };
 Object.assign(PLAN, {
   "CP-01": {
@@ -999,6 +1008,21 @@ Object.assign(PLAN, {
     wrong: async (p, v) => { const W = await cp05Wan(p, v); await cp05Conf(p, v, v.kind === "originate" ? ["interface " + W, "ip address dhcp"] : ["router ospf 1", "default-information originate"]); },   /* the other variant's fix */
     fix: async (p, v) => { const W = await cp05Wan(p, v); await cp05Conf(p, v, v.kind === "originate" ? ["router ospf 1", "default-information originate"] : ["interface " + W, "ip address dhcp"]); },
     proof: async (p) => { const v = await T(p, () => window.__e4.T.v); await dev(p, v.pc); await tab(p, "Command Prompt"); await type(p, "ping 8.8.8.8"); }
+  },
+  "CP-06": {
+    look: async (p, v) => {
+      const ln = await labelsClear(p, "net"); check(ln.n > 0 && !ln.out.length, "CP-06's logical diagram: every name and port dot clear" + (ln.out.length ? " (" + ln.out.join("; ") + ")" : ""));
+      await p.click("#vPhy"); await p.waitForTimeout(60);
+      const lp = await labelsClear(p, "plan"); check(lp.n > 0 && !lp.out.length, "CP-06's floor plan: every name clear" + (lp.out.length ? " (" + lp.out.join("; ") + ")" : ""));
+      await dysClear(p, "CP-06"); await planBothFonts(p, "CP-06");
+      const vid = await cp06Vlan(p, v);
+      await cp06Login(p, v, "dist1"); await type(p, "show spanning-tree vlan " + vid); const d = (await term(p)).split("show spanning-tree vlan").pop(); await type(p, "exit");
+      await cp06Login(p, v, v.sw); await type(p, "show spanning-tree vlan " + vid); await type(p, "show running-config"); const a = (await term(p)).split("show spanning-tree vlan").pop(); await type(p, "exit");
+      check(!/This bridge is the root/.test(d) && /This bridge is the root/.test(a) && new RegExp("spanning-tree vlan " + vid + " priority " + v.prio + "\\b").test(a), "CP-06 " + v.kind + ": over SSH, distribution switch 1 isn't the root, the " + v.swName + " is, with a priority in its configuration");
+    },
+    wrong: async (p, v) => { const vid = await cp06Vlan(p, v); await cp06Conf(p, v, ["spanning-tree vlan " + vid + " priority 28672"]); },   /* above switch 1, not the default: switch 1 is root again, Mason says why it isn't the fix */
+    fix: async (p, v) => { const vid = await cp06Vlan(p, v); await cp06Conf(p, v, ["no spanning-tree vlan " + vid + " priority"]); },
+    proof: async (p) => { const v = await T(p, () => window.__e4.T.v); const vid = await cp06Vlan(p, v); await cp06Login(p, v, "dist1"); await type(p, "show spanning-tree vlan " + vid); await type(p, "exit"); }
   }
 });
 

@@ -84,7 +84,9 @@ export function errDisabled(sw, n) { return !!(sw.psRun && sw.psRun[n] && sw.psR
 export function psOf(p) { return p.ps || (p.ps = { on: false, max: 1, viol: "shutdown", sticky: false, macs: [] }); }
 /* a MAC address as the switch writes it: aaaa.bbbb.cccc */
 export function dotMac(m) { const h = String(m || "").replace(/[^0-9a-f]/gi, "").toLowerCase(); return h.length === 12 ? h.slice(0, 4) + "." + h.slice(4, 8) + "." + h.slice(8) : null; }
-const CONFIG_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "vlan1", "gateway", "ports", "banner", "vlans", "svis", "snoop", "dai", "pcs", "stp", "jumbo", "ntp", "logHosts", "logTrap"];   /* jumbo: the system jumbo MTU set (work order 9); it takes effect at the next reload (jumboRun) */   /* keyGen: which set of RSA keys it holds (each crypto key generate makes a new one) */
+/* snmp-server's words, for ? (Level 5, work order 2) */
+const SNMP_SUB = [["community", "Enable SNMP; set community string and access privs"], ["contact", "Text for mib object sysContact"], ["enable", "Enable SNMP Traps or Informs"], ["group", "Define a User Security Model group"], ["host", "Specify hosts to receive SNMP notifications"], ["location", "Text for mib object sysLocation"], ["user", "Define a user who can access the SNMP engine"]];
+const CONFIG_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "vlan1", "gateway", "ports", "banner", "vlans", "svis", "snoop", "dai", "pcs", "stp", "jumbo", "ntp", "logHosts", "logTrap", "snmp", "snmpUsers", "span"];   /* jumbo: the system jumbo MTU set (work order 9); it takes effect at the next reload (jumboRun) */   /* keyGen: which set of RSA keys it holds (each crypto key generate makes a new one) */
 /* each kind of device with this command line (this switch; the business router, rtcli.js) registers what's its own: its
    command tree, its prompts, what its configuration is made of, a factory-fresh one, and how its configuration reads */
 const OS = {};
@@ -275,6 +277,8 @@ const SHOW = [
   ["clock", "Display the system clock", function (S) { return [clockText(S)]; }],
   ["ntp", "Network time protocol", [["status", "NTP status", function (S) { return ntpStatus(S); }], ["associations", "NTP associations", function (S) { return ntpAssoc(S); }]]],
   ["logging", "Show the contents of logging buffers", function (S) { return loggingShow(S); }],
+  ["snmp", "snmp statistics", function (S, a) { return snmpShow(S, a); }, { sub: [["community", "show snmp communities"], ["engineID", "show local and remote SNMP engine IDs"], ["group", "show snmp groups"], ["host", "show snmp notification host"], ["user", "show snmp users"]] }],
+  ["monitor", "Monitoring different system events", [["session", "SPAN information and status", function (S, a) { return spanShow(S, a); }, { sub: [["<1-66>", "SPAN session number"], ["all", "Show all SPAN sessions"]] }]]],
   ["users", "Display information about terminal lines", function (S) { return ["    Line       User       Host(s)              Idle       Location", S.via === "console" ? "*  0 con 0                idle                 00:00:00" : "*  1 vty 0                idle                 00:00:00 (remote)"]; }],
   ["ssh", "Status of SSH server connections", function (S) { return S.sw.rsa ? ["%No SSHv2 server connections running."] : ["%SSH has not been enabled: no RSA keys"]; }]
 ];
@@ -359,11 +363,15 @@ const CONFIG = [
   ["banner", "Define a login banner", [["motd", "Set Message of the Day banner", function (S, a, raw) { return bannerStart(S, raw); }]]],
   ["ntp", "Configure NTP", [["server", "Configure NTP server", function (S, a) { return ntpServer(S, a, true); }, { sub: [["A.B.C.D", "IP address of peer"]] }]]],
   ["logging", "Modify message logging facilities", function (S, a) { return loggingCmd(S, a, true); }, { sub: [["A.B.C.D", "IP address of the logging host"], ["host", "Set syslog server IP address and parameters"], ["trap", "Set syslog server logging level"]] }],
+  ["snmp-server", "Modify SNMP engine parameters", function (S, a) { return snmpCmd(S, a, true); }, { sub: SNMP_SUB }],
+  ["monitor", "Monitoring different system events", [["session", "Configure a SPAN session", function (S, a) { return spanCmd(S, a, true); }, { sub: [["<1-66>", "SPAN session number"]] }]]],
   ["do", "To run exec commands in config mode", function (S, a, raw) { const was = S.mode; S.mode = "priv"; const r = run(S, raw.replace(/^\s*do\s+/i, "")); S.mode = was; return r.lines; }],
   ["no", "Negate a command or set its defaults", [
     ["hostname", "Set system's network name", function (S) { S.sw.hostname = "Switch"; return []; }],
     ["ntp", "Configure NTP", [["server", "Configure NTP server", function (S, a) { return ntpServer(S, a, false); }]]],
     ["logging", "Modify message logging facilities", function (S, a) { return loggingCmd(S, a, false); }],
+    ["snmp-server", "Modify SNMP engine parameters", function (S, a) { return snmpCmd(S, a, false); }],
+    ["monitor", "Monitoring different system events", [["session", "Configure a SPAN session", function (S, a) { return spanCmd(S, a, false); }]]],
     ["enable", "Modify enable password parameters", [["secret", "Assign the privileged level secret", function (S) { S.sw.enableSecret = null; return []; }], ["password", "Assign the privileged level password", function (S) { S.sw.enablePassword = null; return []; }]]],
     ["ip", "Global IP configuration subcommands", [["default-gateway", "Specify default gateway", function (S) { S.sw.gateway = null; return []; }], ["domain-name", "Define the default domain name", function (S) { S.sw.domain = null; return []; }],
       ["dhcp", "Configure DHCP", [["snooping", "DHCP Snooping", [["vlan", "DHCP Snooping vlan", function (S, a) { const L = vlanList(a.join("")); if (!L) return a.length ? ["% Invalid input detected at '^' marker."] : ["% Incomplete command."]; S.sw.snoop.vlans = S.sw.snoop.vlans.filter(function (v) { return L.indexOf(v) < 0; }); return []; }]],
@@ -719,12 +727,167 @@ function loggingShow(S) {
   if (hosts.length) L.push("        Logging Source-Interface:       VRF Name:");
   return L.concat(["", "Log Buffer (8192 bytes):", ""], B);
 }
+/* ------------------------------------------------------------ SNMP and SPAN (Level 5, work order 2)
+   The agent: on as soon as anything of snmp-server is set. Communities answer SNMPv1 and v2c (read-only or read-write); SNMPv3 answers a
+   user in a group, at the group's security level or above (noauth, auth, priv). A v3 user's passwords are kept only as keys, and the user
+   never shows in the running configuration (as on the real gear: show snmp user). Notifications go to each host as traps or informs.
+   A SPAN session copies a port's traffic (both ways, or received or sent only) to a destination port. */
+const kw = function (w, word, min) { w = String(w || "").toLowerCase(); return w.length >= (min || 1) && word.indexOf(w) === 0; };
+export function snmpKey(pw, alg) { let h = 2166136261; const t = String(alg).toUpperCase() + ":" + pw; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return ("0000000" + h.toString(16)).slice(-8); }
+function snmpOf(sw) { return sw.snmp || (sw.snmp = { comms: [], groups: {}, hosts: [], traps: null, loc: null, contact: null }); }
+export const LEVELS3 = ["noauth", "auth", "priv"];
+function snmpCmd(S, a, on) {
+  const sw = S.sw, w = (a[0] || "").toLowerCase(), r = a.slice(1);
+  if (!a.length) { if (on) return ["% Incomplete command."]; delete sw.snmp; delete sw.snmpUsers; return []; }
+  const bad = ["% Invalid input detected at '^' marker."], inc = ["% Incomplete command."];
+  if (kw(w, "community", 2)) {
+    if (!r.length) return on ? inc : [];
+    const o = snmpOf(sw), name = r[0]; o.comms = o.comms.filter(function (c) { return c.name !== name; });
+    if (on) { let rw = false, acl = null; for (let i = 1; i < r.length; i++) { const x = r[i].toLowerCase(); if (x === "view") i++; else if (x === "rw") rw = true; else if (x === "ro") rw = false; else acl = r[i]; } o.comms.push({ name: name, rw: rw, acl: acl }); }
+    return [];
+  }
+  if (kw(w, "group", 1)) {
+    if (!r.length) return on ? inc : [];
+    const o = snmpOf(sw), name = r[0], ver = (r[1] || "").toLowerCase();
+    if (!on) { delete o.groups[name]; return []; }
+    if (!ver) return inc; if (!/^(v1|v2c|v3)$/.test(ver)) return bad;
+    let lv = null, i = 2; if (ver === "v3") { lv = (r[2] || "").toLowerCase(); if (!lv) return inc; if (LEVELS3.indexOf(lv) < 0) return bad; i = 3; }
+    const G = { ver: ver, level: lv, read: null, write: null, acl: null };
+    for (; i < r.length; i++) { const x = r[i].toLowerCase(); if (x === "read" || x === "write" || x === "notify") { if (!r[i + 1]) return inc; if (x !== "notify") G[x] = r[++i]; else i++; } else if (x === "access") { if (!r[i + 1]) return inc; G.acl = r[++i]; } else return bad; }
+    o.groups[name] = G; return [];
+  }
+  if (kw(w, "user", 1)) {
+    const U = sw.snmpUsers || (sw.snmpUsers = {}), name = r[0];
+    if (!name) return on ? inc : [];
+    if (!on) { delete U[name]; return []; }
+    const grp = r[1], ver = (r[2] || "").toLowerCase(); if (!grp || !ver) return inc; if (!/^(v1|v2c|v3)$/.test(ver)) return bad;
+    const u = { group: grp, ver: ver, auth: null, priv: null, acl: null };
+    for (let i = 3; i < r.length; i++) {
+      const x = r[i].toLowerCase();
+      if (x === "auth" && ver === "v3") { const al = (r[i + 1] || "").toLowerCase(), pw = r[i + 2]; if (!al || !pw) return inc; if (al !== "md5" && al !== "sha") return bad; u.auth = { alg: al.toUpperCase(), key: snmpKey(pw, al) }; i += 2; }
+      else if (x === "priv" && ver === "v3") {
+        if (!u.auth) return bad; const al = (r[i + 1] || "").toLowerCase(); let bits = "", pw = r[i + 2]; if (!al) return inc;
+        if (al === "aes") { bits = r[i + 2]; pw = r[i + 3]; if (!/^(128|192|256)$/.test(bits || "")) return bits ? bad : inc; }
+        else if (al !== "des" && al !== "3des") return bad;
+        if (!pw) return inc; const nm = al === "aes" ? "AES" + bits : al === "des" ? "DES" : "3DES"; u.priv = { alg: nm, key: snmpKey(pw, nm) }; i += al === "aes" ? 3 : 2;
+      }
+      else if (x === "access") { if (!r[i + 1]) return inc; u.acl = r[++i]; }
+      else return bad;
+    }
+    U[name] = u; return [];
+  }
+  if (kw(w, "host", 1)) {
+    const o = snmpOf(sw), ip = r[0]; if (!ip) return on ? inc : []; if (!ip4(ip)) return bad;
+    o.hosts = o.hosts.filter(function (h) { return h.ip !== ip; }); if (!on) return [];
+    let kind = "traps", ver = "1", lv = null, i = 1;
+    if (r[i] && /^(traps|informs)$/i.test(r[i])) kind = r[i++].toLowerCase();
+    if (r[i] && kw(r[i], "version", 1)) { i++; ver = (r[i++] || "").toLowerCase(); if (!ver) return inc; if (!/^(1|2c|3)$/.test(ver)) return bad; if (ver === "3") { lv = (r[i++] || "").toLowerCase(); if (!lv) return inc; if (LEVELS3.indexOf(lv) < 0) return bad; } }
+    const name = r[i++]; if (!name) return inc;
+    if (kind === "informs" && ver === "1") return ["%Informs are only supported for SNMPv2c and SNMPv3"];
+    o.hosts.push({ ip: ip, kind: kind, ver: ver, level: lv, name: name }); return [];
+  }
+  if (kw(w, "enable", 1)) {
+    if (!kw(r[0], "traps", 1)) return r.length ? bad : inc;
+    const o = snmpOf(sw), types = r.slice(1).map(function (x) { return x.toLowerCase(); });
+    if (!on) { o.traps = types.length && o.traps ? o.traps.filter(function (t) { return types.indexOf(t) < 0; }) : null; if (o.traps && !o.traps.length) o.traps = null; return []; }
+    o.traps = !types.length ? ["all"] : (o.traps && o.traps[0] !== "all" ? o.traps : []).concat(types.filter(function (t) { return !o.traps || o.traps.indexOf(t) < 0; }));
+    return [];
+  }
+  if (kw(w, "location", 1) || kw(w, "contact", 2)) { const o = snmpOf(sw), k = w[0] === "l" ? "loc" : "contact"; if (!on) { o[k] = null; return []; } if (!r.length) return inc; o[k] = r.join(" "); return []; }
+  return bad;
+}
+export function snmpEngineId(sw) { return "800000090300" + String(sw.mac || "").replace(/[^0-9a-fA-F]/g, "").toUpperCase().padEnd(12, "0").slice(0, 12); }
+function snmpShow(S, a) {
+  const sw = S.sw, o = sw.snmp, U = sw.snmpUsers || {}, w = (a[0] || "").toLowerCase();
+  if (!o && !Object.keys(U).length) return ["%SNMP agent not enabled"];
+  const O = o || { comms: [], groups: {}, hosts: [], traps: null };
+  if (!w) return ["Chassis: " + (sw.serial || "FOC2134X0QZ"), "Contact: " + (O.contact || ""), "Location: " + (O.loc || ""), "0 SNMP packets input", "    0 Bad SNMP version errors", "    0 Unknown community name", "    0 Illegal operation for community name supplied", "    0 Encoding errors", "    0 Number of requested variables", "    0 Number of altered variables", "    0 Get-request PDUs", "    0 Get-next PDUs", "    0 Set-request PDUs", "    0 Input queue packet drops (Maximum queue size 1000)", "0 SNMP packets output", "", "SNMP logging: " + (O.hosts.length ? "enabled" : "disabled")].concat(O.hosts.map(function (h) { return "    Logging to " + h.ip + ".162, 0/10, 0 sent, 0 dropped."; }));
+  if (kw(w, "community", 1)) return O.comms.reduce(function (L, c) { return L.concat(["Community name: " + c.name, "Community Index: " + c.name, "Community SecurityName: " + c.name, "storage-type: nonvolatile\t active" + (c.acl ? "\taccess-list: " + c.acl : ""), ""]); }, []);
+  if (kw(w, "engineid", 1)) return ["Local SNMP engineID: " + snmpEngineId(sw), "Remote Engine ID          IP-addr    Port"];
+  if (kw(w, "group", 1)) {
+    const L = [];
+    O.comms.forEach(function (c) { ["v1", "v2c"].forEach(function (v) { L.push("groupname: " + pad(c.name, 32) + "security model:" + v, "contextname: <no context specified>    storage-type: permanent", "readview : v1default" + pad("", 21) + "writeview: " + (c.rw ? "v1default" : "<no writeview specified>"), "notifyview: <no notifyview specified>", "row status: active" + (c.acl ? "        access-list: " + c.acl : ""), ""); }); });
+    Object.keys(O.groups).forEach(function (g) { const G = O.groups[g]; L.push("groupname: " + pad(g, 32) + "security model:" + G.ver + (G.level ? " " + G.level : ""), "contextname: <no context specified>    storage-type: nonvolatile", "readview : " + pad(G.read || "v1default", 33) + "writeview: " + (G.write || "<no writeview specified>"), "notifyview: <no notifyview specified>", "row status: active" + (G.acl ? "        access-list: " + G.acl : ""), ""); });
+    return L;
+  }
+  if (kw(w, "host", 1)) return O.hosts.reduce(function (L, h) { return L.concat(["Notification host: " + h.ip + "\tudp-port: 162\ttype: " + (h.kind === "informs" ? "inform" : "trap"), "user: " + h.name + "\tsecurity model: " + (h.ver === "3" ? "v3 " + h.level : h.ver === "2c" ? "v2c" : "v1"), ""]); }, []);
+  if (kw(w, "user", 1)) return Object.keys(U).reduce(function (L, n) { const u = U[n]; return L.concat(["User name: " + n, "Engine ID: " + snmpEngineId(sw), "storage-type: nonvolatile\t active", "Authentication Protocol: " + (u.auth ? u.auth.alg : "None"), "Privacy Protocol: " + (u.priv ? u.priv.alg : "None"), "Group-name: " + u.group, ""]); }, []);
+  return ["% Invalid input detected at '^' marker."];
+}
+function spanOf(sw) { return sw.span || (sw.span = {}); }
+/* an interface list after "interface": "gi0/1", "gi0/1 - 3", "gi0/1 , gi0/4" (the direction words may follow) */
+function ifList(tokens) {
+  const out = []; let i = 0;
+  while (i < tokens.length) {
+    if (tokens[i] === ",") { i++; continue; }
+    if (/^(both|rx|tx)$/i.test(tokens[i])) break;
+    const f = ifName(tokens, i); if (!f || f.err || f.vlan) return null; i += f.used;
+    if (tokens[i] === "-" && /^\d+$/.test(tokens[i + 1] || "")) { const base = f.name.replace(/\d+$/, ""), a0 = +f.name.match(/(\d+)$/)[1], b0 = +tokens[i + 1]; if (b0 < a0) return null; for (let k = a0; k <= b0; k++) { if (PORT_NAMES.indexOf(base + k) < 0) return null; out.push(base + k); } i += 2; }
+    else out.push(f.name);
+  }
+  return { list: out, rest: tokens.slice(i) };
+}
+function spanCmd(S, a, on) {
+  const sw = S.sw, n = a[0], bad = ["% Invalid input detected at '^' marker."], inc = ["% Incomplete command."];
+  if (!n) return inc; if (!/^\d+$/.test(n) || +n < 1 || +n > 66) return bad;
+  const sp = spanOf(sw), k = String(+n), w = (a[1] || "").toLowerCase();
+  if (!on && !w) { delete sp[k]; if (!Object.keys(sp).length) delete sw.span; return []; }
+  const M = sp[k] || { src: [], vlans: [], dst: [] };
+  if (kw(w, "source", 1)) {
+    const t = (a[2] || "").toLowerCase();
+    if (kw(t, "interface", 1)) {
+      const L = ifList(a.slice(3)); if (!L) return bad; if (!L.list.length) return inc;
+      const dir = (L.rest[0] || "both").toLowerCase(); if (!/^(both|rx|tx)$/.test(dir)) return bad;
+      if (L.list.some(function (x) { return M.dst.indexOf(x) >= 0; })) return ["% Interface(s) " + L.list.map(short).join(",") + " already configured as monitor destinations"];
+      M.src = M.src.filter(function (x) { return L.list.indexOf(x.ifc) < 0; }); if (on) L.list.forEach(function (x) { M.src.push({ ifc: x, dir: dir }); });
+    } else if (kw(t, "vlan", 1)) {
+      const V = vlanList(a.slice(3).filter(function (x) { return !/^(both|rx|tx)$/i.test(x); }).join("")); if (!V) return a[3] ? bad : inc;
+      if (M.src.length && on) return ["% Cannot add VLAN sources to a session with interface sources"];
+      M.vlans = on ? vlanList(M.vlans.concat(V).join(",")) : M.vlans.filter(function (v) { return V.indexOf(v) < 0; });
+    } else return t ? bad : inc;
+  } else if (kw(w, "destination", 1)) {
+    if (!kw(a[2], "interface", 1)) return a[2] ? bad : inc;
+    const L = ifList(a.slice(3)); if (!L) return bad; if (!L.list.length) return inc;
+    if (L.list.some(function (x) { return M.src.some(function (s) { return s.ifc === x; }); })) return ["% Interface(s) " + L.list.map(short).join(",") + " already configured as monitor sources"];
+    M.dst = on ? M.dst.filter(function (x) { return L.list.indexOf(x) < 0; }).concat(L.list) : M.dst.filter(function (x) { return L.list.indexOf(x) < 0; });
+  } else return w ? bad : inc;
+  if (!M.src.length && !M.vlans.length && !M.dst.length) delete sp[k]; else sp[k] = M;
+  if (!Object.keys(sp).length) delete sw.span;
+  return [];
+}
+/* the session copying to a port, if it is one (a destination port carries nothing else) */
+export function spanDest(sw, n) { const sp = sw.span || {}; for (const k in sp) if (sp[k].dst.indexOf(n) >= 0) return Object.assign({ id: +k }, sp[k]); return null; }
+function spanShow(S, a) {
+  const sp = S.sw.span || {}, want = (a[0] || "all").toLowerCase(), ids = Object.keys(sp).filter(function (k) { return want === "all" || want === k; });
+  if (!ids.length) return want === "all" ? [] : ["% No SPAN session " + want + " configured"];
+  return ids.reduce(function (L, k) {
+    const M = sp[k], by = function (d) { return M.src.filter(function (s) { return s.dir === d; }).map(function (s) { return short(s.ifc); }).join(","); };
+    L.push("Session " + k, "---------", "Type                   : Local Session");
+    if (M.src.length) { L.push("Source Ports           :"); [["both", "Both"], ["rx", "RX Only"], ["tx", "TX Only"]].forEach(function (q) { const t = by(q[0]); if (t) L.push("    " + pad(q[1], 19) + ": " + t); }); }
+    if (M.vlans.length) L.push("Source VLANs           :", "    Both               : " + M.vlans.join(","));
+    L.push("Destination Ports      : " + (M.dst.map(short).join(",") || "None"));
+    if (M.dst.length) L.push("    Encapsulation      : Native", "          Ingress      : Disabled");
+    return L.concat([""]);
+  }, []);
+}
 function svcLines(sw, L) {
   const t = sw.logTrap, h = sw.logHosts || [], n = sw.ntp || [];
   if (t != null) L.push("logging trap " + SEV[t]);
   h.forEach(function (x) { L.push("logging host " + x); });
   if (t != null || h.length) L.push("!");
   n.forEach(function (x) { L.push("ntp server " + x); }); if (n.length) L.push("!");
+  const o = sw.snmp;
+  if (o) {
+    Object.keys(o.groups).forEach(function (g) { const G = o.groups[g]; L.push("snmp-server group " + g + " " + G.ver + (G.level ? " " + G.level : "") + (G.read ? " read " + G.read : "") + (G.write ? " write " + G.write : "") + (G.acl ? " access " + G.acl : "")); });
+    o.comms.forEach(function (c) { L.push("snmp-server community " + c.name + " " + (c.rw ? "RW" : "RO") + (c.acl ? " " + c.acl : "")); });
+    if (o.loc) L.push("snmp-server location " + o.loc); if (o.contact) L.push("snmp-server contact " + o.contact);
+    if (o.traps) L.push("snmp-server enable traps" + (o.traps[0] === "all" ? "" : " " + o.traps.join(" ")));
+    o.hosts.forEach(function (h) { L.push("snmp-server host " + h.ip + (h.kind === "informs" ? " informs" : "") + " version " + h.ver + (h.level ? " " + h.level : "") + " " + h.name); });
+    L.push("!");
+  }
+  const sp = sw.span || {};
+  Object.keys(sp).forEach(function (k) { const M = sp[k]; M.src.forEach(function (x) { L.push("monitor session " + k + " source interface " + short(x.ifc) + (x.dir === "both" ? "" : " " + x.dir)); }); if (M.vlans.length) L.push("monitor session " + k + " source vlan " + M.vlans.join(",")); M.dst.forEach(function (x) { L.push("monitor session " + k + " destination interface " + short(x)); }); });
+  if (Object.keys(sp).length) L.push("!");
 }
 export { svcLines };
 

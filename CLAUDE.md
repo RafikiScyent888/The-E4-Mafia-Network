@@ -88,6 +88,61 @@ at runtime.
 - Check a model by putting the owner's photo beside a render from the same
   angle and distance; a wide render hides missing detail.
 
+## SAVE POINT (25 November 2026): Level 4's last tickets going live, Level 5 started
+
+The owner, 25 November 2026: "create a save point". The container had restarted just before (about 18:17 that day): every background run
+stopped; the worktrees and the session's scratchpad survived. Nothing was half pushed: `main`, `save/level4-tickets`, `save/level5` and
+`save/level5-en2` are each as described here.
+
+- **Live on `main` (b164ce3):** Level 4's work orders CP-J1 to CP-J10 and its tickets CP-01 to CP-09 (CP-09 went live 24 November 2026).
+- **How the rest go live:** one at a time, each from a tree staged off its own commit, by the scripts in `tools/wip/campus-golive/`
+  (saved there from the scratchpad, PIN taken out: set `E4_PIN` first). The staged trees are the scratchpad's `stg/cp10` to `stg/cp15`;
+  if they are gone, make them again with `stage.sh` and apply every `patch-cpNN.py` from that ticket on.
+  - **CP-10** (535f210): drive, contrast states and page plants passed; its own tests passed again on the patched tree (6 of 6); 3 of its
+    4 Node plants caught. The fourth, "an address set by hand counts", was missed: a test now covers it (both relays put right and saved,
+    then the desk given an address by hand; `patch-cp10.py`, committed as d842658, applied to the staged trees cp10 to cp15). Its re-run
+    on the patched tree was cut off by the two-hour limit before it reported, so the orchestrator stopped (`BLOCKED CP-10`, 24 November
+    03:52). Next: run it again in a copy of `stg/cp10` (`KINDS=node SEEDS=4 python3 tools/plants-campus-tickets.py "CP-10: an address set
+    by hand counts"`), its line into `stg/pl-fix.log`, then start `orch2.sh`, which takes CP-10 live and goes on.
+  - **CP-11** (9a36227): every check passed (both Node plants caught).
+  - **CP-12** (5fbeca5): one Node plant missed, "the file right but the service not restarted counts". Close it as CP-10's was: a test for
+    it, as `patch-cp12.py` applied to cp12 to cp15 and committed here; re-run the plant; add its line to `pl-fix.log`.
+  - **CP-13** (c3d4fb5) and **CP-14** (0843816): drive, contrast states, page plants and own tests passed; their Node plants still to run
+    (the restart stopped them).
+  - **CP-15** (this branch's head: Level 4 complete with it): its drive passed (99 checks) and its 10 Node plants were all caught. Still to
+    run, each on its own (they time out side by side on this 4-core machine): the full unit tests (`npm test`, timed out under the load),
+    the full drive, the models, its contrast states (`campus tickets: CP-15`, `levels`), its page plants (`CP-15`, `Level 4`). Then
+    `golive-cp15.sh`.
+  - As they go live, tell the owner the re-sized order (configuration-only tickets first, BPDU guard last).
+- **Level 5, the enterprise** (the owner, 24 November 2026: "Yes to the Level 5 plan, build it out"):
+  - **EN-J1, NTP and syslog to the file server:** `save/level5` (97b09f0, worktree `/home/user/e4-l5`). Its 6 unit tests pass; its drive
+    passed (83 checks on three campuses); 14 of its 37 Node plants run, all caught (`tools/plants-enterprise-node.py`, `SEEDS=1`, in a copy).
+    Still to run: the other Node plants, the page plants (`tools/plants-enterprise-page.py`), the contrast states (`enterprise`, `levels:
+    build`: redo on a clean copy, see below), the full unit tests (it changed shared code: swcli, rtcli, sim, cmd, linux) and the full drive.
+    It goes live after CP-15, with `main` merged in.
+  - **EN-J2, SNMP and a mirrored port captured with tcpdump:** `save/level5-en2` (a10f42e, worktree `/home/user/e4-en2`), work in progress.
+    Written: the switch's `snmp-server` (community, group, user with only its keys kept and never in the running configuration, host as
+    traps or informs, enable traps, location, contact), `show snmp` (community, group, user, host, engineID), `monitor session` (source
+    interface or VLAN, both, rx or tx; destination), `show monitor session`, both in the running configuration. It loads; nothing tests it
+    yet. The design:
+    - The installer's 2019 template left `snmp-server community public RO` on every switch and the edge router, and a read-write community
+      on the access switches: both out.
+    - SNMPv3 on all 11: a group requiring encryption (`v3 priv`) and the records' user (SHA and AES 128, the records' passwords).
+    - Informs to the file server (`snmp-server host <server> informs version 3 priv <user>`, `snmp-server enable traps config`); snmptrapd is
+      already set up there for that user and writes each to /var/log/syslog (a change to the configuration sends one, as with EN-J1's log).
+    - Polled from the file server: each device answers `snmpget`/`snmpwalk` at authPriv (`~/.snmp/snmp.conf` can hold the settings).
+    - The service desk PC's port (1F access switch, gi0/1) mirrored both ways to a spare port there, cabled to the file server's third port
+      (eno3, no address, down until `sudo ip link set eno3 up`); `sudo tcpdump -i eno3 -n -w ~/servicedesk.pcap` (the records' file), read
+      back with `tcpdump -r`.
+    - Lines: the old communities gone; SNMPv3 with encryption on every device; polled from the server; informs from each arrived; the mirror
+      right; the capture holding the desk's traffic both ways; everyone still works; all saved.
+    - Still to build: the router's side (`rtcli.js`), "monitoring" in `show interfaces status`, the server's side (a new `js/net/mon.js`:
+      the agent and its MIB rows, `snmpget`/`snmpwalk` with v1, v2c and v3 and their real errors, `tcpdump`, informs into snmptrapd), the
+      starting campus (the template's communities saved on every device, eno3 on the file server, the records), the work order in
+      `js/build/enterprise.js`, its tests, drive, contrast states and plants.
+- **Learned:** run every check on a copy of the tree, never on the one being edited: EN-J1's contrast run loaded `swcli.js` between two
+  edits and stopped on a name not yet defined. And three long checks at once is about this machine's limit: more and they time out.
+
 ## SAVE POINT (10 November 2026): Level 3's tickets, going live one at a time
 
 The owner, 10 November 2026: "create a save point here." Where everything stands:

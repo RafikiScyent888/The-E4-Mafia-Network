@@ -1,6 +1,6 @@
 # Plants for Level 5 (the enterprise) in Node: each defect, put into the code, must make the enterprise tests fail.
 # Run it in a throwaway copy of the checkout, never in the real one:   python3 tools/plants-enterprise-node.py [name ...]
-# SEEDS=2 shortens the work orders' tests.
+# SEEDS=2 shortens the work orders' tests; NAMEPAT=EN-J2 runs only that work order's tests.
 import subprocess, shutil, sys, os
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 TESTS = ["tests/enterprise-jobs.test.js", "tests/levels.test.js"]
@@ -101,7 +101,8 @@ for P in PLANTS:
     for f in files: shutil.copy(f, f + ".plant-bak")
     for f, a, b in edits: src = open(f).read(); open(f, "w").write(src.replace(a, b))
     try:
-        r = subprocess.run(["node", "--test"] + TESTS, capture_output=True, text=True, timeout=3000)
+        pat = ["--test-name-pattern=" + os.environ["NAMEPAT"]] if os.environ.get("NAMEPAT") else []   # NAMEPAT="EN-J2": only that work order's tests
+        r = subprocess.run(["node", "--test"] + pat + TESTS, capture_output=True, text=True, timeout=3000)
         fails = [l for l in r.stdout.splitlines() if l.startswith("not ok")]
         print(("CAUGHT" if r.returncode else "MISSED") + " · " + name + " · " + str(len(fails)) + " failing" + ("" if not fails else ": " + fails[0][:150]), flush=True)
         if not r.returncode: bad = 1

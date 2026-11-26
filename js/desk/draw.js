@@ -182,7 +182,7 @@ export function drawLogical(svg, sim, o) {
   const seen = {}, runs = [];
   for (const l of links) {   /* every line first, so each port's name and dot can be kept off every other cable's line */
     const A0 = P[l.a], B0 = P[l.b]; if (!A0 || !B0) continue;
-    const n = many[pair(l)], k = seen[pair(l)] = (seen[pair(l)] == null ? 0 : seen[pair(l)] + 1), sh = n >= 3 ? (k - (n - 1) / 2) * 22 : k * 30;   /* the first stays where it always ran; the next one runs beside it. Three or more (the file server's eno3, Level 5) sit either side of the straight line, closer, so each still ends on its tiles */
+    const n = many[pair(l)], k = seen[pair(l)] = (seen[pair(l)] == null ? 0 : seen[pair(l)] + 1), sh = n >= 3 ? (k - (n - 1) / 2) * 30 : k * 30;   /* the first stays where it always ran; the next one runs beside it. Three or more (the file server's eno3, Level 5) sit either side of the straight line, so each still ends on its tiles (R 34) */
     const L0 = Math.hypot(B0.x - A0.x, B0.y - A0.y), nx = -(B0.y - A0.y) / L0, ny = (B0.x - A0.x) / L0, sg = l.a < l.b ? 1 : -1;
     const ea = deg[l.a] > deg[l.b] ? 0.4 : 1, eb = deg[l.b] > deg[l.a] ? 0.4 : 1;
     const A = Object.assign({}, A0, { x: A0.x + nx * sh * sg * ea, y: A0.y + ny * sh * sg * ea }), B = Object.assign({}, B0, { x: B0.x + nx * sh * sg * eb, y: B0.y + ny * sh * sg * eb });

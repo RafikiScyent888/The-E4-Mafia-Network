@@ -91,7 +91,7 @@ at runtime.
 ## SAVE POINT (26 November 2026): the weekly limit reached
 
 The owner, 26 November 2026: "create a save point because we are at the weekly limite". Everything below is committed and pushed to its
-branch; nothing new is live since the last save point (`main` still b164ce3: CP-J1 to CP-J10, CP-01 to CP-09).
+branch; **CP-10 and CP-11 went live at 22:45 that day** (`main` at 66fbcdb: CP-J1 to CP-J10, CP-01 to CP-11), taken live by `orch2.sh` once CP-10's closed plant was caught, each push checked against its staged tree.
 
 - **Campus tickets, CP-10 to CP-15** (`save/level4-tickets`, worktree `/home/user/e4-cpt`; scripts in `tools/wip/campus-golive/`, set `E4_PIN`):
   - CP-10's missed plant ("an address set by hand counts") and CP-12's ("the file right but the service not restarted counts") are closed by

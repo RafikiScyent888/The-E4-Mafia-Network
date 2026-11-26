@@ -4318,6 +4318,18 @@ words until all 25 are built; it opens once the campus is finished (before EN-J1
   section drives EN-J2 through the page; a `JOB` that isn't a Level 5 work order fails. Contrast: 4 "enterprise: EN-J2" states. Plants:
   in `tools/plants-enterprise-node.py` and `-page.py`.
 
+### EN-J3, a branch office over a leased line: the design (26 November 2026)
+
+Objectives read 26 November 2026 (Network+ V9 unchanged): point-to-point and hub-and-spoke topologies, fibre, static and dynamic routing
+(OSPF), DHCP, IPv4 subnetting. Serial lines aren't on them, so the leased line is the provider's pair of single-mode dark fibres (about
+8 km) between HQ's data room and the branch's comms cupboard, into the edge router's spare SFP slot (Gi0/9: the router's slots are in the
+simulation already, `fibreUp`) and the branch router's. The work: a 1000BASE-LX module at each end (SX, multimode, gets no link on
+single-mode); the branch router (a BR-4200) from its box, consoled with your laptop carried to the branch, locked as every router here;
+the link's /30 worked out by hand (HQ the first usable, the branch the second); OSPF across it (the branch's LAN advertised, passive on
+the LAN; the link added to the edge router's OSPF); the branch desks' addresses from the file server (a relay on the branch router, a
+subnet for the branch in dhcpd.conf, restarted); the edge router's new port NAT inside (or the branch reaches HQ but not the internet);
+everyone still works; both routers saved. Drawn as its own block, like the Annex, the fibre a labelled stub at each end.
+
 ## Objectives
 
 Read from the owner's "All updated Objectives" Google Doc

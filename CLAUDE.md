@@ -162,7 +162,7 @@ The owner, 10 November 2026: "create a save point here." Where everything stands
   enabled; every relay moved to it; the edge router's pools taken out; every desk asking again; still working with distribution switch 1 off.
   With it, for every level: nano, systemctl, journalctl, `dhcpd -t` and the lease list on a server, and DHCP served from a server through a
   relay. See the CP-J10 notes in "Level 4, the campus" below.
-- **Level 4's tickets go live one at a time, smallest first (the owner's order):** CP-01, CP-02, CP-03, CP-04, CP-05, CP-06, CP-07, CP-08, CP-09, CP-10 live (23 and 24 November 2026), each after its own checks on a tree staged from its own commit (unit tests, its drive, its contrast states and plants). See "Level 4, the campus" below for each ticket.
+- **Level 4's tickets go live one at a time, smallest first (the owner's order):** CP-01, CP-02, CP-03, CP-04, CP-05, CP-06, CP-07, CP-08, CP-09, CP-10, CP-11 live (23 and 24 November 2026), each after its own checks on a tree staged from its own commit (unit tests, its drive, its contrast states and plants). See "Level 4, the campus" below for each ticket.
 - **Next, in the owner's order:** the rest of Level 4: the campus's Ticket Desk and its 15 tickets, smallest first; then Level 5
   (Enterprise). The owner, 17 November 2026: "Please keep building it all out.
   We will come back and make changes once I go through it." 

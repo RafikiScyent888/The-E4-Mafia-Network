@@ -795,6 +795,78 @@ test("CP-10: the brief and every hint never name the right answer, a password, a
   }
 });
 
+/* ---------------------------------------------------------------- CP-11 */
+const CP11 = CAMPUS_TICKETS.find((d) => d.id === "CP-11");
+const onA = (T, lines, save) => { const v = T.v, f = on(v.pc); return [f("ssh " + v.plan.user + "@" + v.swIp), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("configure terminal")].concat(lines.map(f), [f("end")], save === false ? [] : [f("copy running-config startup-config"), f("")], [f("exit")]); };
+const fix11 = (T) => onA(T, ["interface " + T.v.short.toLowerCase(), "ip address " + T.v.ip + " " + T.v.mask]);
+const proof11 = (T) => [on(T.v.pc)("ping 8.8.8.8")];
+
+test("CP-11: the fault shows in the commands: the classroom turned back at the Annex core, no neighbour, the fibre port up with the wrong address or mask, the ping across answering only when the block is right", () => {
+  for (const s of seedsOf(CP11)) {
+    const T = E.open(CP11, s), v = T.v, f = on(v.pc);
+    assert.ok(CP11.exhibits(T.sim, v), s + " exhibits");
+    assert.match(out(T, [f("tracert " + v.plan.srv.fsrv.ip)]), /reports: Destination net unreachable\./);
+    const o = out(T, [f("ssh " + v.plan.user + "@" + v.swIp), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("show ip ospf neighbor"), f("show ip interface brief"), f("ping " + v.peer), f("show running-config"), f("exit")]);
+    assert.ok(!/FULL|EXSTART/.test(o), s + " no neighbour"); assert.match(o, new RegExp("^" + v.port + "\\s.*\\bup\\s+up", "m"));
+    assert.match(o, v.kind === "mask" ? /Success rate is 100 percent/ : /Success rate is 0 percent/, s + " the ping across");
+    assert.match(o, new RegExp("ip address " + (v.badIp || v.ip).replace(/\./g, "\\.") + " " + (v.badMask || v.mask).replace(/\./g, "\\.")));
+    assert.equal(T.fixed, false);
+    for (const id of ["unreach", "nbr", "run", "peer"]) assert.ok(T.evidence.some((e) => e.id === id), s + " the notebook took " + id);
+    assert.equal(T.opts.length, 6); assert.equal(T.opts.filter((o) => o.right).length, 1); assert.ok(T.opts.filter((o) => !o.right).every((o) => o.why && o.why.length > 30));
+    assert.ok(T.opts.some((o) => !o.right && o.id === (v.kind === "mask" ? "addr" : "mask")), s + " the other cause is a near miss");
+    const S = CP11.summary(v); assert.ok(S.cause.length > 80 && S.fix.length > 60);
+  }
+});
+
+test("CP-11: the Annex core's end put back as the records have it, saved, fixes it; a classroom PC's ping to the internet proves it, and a right diagnosis solves it", () => {
+  for (const s of seedsOf(CP11)) {
+    const T = E.open(CP11, s), v = T.v;
+    for (const a of fix11(T)) E.act(T, a); assert.equal(T.fixed, true, s + " fixed");
+    E.act(T, on(v.pc)("ping " + v.plan.annex.cls.gw)); assert.equal(T.proven, false, s + " a ping to the gateway isn't the proof");
+    for (const a of proof11(T)) E.act(T, a); assert.equal(T.proven, true);
+    E.guess(T, T.opts.find((o) => o.right).id); assert.equal(T.solved, true);
+  }
+});
+
+test("CP-11: the tempting wrong fixes don't: half the fix (address or mask only), a static default on the Annex core, the port bounced, the fix unsaved", () => {
+  for (const s of seedsOf(CP11)) {
+    const open = () => E.open(CP11, s);
+    let T = open(); const half = T.v.kind === "mask" ? T.v.ip + " 255.255.255.248" : T.v.badIp + " " + T.v.mask;
+    if (T.v.kind === "mask" && T.v.badMask === "255.255.255.248") { for (const a of onA(T, ["interface " + T.v.short.toLowerCase(), "ip address " + T.v.ip + " 255.255.255.240"])) E.act(T, a); }
+    else for (const a of onA(T, ["interface " + T.v.short.toLowerCase(), "ip address " + half])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " not the records' address and mask"); assert.ok(CP11.exhibits(T.sim, T.v));
+    T = open(); for (const a of onA(T, ["ip route 0.0.0.0 0.0.0.0 " + T.v.peer])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " a static default"); assert.ok(!online(T.sim, T.v.pc), s + " no way back for the replies");
+    T = open(); for (const a of onA(T, ["interface " + T.v.short.toLowerCase(), "shutdown", "no shutdown"])) E.act(T, a);
+    assert.equal(T.fixed, false, s + " bounced");
+    T = open(); for (const a of onA(T, ["interface " + T.v.short.toLowerCase(), "ip address " + T.v.ip + " " + T.v.mask], false).concat(proof11(T))) E.act(T, a);
+    assert.equal(T.fixed, false, s + " unsaved"); assert.match(T.partial || "", /hasn't saved it/);
+  }
+});
+
+test("CP-11: the ladder climbs, and a saved ticket replays exactly", () => {
+  const T = E.open(CP11, seedsOf(CP11)[0]), wrongs = T.opts.filter((o) => !o.right).map((o) => o.id);
+  assert.equal(E.guess(T, wrongs[0]).rung, 0); assert.equal(E.guess(T, wrongs[1]).rung, 0); assert.equal(E.guess(T, wrongs[2]).rung, 1); assert.equal(E.guess(T, wrongs[3]).rung, 2);
+  E.resetBoard(T); assert.equal(E.guess(T, wrongs[4]).rung, 3); assert.equal(E.live(T).length, 2); assert.ok(E.live(T).some((o) => o.right));
+  const U = E.open(CP11, seedsOf(CP11, 1)[0]);
+  for (const a of fix11(U).concat(proof11(U))) E.act(U, a);
+  const R = E.restore(CP11, JSON.parse(JSON.stringify(E.save(U))));
+  assert.equal(R.fixed, U.fixed); assert.deepEqual(R.evidence, U.evidence); assert.equal(R.proven, U.proven); assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
+});
+
+test("CP-11: the brief and every hint never name the right answer, a password, an address, a mask or the fix's command", () => {
+  for (const s of seedsOf(CP11)) {
+    const T = E.open(CP11, s), right = T.opts.find((o) => o.right).text.toLowerCase(), p = T.v.plan;
+    const texts = [CP11.rung1(T.v, T.sim), CP11.rung2(T.v, T.sim), ...CP11.fixHints(T.v, T.sim), CP11.brief(T.v, T.sim).quote, CP11.mason].map((x) => x.toLowerCase());
+    for (const x of texts) {
+      assert.ok(x.indexOf(right) < 0, x);
+      for (const bad of [p.secret, p.console, p.userPw, p.srv.pw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, "names a password: " + x);
+      for (const bad of ["ip address", "copy running-config", T.v.ip, T.v.peer, T.v.mask, T.v.badIp, T.v.badMask].filter(Boolean)) assert.ok(x.indexOf(bad) < 0, "names " + bad + ": " + x);
+    }
+    for (const x of [CP11.brief(T.v, T.sim).quote, CP11.mason].map((y) => y.toLowerCase())) assert.ok(x.indexOf("mask") < 0, "the brief or Mason's opener names the mask: " + x);
+  }
+});
+
 /* every campus ticket shows its fault on the campus it was asked for, in every variant: a ticket moves to another campus when its fault
    doesn't show, so a rule that stopped one variant showing would otherwise go unnoticed (the tests would just meet the other variants) */
 for (const def of CAMPUS_TICKETS) test(def.id + ": the fault shows on every campus asked for, every variant (no campus skipped)", () => {

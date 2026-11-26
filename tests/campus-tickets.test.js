@@ -762,8 +762,8 @@ test("CP-10: the tempting wrong fixes don't: one switch only, the desk given an 
     assert.equal(T.fixed, false, s + " an address by hand");
     /* both relays put right and saved, then the desk given an address by hand instead of asking again: it works, and isn't the fix */
     T = open(); for (const a of onR(T, "dist1", relayLines(T)).concat(onR(T, "dist2", relayLines(T)))) E.act(T, a);
-    E.act(T, { t: "client", dev: T.v.pc, values: { mode: "static", ip: a0, mask: T.v.plan.mask, gw: T.v.vnet + "1", dns: [T.v.plan.srv.fsrv.ip] } }); E.act(T, on(T.v.pc)("ping 8.8.8.8"));
-    assert.equal(T.fixed, false, s + " the relays put right, then the desk given an address by hand");
+    E.act(T, { t: "client", dev: T.v.pc, values: { mode: "static", ip: a0, mask: T.v.plan.mask, gw: T.v.vnet + "1", dns: T.sim.d.mgr.ifaces[0].lease.dns.slice() } }); E.act(T, on(T.v.pc)("ping 8.8.8.8"));
+    assert.ok(online(T.sim, T.v.pc), s + " the address by hand works"); assert.ok(!T.fixed, s + " the relays put right, then the desk given an address by hand");
     T = open(); for (const a of onR(T, "dist1", relayLines(T), false).concat(onR(T, "dist2", relayLines(T), false), proof10(T))) E.act(T, a);
     assert.equal(T.fixed, false, s + " unsaved"); assert.match(T.partial || "", /hasn't saved the change/);
     T = open(); const edge = coreLinks(T.v.plan)[0].ia; for (const a of onR(T, "dist1", ["interface vlan " + T.v.vid, "ip helper-address " + edge]).concat(onR(T, "dist2", ["interface vlan " + T.v.vid, "ip helper-address " + edge]), proof10(T))) E.act(T, a);
@@ -909,6 +909,10 @@ test("CP-12: the tempting wrong fixes don't: a restart with the file as it is, t
     /* restarted as it is (it fails), then the file put right but never restarted again: the server is still down */
     T = open(); for (const a of onSrv(T, ["sudo systemctl restart isc-dhcp-server", T.v.plan.srv.pw]).concat(edit12(T, goodConf(T), false), proof12(T))) E.act(T, a);
     assert.equal(T.fixed, false, s + " failed, then the file put right and not restarted"); assert.equal(T.sim.d.fsrv.lx.dhcpd.state, "failed"); assert.ok(!online(T.sim, T.v.pc));
+    /* fixed properly, the desk on its new lease, then the DHCP server stopped: the desk works until its lease runs out, and it isn't fixed */
+    T = open(); for (const a of edit12(T, goodConf(T)).concat(proof12(T))) E.act(T, a); assert.equal(T.fixed, true, s + " the real fix");
+    for (const a of onSrv(T, ["sudo systemctl stop isc-dhcp-server", T.v.plan.srv.pw])) E.act(T, a);
+    assert.ok(online(T.sim, T.v.pc), s + " the desk still on its lease"); assert.ok(!T.fixed, s + " fixed, then the server stopped");
     T = open(); for (const a of edit12(T, goodConf(T), false).concat(proof12(T))) E.act(T, a);
     assert.equal(T.fixed, false, s + " written, not restarted"); assert.ok(!online(T.sim, T.v.pc));
     T = open(); const cut = confNow(T).replace(/\n# Meeting room[\s\S]*$/, "\n"); for (const a of edit12(T, cut).concat(proof12(T))) E.act(T, a);

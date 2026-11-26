@@ -6,6 +6,7 @@
 import { isIp, sameSubnet, maskBits, broadcast, network, lpad, pad, hash } from "./util.js";
 import * as D from "./dhcpd.js";
 import * as SV from "./svc.js";
+import * as MON from "./mon.js";
 
 export const LX_HELP = [
   ["ip a  (ip addr, ip -br a)", "this server's ports, their state, MTU and addresses"],
@@ -39,6 +40,18 @@ export const LX_HELP_DHCP = [
   ["dhcp-lease-list", "the addresses it has handed out, to whom"]
 ];
 /* on a server running the network's time and log services (Level 5, work order 1) */
+/* the monitoring tools (Level 5, work order 2) */
+export const LX_HELP_MON = [
+  ["snmpget -v3 -l authPriv -u <user> -a SHA -A <pass> -x AES -X <pass> <address> sysName.0", "ask a switch or router one value over SNMPv3"],
+  ["snmpwalk ... <address> system", "every value under a part of its MIB (system, interfaces, ifOperStatus)"],
+  ["snmpget -v2c -c <community> <address> sysName.0", "ask with SNMPv2c and a community"],
+  ["nano ~/.snmp/snmp.conf", "your defaults for the SNMP tools (defVersion, defSecurityName, ...)"],
+  ["sudo systemctl status snmptrapd", "the trap receiver; its settings are /etc/snmp/snmptrapd.conf"],
+  ["ip link show eno3", "the third port; sudo ip link set eno3 up brings it up"],
+  ["sudo tcpdump -D", "the ports tcpdump can capture on"],
+  ["sudo tcpdump -i eno3 -n -c 20", "show 20 packets arriving on a port"],
+  ["sudo tcpdump -i eno3 -n -c 50 -w /tmp/<file>.pcap", "save a capture to a file (tcpdump writes it as its own user)"],
+  ["tcpdump -n -r /tmp/<file>.pcap", "read a saved capture"]];
 export const LX_HELP_SVC = [
   ["sudo nano /etc/chrony/chrony.conf", "chrony's settings: its time sources, and who it serves (allow)"],
   ["chronyc sources", "the time sources chrony uses, and the one it's locked to (^*)"],
@@ -108,7 +121,7 @@ function run(sim, id, st, line, root) {
       return done(["logout"], { closed: true, facts: { logout: true } });
     }
     case "clear": return done([], { clear: true });
-    case "help": return done(["Commands you can use on this server:", ""].concat(LX_HELP.concat(x.lx.dhcpd ? LX_HELP_DHCP : [], x.lx.svc ? LX_HELP_SVC : []).map(function (h) { return "  " + pad(h[0], 40) + h[1]; })));
+    case "help": return done(["Commands you can use on this server:", ""].concat(LX_HELP.concat(x.lx.dhcpd ? LX_HELP_DHCP : [], x.lx.svc ? LX_HELP_SVC : [], x.lx.mon ? LX_HELP_MON : []).map(function (h) { return "  " + pad(h[0], 40) + h[1]; })));
     case "hostname": return done([x.host]);
     case "whoami": return done([root ? "root" : st.user]);
     case "uname": return done([args[0] === "-a" ? "Linux " + x.host + " 6.8.0-49-generic #49-Ubuntu SMP PREEMPT_DYNAMIC Mon Nov  4 02:06:24 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux" : "Linux"]);
@@ -130,6 +143,8 @@ function run(sim, id, st, line, root) {
     case "grep": return done(grep(sim, id, args, root));
     case "logger": { const m = line.replace(/^logger\s*/, "").replace(/^(-t\s+\S+\s*)/, "").replace(/^["']|["']$/g, ""); if (x.lx.svc) syslogLocal(sim, id, (st.user || "root") + ": " + m); return done([]); }
     case "timedatectl": return done(timedatectl(sim, id));
+    case "snmpget": case "snmpwalk": case "snmpbulkwalk": { if (!x.lx.mon) return done([c + ": command not found"]); const r = MON.snmpTool(sim, id, st, c, args); return done(r.out, { facts: r.facts || {} }); }
+    case "tcpdump": { if (!x.lx.mon) return done(["Command 'tcpdump' not found, but can be installed with:", "sudo apt install tcpdump"]); return done(tcpdump(sim, id, st, args, root), { facts: { tcpdump: args.join(" ") } }); }
     case "reboot": case "shutdown": {
       if (c === "shutdown" && !(args[0] === "-r")) return done(["(This server stays on: it's in use. To restart it: sudo reboot)"]);
       if (!root) return done(["Failed to set wall message, ignoring: Interactive authentication required.", "Call to Reboot failed: Interactive authentication required."]);
@@ -145,10 +160,10 @@ function run(sim, id, st, line, root) {
 /* ------------------------------------------------------------ the server's ports */
 const colon = function (m) { return String(m).replace(/-/g, ":").toLowerCase(); };
 function v6(m) { const b = colon(m).split(":").map(function (h) { return parseInt(h, 16); }); b[0] ^= 2; const w = [b[0] << 8 | b[1], b[2] << 8 | 0xff, 0xfe << 8 | b[3], b[4] << 8 | b[5]]; return "fe80::" + w.map(function (n) { return n.toString(16); }).join(":"); }
-const ALT = { eno1: "enp1s0f0", eno2: "enp1s0f1" };
+const ALT = { eno1: "enp1s0f0", eno2: "enp1s0f1", eno3: "enp1s0f2" };
 function ports(sim, id) {
   const x = sim.d[id];
-  return x.ifaces.map(function (f, j) { const c = sim.cableAt(id, f.port), up = sim.on(id) && !!c && sim.cableUp(c); return { f: f, j: j, up: up, mtu: f.mtu || 1500, ip: f.cfg && f.cfg.ip, mask: f.cfg && f.cfg.mask, gw: f.cfg && f.cfg.gw }; });
+  return x.ifaces.map(function (f, j) { const c = sim.cableAt(id, f.port), admin = f.admin !== "down", up = admin && sim.on(id) && !!c && sim.cableUp(c); return { f: f, j: j, up: up, admin: admin, mtu: f.mtu || 1500, ip: f.cfg && f.cfg.ip, mask: f.cfg && f.cfg.mask, gw: f.cfg && f.cfg.gw }; });
 }
 function findPort(sim, id, name) { return ports(sim, id).find(function (p) { return p.f.name === name; }); }
 function ipCmd(sim, id, a, root) {
@@ -163,7 +178,7 @@ function ipCmd(sim, id, a, root) {
 }
 /* "show", "show dev eno2", "show eno2", "eno2": the port asked for, or every port */
 function devArg(a) { a = a.slice(); if (a[0] && /^(show|list|lst|sh)$/.test(a[0])) a.shift(); if (a[0] === "dev") a.shift(); return a[0] || null; }
-function headLine(p, i) { return (i + 2) + ": " + p.f.name + ": <" + (p.up ? "BROADCAST,MULTICAST,UP,LOWER_UP" : "NO-CARRIER,BROADCAST,MULTICAST,UP") + "> mtu " + p.mtu + " qdisc mq state " + (p.up ? "UP" : "DOWN") + " group default qlen 1000"; }
+function headLine(p, i) { return (i + 2) + ": " + p.f.name + ": <" + (p.up ? "BROADCAST,MULTICAST,UP,LOWER_UP" : p.admin === false ? "BROADCAST,MULTICAST" : "NO-CARRIER,BROADCAST,MULTICAST,UP") + "> mtu " + p.mtu + " qdisc mq state " + (p.up ? "UP" : "DOWN") + " group default qlen 1000"; }
 const LO = ["1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000", "    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00"];
 function ipAddr(sim, id, a, brief, root) {
   if (a[0] && /^(add|del|delete|change|replace|flush)$/.test(a[0])) return ["(This server's addresses come from its netplan file, and they're right: this work is about its MTU.)"];
@@ -209,6 +224,10 @@ function linkSet(sim, id, a, root) {
     if (+v < MIN_MTU) return ["Error: mtu less than device minimum."];
     p.f.mtu = +v; if (sim.bump) sim.bump(); return [];
   }
+  if ((k === "up" || k === "down") && !(sim.d[id].lx.netplan || {})[name]) {   /* a port netplan doesn't set up (eno3, work order 2): down until brought up */
+    if (!root) return ["RTNETLINK answers: Operation not permitted"];
+    p.f.admin = k === "up" ? "up" : "down"; if (sim.bump) sim.bump(); return [];
+  }
   if (k === "up" || k === "down") return ["(This server's ports stay up here. To take one down, unplug its cable on the Physical tab.)"];
   return ['Error: either "dev" is duplicate, or "' + k + '" is a garbage.'];
 }
@@ -244,7 +263,8 @@ function cat(sim, id, a, root) {
   return a.reduce(function (out, f) {
     if (f === NETPLAN_FILE) return out.concat(root ? netplanText(x) : ["cat: " + f + ": Permission denied"]);
     if (f === "/etc/hostname") return out.concat([x.host]);
-    const t = fileText(sim, id, f); if (t != null) return out.concat(t.replace(/\n$/, "").split("\n"));
+    const P = (x.lx.files || {})[homeFile(sim, id, null, f)]; if (P && P.pcap) return out.concat(["(" + f + " is a packet capture, not text: read it with tcpdump -n -r " + f + ")"]);
+    const t = fileText(sim, id, homeFile(sim, id, null, f)); if (t != null) return out.concat(t.replace(/\n$/, "").split("\n"));
     if (x.lx.dhcpd && /^\/etc\/(dhcp|default)\/?$/.test(f)) return out.concat(["cat: " + f + ": Is a directory"]);
     if (f === "/etc/os-release") return out.concat(['PRETTY_NAME="Ubuntu 24.04.1 LTS"', 'NAME="Ubuntu"', 'VERSION_ID="24.04"', 'VERSION="24.04.1 LTS (Noble Numbat)"']);
     return out.concat(["cat: " + f + ": No such file or directory"]);
@@ -256,7 +276,17 @@ function ls(sim, id, a, root) {
   const D0 = sim.d[id].lx.dhcpd;
   if (D0 && (dir === "/etc/dhcp" || dir === "/etc/dhcp/")) return long ? ["total 12", "drwxr-xr-x 2 root root 4096 Nov 20 16:24 ddns-keys", "-rw-r--r-- 1 root root " + fileText(sim, id, D.CONF).length + " " + stamp(sim, id, D.CONF) + " dhcpd.conf", "-rw-r--r-- 1 root root 1735 Nov 20 16:24 dhcpd6.conf"] : ["ddns-keys  dhcpd.conf  dhcpd6.conf"];
   if (D0 && (dir === D.CONF || dir === D.DEFAULTS)) return [long ? "-rw-r--r-- 1 root root " + fileText(sim, id, dir).length + " " + stamp(sim, id, dir) + " " + dir : dir];
-  if (dir === "~" || dir === "." || dir === "/home/" + (sim.d[id].lx && Object.keys(sim.d[id].lx.users)[0])) return [];
+  const home = "/home/" + (sim.d[id].lx && Object.keys(sim.d[id].lx.users)[0]), all = a.some(function (w) { return /^-[a-zA-Z]*a/.test(w); });
+  if (dir === "~" || dir === "." || dir === home || dir === home + "/" || dir === "/tmp" || dir === "/tmp/" || dir === "~/.snmp" || dir === home + "/.snmp") {
+    const base = dir === "/tmp" || dir === "/tmp/" ? "/tmp" : /\.snmp$/.test(dir) ? home + "/.snmp" : home, F = sim.d[id].lx.files || {};
+    const names = Object.keys(F).filter(function (p) { return p.indexOf(base + "/") === 0 && p.slice(base.length + 1).indexOf("/") < 0; }).map(function (p) { return p.slice(base.length + 1); });
+    if (base === home && Object.keys(F).some(function (p) { return p.indexOf(home + "/.snmp/") === 0; }) && all) names.push(".snmp");
+    const shown = names.filter(function (n) { return all || n[0] !== "."; }).sort();
+    if (!long) return shown.length ? [shown.join("  ")] : [];
+    return ["total " + (4 * shown.length)].concat(shown.map(function (n) { const E = F[base + "/" + n]; if (!E) return "drwxrwxr-x 2 " + Object.keys(sim.d[id].lx.users)[0] + " " + Object.keys(sim.d[id].lx.users)[0] + " 4096 Nov 22 10:44 " + n;
+      const size = E.pcap ? 24 + E.pcap.reduce(function (t, q) { return t + 16 + 54 + (q.len || 0); }, 0) : String(E.text || "").length, who = E.owner || (base === "/tmp" ? "root" : Object.keys(sim.d[id].lx.users)[0]);
+      return (E.pcap ? "-rw-r--r-- 1 " : "-rw-rw-r-- 1 ") + who + " " + who + " " + size + " " + (E.at || "Nov 22 10:44") + " " + n; }));
+  }
   if (dir === NETPLAN_FILE) return [long ? "-rw------- 1 root root " + netplanText(sim.d[id]).join("\n").length + " Nov 20 16:20 " + NETPLAN_FILE : NETPLAN_FILE];
   return ["ls: cannot access '" + dir + "': No such file or directory"];
 }
@@ -350,6 +380,59 @@ function ping(sim, id, a, facts) {
 
 /* ------------------------------------------------------------ files, the editor (work order 10) */
 /* a file the server holds as text: the DHCP server's two files, the leases file it writes, anything written with the editor */
+/* a path as typed: "~/x" and "x" are in the home folder (root's when in a root shell) */
+function homeFile(sim, id, st, p) { if (!p || p[0] === "/") return p; const home = st && st.root ? "/root" : "/home/" + ((st && st.user) || Object.keys(sim.d[id].lx.users || {})[0]); return p === "~" ? home : p.indexOf("~/") === 0 ? home + p.slice(1) : home + "/" + p.replace(/^\.\//, ""); }
+/* ------------------------------------------------------------ tcpdump (Level 5, work order 2) */
+function tcpdump(sim, id, st, a, root) {
+  const x = sim.d[id]; let iface = null, count = 0, wf = null, rf = null, list = false, asRoot = false; const expr = [];
+  for (let i = 0; i < a.length; i++) {
+    const w = a[i];
+    if (w === "-i") iface = a[++i]; else if (/^-i\S/.test(w)) iface = w.slice(2);
+    else if (w === "-c") count = +a[++i]; else if (/^-c\d+$/.test(w)) count = +w.slice(2);
+    else if (w === "-w") wf = a[++i]; else if (w === "-r") rf = a[++i];
+    else if (w === "-Z") asRoot = a[++i] === "root"; else if (w === "-s") i++;
+    else if (w === "-D" || w === "--list-interfaces") list = true;
+    else if (/^-[nveqtlXA]+$/.test(w)) { }
+    else if (w[0] === "-") return ["tcpdump: invalid option -- '" + w.replace(/^-+/, "")[0] + "'", "Usage: tcpdump [-AbdDefhHIJKlLnNOpqStuUvxX#] [ -B size ] [ -c count ] [--count]", "\t\t[ -i interface ] [ -r file ] [ -s snaplen ] [ -w file ] [ -Z user ] [ expression ]"];
+    else expr.push(w);
+  }
+  if ((count && !(count > 0)) || a.indexOf("-i") === a.length - 1) return ["tcpdump: option requires an argument -- '" + (a[a.length - 1] || "-").slice(1) + "'"];
+  /* a filter: host <address> (either end), arp, ip; anything else isn't understood here */
+  let keep = function () { return true; };
+  if (expr.length) {
+    const e = expr.join(" ");
+    if (/^host \d+\.\d+\.\d+\.\d+$/.test(e)) { const h = e.split(" ")[1]; keep = function (q) { return q.from === h || q.to === h; }; }
+    else if (e === "arp") keep = function (q) { return /^ARP/.test(q.text); };
+    else if (e === "ip") keep = function (q) { return /^IP /.test(q.text); };
+    else return ["tcpdump: can't parse filter expression: syntax error (this server takes host <address>, arp or ip)"];
+  }
+  const show = function (P) { return P.filter(keep).map(function (q) { return q.t + " " + q.text; }); };
+  const F = x.lx.files || (x.lx.files = {});
+  if (rf) {
+    const path = homeFile(sim, id, st, rf), E = F[path];
+    if (!E) return ["tcpdump: " + rf + ": No such file or directory"];
+    if (!E.pcap) return ["tcpdump: " + rf + ": unknown file format"];
+    return ["reading from file " + rf + ", link-type EN10MB (Ethernet), snapshot length 262144"].concat(show(E.pcap));
+  }
+  const P0 = ports(sim, id);
+  if (list) return P0.map(function (p, i) { return (i + 1) + "." + p.f.name + " " + (p.admin === false ? "[none]" : p.up ? "[Up, Running, Connected]" : "[Up, Disconnected]"); }).concat([(P0.length + 1) + ".any (Pseudo-device that captures on all interfaces) [Up, Running]", (P0.length + 2) + ".lo [Up, Running, Loopback]"]);
+  const name = iface || P0[0].f.name, p = P0.find(function (q) { return q.f.name === name; });
+  if (!p && name !== "any") return ["tcpdump: " + name + ": No such device exists", "(No such device exists)"];
+  if (!root) return ["tcpdump: " + name + ": You don't have permission to perform this capture on that device", "(socket: Operation not permitted)"];
+  if (p && !p.admin) return ["tcpdump: " + name + ": That device is not up"];
+  const nics = name === "any" ? P0.filter(function (q) { return q.up; }).map(function (q) { return q.f.name; }) : [name];
+  let pk = []; nics.forEach(function (n) { pk = pk.concat(MON.capture(sim, id, n, count && nics.length === 1 ? count : 0)); }); if (count) pk = pk.slice(0, count);
+  pk = pk.filter(keep);
+  const head = "listening on " + name + ", link-type " + (name === "any" ? "LINUX_SLL2 (Linux cooked v2)" : "EN10MB (Ethernet)") + ", snapshot length 262144 bytes";
+  const stats = (count && pk.length >= count ? [] : ["^C"]).concat([pk.length + " packet" + (pk.length === 1 ? "" : "s") + " captured", pk.length + " packet" + (pk.length === 1 ? "" : "s") + " received by filter", "0 packets dropped by kernel"]);
+  if (wf) {
+    const path = homeFile(sim, id, st, wf);
+    if (!asRoot && /^\/(home|root)\//.test(path)) return ["tcpdump: " + wf + ": Permission denied"];   /* tcpdump writes as its own user, which can't write in a home folder */
+    const k = clock(sim); F[path] = { pcap: pk, at: k.day + " " + k.hms.slice(0, 5), owner: asRoot ? "root" : "tcpdump" }; if (sim.bump) sim.bump();
+    return ["tcpdump: " + head].concat(stats);
+  }
+  return ["tcpdump: verbose output suppressed, use -v[v]... for full protocol decode", head].concat(show(pk), stats);
+}
 function fileText(sim, id, path) {
   const x = sim.d[id], F = x.lx.files || {};
   if (path === D.LEASES && x.lx.dhcpd) return leasesText(sim, id);
@@ -366,12 +449,12 @@ export function editState(st) {
 }
 function nano(sim, id, st, args, root, c, facts) {
   if (c === "vi" || c === "vim") return { out: ["(The editor on this console is nano: sudo nano <file>. Ctrl+O writes the file out, Ctrl+X leaves.)"], facts: facts };
-  const path = args.filter(function (w) { return w[0] !== "-" && w[0] !== "+"; }).pop();
+  let path = args.filter(function (w) { return w[0] !== "-" && w[0] !== "+"; }).pop();
   if (!path) return { out: ["(Name the file to edit: sudo nano /etc/dhcp/dhcpd.conf)"], facts: facts };
   if (path === NETPLAN_FILE) return { out: ["(This server's netplan file is changed with sudo netplan set here: sudo netplan set ethernets.eno2.mtu=9000.)"], facts: facts };
   if (/^\/etc\/(dhcp|default|netplan)\/?$/.test(path) || /\/$/.test(path)) return { out: ["(" + path + " is a folder: name a file in it, such as /etc/dhcp/dhcpd.conf)"], facts: facts };
   if (path === D.LEASES) return { out: ["(" + D.LEASES + " is written by the DHCP server itself: read it with cat, or dhcp-lease-list)"], facts: facts };
-  const t = fileText(sim, id, path), isNew = t == null;
+  const t = fileText(sim, id, path = homeFile(sim, id, st, path)), isNew = t == null;
   st.edit = { path: path, root: !!root, text: isNew ? "" : t, isNew: isNew };
   st.edit.status = isNew ? "[ New File ]" : !root && /^\/etc\//.test(path) ? "[ File '" + path + "' is unwritable ]" : "[ Read " + nLines(t) + " lines ]";
   if (!root && !/^\/etc\//.test(path)) st.edit.root = true;   /* a file of your own, in your home folder */
@@ -524,6 +607,7 @@ export function svcStart(sim, id, unit) {
     V.state = "failed"; V.run = null; changed(sim); return;
   }
   if (unit === "chrony") sjournal(sim, id, unit, "chronyd[" + V.pid + "]", ["chronyd version 4.5 starting (+CMDMON +NTP +REFCLOCK +RTC +PRIVDROP +SCFILTER +SIGND +ASYNCDNS +NTS +SECHASH +IPV6 -DEBUG)", "Loaded seccomp filter (level 1)"]);
+  else if (unit === "snmptrapd") sjournal(sim, id, unit, "snmptrapd[" + V.pid + "]", (run.bad.length ? run.bad.map(function (l) { return "/etc/snmp/snmptrapd.conf: line " + (String(run.text).split("\n").findIndex(function (q) { return q.trim() === l; }) + 1) + ": Warning: Unknown token: " + l.split(/\s+/)[0] + "."; }) : []).concat(["NET-SNMP version 5.9.4.pre2"]));
   else {
     if (run.unloaded) sjournal(sim, id, unit, "rsyslogd", ["input module name '" + run.unloaded + "' is unknown [v8.2312.0 try https://www.rsyslog.com/e/2209 ]", "error during parsing file " + SV.RSYSLOG_CONF + ", on or before line " + (String(run.text).split("\n").findIndex(function (l) { return /^\s*input\(/.test(l); }) + 1) + ": parameter 'type' not known -- typo in config file? [v8.2312.0 try https://www.rsyslog.com/e/2207 ]"]);
     sjournal(sim, id, unit, "rsyslogd", ["imuxsock: Acquired UNIX socket '/run/systemd/journal/syslog' (fd 3) from systemd.  [v8.2312.0]", "rsyslogd's groupid changed to 102", "rsyslogd's userid changed to 102", "[origin software=\"rsyslogd\" swVersion=\"8.2312.0\" x-pid=\"" + V.pid + "\" x-info=\"https://www.rsyslog.com\"] start"]);

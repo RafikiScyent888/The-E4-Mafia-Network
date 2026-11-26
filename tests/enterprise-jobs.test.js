@@ -133,3 +133,99 @@ test("EN-J1: rungs and the ladder; a saved job replays exactly; the help never n
   const R = B.restore(EJ1, JSON.parse(JSON.stringify(B.save(U))));
   assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
 });
+
+/* ---------------------------------------------------------------- EN-J2, watching the network: SNMPv3 and a mirrored port */
+const EJ2 = ENTERPRISE_JOBS.find((d) => d.id === "EN-J2");
+const solve2 = (J, swap) => { const acts = EJ2.solve(J.v); return swap ? swap(acts) : acts; };
+/* the SSH block typed to one device in the walk-through: from its ssh to the exit after its save */
+const blk = (acts, p, id) => { const k = acts.findIndex((x) => x.dev === "sd1" && x.line === "ssh " + p.user + "@" + gearAddr(p, id)); const c = acts.findIndex((x, i) => i > k && x.line === "copy running-config startup-config"); return [k, c + 2]; };
+const inBlk = (acts, p, id, f) => { const [k, e] = blk(acts, p, id); return acts.map((x, i) => (i >= k && i <= e ? f(x) : x)).filter(Boolean); };
+const sayOut = (J, acts) => acts.map((a) => (B.act(J, a) || {}).out || "").join("");
+const srvLines = (J, lines) => ["", J.v.plan.srv.user, J.v.plan.srv.pw].concat(lines).map((l) => L(l));
+
+test("EN-J2 starts with its work still to do, for the real reason; the walk-through passes every line", () => {
+  for (const s of seeds.slice(0, Math.max(1, N - 1))) {
+    let J = B.open(EJ2, s), c = B.check(J);
+    for (const r of c.res) { if (EJ2.already.indexOf(r.id) >= 0) assert.ok(r.ok, s + " " + r.id + " met before any work"); else { assert.equal(r.ok, false, s + " " + r.id); assert.ok(r.ev && r.ev.length > 10); } }
+    assert.equal(line(J, "v2c").cause, "rw"); assert.equal(line(J, "v3").cause, "nogroup"); assert.equal(line(J, "polled").cause, "notyet");
+    assert.equal(line(J, "traps").cause, "nohost"); assert.equal(line(J, "mirror").cause, "nocable"); assert.equal(line(J, "capture").cause, "down");
+    J = run(B.open(EJ2, s), EJ2.solve(J.v)); c = B.check(J);
+    for (const r of c.res) assert.ok(r.ok, s + " " + r.id + " not met after the walk-through: " + r.ev);
+    assert.equal(J.done, true);
+  }
+});
+
+test("EN-J2: the gear's and the server's own view: show snmp, the running configuration without the user, the mirror and its port, Net-SNMP's answers and errors, tcpdump's", () => {
+  const J = run(B.open(EJ2, seeds[0]), EJ2.solve(B.open(EJ2, seeds[0]).v)), p = J.v.plan, M = p.mon, fs = p.srv.fsrv.ip, esc = (x) => String(x).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  /* each command's own output, on one device, over SSH from the service desk PC */
+  const showOn = (id, cmds) => { const D = (l) => (B.act(J, { t: "cmd", dev: "sd1", line: l }) || {}).out || ""; ["ssh " + p.user + "@" + gearAddr(p, id), p.userPw, "enable", p.secret].forEach(D); const o = cmds.map(D); D("exit"); return o; };
+  const [su, sg, sh, rc, ms, st] = showOn("acc1", ["show snmp user", "show snmp group", "show snmp host", "show running-config | include snmp|monitor", "show monitor session all", "show interfaces status"]), a1 = [su, sg, sh, ms, st].join("\n");
+  assert.match(a1, new RegExp("User name: " + esc(M.user) + "[\\s\\S]*Authentication Protocol: SHA\\nPrivacy Protocol: AES128\\nGroup-name: " + esc(M.group)));
+  assert.match(a1, new RegExp("groupname: " + esc(M.group) + "\\s+security model:v3 priv"));
+  assert.match(a1, new RegExp("Notification host: " + esc(fs) + "\\tudp-port: 162\\ttype: inform\\nuser: " + esc(M.user) + "\\tsecurity model: v3 priv"));
+  assert.match(rc, new RegExp("^snmp-server group " + esc(M.group) + " v3 priv$", "m")); assert.match(rc, new RegExp("^snmp-server host " + esc(fs) + " informs version 3 priv " + esc(M.user) + "$", "m"));
+  assert.match(rc, /^snmp-server enable traps config$/m); assert.ok(!/snmp-server user|snmp-server community/.test(rc), "the user never shows in the running configuration, and no community is left");
+  assert.match(rc, new RegExp("^monitor session 1 source interface Gi0/" + M.src + "$", "m")); assert.match(rc, new RegExp("^monitor session 1 destination interface Gi0/" + M.dst + "$", "m"));
+  assert.match(a1, new RegExp("Source Ports\\s+:\\n\\s+Both\\s+: Gi0/" + M.src + "\\nDestination Ports\\s+: Gi0/" + M.dst));
+  assert.match(a1, new RegExp("^Gi0/" + M.dst + "\\s.*\\smonitoring\\s", "m"), "the mirror's port says monitoring");
+  const v3 = "snmpget -v3 -l authPriv -u " + M.user + " -a SHA -A " + M.authPw + " -x AES -X " + M.privPw + " ", ad = gearAddr(p, "acc2");
+  const sv = sayOut(J, srvLines(J, [v3 + ad + " sysName.0", "snmpwalk -v3 -l authPriv -u " + M.user + " -a SHA -A " + M.authPw + " -x AES -X " + M.privPw + " " + gearAddr(p, "edge") + " system",
+    "snmpget -v2c -c public " + ad + " sysName.0", "snmpget -v3 -l authPriv -u " + M.user + " -a SHA -A wrong-passphrase -x AES -X " + M.privPw + " " + ad + " sysName.0",
+    "snmpget -v3 -l authPriv -u " + M.user + " -a SHA -A " + M.authPw + " -x AES -X wrong-passphrase " + ad + " sysName.0", "snmpget -v3 -l authNoPriv -u " + M.user + " -a SHA -A " + M.authPw + " " + ad + " sysName.0",
+    "snmpget -v3 -l authPriv -u nobody -a SHA -A " + M.authPw + " -x AES -X " + M.privPw + " " + ad + " sysName.0", "sudo tcpdump -i eno3 -n -c 3 -w servicedesk.pcap", p.srv.pw, "ls -l /tmp", "cat " + M.file, "tcpdump -n -r " + M.file + " host 8.8.8.8"]));
+  assert.match(sv, /SNMPv2-MIB::sysName\.0 = STRING: \S+\.rafiki-it\.lan/); assert.match(sv, /SNMPv2-MIB::sysDescr\.0 = STRING: BR-4200 Network Operating System/); assert.match(sv, /DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: \(\d+\) \d+ days?, \d+:\d\d:\d\d\.\d\d/);
+  assert.match(sv, new RegExp("Timeout: No Response from " + esc(ad) + "\\."), "public is gone: no answer"); assert.match(sv, /snmpget: Authentication failure \(incorrect password, community or key\)/); assert.match(sv, /snmpget: Decryption error/);
+  assert.match(sv, /Reason: authorizationError \(access denied to that object\)/, "authNoPriv against a group that requires priv"); assert.match(sv, /snmpget: Unknown user name/);
+  assert.match(sv, /tcpdump: servicedesk\.pcap: Permission denied/, "tcpdump writes as its own user: not into a home folder");
+  assert.match(sv, /-rw-r--r-- 1 tcpdump tcpdump \d+ Nov 22 [\d:]+ servicedesk\.pcap/); assert.match(sv, /is a packet capture, not text/);
+  assert.match(sv, /reading from file \/tmp\/servicedesk\.pcap, link-type EN10MB/);
+});
+
+test("EN-J2: the tempting wrong ways each fail their own line for their own cause", () => {
+  const s = seeds[0], o = () => B.open(EJ2, s), p = o().v.plan, M = p.mon, fs = p.srv.fsrv.ip;
+  const drop = (id, l) => (a) => inBlk(a, p, id, (x) => (x.line === l ? null : x));
+  const swap = (id, l, n) => (a) => inBlk(a, p, id, (x) => (x.line === l ? Object.assign({}, x, { line: n }) : x));
+  const user = "snmp-server user " + M.user + " " + M.group + " v3 auth sha " + M.authPw + " priv aes 128 " + M.privPw, host = "snmp-server host " + fs + " informs version 3 priv " + M.user;
+  const T = (f) => run(o(), solve2(o(), f));
+  let J = T(drop("acc3", "no snmp-server community " + M.rw)); assert.equal(line(J, "v2c").cause, "rw", "the read-write community left on one switch");
+  J = T(drop("edge", "no snmp-server community public")); assert.equal(line(J, "v2c").cause, "ro", "public left on the router");
+  J = T(swap("dist1", "snmp-server group " + M.group + " v3 priv", "snmp-server group " + M.group + " v3 auth")); assert.equal(line(J, "v3").cause, "level", "a group that doesn't require encryption");
+  J = T(swap("acc2", user, user.replace(" auth sha ", " auth md5 "))); assert.equal(line(J, "v3").cause, "auth", "MD5");
+  J = T(swap("acc4", user, user.replace(" priv aes 128 " + M.privPw, " priv aes 128 wrong-privacy"))); assert.equal(line(J, "v3").cause, "priv", "a wrong privacy passphrase"); assert.equal(line(J, "polled").cause, "notyet"); assert.equal(line(J, "traps").cause, "nothing", "its inform can't be read either");
+  J = T((a) => a.filter((x) => !/^snmpget /.test(x.line || ""))); assert.equal(line(J, "polled").cause, "notyet", "never polled");
+  J = o(); run(J, srvLines(J, ["snmpget -v2c -c public " + gearAddr(p, "edge") + " sysName.0", "exit"])); run(J, solve2(J, (a) => a.filter((x) => !/^snmpget /.test(x.line || "")))); assert.equal(line(J, "polled").cause, "v2", "asked with the community only");
+  J = T(swap("edge", host, "snmp-server host " + fs + " version 3 priv " + M.user)); assert.equal(line(J, "traps").cause, "kind", "v3 traps, not informs");
+  J = T(swap("edge", host, "snmp-server host " + fs + " informs version 2c public")); assert.equal(line(J, "traps").cause, "as", "informs with a community");
+  J = T(drop("core1", "snmp-server enable traps config")); assert.equal(line(J, "traps").cause, "off", "notifications never turned on");
+  J = o(); run(J, srvLines(J, ["sudo systemctl stop snmptrapd", p.srv.pw, "exit"])); run(J, solve2(J)); assert.equal(line(J, "traps").cause, "nothing", "snmptrapd stopped while the gear was set up");
+  J = T((a) => a.map((x) => (x.t === "lay" ? Object.assign({}, x, { b: { dev: "acc2", port: "10" } }) : x))); assert.equal(line(J, "mirror").cause, "nocable", "eno3 cabled to the wrong switch");
+  J = T(drop(M.sw, "no shutdown")); assert.equal(line(J, "mirror").cause, "shut", "the destination port left shut"); assert.equal(line(J, "capture").cause, "other");
+  const src = "monitor session 1 source interface gi0/" + M.src + " both";
+  J = T(swap(M.sw, src, src.replace(" both", " rx"))); assert.equal(line(J, "mirror").cause, "dir", "only what it sends"); assert.equal(line(J, "capture").cause, "oneway");
+  const other = Object.keys(p.desks.acc1).find((k) => p.desks.acc1[k][0] === "hd1");
+  J = T(swap(M.sw, src, "monitor session 1 source interface gi0/" + other + " both")); assert.equal(line(J, "mirror").cause, "source", "the help desk PC's port"); assert.equal(line(J, "capture").cause, "other");
+  J = T(swap(M.sw, src, "monitor session 1 source vlan " + p.vlans.svc.id)); assert.equal(line(J, "mirror").cause, "vlan", "the whole VLAN"); assert.equal(line(J, "capture").ok, true, "the capture still holds the PC's traffic");
+  J = T((a) => a.filter((x) => x.line !== "sudo ip link set eno3 up")); assert.equal(line(J, "capture").cause, "down", "eno3 never brought up");
+  J = T((a) => a.map((x) => (/tcpdump .* -w /.test(x.line || "") ? Object.assign({}, x, { line: x.line.replace(M.file, "servicedesk.pcap") }) : x))); assert.equal(line(J, "capture").cause, "none", "written to the home folder: refused");
+  J = T(drop("anxa", "copy running-config startup-config")); assert.equal(line(J, "saved").ok, false, "one switch unsaved");
+});
+
+test("EN-J2: other right ways pass: the SNMP settings in ~/.snmp/snmp.conf, snmpwalk, the source without both, another spare port, -Z root", () => {
+  const s = seeds[0], o = () => B.open(EJ2, s), p = o().v.plan, M = p.mon, alt = String(+M.dst + 1);
+  const conf = "defVersion 3\ndefSecurityName " + M.user + "\ndefSecurityLevel authPriv\ndefAuthType SHA\ndefAuthPassphrase " + M.authPw + "\ndefPrivType AES\ndefPrivPassphrase " + M.privPw + "\n";
+  const J = run(o(), solve2(o(), (a) => {
+    const i = a.findIndex((x) => /^snmpget /.test(x.line || ""));
+    return a.slice(0, i).concat([L("nano ~/.snmp/snmp.conf"), L("^O", conf), L("^X")], a.slice(i).map((x, k) => (/^snmpget /.test(x.line || "") ? Object.assign({}, x, { line: (k % 2 ? "snmpget " : "snmpwalk ") + x.line.split(" ").slice(-2).join(" ").replace(" sysName.0", k % 2 ? " sysName.0" : " system") }) : x)))
+      .map((x) => (x.t === "lay" ? Object.assign({}, x, { b: { dev: M.sw, port: alt } }) : /tcpdump .* -w /.test(x.line || "") ? Object.assign({}, x, { line: x.line.replace("tcpdump ", "tcpdump -Z root ") }) : x));
+  }).map((x) => (x.dev === "sd1" && x.line ? Object.assign({}, x, { line: x.line.replace("interface gi0/" + M.dst, "interface gi0/" + alt).replace("destination interface gi0/" + M.dst, "destination interface gi0/" + alt).replace(" both", "") }) : x)));
+  for (const r of B.check(J).res) assert.ok(r.ok, r.id + ": " + r.ev);
+});
+
+test("EN-J2: rungs and the ladder; a saved job replays exactly; the help never names a passphrase, the user, the group, a community or an address", () => {
+  const J = B.open(EJ2, seeds[0]), p = J.v.plan, M = p.mon;
+  const texts = [].concat(...EJ2.reqs.map((q) => [q.text, q.rung1(J.v, J.sim), q.rung2(J.v, J.sim), q.ok(J.v, J.sim)]), [EJ2.mason, EJ2.brief(J.v).quote]).map((x) => String(x).toLowerCase());
+  for (const t of texts) for (const bad of [M.authPw, M.privPw, M.user, M.group, M.rw, p.secret, p.userPw, p.srv.pw, p.srv.fsrv.ip].map((x) => String(x).toLowerCase())) assert.ok(t.indexOf(bad) < 0, "names " + bad + ": " + t);
+  const U = run(B.open(EJ2, seeds[0]), EJ2.solve(J.v).slice(0, 60));
+  const R = B.restore(EJ2, JSON.parse(JSON.stringify(B.save(U))));
+  assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
+});

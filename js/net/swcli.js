@@ -569,6 +569,7 @@ function allowed(S, a) {
 function setTransport(S, v) { if (S.line !== "vty") return ["% Invalid input detected at '^' marker.", "  (transport input is for the vty lines: remote logins)"]; S.sw.vty.transport = v; return []; }
 function rsa(S, bits) { if (bits < 360 || bits > 4096) return ["% Invalid input detected at '^' marker."]; S.sw.rsa = bits; S.sw.keyGen = (S.sw.keyGen || 0) + 1; return ["% Generating " + bits + " bit RSA keys, keys will be non-exportable...", "[OK] (elapsed time was 2 seconds)", "", "%SSH-5-ENABLED: SSH 2.0 has been enabled"]; }
 function save(sw) { sw.startup = snapshot(sw); }
+export function saveConfig(sw) { save(sw); }   /* a starting network set up as it was found, saved (Level 5) */
 /* banner motd: the first character after "motd" is the delimiter, and the message runs to the next one. On one line it
    ends there (anything after it is ignored); if the line ends first, the message carries on over the lines that follow */
 function bannerStart(S, raw) {
@@ -732,6 +733,7 @@ function loggingShow(S) {
    user in a group, at the group's security level or above (noauth, auth, priv). A v3 user's passwords are kept only as keys, and the user
    never shows in the running configuration (as on the real gear: show snmp user). Notifications go to each host as traps or informs.
    A SPAN session copies a port's traffic (both ways, or received or sent only) to a destination port. */
+const padS = function (s, n) { s = String(s); return s.length >= n ? s + " " : s + " ".repeat(n - s.length); };   /* a column, never cut short */
 const kw = function (w, word, min) { w = String(w || "").toLowerCase(); return w.length >= (min || 1) && word.indexOf(w) === 0; };
 export function snmpKey(pw, alg) { let h = 2166136261; const t = String(alg).toUpperCase() + ":" + pw; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return ("0000000" + h.toString(16)).slice(-8); }
 function snmpOf(sw) { return sw.snmp || (sw.snmp = { comms: [], groups: {}, hosts: [], traps: null, loc: null, contact: null }); }
@@ -796,6 +798,9 @@ function snmpCmd(S, a, on) {
   if (kw(w, "location", 1) || kw(w, "contact", 2)) { const o = snmpOf(sw), k = w[0] === "l" ? "loc" : "contact"; if (!on) { o[k] = null; return []; } if (!r.length) return inc; o[k] = r.join(" "); return []; }
   return bad;
 }
+/* a change to the configuration sends a notification to every host, if config notifications are on (snmp-server enable traps, all or
+   config): onto sw.trapq, which the network delivers after the command, as it does the log */
+function trapConfig(S) { const o = S.sw && S.sw.snmp; if (!o || !o.traps || (o.traps[0] !== "all" && o.traps.indexOf("config") < 0)) return; o.hosts.forEach(function (h) { (S.sw.trapq || (S.sw.trapq = [])).push(Object.assign({}, h)); }); }
 export function snmpEngineId(sw) { return "800000090300" + String(sw.mac || "").replace(/[^0-9a-fA-F]/g, "").toUpperCase().padEnd(12, "0").slice(0, 12); }
 function snmpShow(S, a) {
   const sw = S.sw, o = sw.snmp, U = sw.snmpUsers || {}, w = (a[0] || "").toLowerCase();
@@ -806,8 +811,8 @@ function snmpShow(S, a) {
   if (kw(w, "engineid", 1)) return ["Local SNMP engineID: " + snmpEngineId(sw), "Remote Engine ID          IP-addr    Port"];
   if (kw(w, "group", 1)) {
     const L = [];
-    O.comms.forEach(function (c) { ["v1", "v2c"].forEach(function (v) { L.push("groupname: " + pad(c.name, 32) + "security model:" + v, "contextname: <no context specified>    storage-type: permanent", "readview : v1default" + pad("", 21) + "writeview: " + (c.rw ? "v1default" : "<no writeview specified>"), "notifyview: <no notifyview specified>", "row status: active" + (c.acl ? "        access-list: " + c.acl : ""), ""); }); });
-    Object.keys(O.groups).forEach(function (g) { const G = O.groups[g]; L.push("groupname: " + pad(g, 32) + "security model:" + G.ver + (G.level ? " " + G.level : ""), "contextname: <no context specified>    storage-type: nonvolatile", "readview : " + pad(G.read || "v1default", 33) + "writeview: " + (G.write || "<no writeview specified>"), "notifyview: <no notifyview specified>", "row status: active" + (G.acl ? "        access-list: " + G.acl : ""), ""); });
+    O.comms.forEach(function (c) { ["v1", "v2c"].forEach(function (v) { L.push("groupname: " + padS(c.name, 32) + "security model:" + v, "contextname: <no context specified>    storage-type: permanent", "readview : v1default" + padS("", 21) + "writeview: " + (c.rw ? "v1default" : "<no writeview specified>"), "notifyview: <no notifyview specified>", "row status: active" + (c.acl ? "        access-list: " + c.acl : ""), ""); }); });
+    Object.keys(O.groups).forEach(function (g) { const G = O.groups[g]; L.push("groupname: " + padS(g, 32) + "security model:" + G.ver + (G.level ? " " + G.level : ""), "contextname: <no context specified>    storage-type: nonvolatile", "readview : " + padS(G.read || "v1default", 33) + "writeview: " + (G.write || "<no writeview specified>"), "notifyview: <no notifyview specified>", "row status: active" + (G.acl ? "        access-list: " + G.acl : ""), ""); });
     return L;
   }
   if (kw(w, "host", 1)) return O.hosts.reduce(function (L, h) { return L.concat(["Notification host: " + h.ip + "\tudp-port: 162\ttype: " + (h.kind === "informs" ? "inform" : "trap"), "user: " + h.name + "\tsecurity model: " + (h.ver === "3" ? "v3 " + h.level : h.ver === "2c" ? "v2c" : "v1"), ""]); }, []);
@@ -863,7 +868,7 @@ function spanShow(S, a) {
   return ids.reduce(function (L, k) {
     const M = sp[k], by = function (d) { return M.src.filter(function (s) { return s.dir === d; }).map(function (s) { return short(s.ifc); }).join(","); };
     L.push("Session " + k, "---------", "Type                   : Local Session");
-    if (M.src.length) { L.push("Source Ports           :"); [["both", "Both"], ["rx", "RX Only"], ["tx", "TX Only"]].forEach(function (q) { const t = by(q[0]); if (t) L.push("    " + pad(q[1], 19) + ": " + t); }); }
+    if (M.src.length) { L.push("Source Ports           :"); [["both", "Both"], ["rx", "RX Only"], ["tx", "TX Only"]].forEach(function (q) { const t = by(q[0]); if (t) L.push("    " + padS(q[1], 19) + ": " + t); }); }
     if (M.vlans.length) L.push("Source VLANs           :", "    Both               : " + M.vlans.join(","));
     L.push("Destination Ports      : " + (M.dst.map(short).join(",") || "None"));
     if (M.dst.length) L.push("    Encapsulation      : Native", "          Ingress      : Disabled");
@@ -1056,7 +1061,7 @@ function ifStatus(sw) {
     const ng = up ? negotiated(p, l) : null;
     const dx = up ? (ng.auto.duplex ? "a-" : "") + ng.duplex : p.duplex === "auto" ? "auto" : p.duplex;
     const sp = up ? (ng.auto.speed ? "a-" : "") + ng.speed : p.speed === "auto" ? "auto" : p.speed;
-    L.push(pad(short(n), 10) + pad(p.desc, 19) + pad(p.shutdown ? "disabled" : errDisabled(sw, n) || (l && l.unsupported) ? "err-disabled" : up ? "connected" : "notconnect", 13) + pad(vlanCol(sw, n, up), 11) + pad(dx, 7) + pad(sp, 7) + (p.sfp ? (l && l.module ? l.module : "Not Present") : "10/100/1000BaseTX"));
+    L.push(pad(short(n), 10) + pad(p.desc, 19) + pad(p.shutdown ? "disabled" : errDisabled(sw, n) || (l && l.unsupported) ? "err-disabled" : up ? (spanDest(sw, n) ? "monitoring" : "connected") : "notconnect", 13) + pad(vlanCol(sw, n, up), 11) + pad(dx, 7) + pad(sp, 7) + (p.sfp ? (l && l.module ? l.module : "Not Present") : "10/100/1000BaseTX"));
   });
   return L;
 }
@@ -1283,7 +1288,7 @@ export function exec(S, raw) {
   if (pipe) {
     const f = match([["include"], ["exclude"], ["begin"], ["section"]], pipe[2]);
     if (!f.one || !pipe[3]) return { out: ["% Invalid input detected at '^' marker."], prompt: promptOf(S) };
-    const r = run(S, pipe[1]), re = new RegExp(pipe[3].replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    const r = run(S, pipe[1]), re = (function () { try { return new RegExp(pipe[3], "i"); } catch (e) { return new RegExp(pipe[3].replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"); } })();   /* a regular expression, as on the real gear ("snmp|monitor"); text as typed if it isn't one */
     let out = r.lines;
     if (f.one[0] === "include") out = out.filter(function (l) { return re.test(l); });
     else if (f.one[0] === "exclude") out = out.filter(function (l) { return !re.test(l); });
@@ -1292,7 +1297,7 @@ export function exec(S, raw) {
     return ask(S, out);
   }
   const was = S.mode, r = run(S, raw);
-  if (CFG_MODE(was) && S.mode === "priv") devLog(S, 5, "SYS-5-CONFIG_I", "Configured from console by " + (S.via === "console" ? "console" : "vty0"));
+  if (CFG_MODE(was) && S.mode === "priv") { devLog(S, 5, "SYS-5-CONFIG_I", "Configured from console by " + (S.via === "console" ? "console" : "vty0")); trapConfig(S); }
   return ask(S, r.lines);
 }
 /* a command that asks a question (a password, a confirmation) ends with it: it becomes the prompt */

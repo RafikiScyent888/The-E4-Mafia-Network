@@ -29,7 +29,7 @@ export function newRouter(o = {}) {
     ifs: ifs, subs: {}, routes: [], excluded: [], pools: {}, acls: {}, nat: [], statics: [], lldp: true,
     links: o.links || {}, mac: o.mac || "00e0.4d██.████", serial: "██████████", startup: null, uptime: o.uptime || "2 minutes" };
 }
-const RT_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "banner", "ifs", "subs", "routes", "excluded", "pools", "acls", "nat", "statics", "lldp", "ospf", "ntp", "logHosts", "logTrap"];   /* ospf: made only when used (Level 4), so a router saved before reads as it was */
+const RT_KEYS = ["hostname", "enableSecret", "enablePassword", "encrypt", "con", "vty", "users", "domain", "rsa", "keyGen", "banner", "ifs", "subs", "routes", "excluded", "pools", "acls", "nat", "statics", "lldp", "ospf", "ntp", "logHosts", "logTrap", "snmp", "snmpUsers"];   /* ospf: made only when used (Level 4), so a router saved before reads as it was */
 /* LLDP on: everywhere unless turned off (no lldp run), and on a port unless it's told not to send or listen there.
    A router saved before LLDP could be turned off has it on (undefined) */
 export function lldpSends(r, n) { const f = r.ifs[n]; return r.lldp !== false && !(f && f.lldpTx === false); }
@@ -438,7 +438,7 @@ const RT_ROUTER = [
   ["end", "Exit from configure mode", function (S) { S.mode = "priv"; return []; }],
   ["exit", "Exit from routing protocol configuration mode", function (S) { S.mode = "config"; return []; }]
 ];
-const RT_CONFIG = pick(CONFIG, ["hostname", "enable", "line", "username", "crypto", "service", "banner", "ntp", "logging", "do", "end", "exit"]).concat([
+const RT_CONFIG = pick(CONFIG, ["hostname", "enable", "line", "username", "crypto", "service", "banner", "ntp", "logging", "snmp-server", "do", "end", "exit"]).concat([
   ["router", "Enable a routing process", [["ospf", "Open Shortest Path First (OSPF)", function (S, a) {
     if (!a.length) return inc; if (!/^\d+$/.test(a[0]) || +a[0] < 1 || +a[0] > 65535) return bad;
     if (S.sw.ospf && S.sw.ospf.pid !== +a[0]) return ["% OSPF process " + S.sw.ospf.pid + " is already running: this router runs one"];
@@ -467,7 +467,7 @@ const RT_CONFIG = pick(CONFIG, ["hostname", "enable", "line", "username", "crypt
     if (a.length < 2) return inc;
     return aclLine(S, a[0], type, a.slice(1));
   }, { sub: [["<1-99>", "IP standard access list (sources)"], ["<100-199>", "IP extended access list (protocol, source, destination, port)"]] }],
-  ["no", "Negate a command or set its defaults", pick(has(CONFIG, "no")[2], ["hostname", "enable", "username", "service", "banner", "ntp", "logging"]).concat([
+  ["no", "Negate a command or set its defaults", pick(has(CONFIG, "no")[2], ["hostname", "enable", "username", "service", "banner", "ntp", "logging", "snmp-server"]).concat([
     ["router", "Enable a routing process", [["ospf", "Open Shortest Path First (OSPF)", function (S) { delete S.sw.ospf; return []; }]]],
     ["lldp", "Global LLDP configuration subcommands", [["run", "Enable LLDP", function (S) { S.sw.lldp = false; return []; }]]],
     ["interface", "Select an interface to configure", function (S, a) { const f = rtName(a, 0); if (!f || f.err || f.sub == null) return ["% Invalid input detected at '^' marker.", "  (only a subinterface can be removed)"]; delete S.sw.subs[f.name]; return []; }],
@@ -625,7 +625,7 @@ function rtPing(S, a) {
   return ["Type escape sequence to abort.", "Sending 5, 100-byte ICMP Echos to " + a[0] + ", timeout is 2 seconds:", marks, "Success rate is " + (n * 20) + " percent (" + n + "/5)" + (n ? ", round-trip min/avg/max = 1/1/2 ms" : "")];
 }
 
-const RT_SHOW = pick(SHOW, ["startup-config", "history", "clock", "users", "ssh", "crypto", "ntp", "logging"]).concat([
+const RT_SHOW = pick(SHOW, ["startup-config", "history", "clock", "users", "ssh", "crypto", "ntp", "logging", "snmp"]).concat([
   ["version", "System hardware and software status", function (S) { const r = S.sw; return ["BR-4200 Network Operating System, Version 4.2.1", "", r.hostname + " uptime is " + r.uptime, "", "Model number: BR-4200 (8 x 10/100/1000 + 2 x SFP routed ports)", "Base MAC address: " + r.mac, "System serial number: " + r.serial, "", "System returned to ROM by " + (r.restart || "power-on"), "", "Configuration register: 0x2102"]; }],
   ["running-config", "Current operating configuration", function (S) { return rtRunning(S.sw); }],
   ["ip", "IP information", [

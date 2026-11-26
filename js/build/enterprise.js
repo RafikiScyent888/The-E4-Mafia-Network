@@ -3,9 +3,10 @@
    to the enterprise, smallest first. Every line is an ordered list of causes, as on the other levels: the first one really there is
    what the check saw, everything before it is ruled out by the network. */
 import { CAMPUS_JOBS, reachCauses, said } from "./campus.js";
-import { coreLinks, svcKit } from "../net/campus.js";
+import { coreLinks, svcKit, monKit } from "../net/campus.js";
 import { exec } from "../net/cmd.js";
-import { unsaved } from "../net/swcli.js";
+import { unsaved, saveConfig, spanDest, LEVELS3, snmpKey } from "../net/swcli.js";
+import * as MON from "../net/mon.js";
 import * as SV from "../net/svc.js";
 
 const C = function (id, on, text, not, ev) { return { id: id, on: !!on, text: text, not: not, ev: ev }; };
@@ -131,4 +132,155 @@ const EJ1 = {
   summary() { return ["One clock for the whole network: the file server keeps time from the internet and hands it to every switch and router on the campus.", "One log: every switch and router sends what it logs to the file server, where it's all in /var/log/syslog with the same time on every line.", "Next time the Annex's link drops, the server's log says when, and which switch saw it first."]; }
 };
 
-export const ENTERPRISE_JOBS = [EJ1];
+/* ------------------------------------------------------------ EN-J2, watching the network: SNMPv3 and a mirrored port */
+/* the installer's 2019 template, found on the gear: public read-only everywhere, a read-write community on the access switches, each
+   device's room and the NOC as its contact; all saved */
+const RW_ON = ["acc1", "acc2", "acc3", "acc4", "anxa"];
+const ROOM_OF = { edge: "Data room (1F)", core1: "Data room (1F)", core2: "Data room (1F)", dist1: "Data room (1F)", dist2: "Data room (1F)", acc1: "Data room (1F)", acc2: "2F closet", acc3: "3F closet", acc4: "4F closet", anxc: "Annex comms room", anxa: "Annex comms room" };
+function template(sim, p) {
+  GEAR.forEach(function (id) {
+    const sw = sim.d[id].sw;
+    sw.snmp = { comms: [{ name: "public", rw: false, acl: null }].concat(RW_ON.indexOf(id) >= 0 ? [{ name: p.mon.rw, rw: true, acl: null }] : []), groups: {}, hosts: [], traps: null, loc: ROOM_OF[id], contact: "Rafiki's IT Services NOC" };
+    saveConfig(sw);
+  });
+}
+const MON_U = function (sw, M) { return (sw.snmpUsers || {})[M.user]; };
+function v2cCauses(sim) {
+  const rw = GEAR.find(function (id) { const o = sim.d[id].sw.snmp; return o && o.comms.some(function (c) { return c.rw; }); });
+  const ro = GEAR.find(function (id) { const o = sim.d[id].sw.snmp; return o && o.comms.length; });
+  return [C("rw", !!rw, rw ? Cap(who(sim, rw)) + " still has a read-write community: anyone who knows it can change its configuration over the network" : "", "No read-write community is left.", rw ? "show running-config | include community on " + who(sim, rw) + "." : ""),
+    C("ro", !rw && !!ro, ro ? Cap(who(sim, ro)) + " still answers a community over SNMPv1 and v2c, sent in clear text: anyone who hears it can read the device" : "", "No community is left.", ro ? "show snmp community on " + who(sim, ro) + "." : "")];
+}
+function v3Causes(sim, v) {
+  const M = v.plan.mon, at = function (f) { return GEAR.find(f); };
+  const ng = at(function (id) { const o = sim.d[id].sw.snmp; return !o || !o.groups[M.group] || o.groups[M.group].ver !== "v3"; });
+  const lv = !ng && at(function (id) { return sim.d[id].sw.snmp.groups[M.group].level !== "priv"; });
+  const nu = !ng && !lv && at(function (id) { const u = MON_U(sim.d[id].sw, M); return !u || u.ver !== "v3"; });
+  const ug = !ng && !lv && !nu && at(function (id) { return MON_U(sim.d[id].sw, M).group !== M.group; });
+  const au = !ng && !lv && !nu && !ug && at(function (id) { const u = MON_U(sim.d[id].sw, M); return !u.auth || u.auth.alg !== "SHA" || u.auth.key !== snmpKey(M.authPw, "SHA"); });
+  const pv = !ng && !lv && !nu && !ug && !au && at(function (id) { const u = MON_U(sim.d[id].sw, M); return !u.priv || u.priv.alg !== "AES128" || u.priv.key !== snmpKey(M.privPw, "AES128"); });
+  return [C("nogroup", !!ng, ng ? Cap(who(sim, ng)) + " has no SNMPv3 group by the records' name" : "", "Every device has the group.", ng ? "show snmp group on " + who(sim, ng) + "." : ""),
+    C("level", !!lv, lv ? Cap(who(sim, lv)) + "'s group lets a user in without encryption (" + sim.d[lv].sw.snmp.groups[M.group].level + ")" : "", "Every group requires encryption (priv).", lv ? "show snmp group on " + who(sim, lv) + ": its security model." : ""),
+    C("nouser", !!nu, nu ? Cap(who(sim, nu)) + " has no SNMPv3 user for the monitoring server" : "", "Every device has the user.", nu ? "show snmp user on " + who(sim, nu) + " (a user never shows in the running configuration)." : ""),
+    C("usergroup", !!ug, ug ? Cap(who(sim, ug)) + "'s monitoring user is in another group" : "", "The user is in the records' group everywhere.", ug ? "show snmp user on " + who(sim, ug) + ": its Group-name." : ""),
+    C("auth", !!au, au ? Cap(who(sim, au)) + "'s monitoring user doesn't authenticate as the records say (its protocol or its passphrase)" : "", "It authenticates with SHA and the records' passphrase.", au ? "snmpget from the file server to " + who(sim, au) + ": Authentication failure, or show snmp user: its protocol." : ""),
+    C("priv", !!pv, pv ? Cap(who(sim, pv)) + "'s monitoring user doesn't encrypt as the records say (its protocol or its passphrase)" : "", "It encrypts with AES 128 and the records' passphrase.", pv ? "snmpget from the file server to " + who(sim, pv) + ": Decryption error, or show snmp user: its privacy protocol." : "")];
+}
+function polledCauses(sim, v) {
+  const M = v.plan.mon, P = sim.d.fsrv.lx.snmpPolled || {}, V12 = sim.d.fsrv.lx.snmpV12 || {};
+  const miss = GEAR.find(function (id) { return !P[id] || P[id].level !== "authpriv" || P[id].user !== M.user; });
+  return [C("v2", !!miss && !!V12[miss], miss ? "The file server has only asked " + who(sim, miss) + " with a community (SNMPv1 or v2c), never as the monitoring user" : "", "Every device answered the monitoring user.", miss ? "snmpget from the file server to " + who(sim, miss) + ", as the monitoring user." : ""),
+    C("notyet", !!miss && !V12[miss], miss ? "The file server hasn't had an encrypted SNMPv3 answer from " + who(sim, miss) + " as the monitoring user yet" : "", "Every device answered the monitoring user.", miss ? "snmpget from the file server to " + who(sim, miss) + " at authPriv." : "")];
+}
+function trapCauses(sim, v) {
+  const M = v.plan.mon, fs = v.plan.srv.fsrv.ip;
+  const st = GEAR.map(function (id) { const o = sim.d[id].sw.snmp || { hosts: [], traps: null }, h = o.hosts.find(function (q) { return q.ip === fs; }); return { id: id, o: o, h: h, on: !!o.traps && (o.traps[0] === "all" || o.traps.indexOf("config") >= 0), got: MON.trapFrom(sim, "fsrv", SV.pathFrom(sim, id, fs).src) }; });
+  const bad = st.find(function (q) { return !q.h || q.h.kind !== "informs" || q.h.ver !== "3" || q.h.level !== "priv" || q.h.name !== M.user || !q.on || !q.got; }), at = bad ? who(sim, bad.id) : "";
+  return [C("nohost", !!bad && !bad.o.hosts.length, Cap(at) + " sends its notifications nowhere", "Every device sends them to the file server.", bad ? "show snmp host on " + at + ": nothing." : ""),
+    C("wronghost", !!bad && bad.o.hosts.length > 0 && !bad.h, Cap(at) + " sends its notifications to " + (bad ? bad.o.hosts.map(function (q) { return q.ip; }).join(", ") : "") + ", not to the file server", "Every device sends them to the file server.", bad ? "show snmp host on " + at + "." : ""),
+    C("kind", !!bad && !!bad.h && bad.h.kind !== "informs" && bad.h.ver === "3", Cap(at) + " sends SNMPv3 traps, which the server can't read without each device's engine ID: informs need no engine ID, and are acknowledged", "Every device sends informs.", bad ? "show snmp host on " + at + ": its type." : ""),
+    C("as", !!bad && !!bad.h && (bad.h.ver !== "3" || bad.h.level !== "priv" || bad.h.name !== M.user), Cap(at) + " sends its notifications with another version, security level or user than the server takes", "Every device sends as the monitoring user, encrypted.", bad ? "show snmp host on " + at + ": user and security model." : ""),
+    C("off", !!bad && !!bad.h && !bad.on, Cap(at) + " has no notifications turned on for a change to its configuration", "Every device sends one when its configuration changes.", bad ? "show running-config | include traps on " + at + "." : ""),
+    C("nothing", !!bad && !!bad.h && bad.on && !bad.got, "Nothing from " + at + " has reached snmptrapd on the file server: it sends one when its configuration changes", "One from every device has arrived.", bad ? "grep snmptrapd /var/log/syslog on the file server." : "")];
+}
+function mirrorCauses(sim, v) {
+  const M = v.plan.mon, c = sim.cableAt("fsrv", "eno3"), far = c ? (c.a.dev === "fsrv" ? c.b : c.a) : null, on1 = far && far.dev === M.sw;
+  const n = on1 ? "GigabitEthernet0/" + far.port : null, sw = sim.d[M.sw].sw, D = n ? spanDest(sw, n) : null, srcN = "GigabitEthernet0/" + M.src;
+  const S = D ? D.src.find(function (s) { return s.ifc === srcN; }) : null;
+  return [C("nocable", !on1, c ? "The file server's eno3 is cabled to " + who(sim, far.dev) + ", not the 1F access switch with the service desk PC on it" : "Nothing is cabled to the file server's eno3", "eno3 is cabled to the 1F access switch.", "The runs table: eno3."),
+    C("shut", on1 && sw.ports[n].shutdown, "The 1F access switch's port for eno3 is shut", "The port is open.", "show interfaces status on the 1F access switch."),
+    C("nosession", on1 && !sw.ports[n].shutdown && !D, "No mirroring session copies anything to the 1F access switch's port for eno3", "A session copies to it.", "show monitor session all on the 1F access switch."),
+    C("vlan", !!D && !S && D.vlans.length > 0, "The session mirrors whole VLANs, every desk on them, not the service desk PC's port alone", "It mirrors the PC's port alone.", "show monitor session all: Source VLANs."),
+    C("source", !!D && !S && !D.vlans.length, "The session mirrors another port, not the service desk PC's", "It mirrors the service desk PC's port.", "show monitor session all, against show interfaces status (the PC's port)."),
+    C("dir", !!S && S.dir !== "both", "The session copies only what the service desk PC " + (S && S.dir === "rx" ? "sends" : "receives") + " (" + (S ? S.dir : "") + "), not both ways", "It copies both ways.", "show monitor session all: RX Only or TX Only.")];
+}
+function captureCauses(sim, v) {
+  const M = v.plan.mon, E = (sim.d.fsrv.lx.files || {})[M.file], ip = (sim.addr("sd1") || {}).ip, f = sim.d.fsrv.ifaces.find(function (q) { return q.name === "eno3"; });
+  const P = E && E.pcap ? E.pcap : null, out = P && P.some(function (q) { return q.from === ip; }), inn = P && P.some(function (q) { return q.to === ip; });
+  return [C("down", !P && f && f.admin === "down", "The file server's eno3 is down: tcpdump can't capture on a port that isn't up", "eno3 is up.", "ip link show eno3 on the file server."),
+    C("none", !P && !(f && f.admin === "down"), "There's no capture at " + M.file + " on the file server", "The capture is there.", "ls -l /tmp on the file server."),
+    C("other", !!P && !out && !inn, "The capture at " + M.file + " holds none of the service desk PC's traffic", "It holds the PC's traffic.", "tcpdump -n -r " + M.file + " on the file server."),
+    C("oneway", !!P && (out || inn) && !(out && inn), "The capture holds only what the service desk PC " + (out ? "sends" : "receives") + ", not both ways", "It holds both ways.", "tcpdump -n -r " + M.file + ": the PC's address on both sides?")];
+}
+const EJ2 = {
+  id: "EN-J2", level: "enterprise", title: "Watching the network: SNMPv3 from the file server, and a mirror of the service desk's port",
+  already: ["works", "saved"],
+  start(seed) {
+    const b = EJ1.start(seed), sim = b.sim;
+    for (const a of EJ1.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line, a.win, a.text); else sim.apply(a); }
+    monKit(sim.net); template(sim, sim.net.plan);
+    sim.cli = {};
+    return { sim: sim, v: Object.assign({}, b.v, { runs: sim.net.extra.runs || 0 }) };
+  },
+  brief() { return { quote: "An auditor went through the switches last month and found the 2019 installer's community strings still on every one of them, one of them read-write. Get monitoring onto something modern: the file server polls everything, encrypted, and hears about every change. And the security team wants to see what the service desk PC is really sending: give them a capture of its traffic, both ways.", from: "Rafiki, owner" }; },
+  mason: "SNMPv3 is a user with keys, in a group with a security level: the agent checks both before it answers. And a mirror copies a port's traffic to another port: what's on the far end of that port sees it, and nothing else does.",
+  limits: function (v) {
+    const p = v.plan, S = p.srv, M = p.mon;
+    return ["The monitoring server is the file server (" + S.fsrv.host + ", " + S.fsrv.ip + "): Net-SNMP's tools (snmpget, snmpwalk) and tcpdump installed; snmptrapd running and set up for the monitoring user (its settings are /etc/snmp/snmptrapd.conf), writing what it receives to /var/log/syslog. Log in on its console or over SSH as " + S.user + ", password " + S.pw + ".",
+      "SNMPv3 on every switch and router: the group " + M.group + ", requiring encryption; the user " + M.user + " in it, authenticating with SHA (passphrase " + M.authPw + ") and encrypting with AES 128 (passphrase " + M.privPw + "). Notifications to the file server as informs, version 3, encrypted, as that user, when a device's configuration changes. No community strings left anywhere.",
+      "Polled: the file server asks each device for its name (sysName.0) as the monitoring user, encrypted, and gets an answer.",
+      "The mirror: the service desk PC is on the 1F access switch's port " + M.src + ". The file server's third network port (eno3, port 3 on its back) is free, with no address; the 1F access switch's port " + M.dst + " is spare for it. Session " + M.session + ", the PC's port both ways. The capture: the PC's traffic both ways, saved on the file server as " + M.file + " for the security team (tcpdump writes its files as its own user).",
+      "The gear, by SSH from a desk PC: " + GEAR.map(function (id) { return (id === "edge" ? "the edge router" : id) + " " + gearAddr(p, id); }).join("; ") + ". Locked as every one here: enable secret " + p.secret + ", SSH with the user " + p.user + ", password " + p.userPw + ".",
+      "Every switch and router saved."];
+  },
+  reqs: [
+    { id: "v2c", text: "No switch or router answers a community string any more", causes: v2cCauses,
+      ok: function () { return "No community is left on any device."; },
+      rung1: function () { return "show running-config | include community on each switch and the router."; },
+      rung2: function () { return "SNMPv1 and v2c send their community in clear text, and a community is all they check; the no form of the command that set it removes it."; } },
+    { id: "v3", text: "Every switch and the edge router takes SNMPv3 from the monitoring user, authenticated and encrypted", causes: v3Causes,
+      ok: function () { return "Every device has the group, requiring encryption, and the user with the records' protocols and passphrases."; },
+      rung1: function () { return "show snmp group and show snmp user on each device; snmpget from the file server."; },
+      rung2: function () { return "An SNMPv3 user belongs to a group, and the group's security level is the least the agent accepts; the user's keys are made from its passphrases, so both ends must use the same protocols and passphrases."; } },
+    { id: "polled", text: "The file server has polled every switch and the edge router as the monitoring user, encrypted", causes: polledCauses,
+      ok: function () { return "Every device answered the file server's encrypted SNMPv3 request."; },
+      rung1: function () { return "snmpget on the file server, one device at a time; ~/.snmp/snmp.conf can hold the settings."; },
+      rung2: function () { return "Prove it from the server's side: the poller has to ask, at the security level the group requires, and get the value back."; } },
+    { id: "traps", text: "Every switch and the edge router sends informs to the file server when its configuration changes, and one from each has arrived", causes: trapCauses,
+      ok: function () { return "Every device sends informs to the file server, and snmptrapd has logged one from each."; },
+      rung1: function () { return "show snmp host on each device; grep snmptrapd /var/log/syslog on the file server."; },
+      rung2: function () { return "A notification goes to each host the device is told about, of the kinds turned on; a v3 trap needs the sender's engine ID at the receiver, an inform doesn't; and nothing is sent until something happens."; } },
+    { id: "mirror", text: "The service desk PC's port is mirrored, both ways, to a port cabled to the file server's third port", causes: mirrorCauses,
+      ok: function () { return "The 1F access switch copies the service desk PC's port, both ways, to the port eno3 is on."; },
+      rung1: function () { return "show monitor session all and show interfaces status on the 1F access switch; the runs table."; },
+      rung2: function () { return "A mirroring session has a source (a port, both ways or one) and a destination port; whatever is cabled to the destination sees the copy."; } },
+    { id: "capture", text: "A capture of the service desk PC's traffic, both ways, is saved on the file server as the records say", causes: captureCauses,
+      ok: function () { return "The capture holds the service desk PC's traffic, both ways."; },
+      rung1: function () { return "ip link show eno3, then tcpdump -n -r on the saved file."; },
+      rung2: function () { return "tcpdump captures on a port that's up, and writes its file as its own user, so it needs a folder that user can write in."; } },
+    { id: "works", text: "Everyone still works: every PC online, both printers and every switch answering", causes: reachCauses,
+      ok: function () { return "Every PC is online; both printers and every switch answer."; },
+      rung1: function () { return "ping 8.8.8.8 from each PC; the printers and the switches from the service desk."; },
+      rung2: function () { return "Monitoring watches the traffic; it shouldn't change where any of it goes."; } },
+    { id: "saved", text: "Every switch and the edge router is saved", causes: savedCauses,
+      ok: function () { return "All of them are saved."; }, rung1: function () { return "show startup-config against show running-config on each; show snmp user after a save."; }, rung2: function () { return "Only what's saved survives a power cut, or a reload."; } }
+  ],
+  solve(v) {
+    const p = v.plan, S = p.srv, M = p.mon, fs = S.fsrv.ip, out = [];
+    out.push({ t: "lay", a: { dev: "fsrv", port: "eno3" }, b: { dev: M.sw, port: M.dst } });
+    const D = function (l) { out.push({ t: "cmd", dev: "sd1", line: l }); };
+    GEAR.forEach(function (id) {
+      ["ssh " + p.user + "@" + gearAddr(p, id), p.userPw, "enable", p.secret, "configure terminal", "no snmp-server community public"].concat(RW_ON.indexOf(id) >= 0 ? ["no snmp-server community " + M.rw] : [],
+        ["snmp-server group " + M.group + " v3 priv", "snmp-server user " + M.user + " " + M.group + " v3 auth sha " + M.authPw + " priv aes 128 " + M.privPw, "snmp-server host " + fs + " informs version 3 priv " + M.user, "snmp-server enable traps config"],
+        id === M.sw ? ["interface gi0/" + M.dst, "no shutdown", "exit", "monitor session " + M.session + " source interface gi0/" + M.src + " both", "monitor session " + M.session + " destination interface gi0/" + M.dst] : [],
+        ["end", "copy running-config startup-config", "", "exit"]).forEach(D);
+    });
+    const L = function (l) { out.push({ t: "cmd", dev: "fsrv", line: l, cli: true }); };
+    [""].concat([S.user, S.pw]).forEach(L);
+    GEAR.forEach(function (id) { L("snmpget -v3 -l authPriv -u " + M.user + " -a SHA -A " + M.authPw + " -x AES -X " + M.privPw + " " + gearAddr(p, id) + " sysName.0"); });
+    L("sudo ip link set eno3 up"); L(S.pw);
+    L("sudo tcpdump -i eno3 -n -c 40 -w " + M.file); L("tcpdump -n -r " + M.file);
+    L("grep snmptrapd /var/log/syslog");
+    return out;
+  },
+  answer(v) {
+    const p = v.plan, M = p.mon, fs = p.srv.fsrv.ip;
+    return ["Lay a cable from the file server's eno3 to the 1F access switch's port " + M.dst + ".",
+      "On every switch and the edge router (SSH from a desk PC): no snmp-server community public (and no snmp-server community " + M.rw + " on the access switches), snmp-server group " + M.group + " v3 priv, snmp-server user " + M.user + " " + M.group + " v3 auth sha " + M.authPw + " priv aes 128 " + M.privPw + ", snmp-server host " + fs + " informs version 3 priv " + M.user + ", snmp-server enable traps config, end (the change sends an inform), copy running-config startup-config.",
+      "On the 1F access switch also: interface gi0/" + M.dst + ", no shutdown; monitor session " + M.session + " source interface gi0/" + M.src + " both; monitor session " + M.session + " destination interface gi0/" + M.dst + ".",
+      "On the file server: snmpget -v3 -l authPriv -u " + M.user + " -a SHA -A " + M.authPw + " -x AES -X " + M.privPw + " <each device> sysName.0; sudo ip link set eno3 up; sudo tcpdump -i eno3 -n -c 40 -w " + M.file + "; tcpdump -n -r " + M.file + "."];
+  },
+  summary() { return ["No community strings left: nothing on the network answers SNMP in clear text any more, and nothing can be changed over it.", "SNMPv3 everywhere: the file server polls every switch and router as one user, authenticated and encrypted, and each sends an inform when its configuration changes.", "A copy of the service desk PC's traffic, both ways, in a capture file for the security team: a mirror on the switch, tcpdump on the server."]; }
+};
+
+export const ENTERPRISE_JOBS = [EJ1, EJ2];

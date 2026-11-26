@@ -263,6 +263,25 @@ export function makeCampus(seed) {
 /* Level 5, work order 1: the file server's time and log services as the installer left them (Ubuntu's chrony and rsyslog, running and
    enabled since the server went in on Friday): chrony keeps the server's own time from the internet's pool and serves nobody; rsyslog
    logs only what happens on the server itself, its network reception commented out */
+/* Level 5, work order 2: watching the network. The records: the monitoring user and group, its passphrases (no "!", which a real shell
+   would try to expand), the old template's read-write community, the capture's file and the mirror's ports. The file server's third
+   port (eno3: no address, no netplan entry, so down until brought up); snmptrapd running there, set up for the monitoring user. Their
+   own random stream, so every other part of the campus is drawn as before */
+const MON_USERS = ["rit-nms", "noc-poller", "mon-svc"], MON_GROUPS = ["RIT-MON", "NOC-V3", "MON-PRIV"], MON_AUTH = ["Poll-Mon-2026", "Watch.Tower44", "Mib_Reader88"], MON_PRIV = ["Priv-Wire-31", "Seal.Packet57", "Cipher_Lane19"], MON_RW = ["private", "rit-rw", "admin2019"];
+export function monKit(net) {
+  const p = net.plan, r = rng(net.seed ^ 0x5a4d), x = net.devices.fsrv, used = net.cables.filter(function (c) { return c.a.dev === "acc1" || c.b.dev === "acc1"; }).map(function (c) { return c.a.dev === "acc1" ? c.a.port : c.b.port; });
+  let spare = 7; while (used.indexOf(String(spare)) >= 0) spare++;
+  const sd = Object.keys(p.desks.acc1).find(function (k) { return p.desks.acc1[k][0] === "sd1"; });
+  p.mon = { user: r.pick(MON_USERS), group: r.pick(MON_GROUPS), authPw: r.pick(MON_AUTH), privPw: r.pick(MON_PRIV), rw: r.pick(MON_RW), file: "/tmp/servicedesk.pcap", session: 1, sw: "acc1", src: sd, dst: String(spare), nic: "eno3" };
+  if (!x.ifaces.some(function (f) { return f.name === "eno3"; })) x.ifaces.push({ name: "eno3", type: "eth", port: "eno3", mac: mac(r), desc: "Gigabit Ethernet port 3", cfg: { mode: "none" }, lease: null, apipa: null, mtu: 1500, admin: "down" });
+  x.lx.mon = true;
+  const F = x.lx.files || (x.lx.files = {}), M = p.mon, conf = SV.TRAPD_HEAD + "\n# The monitoring user: notifications from the network's gear (set up when the server went in)\ncreateUser " + M.user + " SHA \"" + M.authPw + "\" AES \"" + M.privPw + "\"\nauthUser log " + M.user + " priv\n";
+  F[SV.TRAPD_CONF] = { text: conf, at: "Nov 20 16:24" };
+  const since = { day: "Nov 20", hms: "16:31:02", s: -113338 };
+  x.lx.svc = x.lx.svc || {};
+  x.lx.svc.snmptrapd = { state: "active", enabled: true, since: since, pid: 1342, run: Object.assign({ text: conf }, SV.parseTrapd(conf)),
+    journal: ["Nov 20 16:31:02 " + x.host + " systemd[1]: Starting snmptrapd.service - Simple Network Management Protocol (SNMP) Trap Daemon....", "Nov 20 16:31:02 " + x.host + " snmptrapd[1342]: NET-SNMP version 5.9.4.pre2", "Nov 20 16:31:02 " + x.host + " systemd[1]: Started snmptrapd.service - Simple Network Management Protocol (SNMP) Trap Daemon.."] };
+}
 export function svcKit(net) {
   const x = net.devices.fsrv, F = x.lx.files || (x.lx.files = {}), since = { day: "Nov 20", hms: "16:31:02", s: -113338 };
   F[SV.CHRONY_CONF] = { text: SV.CHRONY_DEFAULT, at: "Nov 20 16:20" }; F[SV.RSYSLOG_CONF] = { text: SV.RSYSLOG_DEFAULT, at: "Nov 20 16:20" };

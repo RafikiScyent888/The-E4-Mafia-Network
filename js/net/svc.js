@@ -29,8 +29,30 @@ export const RSYSLOG_DEFAULT = ["# /etc/rsyslog.conf configuration file for rsys
   "###########################", "#### GLOBAL DIRECTIVES ####", "###########################", "", "# Filter duplicated messages", "$RepeatedMsgReduction on", "",
   "#", "# Set the default permissions for all log files.", "#", "$FileOwner syslog", "$FileGroup adm", "$FileCreateMode 0640", "$DirCreateMode 0755", "$Umask 0022", "$PrivDropToUser syslog", "$PrivDropToGroup syslog", "",
   "#", "# Where to place spool and state files", "#", "$WorkDirectory /var/spool/rsyslog", "", "#", "# Include all config files in /etc/rsyslog.d/", "#", "$IncludeConfig /etc/rsyslog.d/*.conf", ""].join("\n");
+/* snmptrapd (Level 5, work order 2): Net-SNMP's trap receiver. Its file names the SNMPv3 users it takes notifications from (createUser,
+   their keys; an informs sender needs no engine ID, a traps sender does: -e) and what it does with them (authUser log), or the communities
+   it takes v1 and v2c from (authCommunity log). It writes each notification it accepts to the system log */
+export const TRAPD_CONF = "/etc/snmp/snmptrapd.conf";
+export const TRAPD_HEAD = ["###############################################################################", "#", "# EXAMPLE-trap.conf:", "#   An example configuration file for configuring the Net-SNMP snmptrapd agent.", "#", "###############################################################################", "#", "# This file is intended to only be an example.", "# When the snmptrapd agent starts up, this is where it will look for it.", "#", "# All lines beginning with a '#' are comments and are intended for you", "# to read.  All other lines are configuration commands for the agent.", "", "#", "# PLEASE: read the snmptrapd.conf(5) manual page as well!", "#", "#authCommunity log,execute,net private", "#authCommunity log,execute,net public", "#", "## send mail when get any events", "#traphandle default /usr/bin/traptoemail -s smtp.example.org foobar@example.org", "#", "## send mail when get linkDown", "#traphandle .1.3.6.1.6.3.1.1.5.3 /usr/bin/traptoemail -s smtp.example.org foobar@example.org", ""].join("\n");
+export function parseTrapd(text) {
+  const out = { users: {}, auth: {}, comms: [], noAuthz: false, bad: [] };
+  live(text).forEach(function (l) {
+    const w = l.match(/"[^"]*"|\S+/g).map(function (t) { return t.replace(/^"|"$/g, ""); }), k = w[0];
+    if (k === "createUser") {
+      let i = 1, eid = null; if (w[i] === "-e") { eid = (w[i + 1] || "").replace(/^0x/i, "").toUpperCase(); i += 2; }
+      const name = w[i++], aa = (w[i] || "").toUpperCase(), ap = w[i + 1], xa0 = (w[i + 2] || "").toUpperCase(), xp = w[i + 3];
+      if (!name) { out.bad.push(l); return; }
+      const xa = xa0 === "AES" || xa0 === "AES128" ? "AES128" : xa0;
+      out.users[name] = { eid: eid, auth: aa && ap ? { alg: aa, pw: ap } : null, priv: xa && xp ? { alg: xa, pw: xp } : null };
+    } else if (k === "authUser") { const types = (w[1] || "").split(","), name = w[2]; if (name && types.indexOf("log") >= 0) out.auth[name] = (w[3] || "authNoPriv").toLowerCase(); else out.bad.push(l); }
+    else if (k === "authCommunity") { const types = (w[1] || "").split(","); if (w[2] && types.indexOf("log") >= 0) out.comms.push(w[2]); }
+    else if (k === "disableAuthorization") out.noAuthz = /^yes$/i.test(w[1] || "");
+  });
+  return out;
+}
 export const UNITS = {
   chrony: { desc: "chrony, an NTP client/server", file: "/usr/lib/systemd/system/chrony.service", exe: "/usr/sbin/chronyd", proc: "chronyd", docs: "man:chronyd(8) man:chronyc(1) man:chrony.conf(5)", conf: CHRONY_CONF },
+  snmptrapd: { desc: "Simple Network Management Protocol (SNMP) Trap Daemon.", file: "/usr/lib/systemd/system/snmptrapd.service", exe: "/usr/sbin/snmptrapd -LOw -f -p /run/snmptrapd.pid", proc: "snmptrapd", docs: "man:snmptrapd(8)", conf: TRAPD_CONF },
   rsyslog: { desc: "System Logging Service", file: "/usr/lib/systemd/system/rsyslog.service", exe: "/usr/sbin/rsyslogd -n -iNONE", proc: "rsyslogd", docs: "man:rsyslogd(8) man:rsyslog.conf(5) https://www.rsyslog.com/doc/", conf: RSYSLOG_CONF }
 };
 
@@ -78,7 +100,7 @@ const fileOf = function (sim, id, path) { const F = (sim.d[id].lx && sim.d[id].l
 /* what a service runs with: its file as it read it when it last started */
 export function startRun(sim, id, unit) {
   const t = fileOf(sim, id, UNITS[unit].conf) || "";
-  return unit === "chrony" ? Object.assign({ text: t }, parseChrony(t)) : Object.assign({ text: t }, parseRsyslog(t));
+  return unit === "chrony" ? Object.assign({ text: t }, parseChrony(t)) : unit === "snmptrapd" ? Object.assign({ text: t }, parseTrapd(t)) : Object.assign({ text: t }, parseRsyslog(t));
 }
 /* the server's own clock source: chrony running, with a pool or a server, and the internet reachable from the server */
 export function serverSynced(sim, id) {

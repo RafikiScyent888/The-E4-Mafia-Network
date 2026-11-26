@@ -6,6 +6,7 @@
 import * as LX from "./linux.js";
 import { clock as lxClock } from "./linux.js";
 import * as SVC from "./svc.js";
+import * as MON from "./mon.js";
 import { isIp, isApipa, isLoopback, sameSubnet, hash, pad, lpad } from "./util.js";
 import * as SW from "./swcli.js";
 import * as RT from "./rtcli.js";
@@ -126,7 +127,11 @@ function consoleTarget(sim, id) {
 }
 /* what a switch's own ping reaches: anything that answers (Windows computers don't, by default) */
 /* the lines a switch or router logged with that command, sent to its log hosts through the network (Level 5, work order 1) */
-function drainLogs(sim, id) { const sw = sim.d[id] && sim.d[id].sw; if (!sw || !sw.logq || !sw.logq.length) return; const q = sw.logq, k = lxClock(sim); sw.logq = []; q.forEach(function (m) { SVC.deliver(sim, id, m.host, m.line, k); }); }
+function drainLogs(sim, id) {
+  const sw = sim.d[id] && sim.d[id].sw; if (!sw) return; const k = lxClock(sim);
+  if (sw.logq && sw.logq.length) { const q = sw.logq; sw.logq = []; q.forEach(function (m) { SVC.deliver(sim, id, m.host, m.line, k); }); }
+  if (sw.trapq && sw.trapq.length) { const q = sw.trapq; sw.trapq = []; q.forEach(function (h) { MON.notify(sim, id, h, k); }); }   /* SNMP notifications (Level 5, work order 2) */
+}
 function reachFrom(sim, sw) {
   return function (ip) { const r = sim.route(sw, ip); if (r.fail) return false; if (r.local || r.routed) { const k = sim.d[r.owner[0]].kind; return !(k === "pc" || k === "laptop"); } return !!(r.internet || r.modem); };
 }

@@ -36,7 +36,7 @@ const SIGNAL = {
 export const PORTS = { router: ["WAN", "LAN 1", "LAN 2", "LAN 3", "LAN 4"], switch: ["1", "2", "3", "4", "5"], modem: ["ETH"], pc: ["NIC"], printer: ["NET"], camera: ["LAN"], tv: ["LAN"], injector: ["DATA IN", "PoE OUT"], mesh: ["WAN", "LAN"], dcam: ["LAN"], server: ["eno1", "eno2"] };   /* a rack server's two network ports (work order 9), by the names Linux gives them
 /* what a PoE injector can send down the cable: at the injector, and what reaches the device after the cable's loss (IEEE 802.3af and 802.3at) */
 export const POE = { af: { pse: 15.4, pd: 12.95 }, at: { pse: 30, pd: 25.5 } };
-export const PORT_NAME = { WAN: "INTERNET (WAN)", ETH: "ETHERNET", NIC: "Ethernet", NET: "NETWORK", LAN: "LAN", "PoE OUT": "DATA + POWER OUT", eno1: "port 1 (eno1)", eno2: "port 2 (eno2)" };   /* a server's ports: printed 1 and 2 on its back, eno1 and eno2 to Linux */
+export const PORT_NAME = { WAN: "INTERNET (WAN)", ETH: "ETHERNET", NIC: "Ethernet", NET: "NETWORK", LAN: "LAN", "PoE OUT": "DATA + POWER OUT", eno1: "port 1 (eno1)", eno2: "port 2 (eno2)", eno3: "port 3 (eno3)" };   /* a server's ports: printed 1 and 2 on its back, eno1 and eno2 to Linux */
 /* an injector's ports in pairs: each DATA + POWER OUT carries on the link from its own DATA IN, and nothing else.
    The dual-port PoE+ injector (build mode's injector2) has two pairs, kept apart as on the real thing */
 export const POE_PAIR = { "PoE OUT": "DATA IN", "DATA IN": "PoE OUT", "PoE OUT 2": "DATA IN 2", "DATA IN 2": "PoE OUT 2" };
@@ -66,7 +66,8 @@ export function portsOf(x) {
   if (x.kind === "brouter") return RT_PORT_NAMES;
   if (x.kind === "bap") return ["ETH"];
   if (x.kind === "techlaptop") return ["USB-C", "ETH"];
-  if (x.kind === "jack") return ["JACK"];   /* the USB serial adapter for the console cable, and its own Ethernet port */
+  if (x.kind === "jack") return ["JACK"];
+  if (x.kind === "server" && x.ifaces) return x.ifaces.map(function (f) { return f.port; });   /* a rack server's own ports: eno1 and eno2, and eno3 where it's used (Level 5) */   /* the USB serial adapter for the console cable, and its own Ethernet port */
   return PORTS[x.kind] || [];
 }
 /* a console cable: your laptop's USB serial adapter to a switch's CONSOLE port */
@@ -236,7 +237,7 @@ export class Sim {
       if (fd.kind === "brouter") { const ph = RT_IF(far.port); if (!ph || fd.sw.ifs[ph].shutdown) continue; }
       const fi = fd.ifaces ? this.ifaceAt(far.dev, far.port) : null;   /* a server's second port has a hardware address of its own */
       const m = (fd.kind === "router" || fd.kind === "rogue" ? fd.mac : fi ? fi.mac : "02-00-5e-" + (hash(far.dev) >>> 0).toString(16).padStart(8, "0").slice(0, 6).replace(/(..)(..)(..)/, "$1-$2-$3")).replace(/-/g, "");
-      L["GigabitEthernet0/" + me.port] = { lldp: this.cableUp(c0) ? this.lldpOf(this.viaInjectorEnd(c0, id) || far) : null, dtp: this.dtpOf(far), chan: this.chanOf(far), farDev: far.dev, mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fi && fi.cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n, giants: this.giantsAt(id, "GigabitEthernet0/" + me.port) };
+      L["GigabitEthernet0/" + me.port] = { lldp: this.cableUp(c0) ? this.lldpOf(this.viaInjectorEnd(c0, id) || far) : null, dtp: this.dtpOf(far), chan: this.chanOf(far), farDev: far.dev, mac: m.slice(0, 4) + "." + m.slice(4, 8) + "." + m.slice(8, 12), speed: this.speedSetting(far), duplex: (fi && fi.cfg && fi.cfg.duplex) || "auto", max: c.cond === "damaged" ? 100 : 1000, counters: c.counters || null, tick: this.n, giants: this.giantsAt(id, "GigabitEthernet0/" + me.port) };
       if (fd.maxMbps) L["GigabitEthernet0/" + me.port].max = Math.min(L["GigabitEthernet0/" + me.port].max, fd.maxMbps);
       if (fd.dtp && this.cableUp(c0)) {   /* a device trunking with the port (SB-15): its frames come in on every VLAN the port carries, so the switch learns it in each */
         const n = "GigabitEthernet0/" + me.port, cr = carries(x.sw, n, { mode: fd.dtp, nonegotiate: false }), mac = L[n].mac;

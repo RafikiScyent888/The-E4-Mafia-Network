@@ -185,7 +185,11 @@ export function drawLogical(svg, sim, o) {
     const n = many[pair(l)], k = seen[pair(l)] = (seen[pair(l)] == null ? 0 : seen[pair(l)] + 1), sh = n >= 3 ? (k - (n - 1) / 2) * 30 : k * 30;   /* the first stays where it always ran; the next one runs beside it. Three or more (the file server's eno3, Level 5) sit either side of the straight line, so each still ends on its tiles (R 34) */
     const L0 = Math.hypot(B0.x - A0.x, B0.y - A0.y), nx = -(B0.y - A0.y) / L0, ny = (B0.x - A0.x) / L0, sg = l.a < l.b ? 1 : -1;
     const ea = deg[l.a] > deg[l.b] ? 0.4 : 1, eb = deg[l.b] > deg[l.a] ? 0.4 : 1;
-    const A = Object.assign({}, A0, { x: A0.x + nx * sh * sg * ea, y: A0.y + ny * sh * sg * ea }), B = Object.assign({}, B0, { x: B0.x + nx * sh * sg * eb, y: B0.y + ny * sh * sg * eb });
+    /* three or more: the busier device's end fans out to one side only, as a pair's second cable does (k * 12), clear of the device's other
+       lines; the other end sits either side of the straight line (30 apart), so each still ends on its tile. In the same order at both ends,
+       so they never cross */
+    const shAt = function (e) { return n >= 3 ? (e < 1 ? k * 12 : (k - (n - 1) / 2) * 30) : sh * e; }, sa = shAt(ea), sb = shAt(eb);
+    const A = Object.assign({}, A0, { x: A0.x + nx * sa * sg, y: A0.y + ny * sa * sg }), B = Object.assign({}, B0, { x: B0.x + nx * sb * sg, y: B0.y + ny * sb * sg });
     const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy), ux = dx / L, uy = dy / L;
     const Rb = l.to ? 0 : R;   /* a stub's far end is the end of the line, not a device */
     const run = { l: l, k: k, A: A, B: B, L: L, ux: ux, uy: uy, x1: A.x + ux * R, y1: A.y + uy * R, x2: B.x - ux * Rb, y2: B.y - uy * Rb };

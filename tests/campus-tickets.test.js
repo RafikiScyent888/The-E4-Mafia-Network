@@ -906,6 +906,9 @@ test("CP-12: the tempting wrong fixes don't: a restart with the file as it is, t
     const open = () => E.open(CP12, s);
     let T = open(); for (const a of onSrv(T, ["sudo systemctl restart isc-dhcp-server", T.v.plan.srv.pw]).concat(proof12(T))) E.act(T, a);
     assert.equal(T.fixed, false, s + " restarted as it is"); assert.equal(T.sim.d.fsrv.lx.dhcpd.state, "failed");
+    /* restarted as it is (it fails), then the file put right but never restarted again: the server is still down */
+    T = open(); for (const a of onSrv(T, ["sudo systemctl restart isc-dhcp-server", T.v.plan.srv.pw]).concat(edit12(T, goodConf(T), false), proof12(T))) E.act(T, a);
+    assert.equal(T.fixed, false, s + " failed, then the file put right and not restarted"); assert.equal(T.sim.d.fsrv.lx.dhcpd.state, "failed"); assert.ok(!online(T.sim, T.v.pc));
     T = open(); for (const a of edit12(T, goodConf(T), false).concat(proof12(T))) E.act(T, a);
     assert.equal(T.fixed, false, s + " written, not restarted"); assert.ok(!online(T.sim, T.v.pc));
     T = open(); const cut = confNow(T).replace(/\n# Meeting room[\s\S]*$/, "\n"); for (const a of edit12(T, cut).concat(proof12(T))) E.act(T, a);

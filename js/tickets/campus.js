@@ -622,5 +622,62 @@ const CP09 = {
   }
 };
 
-export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07, CP08, CP09];
+/* ---------------------------------------------------------------- CP-10 */
+/* A floor's DHCP relays reverted. Both distribution switches relay each desk VLAN's requests to the DHCP server on the file server
+   (CP-J10); the contractor re-applied the floor's VLAN interface lines from an old change sheet on both, and saved, so the floor's
+   requests now go to the edge router's old address (its pools went in CP-J10), or to the backup server's (one digit off the file
+   server's), or nowhere. Desks with a lease from before keep working; one that asks again gets 169.254. */
+const CP10 = {
+  id: "CP-10", n: "10", level: 4, tier: "common", title: "A desk on one floor gets no address since the weekend", priority: 2, due: "2 h",
+  kinds: ["old", "typo", "gone"],
+  build(seed) {
+    const B = settled(seed), sim = B.sim, p = B.plan, r = rng(hash("CP-10:" + seed)), kind = r.pick(CP10.kinds), vk = r.pick(["svc", "bench", "office", "train"]), K = CP03_KIND[vk], V = vlanOf(p, vk);
+    const pc = r.pick(K.pcs), other = K.pcs.find(function (d) { return d !== pc; });
+    const to = kind === "old" ? [coreLinks(p)[0].ia] : kind === "typo" ? [p.srv.bksrv.ip] : [];
+    ["dist1", "dist2"].forEach(function (id) { const sw = sim.d[id].sw; [sw, sw.startup].forEach(function (w) { w.svis[String(V.id)].helpers = to.slice(); }); });
+    sim.bump(); sim.relink(sim.links());
+    exec(sim, pc, "ipconfig /release"); exec(sim, pc, "ipconfig /renew");   /* Monday morning: the desk asks again */
+    freeze(sim);
+    return { sim: sim, v: { kind: kind, plan: p, vk: vk, vid: V.id, label: CP06_KIND[{ svc: "acc1", bench: "acc2", office: "acc3", train: "acc4" }[vk]].label, pc: pc, pcName: name(sim, pc), other: other, otherName: name(sim, other), floor: K.floor, room: K.room, to: to, srv: p.srv.fsrv.ip, vnet: V.net.replace(/0$/, "") } };
+  },
+  brief(v) { return { quote: "The " + v.pcName + " has no network this morning: it was moved to a new desk on Friday and restarted today. The " + v.otherName + ", on the same floor, works fine, and so does everyone else. Over the weekend the network contractor re-applied the settings for that floor's network on both distribution switches \"from the change sheet\", and saved." }; },
+  mason: "One desk asked for something this morning and the other didn't need to. Follow the asking.",
+  affected: function (v) { return v.pc; },
+  options(v) {
+    return [
+      { id: "right", right: true, text: "The floor's requests for an address are relayed somewhere that doesn't hand addresses out" + (v.kind === "gone" ? " (or nowhere at all)" : "") + ", on both distribution switches" },
+      { id: "pool", text: "The DHCP server has run out of addresses for the floor's network", why: "The server's lease list for the floor has plenty free, and its log shows no request from the floor's network arriving at all: it never heard the desk ask." },
+      { id: "service", text: "The DHCP server stopped running over the weekend", why: "systemctl status on the file server has it active (running), and a desk on another floor that asks for an address gets one." },
+      { id: "port", text: "The new desk's switch port is shut or in the wrong VLAN", why: "ipconfig on the " + v.pcName + " shows a link, and the access switch has its port connected in the floor's VLAN, with the " + v.otherName + " beside it working." },
+      { id: "dist1", text: "Only distribution switch 1's relay for the floor is wrong; distribution switch 2 would still get the request through", why: "Both distribution switches relay the floor's requests, and both have the same wrong setting: either alone, right, would have got the desk its address." },
+      { id: "apipa", text: "The " + v.pcName + "'s network settings were set by hand to 169.254 when it was moved", why: "ipconfig /all on the " + v.pcName + " says DHCP Enabled: Yes, and Autoconfiguration: it gave itself 169.254 because nothing answered." }
+    ];
+  },
+  rung1(v) { return "On the " + v.pcName + ": ipconfig /all. Then SSH to both distribution switches (the records have their addresses): show running-config for the floor's VLAN interface, and compare it with another floor's. The DHCP server's own log on the file server says who it heard from."; },
+  rung2() { return "A PC asks for an address with a broadcast, which stops at its own VLAN. The router for that VLAN has to pass the request on to the DHCP server, to an address it's been given; given the wrong one, or none, the request goes nowhere useful."; },
+  fixHints(v) { return ["Compare the floor's VLAN interface lines on each distribution switch with another floor's: the line that passes requests on differs.", "Put it right on both switches, as every other floor has it: the records give the DHCP server's address.", "Save both. Then on the " + v.pcName + ": ask for an address again, and ping the internet."]; },
+  relayRight(sim, v, saved) { return ["dist1", "dist2"].every(function (id) { const sw = sim.d[id].sw, w = saved ? sw.startup : sw, h = w.svis[String(v.vid)].helpers || []; return h.length === 1 && h[0] === v.srv; }); },
+  exhibits(sim, v) { const a = sim.addr(v.pc); return !CP10.relayRight(sim, v) && !!a && /^169\.254\./.test(a.ip) && online(sim, v.other); },
+  fixed(sim, v) { return CP10.relayRight(sim, v) && CP10.relayRight(sim, v, true) && online(sim, v.pc) && online(sim, v.other) && sim.d[v.pc].ifaces[0].lease && sim.d[v.pc].ifaces[0].lease.server === v.srv && ["sd1", "bn1", "mgr", "tr1"].every(function (d) { return online(sim, d); }); },
+  partial(v, sim) {
+    const L = sim.d[v.pc].ifaces[0].lease;
+    if (!L || L.server !== v.srv) return "The " + v.pcName + " is online, but not with an address from the DHCP server: set by hand, it's outside what the server knows about, and the next desk moved will have the same trouble.";
+    if (!CP10.relayRight(sim, v)) return "The " + v.pcName + " has its address, but only one distribution switch relays the floor's requests to the DHCP server: with that one off, the floor's desks get none. The records have both relaying.";
+    if (!CP10.relayRight(sim, v, true)) return "The " + v.pcName + " has its address, but a distribution switch hasn't saved the change: after its next reload the floor's requests go astray again.";
+    return "It works, but not the way the records have it.";
+  },
+  proves(f, sim, v) { return f.cmd === "ping" && f.dev === v.pc && f.replies > 0 && !!f.internet; },
+  proofText: "a ping from the desk to the internet that gets replies, with an address from the DHCP server",
+  evidence: [
+    { id: "apipa", test: function (f, v) { return f.cmd === "ipconfig" && f.dev === v.pc && !!f.apipa; }, text: function (f, v) { return "ipconfig on the " + v.pcName + ": 169.254, an address it gave itself"; } },
+    { id: "other", test: function (f, v) { return f.cmd === "ipconfig" && f.dev === v.other && !!f.ip && !f.apipa; }, text: function (f, v) { return "ipconfig on the " + v.otherName + ": its address from before the weekend, still good"; } },
+    { id: "run", test: function (f, v) { const o = devOut(f), blk = (o.split("interface Vlan" + v.vid + "\n")[1] || "").split("!")[0]; return (f.on === "dist1" || f.on === "dist2") && o.indexOf("interface Vlan" + v.vid + "\n") >= 0 && blk.indexOf("ip helper-address " + v.srv) < 0; }, text: function (f, v) { return "show running-config on " + CP07_SIDE[f.on] + ": interface Vlan" + v.vid + (v.to.length ? " relays to " + v.to[0] + ", not the DHCP server" : " relays to nothing"); } },
+    { id: "journal", test: function (f, v) { const o = devOut(f); return f.on === "fsrv" && /DHCPDISCOVER/.test(o) && o.indexOf("via " + v.vnet) < 0; }, text: function () { return "the DHCP server's log: requests from other floors, none from this one"; } }
+  ],
+  summary(v) {
+    return { cause: "Re-applying the floor's VLAN interface lines from an old change sheet, the contractor left both distribution switches relaying the floor's DHCP requests " + (v.kind === "old" ? "to the edge router's old address, where the pools were before the DHCP server took over" : v.kind === "typo" ? "to " + v.to[0] + ", the backup server, one digit off the file server's address" : "nowhere: the relay line was gone") + ", and saved. Desks with a lease from before kept working; the " + v.pcName + ", asking again, heard nothing and gave itself 169.254.", fix: "On both distribution switches, interface vlan " + v.vid + ": " + (v.to.length ? "no ip helper-address " + v.to[0] + ", " : "") + "ip helper-address " + v.srv + ", then saved. The " + v.pcName + " asked again and got its address from the DHCP server." };
+  }
+};
+
+export const CAMPUS_TICKETS = [CP01, CP02, CP03, CP04, CP05, CP06, CP07, CP08, CP09, CP10];
 export const CAMPUS_COMING = [];

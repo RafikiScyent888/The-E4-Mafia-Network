@@ -721,6 +721,80 @@ test("CP-09: the brief and every hint never name the right answer, a password or
   }
 });
 
+/* ---------------------------------------------------------------- CP-10 */
+const CP10 = CAMPUS_TICKETS.find((d) => d.id === "CP-10");
+const onR = (T, which, lines, save) => { const v = T.v, f = on(v.other); return [f("ssh " + v.plan.user + "@" + v.plan.sw[which].ip), f(v.plan.userPw), f("enable"), f(v.plan.secret), f("configure terminal")].concat(lines.map(f), [f("end")], save === false ? [] : [f("copy running-config startup-config"), f("")], [f("exit")]); };
+const relayLines = (T) => ["interface vlan " + T.v.vid].concat(T.v.to.length ? ["no ip helper-address " + T.v.to[0]] : [], ["ip helper-address " + T.v.srv]);
+const fix10 = (T) => onR(T, "dist1", relayLines(T)).concat(onR(T, "dist2", relayLines(T)));
+const proof10 = (T) => [on(T.v.pc)("ipconfig /renew"), on(T.v.pc)("ping 8.8.8.8")];
+
+test("CP-10: the fault shows in the commands: the desk on 169.254, the other desk on the floor fine, both distribution switches relaying the floor elsewhere, the server's log with nothing from the floor", () => {
+  for (const s of seedsOf(CP10)) {
+    const T = E.open(CP10, s), v = T.v, f = on(v.pc), g = on(v.other);
+    assert.ok(CP10.exhibits(T.sim, v), s + " exhibits");
+    assert.match(out(T, [f("ipconfig /all")]), /Autoconfiguration IPv4 Address[ .]*: 169\.254\./); assert.match(out(T, [g("ipconfig")]), new RegExp("IPv4 Address[ .]*: " + v.vnet.replace(/\./g, "\\.")));
+    for (const d of ["dist1", "dist2"]) { const o = out(T, [g("ssh " + v.plan.user + "@" + v.plan.sw[d].ip), g(v.plan.userPw), g("enable"), g(v.plan.secret), g("show running-config"), g("exit")]); const blk = (o.split("interface Vlan" + v.vid + "\n")[1] || "").split("!")[0]; assert.ok(blk.indexOf("ip helper-address " + v.srv) < 0 && (v.to.length ? blk.indexOf("ip helper-address " + v.to[0]) >= 0 : !/helper/.test(blk)), s + " " + d + ": " + blk); }
+    const j = out(T, [g("ssh " + v.plan.srv.user + "@" + v.plan.srv.fsrv.ip), g(v.plan.srv.pw), g("journalctl -u isc-dhcp-server"), g("exit")]);
+    assert.ok(j.indexOf("via " + v.vnet) < 0 || /DHCPACK on [\d.]+ to .* via/.test(j), s + " the log");
+    assert.equal(T.fixed, false);
+    for (const id of ["apipa", "other", "run"]) assert.ok(T.evidence.some((e) => e.id === id), s + " the notebook took " + id);
+    assert.equal(T.opts.length, 6); assert.equal(T.opts.filter((o) => o.right).length, 1); assert.ok(T.opts.filter((o) => !o.right).every((o) => o.why && o.why.length > 30));
+    const S = CP10.summary(v); assert.ok(S.cause.length > 80 && S.fix.length > 60);
+  }
+});
+
+test("CP-10: both relays put right, saved, fix it once the desk asks again; its ping to the internet proves it, and a right diagnosis solves it", () => {
+  for (const s of seedsOf(CP10)) {
+    const T = E.open(CP10, s), v = T.v;
+    for (const a of fix10(T)) E.act(T, a); assert.equal(T.fixed, false, s + " not until the desk asks again");
+    for (const a of proof10(T)) E.act(T, a); assert.equal(T.fixed, true, s + " fixed"); for (const a of [on(v.pc)("ping 8.8.8.8")]) E.act(T, a); assert.equal(T.proven, true, s + " proven");
+    assert.equal(T.sim.d[v.pc].ifaces[0].lease.server, v.srv);
+    E.guess(T, T.opts.find((o) => o.right).id); assert.equal(T.solved, true);
+  }
+});
+
+test("CP-10: the tempting wrong fixes don't: one switch only, the desk given an address by hand, the fix unsaved, the relay pointed at the edge router", () => {
+  for (const s of seedsOf(CP10)) {
+    const open = () => E.open(CP10, s);
+    let T = open(); for (const a of onR(T, "dist1", relayLines(T)).concat(proof10(T))) E.act(T, a);
+    assert.equal(T.fixed, false, s + " distribution switch 1 only"); assert.match(T.partial || "", /only one distribution switch relays/);
+    T = open(); const a0 = T.v.vnet + "200"; E.act(T, { t: "client", dev: T.v.pc, values: { mode: "static", ip: a0, mask: T.v.plan.mask, gw: T.v.vnet + "1", dns: [T.v.plan.srv.fsrv.ip] } }); for (const a of [on(T.v.pc)("ping 8.8.8.8")]) E.act(T, a);
+    assert.equal(T.fixed, false, s + " an address by hand");
+    /* both relays put right and saved, then the desk given an address by hand instead of asking again: it works, and isn't the fix */
+    T = open(); for (const a of onR(T, "dist1", relayLines(T)).concat(onR(T, "dist2", relayLines(T)))) E.act(T, a);
+    E.act(T, { t: "client", dev: T.v.pc, values: { mode: "static", ip: a0, mask: T.v.plan.mask, gw: T.v.vnet + "1", dns: T.sim.d.mgr.ifaces[0].lease.dns.slice() } }); E.act(T, on(T.v.pc)("ping 8.8.8.8"));
+    assert.ok(online(T.sim, T.v.pc), s + " the address by hand works"); assert.ok(!T.fixed, s + " the relays put right, then the desk given an address by hand");
+    T = open(); for (const a of onR(T, "dist1", relayLines(T), false).concat(onR(T, "dist2", relayLines(T), false), proof10(T))) E.act(T, a);
+    assert.equal(T.fixed, false, s + " unsaved"); assert.match(T.partial || "", /hasn't saved the change/);
+    T = open(); const edge = coreLinks(T.v.plan)[0].ia; for (const a of onR(T, "dist1", ["interface vlan " + T.v.vid, "ip helper-address " + edge]).concat(onR(T, "dist2", ["interface vlan " + T.v.vid, "ip helper-address " + edge]), proof10(T))) E.act(T, a);
+    assert.equal(T.fixed, false, s + " the edge router");
+  }
+});
+
+test("CP-10: the ladder climbs, and a saved ticket replays exactly", () => {
+  const T = E.open(CP10, seedsOf(CP10)[0]), wrongs = T.opts.filter((o) => !o.right).map((o) => o.id);
+  assert.equal(E.guess(T, wrongs[0]).rung, 0); assert.equal(E.guess(T, wrongs[1]).rung, 0); assert.equal(E.guess(T, wrongs[2]).rung, 1); assert.equal(E.guess(T, wrongs[3]).rung, 2);
+  E.resetBoard(T); assert.equal(E.guess(T, wrongs[4]).rung, 3); assert.equal(E.live(T).length, 2); assert.ok(E.live(T).some((o) => o.right));
+  const U = E.open(CP10, seedsOf(CP10, 1)[0]);
+  for (const a of fix10(U).concat(proof10(U))) E.act(U, a);
+  const R = E.restore(CP10, JSON.parse(JSON.stringify(E.save(U))));
+  assert.equal(R.fixed, U.fixed); assert.deepEqual(R.evidence, U.evidence); assert.equal(R.proven, U.proven); assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
+});
+
+test("CP-10: the brief and every hint never name the right answer, a password, a VLAN number, an address or the fix's command", () => {
+  for (const s of seedsOf(CP10)) {
+    const T = E.open(CP10, s), right = T.opts.find((o) => o.right).text.toLowerCase(), p = T.v.plan;
+    const texts = [CP10.rung1(T.v, T.sim), CP10.rung2(T.v, T.sim), ...CP10.fixHints(T.v, T.sim), CP10.brief(T.v, T.sim).quote, CP10.mason].map((x) => x.toLowerCase());
+    for (const x of texts) {
+      assert.ok(x.indexOf(right) < 0, x);
+      for (const bad of [p.secret, p.console, p.userPw, p.srv.pw].map((b) => b.toLowerCase())) assert.ok(x.indexOf(bad) < 0, "names a password: " + x);
+      for (const n of Object.values(p.vlans).map((V) => String(V.id)).concat([String(p.train.id), String(p.annex.cls.id)])) assert.ok(!new RegExp("\\b" + n + "\\b").test(x), "names VLAN " + n + ": " + x);
+      for (const bad of ["helper-address", "copy running-config", T.v.srv].concat(T.v.to)) assert.ok(x.indexOf(bad) < 0, "names " + bad + ": " + x);
+    }
+    for (const x of [CP10.brief(T.v, T.sim).quote, CP10.mason].map((y) => y.toLowerCase())) for (const bad of ["relay", "helper", "dhcp"]) assert.ok(x.indexOf(bad) < 0, "the brief or Mason's opener names " + bad + ": " + x);
+  }
+});
+
 /* every campus ticket shows its fault on the campus it was asked for, in every variant: a ticket moves to another campus when its fault
    doesn't show, so a rule that stopped one variant showing would otherwise go unnoticed (the tests would just meet the other variants) */
 for (const def of CAMPUS_TICKETS) test(def.id + ": the fault shows on every campus asked for, every variant (no campus skipped)", () => {

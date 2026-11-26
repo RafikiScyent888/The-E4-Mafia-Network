@@ -116,6 +116,12 @@ test("EN-J1: more wrong ways: a service stopped, the server's own clock lost, an
   /* the running configuration says it: a switch and the edge router */
   const show = (id) => gear(J, id, ["do show running-config | include ntp", "do show running-config | include logging"], false).map((a) => (B.act(J, a) || {}).out || "").join("");
   for (const id of ["acc1", "edge"]) { const out = show(id); assert.match(out, new RegExp("^ntp server " + fs.replace(/\./g, "\\.") + "$", "m"), id + " ntp server"); assert.match(out, new RegExp("^logging host " + fs.replace(/\./g, "\\.") + "$", "m"), id + " logging host"); }
+  /* and saved: a switch that has them taken off without saving gets them back from what it saved when its power is cut (a save that left them
+     out would pass every line above, and the switch would come back without them) */
+  J = done(); run(J, gear(J, "acc2", ["no ntp server " + fs, "no logging host " + fs], false));
+  assert.equal(line(J, "sync").cause, "none", "taken off acc2, not saved"); assert.ok(!(J.sim.d.acc2.sw.logHosts || []).length, "the log host off acc2");
+  B.act(J, { t: "power", dev: "acc2" });
+  assert.equal(line(J, "sync").ok, true, "back after the power cut: the saved time server"); assert.deepEqual(J.sim.d.acc2.sw.logHosts, [fs], "the saved log host back");
 });
 
 test("EN-J1: other right ways pass: allow for the whole network spelled out per subnet, rsyslog's old-style lines, logging <address>, a test line by hand", () => {

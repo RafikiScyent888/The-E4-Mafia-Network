@@ -88,6 +88,44 @@ at runtime.
 - Check a model by putting the owner's photo beside a render from the same
   angle and distance; a wide render hides missing detail.
 
+## SAVE POINT (26 November 2026): the weekly limit reached
+
+The owner, 26 November 2026: "create a save point because we are at the weekly limite". Everything below is committed and pushed to its
+branch; nothing new is live since the last save point (`main` still b164ce3: CP-J1 to CP-J10, CP-01 to CP-09).
+
+- **Campus tickets, CP-10 to CP-15** (`save/level4-tickets`, worktree `/home/user/e4-cpt`; scripts in `tools/wip/campus-golive/`, set `E4_PIN`):
+  - CP-10's missed plant ("an address set by hand counts") and CP-12's ("the file right but the service not restarted counts") are closed by
+    tests: `patch-cp10b.py` and `patch-cp12b.py`, applied to the staged trees `stg/cp10` to `stg/cp15` (and committed there). Each was shown to
+    pass clean and fail with its plant. CP-10's own tests passed again on its re-patched tree (6 of 6).
+  - Running at the save point (the scratchpad's `stg/chain1b.sh`): CP-10's plant re-run, then CP-12's and its own tests, then CP-12's "dhcpd starts
+    on a file with a mistake", then CP-13's and CP-14's Node plants. When CP-10's plant is caught, the chain starts `orch2.sh`, which takes CP-10 to
+    CP-14 live one at a time, each only on passing logs, and writes LIVE or BLOCKED to `stg/orch.log`. If the container restarts, those runs stop:
+    start `chain1b.sh` again (it is safe to repeat).
+  - CP-15: its full unit tests passed on its staged tree (711 of 711, 68 minutes run alone); its full drive was running (`stg/chain2.sh`). Still to
+    run after that, each alone: the models, its contrast states, its page plants; then `golive-cp15.sh` (Level 4 complete). Tell the owner the
+    re-sized order (configuration-only tickets first, BPDU guard last) as they go live.
+- **EN-J1, NTP and syslog** (`save/level5`, worktree `/home/user/e4-l5`): all 37 Node plants run: 36 caught. The 37th, "the time server and log host
+  never saved", showed a gap: a new test takes a switch's time server and log host off without saving, cuts its power, and checks both come back
+  from what it saved (passes clean; its plant re-run against it was running at the save point: `en1/pl-saved.log` in the scratchpad). Its 4
+  contrast states and `levels: build` passed (in EN-J2's run, below). Still to run: the page plants, the full unit tests and the full drive, on a
+  tree merged with `main` after CP-15. It goes live after CP-15.
+- **EN-J2, SNMPv3 and a mirrored port** (`save/level5-en2`, worktree `/home/user/e4-en2`): built; 17 of 17 enterprise and levels tests; its drive
+  155 checks on three campuses; contrast 14 states (EN-J1's and EN-J2's, the levels), 58,638 text runs, all passing. Still to run: its Node plants
+  (`NAMEPAT=EN-J2 SEEDS=1`, in a copy) and page plants (`E4_PIN`, `CHROME`). It goes live after EN-J1.
+- **EN-J3, a branch office over a leased line** (`save/level5-en3`, worktree `/home/user/e4-en3`), work in progress:
+  - Built: `branchKit` (the branch across town: its router in its box, its switch racked as it came, two desks; the records: the line's block
+    10.b.255.36/30, HQ the first usable, the branch's LAN, descriptions); the business router's `ip helper-address` and a relay from it; traffic
+    from one business router on into another (`routeBR`, `routeFromRouter`); EJ3 in `js/build/enterprise.js` (10 lines: rack, line, addr, lan,
+    ospf, routes, desks, reach, works, saved, each an ordered list of causes) and its walk-through, which passes every line in Node; both drawings
+    (the branch's block under the Annex on the logical diagram, its band under the Annex on the floor plan, the leased line a labelled stub at
+    each end on both); the routers' SFP slots on their Physical tab once the branch exists, and the router's 3D model drawing each module's latch,
+    the fibre's own print and a bare module; EN-J3 in the drive (`tools/drive.mjs`); 5 unit tests in `tests/enterprise-jobs.test.js`.
+  - Not yet run: the new unit tests, the drive, the contrast states (none written yet), the models, the plants (none written yet). Run each on
+    a copy of the tree, never the worktree.
+  - Known: a ping to a router further away shows TTL 255 (the reply isn't counted down per router): the engine's simplification since Level 3,
+    not changed.
+- Then EN-J4 to EN-J10 and Level 5's 15 tickets, as approved on 24 November 2026.
+
 ## SAVE POINT (25 November 2026): Level 4's last tickets going live, Level 5 started
 
 The owner, 25 November 2026: "create a save point". The container had restarted just before (about 18:17 that day): every background run

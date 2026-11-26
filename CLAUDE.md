@@ -4283,6 +4283,41 @@ words until all 25 are built; it opens once the campus is finished (before EN-J1
   enterprise's work orders"). Plants: `tools/plants-enterprise-node.py` (in a throwaway copy, `SEEDS=1`), `tools/plants-enterprise-page.py`
   (`E4_PIN` and `CHROME` set).
 
+### EN-J2, watching the network: SNMPv3 and a mirrored port (built 26 November 2026, on `save/level5-en2`)
+
+- **The job:** an auditor found the 2019 installer's community strings on every device, one read-write; the security team wants a capture
+  of the service desk PC's traffic. Lines: no community left (causes: a read-write one, then a read-only one); SNMPv3 on all 11 (`GEAR`)
+  with the records' group requiring encryption and the records' user (no group, a group without priv, no user, the user in another group,
+  authentication or privacy not as the records say); polled from the file server as that user at authPriv (only asked with a community;
+  never); informs to the file server when the configuration changes, one from each arrived (no host, another host, v3 traps, another
+  version or user, notifications off, nothing arrived); the service desk PC's port mirrored both ways to a port cabled to the file server's
+  eno3 (eno3 cabled elsewhere, the port shut, no session, a whole VLAN, another port, one direction); the capture saved as the records say
+  (eno3 down, no file, another computer's traffic, one direction); everyone still works; all saved. The starting campus: EN-J1 done, then
+  `monKit` (the records `plan.mon`, eno3 on the file server with no address and down, snmptrapd running for the monitoring user) and the
+  template (`public` on all 11, a read-write community on the access switches, saved).
+- **The gear** (`js/net/swcli.js`, `rtcli.js`): `snmp-server` community, group (v1, v2c, v3 noauth/auth/priv), user (only its keys kept;
+  never in the running configuration, as on the real gear: `show snmp user`), host (traps or informs, version, user or community), enable
+  traps, location, contact, and their `no` forms; `show snmp` (community, group, user, host, engineID). The switch: `monitor session`
+  (source interface or VLAN, both, rx or tx; destination), `show monitor session`, "monitoring" in `show interfaces status`. Leaving
+  configuration mode queues a notification for each host when config notifications are on (`sw.trapq`); `cmd.js` delivers it after the
+  command (`MON.notify`). Pipe filters now take a regular expression, as the real gear does (`| include snmp|monitor`); text that isn't
+  one is taken as typed. `saveConfig` saves a device (for a starting network).
+- **The server** (`js/net/mon.js`, `linux.js`, `svc.js`): the agent (a wrong community gets no answer; v3: Unknown user name, Unsupported
+  security level, Authentication failure, Decryption error, authorizationError for a level under the group's) and its MIB (the system group,
+  the interfaces table); `snmpget`, `snmpwalk`, `snmpbulkwalk` with Net-SNMP's options, `~/.snmp/snmp.conf` defaults and `-On`; snmptrapd
+  (`/etc/snmp/snmptrapd.conf`: createUser, authUser, authCommunity) writing what it accepts to /var/log/syslog (an inform needs no engine ID;
+  a v3 trap does); `tcpdump` (`-i -n -c -w -r -D -Z`, `host`/`arp`/`ip` filters; a SPAN destination's copy of the source's traffic, both
+  ways or one; an ordinary switch port only the switch's own spanning tree and LLDP; a port that's down refuses; without sudo, no
+  permission; it writes as its own user, so `-w` into a home folder is Permission denied, as on Ubuntu); `ip link set eno3 up` for a port
+  netplan doesn't set up; `ls` of /tmp and the home folder; `nano ~/...`. A server's ports come from its own interfaces (`portsOf`).
+- **The logical diagram:** three or more cables between the same two devices now sit either side of the straight line, 22 apart (two
+  keep their old layout, so every earlier drawing is unchanged): the third ran past the file server's tile, its "eno3" on eno2's line.
+- **Checks:** `tests/enterprise-jobs.test.js` EN-J2 (5 tests: the start for the real reason and the walk-through; the gear's and the
+  server's own view; 21 tempting wrong ways; other right ways: `~/.snmp/snmp.conf`, `snmpwalk`, the source without `both`, another spare
+  port, `-Z root`; the ladder, replay, no help naming a passphrase, the user, the group, a community or an address). The drive's Level 5
+  section drives EN-J2 through the page; a `JOB` that isn't a Level 5 work order fails. Contrast: 4 "enterprise: EN-J2" states. Plants:
+  in `tools/plants-enterprise-node.py` and `-page.py`.
+
 ## Objectives
 
 Read from the owner's "All updated Objectives" Google Doc

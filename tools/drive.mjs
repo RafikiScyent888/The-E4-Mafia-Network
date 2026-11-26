@@ -3015,10 +3015,12 @@ if (!process.env.ONLY || process.env.ONLY === "enterprise") {
       return type(p, a.line);
     }
     if (a.t === "cmd" && !a.cli) { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== a.dev) { await dev(p, a.dev); await tab(p, "Command Prompt"); } return type(p, a.line); }
+    if (a.t === "lay") return lay(p, a.a.dev, a.a.port, a.b.dev, a.b.port);   /* the file server's eno3 to the 1F access switch (EN-J2): the Lay form */
     throw new Error("no page step for " + JSON.stringify(a));
   };
   const esc = (x) => String(x).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const refused = /% Invalid|% Incomplete|% Ambiguous|Permission denied|Connection refused|command not found|Failed to/;
+  if (process.env.JOB && process.env.JOB !== "lock" && LEVELS[4].jobs.indexOf(process.env.JOB) < 0) check(false, "enterprise: JOB=" + process.env.JOB + " isn't one of Level 5's work orders (" + LEVELS[4].jobs.join(", ") + ")");   /* or a work order left off the level would pass with nothing driven */
   for (const job of LEVELS[4].jobs.filter((k) => !process.env.JOB || k === process.env.JOB)) for (const seed of [11, 2025, 777777]) {
     const { p, ctx } = await epage("build.html", { net: solvedTo(4), build: { current: job, j: { [job]: { seed } }, done: doneTo(4) } });
     const tag = "enterprise " + job + " " + seed + ": ";
@@ -3027,19 +3029,31 @@ if (!process.env.ONLY || process.env.ONLY === "enterprise") {
       const plan = await BJ(p, () => window.__e4b.T.sim.net.plan), S = plan.srv, fs = S.fsrv.ip, b16 = fs.split(".").slice(0, 2).join(".") + ".0.0/16";
       check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed && /Level 5 · Enterprise/.test(await p.$eval("#labtitle", (n) => n.textContent)), tag + "opens the job on the campus asked for, under Level 5 · Enterprise");
       const lim = await p.$eval(".limits", (n) => n.textContent);
-      const need = job === "EN-J1" ? [plan.secret, plan.user, plan.userPw, S.user, S.pw, S.fsrv.host, fs, SV.CHRONY_CONF, SV.RSYSLOG_CONF, "/var/log/syslog", b16].concat(GEAR.map((id) => gearAddr(plan, id))) : [plan.secret];
+      const MN = plan.mon || {};
+      const need = job === "EN-J1" ? [plan.secret, plan.user, plan.userPw, S.user, S.pw, S.fsrv.host, fs, SV.CHRONY_CONF, SV.RSYSLOG_CONF, "/var/log/syslog", b16].concat(GEAR.map((id) => gearAddr(plan, id)))
+        : job === "EN-J2" ? [plan.secret, plan.user, plan.userPw, S.user, S.pw, fs, MN.user, MN.group, MN.authPw, MN.privPw, MN.file, "port " + MN.src, "port " + MN.dst, "eno3", "/etc/snmp/snmptrapd.conf"].concat(GEAR.map((id) => gearAddr(plan, id))) : [plan.secret];
       check(need.every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the campus's records the job needs" + (need.filter((x) => lim.indexOf(x) < 0).length ? " (missing " + need.filter((x) => lim.indexOf(x) < 0).join(", ") + ")" : ""));
       const first = await checkJob(p);
       check((await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do");
       if (job === "EN-J1") check(/chrony\.conf on the file server: no allow line/.test(first) && /show running-config \| include ntp on the edge router: nothing/.test(first) && /rsyslog\.conf: the imudp lines start with #/.test(first) && /show logging on the edge router: no Logging to line/.test(first), tag + "the first check says what it saw, line by line: chrony's file with no allow line, the edge router with no NTP server, rsyslog's UDP lines commented out, the edge router with no log host");
+      if (job === "EN-J2") check(/show running-config \| include community on/.test(first) && /show snmp group on the edge router/.test(first) && /show snmp host on the edge router: nothing/.test(first) && /The runs table: eno3/.test(first) && /ip link show eno3 on the file server/.test(first), tag + "the first check says what it saw, line by line: a community still there, no group on the edge router, no notification host, nothing on eno3, eno3 down");
       const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
-      let nano = 0, ntp = 0;
+      let nano = 0, ntp = 0, polls = 0;
+      const sdIp = await BJ(p, () => (window.__e4b.T.sim.addr("sd1") || {}).ip);
       for (const a of sol) {
         if (job === "EN-J1" && a.line === "^O" && !nano) {   /* nano open on chrony's file: its whole path, what it read */
           const st = await p.evaluate(() => ({ path: document.querySelector(".term .nano-path").textContent, status: document.querySelector(".term .nano-status").textContent }));
           check(st.path === SV.CHRONY_CONF && /^\[ Read \d+ lines \]$/.test(st.status), tag + "nano on chrony's file: its whole path, [ Read ... lines ] (" + st.path + ", " + st.status + ")");
         }
         await step(p, a);
+        if (job === "EN-J2") {
+          const last = async (w) => (await term(p)).split(w).pop();
+          if (/^snmpget /.test(a.line || "") && !polls++) check(/SNMPv2-MIB::sysName\.0 = STRING: \S+/.test(await last(a.line)), tag + "snmpget at authPriv from the file server's console: the edge router's name");
+          if (/^sudo tcpdump .* -w /.test(a.line || "")) { const o = await last("-w " + MN.file); check(/tcpdump: listening on eno3, link-type EN10MB \(Ethernet\), snapshot length 262144 bytes/.test(o) && /^40 packets captured$/m.test(o), tag + "tcpdump -w on eno3: listening, 40 packets captured to the file"); }
+          if (/^tcpdump -n -r /.test(a.line || "")) { const o = await last("-r " + MN.file); check(new RegExp("IP " + esc(sdIp) + "\\.\\d+ > ").test(o) && new RegExp(" > " + esc(sdIp) + "\\.\\d+: ").test(o), tag + "tcpdump -r on the capture: the service desk PC's traffic, sent and received (" + sdIp + ")"); }
+          if (a.line === "grep snmptrapd /var/log/syslog") { const o = await last("grep snmptrapd"); check(new Set((o.match(/\[UDP: \[(10\.[\d.]+)\]:/g) || [])).size === GEAR.length, tag + "grep snmptrapd /var/log/syslog: an inform from each of the " + GEAR.length + " devices"); }
+          continue;
+        }
         if (job !== "EN-J1") continue;
         if (a.line === "^O" && !nano++) check(/^\[ Wrote \d+ lines \]$/.test(await p.$eval(".term .nano-status", (n) => n.textContent)), tag + "nano wrote chrony's file out: [ Wrote ... lines ]");
         if (a.line === "chronyc sources") check(/^\^\* \S+/m.test((await term(p)).split("chronyc sources").pop()), tag + "chronyc sources on the file server's console: locked to an internet time server (^*)");
@@ -3053,6 +3067,21 @@ if (!process.env.ONLY || process.env.ONLY === "enterprise") {
       check(!refused.test(tdesk), tag + "no line was refused at the service desk PC" + (refused.test(tdesk) ? " (" + tdesk.match(refused)[0] + ")" : ""));
       const t = await checkJob(p), n = await BJ(p, () => window.__e4b.T.def.reqs.length);
       check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
+      if (job === "EN-J2") {   /* the 1F access switch from the service desk: the mirror and its port, the monitoring user; the server: the old community gone, the port up, a capture refused in a home folder */
+        const L = (l) => step(p, { t: "cmd", dev: "sd1", line: l });
+        for (const l of ["ssh " + plan.user + "@" + gearAddr(plan, "acc1"), plan.userPw, "enable", plan.secret, "show monitor session all", "show interfaces status", "show snmp user"]) await L(l);
+        const o = await term(p), ms = o.slice(o.lastIndexOf("show monitor session"), o.lastIndexOf("show interfaces status")), st = o.slice(o.lastIndexOf("show interfaces status"), o.lastIndexOf("show snmp user")), su = o.slice(o.lastIndexOf("show snmp user"));
+        check(new RegExp("Both\\s+: Gi0/" + MN.src + "\\nDestination Ports\\s+: Gi0/" + MN.dst).test(ms), tag + "show monitor session all on the 1F access switch: the service desk PC's port both ways, to the port eno3 is on");
+        check(new RegExp("^Gi0/" + MN.dst + "\\s.*\\smonitoring\\s", "m").test(st), tag + "show interfaces status on the 1F access switch: the mirror's port says monitoring");
+        check(new RegExp("User name: " + esc(MN.user) + "[\\s\\S]*Privacy Protocol: AES128").test(su), tag + "show snmp user on the 1F access switch: the monitoring user, AES 128");
+        await L("exit");
+        for (const l of ["ssh " + S.user + "@" + fs, S.pw, "snmpget -v2c -c public " + gearAddr(plan, "acc1") + " sysName.0", "ip link show eno3", "sudo tcpdump -i eno3 -n -c 5 -w servicedesk.pcap", S.pw]) await L(l);
+        const sv = await term(p), v2 = sv.slice(sv.lastIndexOf("-c public")), lk = sv.slice(sv.lastIndexOf("ip link show eno3")), hm = sv.slice(sv.lastIndexOf("-w servicedesk.pcap"));
+        check(new RegExp("Timeout: No Response from " + esc(gearAddr(plan, "acc1"))).test(v2), tag + "snmpget -v2c -c public on the file server: no answer, the old community is gone");
+        check(/eno3: <BROADCAST,MULTICAST,UP,LOWER_UP>/.test(lk), tag + "ip link show eno3 on the file server: up, with a link");
+        check(/tcpdump: servicedesk\.pcap: Permission denied/.test(hm), tag + "tcpdump -w into the home folder: Permission denied (it writes as its own user)");
+        await L("exit");
+      }
       if (job === "EN-J1") {   /* from the server's side, over SSH from the service desk: a line from every device, chrony serving every one; from the gear's: the edge router */
         const L = (l) => step(p, { t: "cmd", dev: "sd1", line: l });
         for (const l of ["ssh " + S.user + "@" + fs, S.pw, "grep CONFIG_I /var/log/syslog", "sudo chronyc clients", S.pw, "timedatectl"]) await L(l);

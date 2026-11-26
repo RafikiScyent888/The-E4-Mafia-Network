@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { ENTERPRISE_JOBS, GEAR, gearAddr } from "../js/build/enterprise.js";
 import * as B from "../js/build/engine.js";
 import * as SV from "../js/net/svc.js";
+import * as MON from "../js/net/mon.js";
 const N = Number(process.env.SEEDS || 3);
 const EJ1 = ENTERPRISE_JOBS.find((d) => d.id === "EN-J1");
 const seeds = Array.from({ length: N }, (_, i) => 15000 + i * 7919);
@@ -149,6 +150,8 @@ test("EN-J2 starts with its work still to do, for the real reason; the walk-thro
     for (const r of c.res) { if (EJ2.already.indexOf(r.id) >= 0) assert.ok(r.ok, s + " " + r.id + " met before any work"); else { assert.equal(r.ok, false, s + " " + r.id); assert.ok(r.ev && r.ev.length > 10); } }
     assert.equal(line(J, "v2c").cause, "rw"); assert.equal(line(J, "v3").cause, "nogroup"); assert.equal(line(J, "polled").cause, "notyet");
     assert.equal(line(J, "traps").cause, "nohost"); assert.equal(line(J, "mirror").cause, "nocable"); assert.equal(line(J, "capture").cause, "down");
+    const pv = sayOut(J, srvLines(J, ["snmpget -v2c -c public " + gearAddr(J.v.plan, "acc2") + " sysName.0", "snmpget -v2c -c not-the-community " + gearAddr(J.v.plan, "acc2") + " sysName.0", "exit"]));
+    assert.match(pv, /SNMPv2-MIB::sysName\.0 = STRING: /, "the old community answers"); assert.match(pv, /Timeout: No Response from /, "a wrong one gets no answer at all");
     J = run(B.open(EJ2, s), EJ2.solve(J.v)); c = B.check(J);
     for (const r of c.res) assert.ok(r.ok, s + " " + r.id + " not met after the walk-through: " + r.ev);
     assert.equal(J.done, true);
@@ -194,12 +197,14 @@ test("EN-J2: the tempting wrong ways each fail their own line for their own caus
   J = T(swap("acc4", user, user.replace(" priv aes 128 " + M.privPw, " priv aes 128 wrong-privacy"))); assert.equal(line(J, "v3").cause, "priv", "a wrong privacy passphrase"); assert.equal(line(J, "polled").cause, "notyet"); assert.equal(line(J, "traps").cause, "nothing", "its inform can't be read either");
   J = T((a) => a.filter((x) => !/^snmpget /.test(x.line || ""))); assert.equal(line(J, "polled").cause, "notyet", "never polled");
   J = o(); run(J, srvLines(J, ["snmpget -v2c -c public " + gearAddr(p, "edge") + " sysName.0", "exit"])); run(J, solve2(J, (a) => a.filter((x) => !/^snmpget /.test(x.line || "")))); assert.equal(line(J, "polled").cause, "v2", "asked with the community only");
-  J = T(swap("edge", host, "snmp-server host " + fs + " version 3 priv " + M.user)); assert.equal(line(J, "traps").cause, "kind", "v3 traps, not informs");
+  const srcOf2 = (J, id) => SV.pathFrom(J.sim, id, fs).src;
+  J = T(swap("edge", host, "snmp-server host " + fs + " version 3 priv " + M.user)); assert.equal(line(J, "traps").cause, "kind", "v3 traps, not informs"); assert.equal(MON.trapFrom(J.sim, "fsrv", srcOf2(J, "edge")), false, "and the server can't read them");
   J = T(swap("edge", host, "snmp-server host " + fs + " informs version 2c public")); assert.equal(line(J, "traps").cause, "as", "informs with a community");
-  J = T(drop("core1", "snmp-server enable traps config")); assert.equal(line(J, "traps").cause, "off", "notifications never turned on");
+  J = T(drop("core1", "snmp-server enable traps config")); assert.equal(line(J, "traps").cause, "off", "notifications never turned on"); assert.equal(MON.trapFrom(J.sim, "fsrv", srcOf2(J, "core1")), false, "so none was sent");
   J = o(); run(J, srvLines(J, ["sudo systemctl stop snmptrapd", p.srv.pw, "exit"])); run(J, solve2(J)); assert.equal(line(J, "traps").cause, "nothing", "snmptrapd stopped while the gear was set up");
   J = T((a) => a.map((x) => (x.t === "lay" ? Object.assign({}, x, { b: { dev: "acc2", port: "10" } }) : x))); assert.equal(line(J, "mirror").cause, "nocable", "eno3 cabled to the wrong switch");
   J = T(drop(M.sw, "no shutdown")); assert.equal(line(J, "mirror").cause, "shut", "the destination port left shut"); assert.equal(line(J, "capture").cause, "other");
+  J = T((a) => inBlk(a, p, M.sw, (x) => (/^monitor session /.test(x.line || "") ? null : x))); assert.equal(line(J, "mirror").cause, "nosession", "no session at all: the port is an ordinary port"); assert.equal(line(J, "capture").cause, "other", "it hears only the switch's own frames");
   const src = "monitor session 1 source interface gi0/" + M.src + " both";
   J = T(swap(M.sw, src, src.replace(" both", " rx"))); assert.equal(line(J, "mirror").cause, "dir", "only what it sends"); assert.equal(line(J, "capture").cause, "oneway");
   const other = Object.keys(p.desks.acc1).find((k) => p.desks.acc1[k][0] === "hd1");

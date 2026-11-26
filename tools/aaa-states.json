@@ -2297,5 +2297,29 @@
   "page": "build.html",
   "setup": "(async()=>{const L=await import('./js/desk/levels.js'); localStorage.setItem('e4-network-v1', JSON.stringify({t:{}, solved:Object.fromEntries(L.LEVELS.slice(0,4).flatMap(x=>x.tickets).map(id=>[id,1]))})); localStorage.setItem('e4-build-v1', JSON.stringify({j:{}, done:Object.fromEntries(L.LEVELS.slice(0,4).flatMap(x=>x.jobs).map(id=>[id,1]))})); window.__e4b.openJob('EN-J1',true,4242);})()",
   "after": "document.querySelector('#left [data-level=\"5\"]').click();"
+ },
+ {
+  "name": "enterprise: EN-J2 at the start, the first check, the file server's console: the old community answering, tcpdump -D with eno3 [none]",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('EN-J2',true,4242); const J=c.T, p=J.v.plan, M=p.mon, fs=p.srv.fsrv.ip; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const srv=()=>{document.querySelector('#devtabs [data-d=fsrv]').click(); tab('Console'); ['',p.srv.user,p.srv.pw].forEach(l=>k(l));}; const desk=()=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt');}; c.check(); srv(); ['snmpget -v2c -c public '+p.sw.acc2.ip+' sysName.0','sudo tcpdump -D',p.srv.pw].forEach(l=>k(l));",
+  "wait": "(() => { const t = document.querySelector('.term'); return !!t && document.fonts.status === 'loaded' && Math.abs(t.scrollTop + t.clientHeight - t.scrollHeight) < 3; })()"
+ },
+ {
+  "name": "enterprise: EN-J2 part way, the 1F access switch over SSH: show snmp user, show monitor session all, the mirror's port monitoring",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('EN-J2',true,4242); const J=c.T, p=J.v.plan, M=p.mon, fs=p.srv.fsrv.ip; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const srv=()=>{document.querySelector('#devtabs [data-d=fsrv]').click(); tab('Console'); ['',p.srv.user,p.srv.pw].forEach(l=>k(l));}; const desk=()=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt');}; J.def.solve(J.v).forEach(a=>c.act(a)); desk(); ['ssh '+p.user+'@'+p.sw.acc1.ip,p.userPw,'enable',p.secret,'show snmp user','show monitor session all','show interfaces status | include monitoring'].forEach(l=>k(l));",
+  "wait": "(() => { const t = document.querySelector('.term'); return !!t && document.fonts.status === 'loaded' && Math.abs(t.scrollTop + t.clientHeight - t.scrollHeight) < 3; })()"
+ },
+ {
+  "name": "enterprise: EN-J2 part way, a wrong privacy passphrase on the 4F access switch: Decryption error on the file server, Mason's third rung",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('EN-J2',true,4242); const J=c.T, p=J.v.plan, M=p.mon, fs=p.srv.fsrv.ip; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const srv=()=>{document.querySelector('#devtabs [data-d=fsrv]').click(); tab('Console'); ['',p.srv.user,p.srv.pw].forEach(l=>k(l));}; const desk=()=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt');}; const A=J.def.solve(J.v), i=A.findIndex(a=>a.dev==='sd1'&&a.line==='ssh '+p.user+'@'+p.sw.acc4.ip); A.forEach((a,j)=>{ if(j>i&&a.dev==='sd1'&&/^snmp-server user /.test(a.line||'')&&j<i+14) a=Object.assign({},a,{line:a.line.replace(M.privPw,'wrong-privacy')}); c.act(a); }); srv(); k('snmpget -v3 -l authPriv -u '+M.user+' -a SHA -A '+M.authPw+' -x AES -X '+M.privPw+' '+p.sw.acc4.ip+' sysName.0'); for(let n=0;n<5;n++) c.check();",
+  "wait": "(() => { const t = document.querySelector('.term'); return !!t && document.fonts.status === 'loaded' && Math.abs(t.scrollTop + t.clientHeight - t.scrollHeight) < 3; })()"
+ },
+ {
+  "name": "enterprise: EN-J2 done, every line met, the file server's console: the capture read back, both ways",
+  "page": "build.html",
+  "setup": "sessionStorage.setItem('e4-instructor','1'); const c=window.__e4b; c.openJob('EN-J2',true,4242); const J=c.T, p=J.v.plan, M=p.mon, fs=p.srv.fsrv.ip; const k=(v,key)=>{const i=document.querySelector('.term .cmdin'); if(v!=null) i.value=v; i.dispatchEvent(new KeyboardEvent('keydown',{key:key||'Enter',bubbles:true}));}; const tab=n=>[...document.querySelectorAll('.win-tabs button')].find(b=>b.textContent===n).click(); const srv=()=>{document.querySelector('#devtabs [data-d=fsrv]').click(); tab('Console'); ['',p.srv.user,p.srv.pw].forEach(l=>k(l));}; const desk=()=>{document.querySelector('#devtabs [data-d=sd1]').click(); tab('Command Prompt');}; J.def.solve(J.v).forEach(a=>c.act(a)); c.check(); srv(); ['tcpdump -n -r '+M.file].forEach(l=>k(l));",
+  "wait": "(() => { const t = document.querySelector('.term'); return !!t && document.fonts.status === 'loaded' && Math.abs(t.scrollTop + t.clientHeight - t.scrollHeight) < 3; })()"
  }
 ]

@@ -11,6 +11,11 @@ PLANTS = [
  ("EN-J1: ss -ulpn leaving out rsyslog's UDP port", "enterprise", "EN-J1", "js/net/linux.js", 'if (rs && rs.state === "active" && rs.run && rs.run.udp) { row(', 'if (false) { row('),
  ("EN-J1: chronyc sources never locked (^*)", "enterprise", "EN-J1", "js/net/linux.js", '(ok ? (i === 0 ? "^* " : i === 2 ? "^+ " : "^- ")', '(ok ? (i === 0 ? "^+ " : i === 2 ? "^+ " : "^- ")'),
  ("EN-J1: sudo chronyc clients not authorised even with sudo", "enterprise", "EN-J1", "js/net/linux.js", 'if (!root) return ["501 Not authorised"];', 'if (true) return ["501 Not authorised"];'),
+ ("EN-J2 left off the enterprise's work orders", "enterprise", "EN-J2", "js/build/enterprise.js", "export const ENTERPRISE_JOBS = [EJ1, EJ2];", "export const ENTERPRISE_JOBS = [EJ1];"),
+ ("EN-J2: the file server's third port not offered in the Lay form", "enterprise", "EN-J2", "js/net/sim.js", '  if (x.kind === "server" && x.ifaces) return x.ifaces.map(function (f) { return f.port; });', ''),
+ ("EN-J2: the limits without the privacy passphrase", "enterprise", "EN-J2", "js/build/enterprise.js", 'encrypting with AES 128 (passphrase " + M.privPw + ")', 'encrypting with AES 128'),
+ ("EN-J2: tcpdump -r shows nothing it saved", "enterprise", "EN-J2", "js/net/linux.js", 'return ["reading from file " + rf + ", link-type EN10MB (Ethernet), snapshot length 262144"].concat(show(E.pcap));', 'return ["reading from file " + rf + ", link-type EN10MB (Ethernet), snapshot length 262144"];'),
+ ("EN-J2: no inform reaches the server's log", "enterprise", "EN-J2", "js/net/cmd.js", 'q.forEach(function (h) { MON.notify(sim, id, h, k); });', 'q.forEach(function () { });'),
 ]
 only = sys.argv[1:]
 bad = 0

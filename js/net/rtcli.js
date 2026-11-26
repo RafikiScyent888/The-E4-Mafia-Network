@@ -328,7 +328,8 @@ const RT_IFACE = [
     ["ospf", "OSPF interface commands", [
       ["cost", "Interface cost", function (S, a) { if (!a.length) return inc; if (!/^\d+$/.test(a[0]) || +a[0] < 1 || +a[0] > 65535) return bad; return setIfs(S, "ospfCost", +a[0]); }],
       ["priority", "Router priority", function (S, a) { if (!a.length) return inc; if (!/^\d+$/.test(a[0]) || +a[0] > 255) return bad; return setIfs(S, "ospfPri", +a[0]); }]]],
-    ["mtu", "Set IP Maximum Transmission Unit", function (S, a) { if (!a.length) return inc; if (!/^\d+$/.test(a[0]) || +a[0] < 68 || +a[0] > 1500) return ["% Invalid input detected at '^' marker.", "  (68 to 1500 bytes)"]; return setIfs(S, "mtu", +a[0]); }]]],
+    ["mtu", "Set IP Maximum Transmission Unit", function (S, a) { if (!a.length) return inc; if (!/^\d+$/.test(a[0]) || +a[0] < 68 || +a[0] > 1500) return ["% Invalid input detected at '^' marker.", "  (68 to 1500 bytes)"]; return setIfs(S, "mtu", +a[0]); }],
+    ["helper-address", "Specify a destination address for UDP broadcasts", function (S, a) { if (!a.length) return inc; if (!ip4(a[0])) return bad; S.ifs.forEach(function (n) { const f = ifOf(S.sw, n); if (!f) return; f.helpers = f.helpers || []; if (f.helpers.indexOf(a[0]) < 0) f.helpers.push(a[0]); }); return []; }, { sub: [["A.B.C.D", "IP destination address"]] }]]],
   ["encapsulation", "Set encapsulation type for an interface", [["dot1Q", "IEEE 802.1Q Virtual LAN", function (S, a) { return encap(S, ["dot1q"].concat(a)); }, { sub: [["<1-4094>", "IEEE 802.1Q VLAN ID, then native for the untagged VLAN"]] }]]],
   ["speed", "Configure speed operation.", [["10", "Force 10 Mbps operation", function (S) { return setIfs(S, "speed", "10"); }], ["100", "Force 100 Mbps operation", function (S) { return setIfs(S, "speed", "100"); }], ["1000", "Force 1000 Mbps operation", function (S) { return setIfs(S, "speed", "1000"); }], ["auto", "Enable AUTO speed configuration", function (S) { return setIfs(S, "speed", "auto"); }]]],
   ["duplex", "Configure duplex operation.", [["full", "Force full duplex operation", function (S) { return setIfs(S, "duplex", "full"); }], ["half", "Force half-duplex operation", function (S) { return setIfs(S, "duplex", "half"); }], ["auto", "Enable AUTO duplex configuration", function (S) { return setIfs(S, "duplex", "auto"); }]]],
@@ -343,7 +344,8 @@ const RT_IFACE = [
       ["nat", "NAT interface commands", [["inside", "Inside interface for address translation", function (S) { return setIfs(S, "nat", null); }], ["outside", "Outside interface for address translation", function (S) { return setIfs(S, "nat", null); }]]],
       ["access-group", "Specify access control for packets", function (S, a) { return accessGroup(S, a, true); }],
       ["ospf", "OSPF interface commands", [["cost", "Interface cost", function (S) { return setIfs(S, "ospfCost", undefined); }], ["priority", "Router priority", function (S) { return setIfs(S, "ospfPri", undefined); }]]],
-      ["mtu", "Set IP Maximum Transmission Unit", function (S) { return setIfs(S, "mtu", undefined); }]]],
+      ["mtu", "Set IP Maximum Transmission Unit", function (S) { return setIfs(S, "mtu", undefined); }],
+      ["helper-address", "Specify a destination address for UDP broadcasts", function (S, a) { S.ifs.forEach(function (n) { const f = ifOf(S.sw, n); if (!f) return; if (a.length && f.helpers) f.helpers = f.helpers.filter(function (h) { return h !== a[0]; }); if (!a.length || (f.helpers && !f.helpers.length)) delete f.helpers; }); return []; }]]],
     ["encapsulation", "Set encapsulation type for an interface", [["dot1Q", "IEEE 802.1Q Virtual LAN", function (S) { S.ifs.forEach(function (n) { if (isSub(n)) { const f = S.sw.subs[n]; f.vlan = null; f.native = false; f.ip = null; f.mask = null; } }); return []; }]]],
     ["speed", "Configure speed operation.", function (S) { return setIfs(S, "speed", "auto"); }],
     ["duplex", "Configure duplex operation.", function (S) { return setIfs(S, "duplex", "auto"); }]]],
@@ -592,6 +594,7 @@ function rtRunning(r, startup) {
     if (f.aclIn) L.push(" ip access-group " + f.aclIn + " in");
     if (f.aclOut) L.push(" ip access-group " + f.aclOut + " out");
     if (f.nat) L.push(" ip nat " + f.nat);
+    (f.helpers || []).forEach(function (h) { L.push(" ip helper-address " + h); });
     if (f.mtu) L.push(" ip mtu " + f.mtu); if (f.ospfCost) L.push(" ip ospf cost " + f.ospfCost); if (f.ospfPri != null) L.push(" ip ospf priority " + f.ospfPri);
     if (f.lldpTx === false) L.push(" no lldp transmit"); if (f.lldpRx === false) L.push(" no lldp receive");
     if (f.shutdown) L.push(" shutdown");

@@ -720,12 +720,35 @@ export class Sim {
         }, this);
       }, this);
     }
+    /* the business router relays too (the enterprise's branch, work order 3): an interface up on the client's broadcast domain with helpers,
+       an access list in on it permitting the DISCOVER, sends it on from the router itself to a DHCP server at the helper address */
+    const discover = { proto: "udp", src: "0.0.0.0", dst: "255.255.255.255", sport: 68, port: 67 };
+    for (const sid in this.d) {
+      if (this.d[sid].kind !== "brouter" || !this.on(sid)) continue;
+      const R = this.rtView(sid), live = this.rtLive(sid);
+      RT.allIfs(R).forEach(function (n) {
+        const f = n.indexOf(".") > 0 ? R.subs[n] : R.ifs[n], a = RT.addrOf(R, n, live);
+        if (!f || !f.helpers || !f.helpers.length || !a || RT.rtStatus(R, n)[1] !== "up" || !dom.has(this.rtNode(sid, n))) return;
+        if (f.aclIn && !RT.aclVerdict(R, f.aclIn, discover).permit) return;
+        f.helpers.forEach(function (h) {
+          const k = this.leased("relay|" + sid + "|" + n + "|" + a.ip + "|" + a.mask + "|" + h, function () {
+            const there = this.routeFromRouter(sid, h, { proto: "udp", port: 67, sport: 67 }), rid = there && !there.fail && (there.local || there.routed) && there.owner ? there.owner.find(function (o) { return this.d[o].kind === "server"; }, this) : null;
+            if (!rid || !this.on(rid) || !dhcpdHears(this, rid, h)) return null;
+            const bk = this.route(rid, a.ip, { proto: "udp", port: 67, sport: 67 });
+            return !bk.fail && (bk.local || bk.routed) && (bk.owner || []).some(function (o) { return o === sid; }) ? rid + "@relay|" + sid + "|" + n + "|" + h : null;
+          });
+          if (k) out.push(k);
+        }, this);
+      }, this);
+    }
     return out;
   }
-  /* a relayed key's parts: the router, the relaying switch and interface (with its address now), the helper address */
+  /* a relayed key's parts: the router, the relaying switch (or business router) and interface (with its address now), the helper address */
   relayOf(key) {
     const [rid, rest] = key.split("@"); if (!rest || rest.indexOf("relay|") !== 0) return null;
-    const [, sid, ifn, h] = rest.split("|"), f = l3Ifs(this.l3View(sid)).find(function (k) { return k.name === ifn; });
+    const [, sid, ifn, h] = rest.split("|");
+    if (this.d[sid] && this.d[sid].kind === "brouter") { const a = RT.addrOf(this.d[sid].sw, ifn, this.rtLive(sid)); return { rid: rid, sid: sid, ifn: ifn, helper: h, giaddr: a ? { ip: a.ip, mask: a.mask } : null, node: this.rtNode(sid, ifn) }; }
+    const f = l3Ifs(this.l3View(sid)).find(function (k) { return k.name === ifn; });
     return { rid: rid, sid: sid, ifn: ifn, helper: h, giaddr: f ? { ip: f.ip, mask: f.mask } : null, node: this.l3Node(sid, ifn) };
   }
   /* the servers a client's request reaches whose answers a snooping switch drops: where (for the checks' causes) */
@@ -1335,6 +1358,11 @@ export class Sim {
     const odom = this.domain(this.rtNode(rid, outIf)), next = rt.nh || dst, oa = RT.addrOf(R, outIf, live);
     let blk = null; const owners = this.owners(next, odom).filter(function (o) { if (o === rid) return false; const b = oa && this.arpBlocked(this.rtNode(rid, outIf), this.macOf(rid), oa.ip, o, next, odom); if (b) blk = blk || b; return !b; }, this);
     if (!owners.length) return Object.assign({ fail: "no-reply", hops: [gwIp], why: "arp", dai: blk }, base);   /* the router's ARP for it goes unanswered (or a switch inspecting ARP drops it): Request timed out */
+    if (rt.nh && this.d[owners[0]].kind === "brouter") {   /* on into another business router (the enterprise's branch over its leased line): it carries on from its interface on this network */
+      if (!pass(outIf, "in", rep) || !pass(inIf, "out", rep)) return Object.assign({ fail: "no-reply", hops: [gwIp], why: "reply blocked" }, base);
+      const r = this.routeBR(id, { ip: a.ip, mask: a.mask, gw: rt.nh, kind: a.kind }, dst, owners[0], odom, proto, oneWay, (depth || 0) + 1);
+      return Object.assign({}, r, { via: rid, addr: a, inIf: inIf, acls: acls, hops: [gwIp].concat(r.hops || []), routers: (r.routers || 0) + 1 });
+    }
     if (rt.nh && this.routes3(owners[0])) {   /* on to a layer 3 switch: it carries on by its own table */
       if (!pass(outIf, "in", rep) || !pass(inIf, "out", rep)) return Object.assign({ fail: "no-reply", hops: [gwIp], why: "reply blocked" }, base);
       const r = this.routeL3(id, { ip: a.ip, mask: a.mask, gw: rt.nh, kind: a.kind }, dst, owners[0], odom, proto, oneWay, (depth || 0) + 1);
@@ -1369,6 +1397,11 @@ export class Sim {
     if (!owners.length) return { fail: "host-unreachable", src: src, next: next, dai: blk };
     if (rt.nh && this.routes3(owners[0])) {   /* on to a layer 3 switch: it carries on by its own table; the reply comes back in through this interface's list */
       const r = this.routeL3(rid, { ip: src, mask: oa.mask, gw: rt.nh, kind: "static" }, dst, owners[0], odom, proto, true, (depth || 0) + 1);
+      if (r.fail) return Object.assign({ src: src }, r);
+      return inOk(outIf, rep) ? Object.assign({}, r, { src: src, outIf: outIf, acls: acls }) : { fail: "no-reply", src: src, acls: acls };
+    }
+    if (rt.nh && this.d[owners[0]].kind === "brouter") {   /* on into another business router: it carries on from its interface on this network */
+      const r = this.routeBR(rid, { ip: src, mask: oa.mask, gw: rt.nh, kind: "static" }, dst, owners[0], odom, proto, true, (depth || 0) + 1);
       if (r.fail) return Object.assign({ src: src }, r);
       return inOk(outIf, rep) ? Object.assign({}, r, { src: src, outIf: outIf, acls: acls }) : { fail: "no-reply", src: src, acls: acls };
     }

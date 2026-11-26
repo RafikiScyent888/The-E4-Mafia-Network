@@ -38,18 +38,20 @@ const BACKUP_V = [80, 180, 238];
 const SRV_USERS = ["sysadmin", "srvadmin", "opsadmin"], SRV_PW = ["Rack!Files26", "Backup#Night9", "Tape*Vault31"];
 const NAMES = { svc: "SERVICE-DESK", bench: "BENCH", office: "OFFICE", servers: "SERVERS", printers: "PRINTERS", mgmt: "MGMT", native: "NATIVE-UNUSED", parking: "PARKING" };
 /* the rooms, floor by floor, and the cable runs between them (metres; the riser carries the uplinks up the building) */
-export const CAMPUS_FLOORS = { data: 1, svc: 1, c2: 2, bench: 2, c3: 3, office: 3, c4: 4, train: 4, acomms: "A", class: "A" };   /* the fourth floor, the training room (work order 7); the Annex across the car park (work order 8) */
+export const CAMPUS_FLOORS = { data: 1, svc: 1, c2: 2, bench: 2, c3: 3, office: 3, c4: 4, train: 4, acomms: "A", class: "A", bcomms: "B", boffice: "B" };   /* the branch office across town (Level 5, work order 3) */   /* the fourth floor, the training room (work order 7); the Annex across the car park (work order 8) */
 export const CAMPUS_RUN = { data: { svc: 22, c2: 38, bench: 52, c3: 54, office: 68, c4: 70, train: 84 }, svc: { c2: 50, bench: 60, c3: 66, office: 76, c4: 82, train: 92 }, c2: { bench: 18, c3: 26, office: 40, c4: 34, train: 48 }, bench: { c3: 40, office: 48, c4: 52, train: 58 }, c3: { office: 16, c4: 18, train: 32 }, office: { c4: 30, train: 40 }, c4: { train: 16 },
   /* the Training Annex, across the car park (work order 8): every run from the main building there goes out through the duct, well past copper's 100 m */
-  acomms: { data: 185, svc: 195, c2: 210, bench: 220, c3: 225, office: 235, c4: 240, train: 250, class: 14 }, class: { data: 196, svc: 206, c2: 221, bench: 231, c3: 236, office: 246, c4: 251, train: 261 } };
+  acomms: { data: 185, svc: 195, c2: 210, bench: 220, c3: 225, office: 235, c4: 240, train: 250, class: 14 },
+  /* the branch office across town (Level 5, work order 3): only the provider's leased fibre pair reaches it, 8.4 km from the data room */
+  bcomms: { data: 8400, boffice: 12 }, class: { data: 196, svc: 206, c2: 221, bench: 231, c3: 236, office: 246, c4: 251, train: 261 } };
 /* the fibre a run between two rooms is laid on, where it isn't the office's OM2 multimode: the duct to the Annex carries OS2 single-mode */
-export const CAMPUS_FIBRE = { "acomms|data": { fiber: "SMF", jacket: "OS2 9/125 µm SINGLE-MODE", extra: 0 } };
+export const CAMPUS_FIBRE = { "acomms|data": { fiber: "SMF", jacket: "OS2 9/125 µm SINGLE-MODE", extra: 0 }, "bcomms|data": { fiber: "SMF", jacket: "OS2 9/125 µm SINGLE-MODE · LEASED PAIR", extra: 0 } };
 /* the logical diagram (three tiers, the provider at the top) and the floor plan (three floors, one band each) */
 export const CAMPUS_LAYOUT = {
   isp: { x: 10, y: 40 }, modem: { x: 210, y: 40, px: 120, py: 110, room: "data" }, edge: { x: 560, y: 40, lab: "right", px: 290, py: 110, room: "data" },
   core1: { x: 300, y: 150, lab: "left", px: 460, py: 110, room: "data" }, core2: { x: 820, y: 150, lab: "right", px: 460, py: 195, room: "data" },
   dist1: { x: 380, y: 270, lab: "left", px: 290, py: 195, room: "data" }, dist2: { x: 740, y: 270, lab: "right", px: 120, py: 280, room: "data" },
-  tech: { x: 30, y: 240, px: 120, py: 195, room: "data", alt: { c4: { x: 1040, y: 270, px: 265, py: 855 }, acomms: { x: 120, y: 1100, px: 320, py: 1100 } } },   /* carried to the Annex's comms room (work order 8): under the Annex core, in its block */   /* carried to the 4F closet (work order 7): beside the new switch on both drawings */
+  tech: { x: 30, y: 240, px: 120, py: 195, room: "data", alt: { c4: { x: 1040, y: 270, px: 265, py: 855 }, acomms: { x: 120, y: 1100, px: 320, py: 1100 }, bcomms: { x: 120, y: 1470, px: 320, py: 1330 } } },   /* carried to the Annex's comms room (work order 8): under the Annex core, in its block */   /* carried to the 4F closet (work order 7): beside the new switch on both drawings */
   /* the access row in four (the fourth floor, work order 7), in the same width (a wider diagram would shrink every name on it):
      staggered, 1F and 3F up, 2F and 4F down, so no two names share a line; the desks on two rows under them */
   acc1: { x: 100, y: 410, lab: "right", px: 460, py: 280, room: "data" }, acc2: { x: 370, y: 470, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 630, y: 410, lab: "right", px: 115, py: 655, room: "c3" }, acc4: { x: 860, y: 470, lab: "right", px: 115, py: 855, room: "c4" },
@@ -64,6 +66,10 @@ export const CAMPUS_LAYOUT = {
   /* the rack servers (work order 9): on the logical diagram a row of their own under the desks, each below its access switch; on the floor
      plan the file server in the data room, the backup server in the 2F closet beside its switch */
   fsrv: { x: 0, y: 810, lab: "right", px: 600, py: 280, room: "data" }, bksrv: { x: 370, y: 810, lab: "right", px: 290, py: 455, room: "c2" },
+  /* the branch office (Level 5, work order 3): a block of its own under the Annex on the logical diagram (the leased fibre a labelled stub at
+     each end), a band of its own under the Annex on the floor plan */
+  brt: { x: 120, y: 1290, lab: "right", px: 150, py: 1290, room: "bcomms" }, bsw2: { x: 380, y: 1430, px: 150, py: 1380, room: "bcomms" },
+  bpc1: { x: 620, y: 1370, px: 540, py: 1310, room: "boffice" }, bpc2: { x: 840, y: 1450, px: 780, py: 1310, room: "boffice" },
   /* CP-15's switch on the bench, nobody's records: on the floor plan only, at the bench's far end */
   dsw: { px: 900, py: 420, room: "bench" }
 };
@@ -87,7 +93,7 @@ export function addDeskSwitch(sim, kind) {
   L.dsw = "bench"; sim.arp.dsw = {};
   net.extra.stray = { dev: "dsw", moves: moves, leads: leads, take: kind === "customer" ? "Take the customer's switch off the network: bench PC 1's cable back in" : "Take the desk switch away: each bench PC's cable back in" };
 }
-export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 345], c2: [30, 365, 260, 545], bench: [260, 365, 980, 545], c3: [30, 565, 260, 745], office: [260, 565, 980, 745], c4: [30, 765, 330, 945], train: [330, 765, 980, 945], acomms: [30, 985, 400, 1205], class: [400, 985, 980, 1205] };   /* the Annex's band, below the main building (work order 8) */
+export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 345], c2: [30, 365, 260, 545], bench: [260, 365, 980, 545], c3: [30, 565, 260, 745], office: [260, 565, 980, 745], c4: [30, 765, 330, 945], train: [330, 765, 980, 945], acomms: [30, 985, 400, 1205], class: [400, 985, 980, 1205], bcomms: [30, 1245, 400, 1425], boffice: [400, 1245, 980, 1425] };   /* the branch's band, below the Annex (Level 5) */   /* the Annex's band, below the main building (work order 8) */
 const swMac = function (hi, lo) { return "00e0.4c" + hi.toString(16).padStart(2, "0") + "." + lo.toString(16).padStart(4, "0"); };
 const run = function (sw, lines) { const S = session(sw); ["", "enable", "configure terminal"].concat(lines, ["end", "copy running-config startup-config", ""]).forEach(function (l) { exec(S, l); }); return sw; };
 
@@ -268,6 +274,24 @@ export function makeCampus(seed) {
    port (eno3: no address, no netplan entry, so down until brought up); snmptrapd running there, set up for the monitoring user. Their
    own random stream, so every other part of the campus is drawn as before */
 const MON_USERS = ["rit-nms", "noc-poller", "mon-svc"], MON_GROUPS = ["RIT-MON", "NOC-V3", "MON-PRIV"], MON_AUTH = ["Poll-Mon-2026", "Watch.Tower44", "Mib_Reader88"], MON_PRIV = ["Priv-Wire-31", "Seal.Packet57", "Cipher_Lane19"], MON_RW = ["private", "rit-rw", "admin2019"];
+/* Level 5, work order 3: the branch office across town. Its own random stream, so every other part of the campus is drawn as before.
+   The records: its name, its router's name, its LAN (one per VLAN set, its third octet free on every campus) and the leased line's /30
+   (the next of the core's routed links after the Annex's, HQ the first usable). The installer racked the branch switch (from its box, as it
+   comes) and cabled both desks to it; the branch router is in its box in the comms cupboard; the provider's fibre pair lands there and in
+   HQ's data room, the edge router's Gi0/9 still empty */
+const BRANCHES = ["Eastside", "Harbour", "Northgate"], BRANCH_V = [90, 190, 239];
+export function branchKit(net) {
+  const p = net.plan, r = rng(net.seed ^ 0xb2a7), D = net.devices, b = p.vlans.svc.net.split(".")[1], set = [10, 110, 210].indexOf(p.vlans.svc.id), lan = "10." + b + "." + BRANCH_V[set < 0 ? 0 : set] + ".", lk = "10." + b + ".255.";
+  const name = r.pick(BRANCHES);
+  p.branch = { name: name, host: "RIT-BR-" + name.toUpperCase(), lan: { net: lan + "0", mask: "255.255.255.0", gw: lan + "1", first: lan + "21" }, link: { net: lk + "36", mask: "255.255.255.252", hq: lk + "37", br: lk + "38" }, hqPort: "Gi0/9", brPort: "Gi0/9", lanPort: "Gi0/0", swPort: "24", km: 8.4 };
+  const nic = function () { return [{ name: "Ethernet", type: "eth", port: "NIC", mac: mac(r), desc: "Gigabit Network Connection", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }]; };
+  D.brt = { id: "brt", kind: "brouter", label: "Branch router", sub: "BR-4200", on: true, boxed: true, fixed: ["bcomms", "in the branch's comms cupboard, in its rack"], sw: newRouter({ mac: swMac(0x41, 0x0001) }), sfp: { "Gi0/8": null, "Gi0/9": null } };
+  D.bsw2 = { id: "bsw2", kind: "mswitch", label: "Branch switch", sub: "MSW-2800G", on: true, fixed: ["bcomms", "in the branch's comms cupboard, in its rack"], mac: swMac(0x12, 0x0b01), sw: newSwitch({ mac: swMac(0x12, 0x0b01) }) };
+  ["bpc1", "bpc2"].forEach(function (id, i) { D[id] = { id: id, kind: "pc", label: "Branch PC " + (i + 1), sub: "DHCP", on: true, os: "windows", user: i ? "staff" : "branchmgr", host: "RIT-" + name.toUpperCase() + "-PC-" + (i + 1), ifaces: nic() }; });
+  net.roomNames.bcomms = "Branch comms cupboard"; net.roomNames.boffice = "Branch office";
+  ["brt", "bsw2", "bpc1", "bpc2"].forEach(function (id) { net.rooms[id] = CAMPUS_LAYOUT[id].room; });
+  [["bpc1", "1"], ["bpc2", "2"]].forEach(function (q) { const id = "c-" + q[0]; if (!net.cables.some(function (c) { return c.id === id; })) net.cables.push({ id: id, kind: "cat6", a: { dev: "bsw2", port: q[1], seated: true }, b: { dev: q[0], port: "NIC", seated: true }, cond: "good", length: 12 }); });
+}
 export function monKit(net) {
   const p = net.plan, r = rng(net.seed ^ 0x5a4d), x = net.devices.fsrv, used = net.cables.filter(function (c) { return c.a.dev === "acc1" || c.b.dev === "acc1"; }).map(function (c) { return c.a.dev === "acc1" ? c.a.port : c.b.port; });
   let spare = 7; while (used.indexOf(String(spare)) >= 0) spare++;

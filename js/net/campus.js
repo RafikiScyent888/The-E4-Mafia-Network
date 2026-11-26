@@ -283,7 +283,7 @@ const BRANCHES = ["Eastside", "Harbour", "Northgate"], BRANCH_V = [90, 190, 239]
 export function branchKit(net) {
   const p = net.plan, r = rng(net.seed ^ 0xb2a7), D = net.devices, b = p.vlans.svc.net.split(".")[1], set = [10, 110, 210].indexOf(p.vlans.svc.id), lan = "10." + b + "." + BRANCH_V[set < 0 ? 0 : set] + ".", lk = "10." + b + ".255.";
   const name = r.pick(BRANCHES);
-  p.branch = { name: name, host: "RIT-BR-" + name.toUpperCase(), lan: { net: lan + "0", mask: "255.255.255.0", gw: lan + "1", first: lan + "21" }, link: { net: lk + "36", mask: "255.255.255.252", hq: lk + "37", br: lk + "38" }, hqPort: "Gi0/9", brPort: "Gi0/9", lanPort: "Gi0/0", swPort: "24", km: 8.4 };
+  p.branch = { name: name, host: "RIT-BR-" + name.toUpperCase(), lan: { net: lan + "0", mask: "255.255.255.0", gw: lan + "1", first: lan + "21" }, link: { net: lk + "36", mask: "255.255.255.252", hq: lk + "37", br: lk + "38" }, hqPort: "Gi0/9", brPort: "Gi0/9", lanPort: "Gi0/0", swPort: "24", km: 8.4, hqDesc: name.toUpperCase() + "-LEASED", brDesc: "HQ-LEASED", lanDesc: "BRANCH-SWITCH" };
   const nic = function () { return [{ name: "Ethernet", type: "eth", port: "NIC", mac: mac(r), desc: "Gigabit Network Connection", cfg: { mode: "dhcp", dnsMode: "auto" }, lease: null, apipa: null }]; };
   D.brt = { id: "brt", kind: "brouter", label: "Branch router", sub: "BR-4200", on: true, boxed: true, fixed: ["bcomms", "in the branch's comms cupboard, in its rack"], sw: newRouter({ mac: swMac(0x41, 0x0001) }), sfp: { "Gi0/8": null, "Gi0/9": null } };
   D.bsw2 = { id: "bsw2", kind: "mswitch", label: "Branch switch", sub: "MSW-2800G", on: true, fixed: ["bcomms", "in the branch's comms cupboard, in its rack"], mac: swMac(0x12, 0x0b01), sw: newSwitch({ mac: swMac(0x12, 0x0b01) }) };

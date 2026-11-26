@@ -3,9 +3,13 @@
    to the enterprise, smallest first. Every line is an ordered list of causes, as on the other levels: the first one really there is
    what the check saw, everything before it is ruled out by the network. */
 import { CAMPUS_JOBS, reachCauses, said } from "./campus.js";
-import { coreLinks, svcKit, monKit } from "../net/campus.js";
+import { coreLinks, svcKit, monKit, branchKit } from "../net/campus.js";
 import { exec } from "../net/cmd.js";
-import { unsaved, saveConfig, spanDest, LEVELS3, snmpKey } from "../net/swcli.js";
+import { unsaved, saveConfig, spanDest, LEVELS3, snmpKey, pwOk } from "../net/swcli.js";
+import { SFP_MODULES } from "../net/sim.js";
+import * as RT from "../net/rtcli.js";
+import * as DH from "../net/dhcpd.js";
+import { ip2n } from "../net/util.js";
 import * as MON from "../net/mon.js";
 import * as SV from "../net/svc.js";
 
@@ -283,4 +287,233 @@ const EJ2 = {
   summary() { return ["No community strings left: nothing on the network answers SNMP in clear text any more, and nothing can be changed over it.", "SNMPv3 everywhere: the file server polls every switch and router as one user, authenticated and encrypted, and each sends an inform when its configuration changes.", "A copy of the service desk PC's traffic, both ways, in a capture file for the security team: a mirror on the switch, tcpdump on the server."]; }
 };
 
-export const ENTERPRISE_JOBS = [EJ1, EJ2];
+
+/* ------------------------------------------------------------ EN-J3, a branch office over a leased line */
+/* the branch across town (the plan approved 24 November 2026): a pair of single-mode fibres leased from the provider, 8.4 km from HQ's data
+   room to the branch's comms cupboard; the branch router from its box on the far end, the line a routed /30 worked out by hand, OSPF across
+   it, the branch's desks addressed by the file server through a relay on the branch router, the internet through the edge router's NAT */
+const BR = function (v) { return v.plan.branch; };
+const BROOMS = ["bcomms", "boffice"];
+const GI = function (port) { return "GigabitEthernet" + port.slice(2); };   /* a router's port as its interface: Gi0/9 is GigabitEthernet0/9 */
+const RIF = function (sim, id, port) { return sim.d[id].sw.ifs[GI(port)]; };
+const rUp = function (sim, id, port) { return !sim.d[id].boxed && RT.rtStatus(sim.rtView(id), GI(port))[1] === "up"; };
+const theR = function (id) { return id === "edge" ? "the edge router" : "the branch router"; };
+const lineFibre = function (sim) { return sim.net.cables.find(function (c) { return c.kind === "fibre" && [c.a.dev, c.b.dev].indexOf("brt") >= 0 && [c.a.dev, c.b.dev].indexOf("edge") >= 0; }) || null; };
+const BPCS = ["bpc1", "bpc2"];
+const bpcSay = function (sim, id) { return sim.d[id].label.replace(/^[A-Z](?=[a-z])/, function (m) { return m.toLowerCase(); }); };
+function rack3Causes(sim, v) {
+  const p = v.plan, B = BR(v), x = sim.d.brt, w = x.sw, u = (w.users || {})[p.user], bx = !!x.boxed;
+  return [C("boxed", bx, "The branch router is still in its box", "It's racked in the branch's comms cupboard.", "The work order's van list: the branch router, in its box."),
+    C("name", !bx && w.hostname !== B.host, "The branch router isn't named as the records say", "Its name is the records'.", "The prompt says " + w.hostname + "."),
+    C("secret", !bx && (!w.enableSecret || !pwOk(w.enableSecret, p.secret)), "Its enable secret isn't the campus's", "Its enable secret is the campus's.", "show running-config on the branch router: " + (w.enableSecret ? "an enable secret, not the campus's" : "no enable secret") + "."),
+    C("console", !bx && (!w.con.password || !pwOk(w.con.password, p.console) || w.con.login !== "password"), "Its console doesn't ask for the campus's console password", "The console asks for it.", "show running-config on the branch router: line con 0."),
+    C("ssh", !bx && (!w.domain || !(w.rsa >= 768) || !u || !pwOk(u, p.userPw) || w.vty.login !== "local" || w.vty.transport !== "ssh"), "Its remote logins aren't SSH only with the campus's local user (a domain, keys, the user, login local, transport input ssh)", "SSH only, with the campus's user.", "show running-config on the branch router: line vty 0 15, the username, ip domain-name; show ip ssh.")];
+}
+/* the leased line: a single-mode module at each end, the fibre in the records' ports, both ports open */
+function line3Causes(sim, v) {
+  const B = BR(v), E = sim.d.edge, X = sim.d.brt, me = E.sfp && E.sfp[B.hqPort], mb = X.sfp && X.sfp[B.brPort], f = lineFibre(sim);
+  const right = !!f && [[f.a, f.b], [f.b, f.a]].some(function (e) { return e[0].dev === "edge" && e[0].port === B.hqPort && e[1].port === B.brPort; });
+  const copper = sim.net.cables.find(function (c) { return c.kind === "cat6" && [c.a, c.b].some(function (e) { return BROOMS.indexOf(sim.net.rooms[e.dev]) >= 0; }) && [c.a, c.b].some(function (e) { const r = sim.net.rooms[e.dev]; return r && BROOMS.indexOf(r) < 0; }); }) || null;
+  const mods = [me, mb].filter(Boolean).map(function (m) { return SFP_MODULES[m]; }), plus = mods.some(function (m) { return m.rate !== 1000; }), mm = mods.some(function (m) { return m.fiber !== "SMF"; });
+  const shutE = !!RIF(sim, "edge", B.hqPort).shutdown, shutB = !X.boxed && !!RIF(sim, "brt", B.brPort).shutdown, noMod = !me ? "edge" : !mb ? "brt" : null;
+  const len = copper ? copper.length : "", nmPort = noMod === "edge" ? B.hqPort : B.brPort;
+  return [C("boxed", !!X.boxed, "The branch router is still in its box: the line has nothing to land on at the branch", "The branch router is racked.", "The van list: the branch router, in its box."),
+    C("copper", !X.boxed && !f && !!copper, "A copper cable joins HQ to the branch: at " + len + " m it's far past copper's 100 m, so it never links", "HQ and the branch are joined by the leased fibre.", "The Cable runs table: a " + len + " m run, No link."),
+    C("nomod", !X.boxed && !f && !copper && !!noMod, "There's no module in " + (noMod ? theR(noMod) : "") + "'s " + nmPort + ": the fibre's LC plug goes into a module", "Both ends have modules.", "The Physical tab of " + (noMod ? theR(noMod) : "") + ": " + nmPort + " empty."),
+    C("none", !X.boxed && !f && !copper && !noMod, "The leased fibre isn't plugged in", "It's plugged in at both ends.", "The Cable runs table: no fibre between HQ and the branch."),
+    C("slots", !!f && !right, "The fibre isn't in the ports the records give it (the edge router's " + B.hqPort + " to the branch router's " + B.brPort + ")", "It's in the records' ports.", "The Cable runs table: the fibre's two ends."),
+    C("plus", !!f && right && plus, "A 10 Gb/s SFP+ module is in a 1 Gb/s SFP slot: the router won't run it", "Both modules run at 1 Gb/s.", "Look at the plug at each end: the module's label."),
+    C("mmf", !!f && right && !plus && mm, "A multimode module is on the single-mode line: the light it sends is the wrong kind for that fibre, and 8.4 km is far past its reach", "Both modules are single-mode, as the line is.", "Look at the plug at each end: the module's label, and the jacket's print."),
+    C("shut", !!f && right && !plus && !mm && (shutE || shutB), "The line's port is shut on " + (shutE ? "the edge router" : "the branch router"), "Both ports are open.", "show ip interface brief on " + (shutE ? "the edge router" : "the branch router") + ": " + GI(shutE ? B.hqPort : B.brPort) + " administratively down."),
+    C("down", !!f && right && !plus && !mm && !shutE && !shutB && !sim.cableUp(f), "The line has no link", "It has a link.", "The Cable runs table: No link.")];
+}
+/* the line's /30, worked out by hand from the block the records give: HQ the first usable address, the branch the second; each end described */
+function addr3Causes(sim, v) {
+  const B = BR(v), L = B.link, lo = ip2n(L.net), E = [{ id: "edge", port: B.hqPort, want: L.hq, desc: B.hqDesc }, { id: "brt", port: B.brPort, want: L.br, desc: B.brDesc }].map(function (e) { const f = RIF(sim, e.id, e.port); return Object.assign({ ip: f.ip, mask: f.mask, d: String(f.desc || "").toUpperCase() }, e); });
+  const inB = function (ip) { return ip2n(ip) >= lo && ip2n(ip) <= lo + 3; }, at = function (e) { return e ? Cap(theR(e.id)) + "'s end of the line (" + GI(e.port) + ")" : ""; };
+  const none = E.find(function (e) { return !e.ip; }), mask = !none && E.find(function (e) { return e.mask !== L.mask; }), out = !none && !mask && E.find(function (e) { return !inB(e.ip); });
+  const edge = !none && !mask && !out && E.find(function (e) { return ip2n(e.ip) === lo || ip2n(e.ip) === lo + 3; }), same = !none && !mask && !out && !edge && E[0].ip === E[1].ip;
+  const swap = !none && !mask && !out && !edge && !same && E.find(function (e) { return e.ip !== e.want; }), desc = E.find(function (e) { return !!e.ip && e.d !== e.desc; });
+  const show = function (e) { return e ? "show ip interface brief on " + theR(e.id) + ": " + GI(e.port) + " " + (e.ip || "unassigned") + "." : ""; };
+  return [C("none", !!none, at(none) + " has no address", "Both ends have addresses.", show(none)),
+    C("mask", !!mask, at(mask) + "'s mask isn't the line's block's size: the records give the line a /30", "Both ends have the block's mask.", mask ? "show running-config on " + theR(mask.id) + ": interface " + GI(mask.port) + ", ip address " + mask.ip + " " + mask.mask + "." : ""),
+    C("out", !!out, at(out) + "'s address isn't in the line's block", "Both ends are in the block.", show(out)),
+    C("edge", !!edge, at(edge) + " is on the block's network or broadcast address: neither can be a device's", "Both ends are on usable addresses.", show(edge)),
+    C("same", same, "Both ends of the line have the same address", "Each end has its own.", "show ip interface brief on each router: " + E[0].ip + " twice."),
+    C("swap", !!swap, "The ends aren't the way round the records say: HQ takes the first usable address, the branch the second", "HQ has the first, the branch the second.", show(swap)),
+    C("desc", !!desc, at(desc) + " isn't described as the records say", "Both ends are described.", desc ? "show interfaces description on " + theR(desc.id) + ": " + GI(desc.port) + "." : "")];
+}
+/* the branch router as the branch's gateway: its LAN port cabled to the branch switch, on the records' address, up */
+function lan3Causes(sim, v) {
+  const B = BR(v), X = sim.d.brt, c = sim.net.cables.find(function (k) { return k.kind === "cat6" && [k.a.dev, k.b.dev].indexOf("brt") >= 0 && [k.a.dev, k.b.dev].indexOf("bsw2") >= 0; }) || null;
+  const rp = c ? (c.a.dev === "brt" ? c.a.port : c.b.port) : null, sp = c ? (c.a.dev === "bsw2" ? c.a.port : c.b.port) : null, f = RIF(sim, "brt", B.lanPort), right = rp === B.lanPort && sp === B.swPort;
+  return [C("boxed", !!X.boxed, "The branch router is still in its box", "It's racked.", "The van list: the branch router, in its box."),
+    C("cable", !X.boxed && !c, "The branch router isn't cabled to the branch switch", "It's cabled to the switch.", "The Cable runs table: nothing between the branch router and the branch switch."),
+    C("ports", !!c && !right, "The router's cable to the branch switch isn't on the ports the records give it (the router's " + B.lanPort + " to the switch's port " + B.swPort + ")", "It's on the records' ports.", "The Cable runs table: the run's two ends."),
+    C("addr", !X.boxed && (f.ip !== B.lan.gw || f.mask !== B.lan.mask), "The branch router's " + GI(B.lanPort) + " isn't on the branch's gateway address as the records give it", "It's the branch's gateway.", "show ip interface brief on the branch router: " + GI(B.lanPort) + " " + (f.ip || "unassigned") + "."),
+    C("shut", !X.boxed && f.ip === B.lan.gw && !!f.shutdown, "The branch router's " + GI(B.lanPort) + " is shut", "It's open.", "show ip interface brief on the branch router: administratively down."),
+    C("down", !!c && right && f.ip === B.lan.gw && !f.shutdown && !rUp(sim, "brt", B.lanPort), "The branch router's " + GI(B.lanPort) + " is down", "It's up.", "show ip interface brief on the branch router: " + GI(B.lanPort) + " down."),
+    C("desc", !X.boxed && f.ip === B.lan.gw && String(f.desc || "").toUpperCase() !== B.lanDesc, "The branch router's " + GI(B.lanPort) + " isn't described as the records say", "It's described.", "show interfaces description on the branch router.")];
+}
+/* OSPF across the line: both routers running it, the line in it at both ends, neither passive there, the same area: FULL */
+function ospf3Causes(sim, v) {
+  const B = BR(v), R = sim.ospfAll(), runs = function (id) { return !sim.d[id].boxed && !!sim.d[id].sw.ospf; };
+  const ends = [{ id: "edge", port: B.hqPort }, { id: "brt", port: B.brPort }].map(function (e) { const r = R.routers[e.id]; return Object.assign({ f: r ? r.ifs.find(function (f) { return f.name === GI(e.port); }) : null, up: rUp(sim, e.id, e.port) }, e); });
+  const full = ["edge", "brt"].every(function (id) { return (R.nbrs[id] || []).some(function (nb) { const o = id === "edge" ? ends[1] : ends[0]; return nb.iface === GI(id === "edge" ? B.hqPort : B.brPort) && o.f && nb.ip === o.f.ip && /^FULL/.test(nb.state); }); });
+  const noProc = ends.find(function (e) { return !runs(e.id); }), down = !noProc && ends.find(function (e) { return !e.up; }), noNet = !noProc && !down && ends.find(function (e) { return !e.f; });
+  const pas = !noProc && !down && !noNet && ends.find(function (e) { return e.f.passive; }), area = !noProc && !down && !noNet && !pas && ends[0].f.area !== ends[1].f.area;
+  return [C("proc", !!noProc, (noProc ? Cap(theR(noProc.id)) : "A router") + " doesn't run OSPF", "Both routers run OSPF.", noProc ? "show ip protocols on " + theR(noProc.id) + ": nothing." : ""),
+    C("down", !!down, "The routers can't be neighbours: the line is down at " + (down ? theR(down.id) + " (" + GI(down.port) + ")" : "one end"), "The line is up at both ends.", down ? "show ip interface brief on " + theR(down.id) + ": " + GI(down.port) + " down." : ""),
+    C("net", !!noNet, (noNet ? Cap(theR(noNet.id)) + "'s end of the line" : "An end") + " isn't in OSPF: none of its network statements covers that interface's address", "The line is in OSPF at both ends.", noNet ? "show ip ospf interface brief on " + theR(noNet.id) + ": " + GI(noNet.port) + " missing." : ""),
+    C("passive", !!pas, (pas ? Cap(theR(pas.id)) + "'s end of the line" : "An end") + " is passive: it advertises the line but never says hello across it, so no neighbour forms", "Neither end is passive.", pas ? "show ip protocols on " + theR(pas.id) + ": Passive Interface(s)." : ""),
+    C("area", area, "The two ends of the line are in different areas", "Both ends in area 0.", "show ip ospf interface brief on each router: the Area column."),
+    C("nofull", !noProc && !down && !noNet && !pas && !area && !full, "The routers aren't neighbours across the line", "They're FULL.", "show ip ospf neighbor on the edge router.")];
+}
+/* each side learns the other: the branch's network at HQ (advertised, passive towards the desks), the way out at the branch */
+function routes3Causes(sim, v) {
+  const B = BR(v), R = sim.ospfAll(), X = R.routers.brt, f = X ? X.ifs.find(function (q) { return q.name === GI(B.lanPort); }) : null;
+  const er = RT.lookup(sim.rtView("edge"), B.lan.gw, sim.rtLive("edge")), learned = !!er && er.iface === GI(B.hqPort);
+  const br = sim.d.brt.boxed ? null : RT.lookup(sim.rtView("brt"), "8.8.8.8", sim.rtLive("brt"));
+  return [C("noadv", !f, "The branch's network isn't in OSPF at the branch router: HQ never learns the way to it", "The branch router advertises it.", "show ip ospf interface brief on the branch router: " + GI(B.lanPort) + " missing."),
+    C("hello", !!f && f.passive === false, "The branch router says OSPF hello on the branch's network: anything on a desk there that answered could feed the campus routes", "It's passive towards the desks.", "show ip protocols on the branch router: Passive Interface(s)."),
+    C("learn", !!f && !learned, "The edge router hasn't learned the branch's network across the line", "It has.", "show ip route on the edge router: no " + B.lan.net + " via the line."),
+    C("noway", !br, "The branch router has no way out: no default route, learned or typed", "It has the way out.", "show ip route on the branch router: no Gateway of last resort.")];
+}
+/* the branch's desks addressed by the file server: a relay on the branch router, the branch's subnet in dhcpd's file, the server restarted on it */
+const F3 = function (sim, path) { const F = sim.d.fsrv.lx.files || {}; return F[path] ? F[path].text : ""; };
+function desks3Causes(sim, v) {
+  const p = v.plan, B = BR(v), fs = p.srv.fsrv.ip, f = RIF(sim, "brt", B.lanPort), h = (!sim.d.brt.boxed && f.helpers) || [], c = DH.parse(F3(sim, DH.CONF)), S = c.errors.length ? null : c.subnets.find(function (q) { return q.net === B.lan.net; }) || null;
+  const D = sim.d.fsrv.lx.dhcpd || {}, stale = D.state === "active" && !!D.run && D.run.file !== F3(sim, DH.CONF), o = S ? DH.leaseOpts(c, S, null) : null;
+  const lo = S && S.ranges.length ? Math.min.apply(null, S.ranges.map(function (q) { return ip2n(q[0]); })) : null, hi = S && S.ranges.length ? Math.max.apply(null, S.ranges.map(function (q) { return ip2n(q[1]); })) : null;
+  const first = ip2n(B.lan.net) + p.excl + 1, last = ip2n(B.lan.net) + 254;
+  const nolease = BPCS.find(function (id) { const l = sim.d[id].ifaces[0].lease; return !l || l.server !== fs; }), at = function (id) { return id ? bpcSay(sim, id) : ""; };
+  return [C("nohelper", !h.length, "The branch router doesn't relay the desks' requests for an address: a broadcast stops at the router", "It relays them.", "show running-config on the branch router: interface " + GI(B.lanPort) + " has no ip helper-address."),
+    C("helper", h.length > 0 && h.indexOf(fs) < 0, "The branch router relays the desks' requests to an address where no DHCP server answers", "It relays them to the file server.", "show running-config on the branch router: ip helper-address " + h.join(", ") + "."),
+    C("syntax", c.errors.length > 0, "The DHCP server can't read its file: line " + (c.errors[0] ? c.errors[0].line + ", " + c.errors[0].msg : ""), "It reads the file.", "dhcpd -t -cf " + DH.CONF + "."),
+    C("nosub", !c.errors.length && !S, "The DHCP server's file has no subnet for the branch's network: it has nothing to hand out there", "The branch's subnet is declared.", "cat " + DH.CONF + ": no subnet " + B.lan.net + "."),
+    C("range", !!S && !S.ranges.length, "The branch's subnet has no range: there's nothing in it to hand out", "It has its range.", "cat " + DH.CONF + ": subnet " + B.lan.net + " has no range line."),
+    C("kept", !!S && lo != null && lo < first, "The branch's range reaches into the first twenty addresses, kept back for the gateway and the gear", "It keeps the first twenty back.", "cat " + DH.CONF + ": the range in subnet " + B.lan.net + "."),
+    C("small", !!S && lo != null && lo >= first && (lo > first || hi < last), "The branch's range isn't the records' twenty-first to the last", "It's the records'.", "cat " + DH.CONF + ": the range in subnet " + B.lan.net + "."),
+    C("routers", !!o && o.routers[0] !== B.lan.gw, "The branch's leases " + (o && o.routers.length ? "carry the wrong default gateway" : "carry no default gateway (no routers option)") + ": its desks can't leave their network", "They carry the branch router's address.", "cat " + DH.CONF + ": option routers in subnet " + B.lan.net + "."),
+    C("dns", !!o && o.dns.join(",") !== p.dns.join(","), "The branch's leases don't carry the campus's two DNS servers", "They carry the campus's.", "cat " + DH.CONF + ": option domain-name-servers."),
+    C("failed", D.state === "failed" || D.state === "inactive", "The DHCP server isn't running" + (D.state === "failed" ? ": it stopped on its file" : ""), "It's running.", "systemctl status isc-dhcp-server."),
+    C("stale", stale, "The DHCP server is running from an older copy of its file: it reads it only as it starts", "It's running the file as it is now.", "systemctl status isc-dhcp-server: running since before the file was last written."),
+    C("notyet", !!nolease, "The " + at(nolease) + " has no address from the file server: it hasn't asked again since the way was ready", "Both desks have their addresses.", "ipconfig on the " + at(nolease) + ": Autoconfiguration IPv4 Address 169.254....")];
+}
+/* the desks reach HQ and the internet: back through the line, out through the edge router's NAT */
+function reach3Causes(sim, v) {
+  const p = v.plan, B = BR(v), fs = p.srv.fsrv.ip, back = BPCS.find(function (id) { const r = sim.route(id, fs); return r.fail || !(r.local || r.routed); }), off = !back && BPCS.find(function (id) { return !sim.route(id, "8.8.8.8").internet; });
+  const nat = RIF(sim, "edge", B.hqPort).nat !== "inside", at = function (id) { return id ? bpcSay(sim, id) : ""; };
+  return [C("back", !!back, "The " + at(back) + " gets no answer from the file server", "Both reach the file server.", back ? "ping " + fs + " from the " + at(back) + "; tracert to see where it stops." : ""),
+    C("nat", !!off && nat, "The " + at(off) + " reaches HQ but not the internet: the edge router doesn't translate what comes in on the line", "Both reach the internet.", "show ip nat translations on the edge router, after a ping from the branch: nothing from " + B.lan.net.replace(/\.0$/, ".x") + "."),
+    C("off", !!off && !nat, "The " + at(off) + " can't reach the internet", "Both reach the internet.", off ? "ping 8.8.8.8 from the " + at(off) + ": no reply." : "")];
+}
+function saved3Causes(sim) { return ["edge", "brt"].map(function (id) { return C("unsaved-" + id, !sim.d[id].boxed && unsaved(sim.d[id].sw), Cap(theR(id)) + " hasn't been saved: a power cut takes the changes away", "Both routers are saved.", "show startup-config on " + theR(id) + ": it's not what's running."); }); }
+/* the file the walk-through writes: the campus's file as the branch's turn starts, with the branch's subnet added before the reservation */
+function dhcpText3(v) {
+  const B = BR(v), p = v.plan, add = "# the " + B.name + " branch, across town (its router relays its requests)\nsubnet " + B.lan.net + " netmask " + B.lan.mask + " {\n  range " + B.lan.net.replace(/0$/, String(p.excl + 1)) + " " + B.lan.net.replace(/0$/, "254") + ";\n  option routers " + B.lan.gw + ";\n}\n";
+  const F = v.dhconf || "", i = F.indexOf("\nhost ");
+  return i >= 0 ? F.slice(0, i + 1) + add + F.slice(i) : F + "\n" + add;
+}
+const EJ3 = {
+  id: "EN-J3", level: "enterprise", title: "A branch office across town: a leased fibre line, the branch router from its box, OSPF across it, the desks addressed from HQ",
+  already: ["works", "saved"],
+  start(seed) {
+    const b = EJ2.start(seed), sim = b.sim;
+    for (const a of EJ2.solve(b.v)) { if (a.t === "cmd") exec(sim, a.dev, a.line, a.win, a.text); else sim.apply(a); }
+    branchKit(sim.net); ["brt", "bsw2", "bpc1", "bpc2"].forEach(function (id) { sim.arp[id] = sim.arp[id] || {}; });
+    BPCS.forEach(function (id) { sim.dhcp(id, "boot"); });   /* both desks asked at nine this morning: nobody answered */
+    sim.cli = {};
+    return { sim: sim, v: Object.assign({}, b.v, { runs: sim.net.extra.runs || 0, dhconf: F3(sim, DH.CONF) }) };
+  },
+  brief(v) { const B = BR(v); return { quote: "We've taken a small office across town, the " + B.name + " branch, for two of the team. The provider has lit a pair of fibres from our data room to its comms cupboard: " + B.km + " km, ours end to end. The installer racked the switch there and cabled both desks; the router's still in its box. Put the branch on our network: its addresses from our file server like every desk here, and the internet through our edge router.", from: "Rafiki, owner" }; },
+  mason: "Bring the line up before you route over it: the modules and the fibre, then the addresses, then a neighbour across it. Then the desks: a request for an address is a broadcast, and a broadcast stops at the branch router unless the router carries it on.",
+  limits: function (v) {
+    const p = v.plan, B = BR(v), S = p.srv, b = p.vlans.svc.net.split(".")[1];
+    return ["The leased line: a pair of single-mode fibres (OS2), " + B.km + " km, from HQ's data room to the branch's comms cupboard. At HQ it's for the edge router's " + B.hqPort + " (an SFP slot, empty); at the branch, the branch router's " + B.brPort + ". In the van: 1000BASE-SX modules (multimode, up to 550 m), 1000BASE-LX (single-mode, up to 10 km) and a 10GBASE-SR SFP+.",
+      "The line is a routed link of its own: the block " + B.link.net + "/30. HQ takes the first usable address, the branch the second. The edge router's end described " + B.hqDesc + ", the branch router's " + B.brDesc + ".",
+      "The branch router (BR-4200), in its box in the comms cupboard: named " + B.host + ", locked as every router here (enable secret " + p.secret + ", console password " + p.console + ", SSH only with the user " + p.user + ", password " + p.userPw + ", domain " + p.domain + "). Its " + B.lanPort + " is the branch's gateway, " + B.lan.gw + " on " + B.lan.net + "/24, cabled to the branch switch's port " + B.swPort + " and described " + B.lanDesc + ". Your laptop's console cable is 1.8 m: take your laptop to the branch.",
+      "The branch switch runs as it came from its box, one network, both desks on its ports 1 and 2: it's set up on a later visit.",
+      "OSPF, process 1, area 0, as everywhere here: the line at both ends; the branch's network at the branch router, with no hellos to the desks. The edge router already hands the way out to OSPF.",
+      "The branch's desks get their addresses from the file server, as every desk here does, through a relay on the branch router. " + DH.CONF + " gets a subnet for the branch: ." + (p.excl + 1) + " to .254, its routers option the branch's gateway; the campus's DNS servers and a day's lease, as the rest of the file says. Log in on the file server's console or over SSH as " + S.user + ", password " + S.pw + "; sudo asks for it too.",
+      "The internet: through the edge router, which translates everything from 10." + b + ".0.0/16 that comes in on an inside interface.",
+      "Both routers saved."];
+  },
+  reqs: [
+    { id: "rack", text: "The branch router is racked in the branch's comms cupboard, named and locked as every router here", causes: rack3Causes,
+      ok: function () { return "The branch router is racked, named and locked."; },
+      rung1: function () { return "The van list; show running-config on the branch router."; },
+      rung2: function () { return "A router from its box answers anyone at its console and has no name: every router here gets the same locks before anything else."; } },
+    { id: "line", text: "The leased line is up: a module at each end that suits the fibre, the fibre in, both ports open", causes: line3Causes,
+      ok: function () { return "The line has a link."; },
+      rung1: function () { return "The Cable runs table; the Physical tab at each end: the module's label and the jacket's print."; },
+      rung2: function () { return "A module has to suit the fibre it sends into and the distance it has to cover; copper stops at 100 m."; } },
+    { id: "addr", text: "The line's two ends are on the line's own block: HQ the first usable address, the branch the second, each described", causes: addr3Causes,
+      ok: function () { return "Both ends are on the block's two usable addresses, the right way round."; },
+      rung1: function () { return "show ip interface brief and show interfaces description on each router."; },
+      rung2: function () { return "A /30 has four addresses: the network, two usable, the broadcast. Work it out on paper first."; } },
+    { id: "lan", text: "The branch router is the branch's gateway: its LAN port cabled to the branch switch, on the records' address, up", causes: lan3Causes,
+      ok: function () { return "The branch router's LAN port is up on the branch's gateway address."; },
+      rung1: function () { return "The Cable runs table; show ip interface brief on the branch router."; },
+      rung2: function () { return "An interface needs its address, no shutdown and a link before anything routes through it."; } },
+    { id: "ospf", text: "The edge router and the branch router are OSPF neighbours across the line", causes: ospf3Causes,
+      ok: function () { return "The two routers are FULL neighbours across the line."; },
+      rung1: function () { return "show ip ospf neighbor and show ip ospf interface brief on each router."; },
+      rung2: function () { return "Two routers become neighbours when both run OSPF on the link, in the same area, and say hello across it."; } },
+    { id: "routes", text: "Each side learns the other: HQ learns the branch's network, the branch the way out, and the desks hear no OSPF", causes: routes3Causes,
+      ok: function () { return "The edge router has the branch's network over the line; the branch router has the way out; its LAN is passive."; },
+      rung1: function () { return "show ip route on both routers; show ip protocols on the branch router."; },
+      rung2: function () { return "A router advertises only the networks its network statements cover; a passive interface is advertised but says no hello."; } },
+    { id: "desks", text: "Both branch PCs have their addresses from the file server, through the branch router", causes: desks3Causes,
+      ok: function () { return "Both branch PCs have leases from the file server, with the branch's gateway."; },
+      rung1: function () { return "show running-config on the branch router; cat the DHCP server's file; ipconfig /all on a branch PC."; },
+      rung2: function () { return "A relay sends a desk's request on, with its own address in it, and the server picks the subnet that address is in; a server reads its file only as it starts."; } },
+    { id: "reach", text: "Both branch PCs reach the file server and the internet", causes: reach3Causes,
+      ok: function () { return "Both branch PCs reach the file server and the internet."; },
+      rung1: function () { return "ping and tracert from a branch PC; show ip nat translations on the edge router."; },
+      rung2: function () { return "Private addresses leave for the internet only through a translation, and the router translates only what comes in on an inside interface."; } },
+    { id: "works", text: "Everyone at HQ still works: every PC online, both printers and every switch answering", causes: reachCauses,
+      ok: function () { return "Every PC is online; both printers and every switch answer."; },
+      rung1: function () { return "ping 8.8.8.8 from each PC; the printers and the switches from the service desk."; },
+      rung2: function () { return "A new link in OSPF is a change for every router that learns it."; } },
+    { id: "saved", text: "The edge router and the branch router are saved", causes: saved3Causes,
+      ok: function () { return "Both are saved."; }, rung1: function () { return "show startup-config against show running-config on each."; }, rung2: function () { return "Only what's saved survives a power cut."; } }
+  ],
+  solve(v) {
+    const p = v.plan, B = BR(v), L = B.link, S = p.srv, fs = S.fsrv.ip, out = [], n = v.runs || 0;
+    let k = 0; const lay = function (a, b) { k++; out.push({ t: "lay", a: a, b: b }); return n + k; };
+    const c = function (l) { out.push({ t: "cmd", dev: "tech", line: l, cli: true }); };
+    /* unpack and cable: the router, a single-mode module at each end, the line, the router to the branch switch */
+    out.push({ t: "place", dev: "brt", room: "bcomms" });
+    out.push({ t: "sfp", dev: "edge", slot: B.hqPort, type: "1000BASE-LX" }, { t: "sfp", dev: "brt", slot: B.brPort, type: "1000BASE-LX" });
+    lay({ dev: "edge", port: B.hqPort }, { dev: "brt", port: B.brPort });
+    lay({ dev: "brt", port: B.lanPort }, { dev: "bsw2", port: B.swPort });
+    /* the branch router from its box, on its console at the branch */
+    out.push({ t: "place", dev: "tech", room: "bcomms" }); const con = lay({ dev: "tech", port: "USB-C" }, { dev: "brt", port: "CONSOLE" });
+    ["", "enable", "configure terminal", "hostname " + B.host, "enable secret " + p.secret, "line console 0", "password " + p.console, "login", "exit", "ip domain-name " + p.domain, "username " + p.user + " secret " + p.userPw, "crypto key generate rsa modulus 2048", "line vty 0 15", "login local", "transport input ssh", "exit",
+      "interface " + B.brPort, "description " + B.brDesc, "ip address " + L.br + " " + L.mask, "no shutdown", "exit",
+      "interface " + B.lanPort, "description " + B.lanDesc, "ip address " + B.lan.gw + " " + B.lan.mask, "ip helper-address " + fs, "no shutdown", "exit",
+      "router ospf 1", "network " + L.net + " 0.0.0.3 area 0", "network " + B.lan.net + " 0.0.0.255 area 0", "passive-interface " + B.lanPort, "exit", "end", "copy running-config startup-config", ""].forEach(c);
+    /* back at HQ: the edge router's end of the line */
+    out.push({ t: "pull", cable: "c-console-" + con }, { t: "place", dev: "tech", room: "data" });
+    const con2 = lay({ dev: "tech", port: "USB-C" }, { dev: "edge", port: "CONSOLE" });
+    ["", p.console, "enable", p.secret, "configure terminal", "interface " + B.hqPort, "description " + B.hqDesc, "ip address " + L.hq + " " + L.mask, "ip nat inside", "no shutdown", "exit", "router ospf 1", "network " + L.net + " 0.0.0.3 area 0", "end", "copy running-config startup-config", "", "show ip ospf neighbor"].forEach(c);
+    out.push({ t: "pull", cable: "c-console-" + con2 });
+    /* the file server: the branch's subnet, restarted */
+    const X = function (l, text) { const a = { t: "cmd", dev: "fsrv", line: l, cli: true }; if (text != null) a.text = text; out.push(a); };
+    ["", S.user, S.pw].forEach(function (l) { X(l); });
+    X("sudo nano " + DH.CONF); X(S.pw); X("^O", dhcpText3(v)); X("^X"); X("sudo systemctl restart isc-dhcp-server");
+    BPCS.forEach(function (id) { out.push({ t: "cmd", dev: id, line: "ipconfig /renew" }); });
+    return out;
+  },
+  answer(v) {
+    const p = v.plan, B = BR(v), L = B.link, fs = p.srv.fsrv.ip;
+    return ["Place the branch router in the branch's comms cupboard. Put a 1000BASE-LX module (single-mode) in the edge router's " + B.hqPort + " and the branch router's " + B.brPort + ", and lay the fibre between them; lay the branch router's " + B.lanPort + " to the branch switch's port " + B.swPort + ".",
+      "Take your laptop to the branch and console into the branch router: hostname " + B.host + ", the campus's enable secret, console password, domain, user and keys, SSH only; interface " + B.brPort + ": description " + B.brDesc + ", ip address " + L.br + " " + L.mask + " (the block's second usable), no shutdown; interface " + B.lanPort + ": description " + B.lanDesc + ", ip address " + B.lan.gw + " " + B.lan.mask + ", ip helper-address " + fs + ", no shutdown; router ospf 1, network " + L.net + " 0.0.0.3 area 0, network " + B.lan.net + " 0.0.0.255 area 0, passive-interface " + B.lanPort + "; save.",
+      "Back at HQ, the edge router: interface " + B.hqPort + ": description " + B.hqDesc + ", ip address " + L.hq + " " + L.mask + " (the first usable), ip nat inside, no shutdown; router ospf 1, network " + L.net + " 0.0.0.3 area 0; save. show ip ospf neighbor: the branch router FULL.",
+      "On the file server: sudo nano " + DH.CONF + ", a subnet " + B.lan.net + " netmask " + B.lan.mask + " with range ." + (p.excl + 1) + " to .254 and option routers " + B.lan.gw + "; sudo systemctl restart isc-dhcp-server. Then ipconfig /renew on both branch PCs."];
+  },
+  summary(v) { const B = BR(v); return ["The " + B.name + " branch is on the network over a leased fibre line, " + B.km + " km of single-mode with a long-reach module at each end.", "The line is a routed /30 of its own, worked out by hand, and OSPF runs across it: HQ learns the branch's network, the branch learns the way out.", "The branch's desks get their addresses from the file server at HQ, carried there by the branch router's relay, and reach the internet through the edge router."]; }
+};
+
+export const ENTERPRISE_JOBS = [EJ1, EJ2, EJ3];

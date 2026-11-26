@@ -125,8 +125,10 @@ export function businessRouter(o = {}) {
       cableFrom(g, p, [[x + 6, Y0 + 4, D / 2 + 60], [x + 30, 2.6, D / 2 + 120], [x + 120, 2.6, D / 2 + 240]], { straight: 22 });
     });
     cages.forEach(function (cg, k) {
+      const bail = o.sfpBail && o.sfpBail[k] != null ? o.sfpBail[k] : undefined;   /* the module's own latch colour (black SX, blue LX); without it, as photographed */
+      if (o.sfpBare && o.sfpBare[k]) { plugInto(cg, sfpModule({ bare: true, bail: bail }), { y: 0, z: 0.4 }); return; }   /* a module in its slot with nothing plugged into it */
       if (!sfpOn[k]) return;
-      const m = plugInto(cg, sfpModule({ cable: sfpOn[k], text: "OM2 50/125 µm  ·  LC-LC DUPLEX" }), { y: 0, z: 0.4 });
+      const m = plugInto(cg, sfpModule({ cable: sfpOn[k], bail: bail, text: (o.sfpText && o.sfpText[k]) || "OM2 50/125 µm  ·  LC-LC DUPLEX" }), { y: 0, z: 0.4 });
       cableFrom(g, m, [[-40 + k * 6, Y0 + 6, D / 2 + 70], [-10 + k * 10, 1.6, D / 2 + 130], [60 + k * 16, 1.6, D / 2 + 230]], { straight: 16, r: 1.6 });
     });
     if (o.console) { const cp = plugInto(con, rj45Plug({ standard: "T568B", boot: 0x6aa7d8, jacket: 0x6aa7d8 })); cableFrom(g, cp, [[-30, Y0 + 10, D / 2 + 70], [-60, 3.05, D / 2 + 130], [-120, 3.05, D / 2 + 260]], { straight: 24 }); }

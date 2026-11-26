@@ -2968,7 +2968,7 @@ if (!process.env.ONLY || process.env.ONLY === "campus") {
 if (!process.env.ONLY || process.env.ONLY === "enterprise") {
   const { LEVELS } = await import("../js/desk/levels.js");
   const { GEAR, gearAddr } = await import("../js/build/enterprise.js");
-  const SV = await import("../js/net/svc.js");
+  const SV = await import("../js/net/svc.js"), DHm = await import("../js/net/dhcpd.js");
   const solvedTo = (n) => ({ t: {}, solved: Object.fromEntries(LEVELS.slice(0, n).flatMap((L) => L.tickets).map((id) => [id, 1])) });
   const doneTo = (n) => Object.fromEntries(LEVELS.slice(0, n).flatMap((L) => L.jobs).map((id) => [id, 1]));
   async function epage(file, o) {
@@ -3016,6 +3016,12 @@ if (!process.env.ONLY || process.env.ONLY === "enterprise") {
     }
     if (a.t === "cmd" && !a.cli) { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== a.dev) { await dev(p, a.dev); await tab(p, "Command Prompt"); } return type(p, a.line); }
     if (a.t === "lay") return lay(p, a.a.dev, a.a.port, a.b.dev, a.b.port);   /* the file server's eno3 to the 1F access switch (EN-J2): the Lay form */
+    /* the branch (EN-J3): the router out of its box and your laptop carried there (the Place form), a module from the van in each router's slot
+       (its Physical tab), the console cable pulled (the runs table), the branch router's own console (your laptop's serial terminal) */
+    if (a.t === "place") return place(p, a.dev, a.room);
+    if (a.t === "sfp") { await dev(p, a.dev); await tab(p, "Physical"); await p.click('.acts:has-text("' + a.slot + ':") button:has-text("in a ' + a.type + ' module")'); await p.waitForTimeout(80); return; }
+    if (a.t === "pull") { const i = await p.evaluate((id) => window.__e4b.T.sim.net.cables.findIndex((c) => c.id === id), a.cable); check(i >= 0, "the cable to pull, " + a.cable + ", is in the runs table"); await p.click("#runs tbody tr:nth-child(" + (i + 1) + ") button"); await p.waitForTimeout(40); return; }
+    if (a.t === "cmd" && a.cli && a.dev === "tech") { if ((await p.$eval("#devtabs [aria-pressed=true]", (n) => n.dataset.d).catch(() => "")) !== "tech") await dev(p, "tech"); if (!(await p.$('.win-tabs button[aria-selected="true"]:text-is("Serial terminal")'))) await tab(p, "Serial terminal"); return type(p, a.line); }
     throw new Error("no page step for " + JSON.stringify(a));
   };
   const esc = (x) => String(x).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -3029,13 +3035,15 @@ if (!process.env.ONLY || process.env.ONLY === "enterprise") {
       const plan = await BJ(p, () => window.__e4b.T.sim.net.plan), S = plan.srv, fs = S.fsrv.ip, b16 = fs.split(".").slice(0, 2).join(".") + ".0.0/16";
       check((await BJ(p, () => window.__e4b.T.def.id)) === job && (await BJ(p, () => window.__e4b.T.seed)) === seed && /Level 5 · Enterprise/.test(await p.$eval("#labtitle", (n) => n.textContent)), tag + "opens the job on the campus asked for, under Level 5 · Enterprise");
       const lim = await p.$eval(".limits", (n) => n.textContent);
-      const MN = plan.mon || {};
+      const MN = plan.mon || {}, BRn = plan.branch || {};
       const need = job === "EN-J1" ? [plan.secret, plan.user, plan.userPw, S.user, S.pw, S.fsrv.host, fs, SV.CHRONY_CONF, SV.RSYSLOG_CONF, "/var/log/syslog", b16].concat(GEAR.map((id) => gearAddr(plan, id)))
-        : job === "EN-J2" ? [plan.secret, plan.user, plan.userPw, S.user, S.pw, fs, MN.user, MN.group, MN.authPw, MN.privPw, MN.file, "port " + MN.src, "port " + MN.dst, "eno3", "/etc/snmp/snmptrapd.conf"].concat(GEAR.map((id) => gearAddr(plan, id))) : [plan.secret];
+        : job === "EN-J2" ? [plan.secret, plan.user, plan.userPw, S.user, S.pw, fs, MN.user, MN.group, MN.authPw, MN.privPw, MN.file, "port " + MN.src, "port " + MN.dst, "eno3", "/etc/snmp/snmptrapd.conf"].concat(GEAR.map((id) => gearAddr(plan, id)))
+        : job === "EN-J3" ? [plan.secret, plan.console, plan.user, plan.userPw, plan.domain, S.user, S.pw, BRn.host, BRn.link.net + "/30", BRn.lan.gw, BRn.lan.net + "/24", BRn.hqDesc, BRn.brDesc, BRn.lanDesc, BRn.hqPort, BRn.lanPort, "port " + BRn.swPort, BRn.km + " km", DHm.CONF, "1000BASE-LX"] : [plan.secret];
       check(need.every((x) => lim.indexOf(x) >= 0), tag + "the limits carry the campus's records the job needs" + (need.filter((x) => lim.indexOf(x) < 0).length ? " (missing " + need.filter((x) => lim.indexOf(x) < 0).join(", ") + ")" : ""));
       const first = await checkJob(p);
       check((await p.$$("#check .rq.bad")).length === (await BJ(p, () => window.__e4b.T.def.reqs.filter((q) => (window.__e4b.T.def.already || []).indexOf(q.id) < 0).length)), tag + "the first check finds the work to do");
       if (job === "EN-J1") check(/chrony\.conf on the file server: no allow line/.test(first) && /show running-config \| include ntp on the edge router: nothing/.test(first) && /rsyslog\.conf: the imudp lines start with #/.test(first) && /show logging on the edge router: no Logging to line/.test(first), tag + "the first check says what it saw, line by line: chrony's file with no allow line, the edge router with no NTP server, rsyslog's UDP lines commented out, the edge router with no log host");
+      if (job === "EN-J3") check(/The work order's van list: the branch router, in its box/.test(first) && /show ip interface brief on the edge router: GigabitEthernet0\/9 unassigned/.test(first) && /show ip protocols on the branch router: nothing/.test(first) && /ping \S+ from the branch PC 1; tracert/.test(first), tag + "the first check says what it saw, line by line: the branch router in its box, the edge router's Gi0/9 unassigned, no OSPF at the branch, branch PC 1 getting no answer from the file server");
       if (job === "EN-J2") check(/show running-config \| include community on/.test(first) && /show snmp group on the edge router/.test(first) && /show snmp host on the edge router: nothing/.test(first) && /The runs table: eno3/.test(first) && /ip link show eno3 on the file server/.test(first), tag + "the first check says what it saw, line by line: a community still there, no group on the edge router, no notification host, nothing on eno3, eno3 down");
       const sol = await BJ(p, () => { const T = window.__e4b.T; return T.def.solve(T.v, T.sim); });
       let nano = 0, ntp = 0, polls = 0;
@@ -3046,6 +3054,14 @@ if (!process.env.ONLY || process.env.ONLY === "enterprise") {
           check(st.path === SV.CHRONY_CONF && /^\[ Read \d+ lines \]$/.test(st.status), tag + "nano on chrony's file: its whole path, [ Read ... lines ] (" + st.path + ", " + st.status + ")");
         }
         await step(p, a);
+        if (job === "EN-J3") {
+          const last = async (w) => (await term(p)).split(w).pop();
+          if (a.t === "sfp" && a.dev === "brt") check(new RegExp(esc(BRn.brPort) + ": 1000BASE-LX · 1310 nm · single-mode · up to 10 km").test(await p.$eval(".win", (n) => n.textContent)), tag + "the branch router's Physical tab: the module in " + BRn.brPort + ", its label");
+          if (a.line === "show ip ospf neighbor") check(new RegExp(esc(BRn.link.br) + "\\s+1\\s+FULL/\\S+\\s+\\S+\\s+" + esc(BRn.link.br) + "\\s+GigabitEthernet0/9").test(await last("show ip ospf neighbor")), tag + "show ip ospf neighbor on the edge router: the branch router FULL across the line (" + BRn.link.br + ")");
+          if (a.line === "sudo systemctl restart isc-dhcp-server") check(!/failed|Job for/.test(await last("restart isc-dhcp-server")), tag + "the DHCP server restarted on its file with the branch's subnet");
+          if (a.dev === "bpc1" && a.line === "ipconfig /renew") check(new RegExp("IPv4 Address[ .]*: " + esc(BRn.lan.first) + "\\b").test(await last("ipconfig /renew")) && new RegExp("Default Gateway[ .]*: " + esc(BRn.lan.gw)).test(await last("ipconfig /renew")), tag + "ipconfig /renew on branch PC 1: the branch's first address from the file server (" + BRn.lan.first + "), the branch's gateway");
+          continue;
+        }
         if (job === "EN-J2") {
           const last = async (w) => (await term(p)).split(w).pop();
           if (/^snmpget /.test(a.line || "") && !polls++) check(/SNMPv2-MIB::sysName\.0 = STRING: \S+/.test(await last(a.line)), tag + "snmpget at authPriv from the file server's console: the edge router's name");
@@ -3067,6 +3083,21 @@ if (!process.env.ONLY || process.env.ONLY === "enterprise") {
       check(!refused.test(tdesk), tag + "no line was refused at the service desk PC" + (refused.test(tdesk) ? " (" + tdesk.match(refused)[0] + ")" : ""));
       const t = await checkJob(p), n = await BJ(p, () => window.__e4b.T.def.reqs.length);
       check(new RegExp(n + " of " + n + " met").test(t) && /Job .* done/.test(t), tag + "every line met through the page (" + (t.match(/\d+ of \d+ met/) || ["?"])[0] + ")");
+      if (job === "EN-J3") {   /* from the branch: the internet, and the way to the file server hop by hop; from HQ: the edge router's route to the branch and its translations; the module in 3D */
+        const L = (d, l) => step(p, { t: "cmd", dev: d, line: l });
+        for (const l of ["ping 8.8.8.8", "tracert -d " + fs, "ipconfig /all"]) await L("bpc1", l);
+        const o = await term(p), pg = o.slice(o.lastIndexOf("ping 8.8.8.8"), o.lastIndexOf("tracert -d")), tr = o.slice(o.lastIndexOf("tracert -d"), o.lastIndexOf("ipconfig /all")), ia = o.slice(o.lastIndexOf("ipconfig /all"));
+        check(/Reply from 8\.8\.8\.8: bytes=32/.test(pg), tag + "ping 8.8.8.8 from branch PC 1: replies, through the line and the edge router's translation");
+        check(new RegExp("^\\s+1\\s.*\\s" + esc(BRn.lan.gw) + "\\s*$", "m").test(tr) && new RegExp("^\\s+2\\s.*\\s" + esc(BRn.link.hq) + "\\s*$", "m").test(tr) && new RegExp("\\s" + esc(fs) + "\\s*$", "m").test(tr), tag + "tracert -d to the file server from branch PC 1: the branch router, then the edge router's end of the line, then on to the file server");
+        check(new RegExp("DHCP Server[ .]*: " + esc(fs)).test(ia), tag + "ipconfig /all on branch PC 1: its DHCP server is the file server (" + fs + ")");
+        for (const l of ["ssh " + plan.user + "@" + gearAddr(plan, "edge"), plan.userPw, "enable", plan.secret, "show ip route " + BRn.lan.net, "show ip nat translations", "exit"]) await L("sd1", l);
+        const e = await term(p), rt = e.slice(e.lastIndexOf("show ip route " + BRn.lan.net), e.lastIndexOf("show ip nat translations")), nt = e.slice(e.lastIndexOf("show ip nat translations"));
+        check(new RegExp("Known via \"ospf 1\"[\\s\\S]*" + esc(BRn.link.br) + "[\\s\\S]*GigabitEthernet0/9").test(rt) || new RegExp("O\\s+" + esc(BRn.lan.net) + "/24 \\[110/\\d+\\] via " + esc(BRn.link.br)).test(rt), tag + "show ip route on the edge router: the branch's network learned by OSPF, via the branch router across the line");
+        check(new RegExp("\\s" + esc(BRn.lan.first) + ":\\d+\\s").test(nt), tag + "show ip nat translations on the edge router: branch PC 1's address translated (" + BRn.lan.first + ")");
+        await dev(p, "brt"); await tab(p, "Physical"); await p.waitForTimeout(150);
+        const ph = await p.$eval(".win", (n) => n.textContent);
+        check(/GE 0\/9: a module, its label 1000BASE-LX · 1310 nm · single-mode · up to 10 km, its bail latch blue/.test(ph), tag + "the branch router's Physical tab says what's on it: the LX module in GE 0/9, its blue latch");
+      }
       if (job === "EN-J2") {   /* the 1F access switch from the service desk: the mirror and its port, the monitoring user; the server: the old community gone, the port up, a capture refused in a home folder */
         const L = (l) => step(p, { t: "cmd", dev: "sd1", line: l });
         for (const l of ["ssh " + plan.user + "@" + gearAddr(plan, "acc1"), plan.userPw, "enable", plan.secret, "show monitor session all", "show interfaces status", "show snmp user"]) await L(l);

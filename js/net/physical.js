@@ -97,6 +97,10 @@ export function physicalState(sim, id) {
     opts.console = ports[10].plug !== "none";
     const mods = x.sfp || {};
     opts.sfp = [8, 9].map(function (n) { const c = sim.cableAt(id, "Gi0/" + n); return mods["Gi0/" + n] && c ? (c.fiber === "SMF" ? 0xf2c200 : 0xe8893a) : null; });
+    /* the module's latch and the cord's print, as the managed switch's (the branch's leased line, Level 5: a blue-latched LX and a yellow OS2 cord) */
+    opts.sfpBare = [8, 9].map(function (n) { return !!mods["Gi0/" + n] && !sim.cableAt(id, "Gi0/" + n); });
+    opts.sfpBail = [8, 9].map(function (n) { const m = mods["Gi0/" + n] && SFP_MODULES[mods["Gi0/" + n]]; return m ? (m.bail === "blue" ? 0x2f6fd0 : 0x1d1e21) : null; });
+    opts.sfpText = [8, 9].map(function (n) { const c = sim.cableAt(id, "Gi0/" + n); return c && c.jacket ? c.jacket + "  ·  LC-LC DUPLEX" : null; });
   } else if (model === "rack") {
     /* the patch panel's cords down to the managed switch under it, the tabs as written, the switch's port lights */
     opts.patches = []; opts.tabs = {};

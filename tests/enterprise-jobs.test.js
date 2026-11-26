@@ -117,6 +117,12 @@ test("EN-J1: more wrong ways: a service stopped, the server's own clock lost, an
   /* the running configuration says it: a switch and the edge router */
   const show = (id) => gear(J, id, ["do show running-config | include ntp", "do show running-config | include logging"], false).map((a) => (B.act(J, a) || {}).out || "").join("");
   for (const id of ["acc1", "edge"]) { const out = show(id); assert.match(out, new RegExp("^ntp server " + fs.replace(/\./g, "\\.") + "$", "m"), id + " ntp server"); assert.match(out, new RegExp("^logging host " + fs.replace(/\./g, "\\.") + "$", "m"), id + " logging host"); }
+  /* and saved: a switch that has them taken off without saving gets them back from what it saved when its power is cut (a save that left them
+     out would pass every line above, and the switch would come back without them) */
+  J = done(); run(J, gear(J, "acc2", ["no ntp server " + fs, "no logging host " + fs], false));
+  assert.equal(line(J, "sync").cause, "none", "taken off acc2, not saved"); assert.ok(!(J.sim.d.acc2.sw.logHosts || []).length, "the log host off acc2");
+  B.act(J, { t: "power", dev: "acc2" });
+  assert.equal(line(J, "sync").ok, true, "back after the power cut: the saved time server"); assert.deepEqual(J.sim.d.acc2.sw.logHosts, [fs], "the saved log host back");
 });
 
 test("EN-J1: other right ways pass: allow for the whole network spelled out per subnet, rsyslog's old-style lines, logging <address>, a test line by hand", () => {
@@ -232,5 +238,125 @@ test("EN-J2: rungs and the ladder; a saved job replays exactly; the help never n
   for (const t of texts) for (const bad of [M.authPw, M.privPw, M.user, M.group, M.rw, p.secret, p.userPw, p.srv.pw, p.srv.fsrv.ip].map((x) => String(x).toLowerCase())) assert.ok(t.indexOf(bad) < 0, "names " + bad + ": " + t);
   const U = run(B.open(EJ2, seeds[0]), EJ2.solve(J.v).slice(0, 60));
   const R = B.restore(EJ2, JSON.parse(JSON.stringify(B.save(U))));
+  assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
+});
+
+/* ---------------------------------------------------------------- EN-J3, a branch office over a leased line */
+const EJ3 = ENTERPRISE_JOBS.find((d) => d.id === "EN-J3");
+const solve3 = (J, swap) => { const acts = EJ3.solve(J.v); return swap ? swap(acts) : acts; };
+/* the walk-through's lines typed on the tech laptop's console, one router's session at a time: the branch router's first, the edge router's second */
+const conAt = (acts, which) => { const starts = acts.map((x, i) => (x.t === "lay" && x.b.port === "CONSOLE" ? i : -1)).filter((i) => i >= 0); const k = starts[which], e = which + 1 < starts.length ? starts[which + 1] : acts.length; return [k, e]; };
+/* change one line typed on a router's console (null drops it); "after" picks the first match after another line */
+const conSwap = (which, from, to, after) => (acts) => { const [k, e] = conAt(acts, which); let gate = after ? -1 : k; const out = acts.slice(); for (let i = k; i < e; i++) { const x = out[i]; if (after && gate < 0 && x.line === after) { gate = i; continue; } if (gate >= 0 && i > gate && x.t === "cmd" && x.dev === "tech" && x.line === from) { out[i] = to == null ? null : Object.assign({}, x, { line: to }); break; } } return out.filter(Boolean); };
+const conAdd = (which, after, lines) => (acts) => { const [k] = conAt(acts, which), i = acts.findIndex((x, j) => j > k && x.line === after); return acts.slice(0, i + 1).concat(lines.map((l) => ({ t: "cmd", dev: "tech", line: l, cli: true })), acts.slice(i + 1)); };
+const fsText = (f) => (acts) => acts.map((x) => (x.dev === "fsrv" && x.line === "^O" ? Object.assign({}, x, { text: f(x.text) }) : x));
+const drop = (f) => (acts) => acts.filter((x) => !f(x));
+const sshOn = (J, ip, lines) => { const p = J.v.plan, D = (l) => (B.act(J, { t: "cmd", dev: "sd1", line: l }) || {}).out || ""; ["ssh " + p.user + "@" + ip, p.userPw, "enable", p.secret].forEach(D); const o = lines.map(D); D("exit"); return o; };
+
+test("EN-J3 starts with its work still to do, for the real reason; the walk-through passes every line", () => {
+  for (const s of seeds.slice(0, Math.max(1, N - 1))) {
+    let J = B.open(EJ3, s), c = B.check(J);
+    for (const r of c.res) { if (EJ3.already.indexOf(r.id) >= 0) assert.ok(r.ok, s + " " + r.id + " met before any work"); else { assert.equal(r.ok, false, s + " " + r.id); assert.ok(r.ev && r.ev.length > 10); } }
+    assert.equal(line(J, "rack").cause, "boxed"); assert.equal(line(J, "line").cause, "boxed"); assert.equal(line(J, "addr").cause, "none"); assert.equal(line(J, "lan").cause, "boxed");
+    assert.equal(line(J, "ospf").cause, "proc"); assert.equal(line(J, "routes").cause, "noadv"); assert.equal(line(J, "desks").cause, "nohelper"); assert.equal(line(J, "reach").cause, "back");
+    const ip = J.sim.d.bpc1.ifaces[0]; assert.ok(!ip.lease && /^169\.254\./.test(ip.apipa), s + " the branch desks asked this morning and nobody answered");
+    J = run(B.open(EJ3, s), EJ3.solve(J.v)); c = B.check(J);
+    for (const r of c.res) assert.ok(r.ok, s + " " + r.id + " not met after the walk-through: " + r.ev);
+    assert.equal(J.done, true);
+  }
+});
+
+test("EN-J3: the gear's own view: OSPF across the line, each side's routes, the branch PCs' leases from the file server, tracert hop by hop, the translations", () => {
+  const s = seeds[0], J = run(B.open(EJ3, s), EJ3.solve(B.open(EJ3, s).v)), p = J.v.plan, Bn = p.branch, fs = p.srv.fsrv.ip, esc = (x) => String(x).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const [nb, rt] = sshOn(J, gearAddr(p, "edge"), ["show ip ospf neighbor", "show ip route"]);
+  assert.match(nb, new RegExp(esc(Bn.link.br) + "\\s+1\\s+FULL/\\S+\\s+\\S+\\s+" + esc(Bn.link.br) + "\\s+GigabitEthernet0/9"), "the edge router: the branch router a FULL neighbour across the line");
+  assert.match(rt, new RegExp("^O\\s+" + esc(Bn.lan.net) + "/24 \\[110/\\d+\\] via " + esc(Bn.link.br) + ", GigabitEthernet0/9", "m"), "the edge router: the branch's network by OSPF");
+  assert.match(rt, new RegExp("^C\\s+" + esc(Bn.link.net) + "/30 is directly connected, GigabitEthernet0/9", "m"), "the edge router: the line connected, a /30");
+  const [br, bif, bpr] = sshOn(J, Bn.lan.gw, ["show ip route", "show ip interface brief", "show ip protocols"]);
+  assert.match(br, /^O\*E2\s+0\.0\.0\.0\/0 \[110\/1\] via /m, "the branch router: the way out learned by OSPF"); assert.match(br, /Gateway of last resort is /, "the branch router: a gateway of last resort");
+  assert.match(bif, new RegExp("GigabitEthernet0/9\\s+" + esc(Bn.link.br) + "\\s+YES\\s+\\w+\\s+up\\s+up"), "the branch router's end of the line, up"); assert.match(bif, new RegExp("GigabitEthernet0/0\\s+" + esc(Bn.lan.gw) + "\\s+YES\\s+\\w+\\s+up\\s+up"), "its LAN port, up");
+  assert.match(bpr, /Passive Interface\(s\):\s*\n\s*GigabitEthernet0\/0/, "the branch's LAN passive");
+  const pc = (l) => (B.act(J, { t: "cmd", dev: "bpc2", line: l }) || {}).out || "";
+  const all = pc("ipconfig /all"), tr = pc("tracert -d " + fs), pg = pc("ping 8.8.8.8");
+  assert.match(all, new RegExp("DHCP Server[ .]*: " + esc(fs)), "branch PC 2's lease is the file server's"); assert.match(all, new RegExp("Default Gateway[ .]*: " + esc(Bn.lan.gw)), "with the branch's gateway");
+  assert.match(all, new RegExp("IPv4 Address[ .]*: " + esc(Bn.lan.net.replace(/0$/, "")) + "\\d+"), "an address in the branch's network");
+  assert.match(tr, new RegExp("^\\s+1\\s.*\\s" + esc(Bn.lan.gw) + "\\s*$", "m")); assert.match(tr, new RegExp("^\\s+2\\s.*\\s" + esc(Bn.link.hq) + "\\s*$", "m")); assert.match(tr, new RegExp("\\s" + esc(fs) + "\\s*$", "m"));
+  assert.match(pg, /Reply from 8\.8\.8\.8: bytes=32/, "branch PC 2 reaches the internet");
+  const [nt] = sshOn(J, gearAddr(p, "edge"), ["show ip nat translations"]);
+  assert.match(nt, new RegExp("\\s" + esc(J.sim.d.bpc2.ifaces[0].lease.ip) + ":\\d+\\s"), "the edge router translated branch PC 2");
+  /* the file server's own list of leases names both branch PCs */
+  const lv = run(J, ["", p.srv.user, p.srv.pw, "dhcp-lease-list"].map((l) => L(l))) && (B.act(J, L("dhcp-lease-list")) || {}).out || "";
+  for (const id of ["bpc1", "bpc2"]) assert.ok(lv.indexOf(J.sim.d[id].ifaces[0].lease.ip) >= 0, id + "'s lease in dhcp-lease-list");
+});
+
+test("EN-J3: the tempting wrong ways each fail their own line for their own cause", () => {
+  const s = seeds[0], o = () => B.open(EJ3, s), v0 = o().v, p = v0.plan, Bn = p.branch, L3 = Bn.link, fs = p.srv.fsrv.ip, w = (f) => run(o(), solve3(o(), f));
+  const cases = [
+    ["multimode modules on the single-mode line", (a) => a.map((x) => (x.t === "sfp" ? Object.assign({}, x, { type: "1000BASE-SX" }) : x)), "line", "mmf"],
+    ["an SFP+ module in the edge router's slot", (a) => a.map((x) => (x.t === "sfp" && x.dev === "edge" ? Object.assign({}, x, { type: "10GBASE-SR" }) : x)), "line", "plus"],
+    ["the edge router's end of the line left shut", conSwap(1, "no shutdown", null, "interface " + Bn.hqPort), "line", "shut"],
+    ["the ends the wrong way round", (a) => conSwap(1, "ip address " + L3.hq + " " + L3.mask, "ip address " + L3.br + " " + L3.mask)(conSwap(0, "ip address " + L3.br + " " + L3.mask, "ip address " + L3.hq + " " + L3.mask)(a)), "addr", "swap"],
+    ["a /24 on the line", (a) => conSwap(1, "ip address " + L3.hq + " " + L3.mask, "ip address " + L3.hq + " 255.255.255.0")(conSwap(0, "ip address " + L3.br + " " + L3.mask, "ip address " + L3.br + " 255.255.255.0")(a)), "addr", "mask"],
+    ["the next /30's addresses", (a) => conSwap(1, "ip address " + L3.hq + " " + L3.mask, "ip address " + L3.hq.replace(/\d+$/, (n) => +n + 4) + " " + L3.mask)(conSwap(0, "ip address " + L3.br + " " + L3.mask, "ip address " + L3.br.replace(/\d+$/, (n) => +n + 4) + " " + L3.mask)(a)), "addr", "out"],
+    ["the edge router's end not described", conSwap(1, "description " + Bn.hqDesc, null), "addr", "desc"],
+    ["the branch router's LAN on another address", conSwap(0, "ip address " + Bn.lan.gw + " " + Bn.lan.mask, "ip address " + Bn.lan.net.replace(/0$/, "254") + " " + Bn.lan.mask), "lan", "addr"],
+    ["the router's cable into its Gi0/1", (a) => a.map((x) => (x.t === "lay" && x.b.dev === "bsw2" ? Object.assign({}, x, { a: { dev: "brt", port: "Gi0/1" } }) : x)), "lan", "ports"],
+    ["no OSPF at the branch", (a) => { const [k, e] = conAt(a, 0), i = a.findIndex((x, j) => j > k && x.line === "router ospf 1"), j2 = a.findIndex((x, j) => j > i && x.line === "exit"); return a.slice(0, i).concat(a.slice(j2 + 1)); }, "ospf", "proc"],
+    ["the line left out of the edge router's OSPF", conSwap(1, "network " + L3.net + " 0.0.0.3 area 0", null), "ospf", "net"],
+    ["the edge router's end passive", conAdd(1, "network " + L3.net + " 0.0.0.3 area 0", ["passive-interface " + Bn.hqPort]), "ospf", "passive"],
+    ["the branch's end in area 1", conSwap(0, "network " + L3.net + " 0.0.0.3 area 0", "network " + L3.net + " 0.0.0.3 area 1"), "ospf", "area"],
+    ["the branch's network left out of OSPF", conSwap(0, "network " + Bn.lan.net + " 0.0.0.255 area 0", null), "routes", "noadv"],
+    ["the branch's LAN saying hello to the desks", conSwap(0, "passive-interface " + Bn.lanPort, null), "routes", "hello"],
+    ["no relay on the branch router", conSwap(0, "ip helper-address " + fs, null), "desks", "nohelper"],
+    ["the relay to the file server's backup address", conSwap(0, "ip helper-address " + fs, "ip helper-address " + p.srv.fsrv.bip), "desks", "helper"],
+    ["the file server's file without the branch's subnet", fsText(() => v0.dhconf), "desks", "nosub"],
+    ["the DHCP server never restarted", drop((x) => x.line === "sudo systemctl restart isc-dhcp-server"), "desks", "stale"],
+    ["the range into the first twenty", fsText((t) => t.replace("range " + Bn.lan.first, "range " + Bn.lan.net.replace(/0$/, "2"))), "desks", "kept"],
+    ["a range that stops at .100", fsText((t) => t.replace(Bn.lan.first + " " + Bn.lan.net.replace(/0$/, "254"), Bn.lan.first + " " + Bn.lan.net.replace(/0$/, "100"))), "desks", "small"],
+    ["no routers option for the branch", fsText((t) => t.replace("  option routers " + Bn.lan.gw + ";\n", "")), "desks", "routers"],
+    ["the desks never asked again", drop((x) => x.line === "ipconfig /renew"), "desks", "notyet"],
+    ["a semicolon missing in the branch's subnet", fsText((t) => t.replace("option routers " + Bn.lan.gw + ";", "option routers " + Bn.lan.gw)), "desks", "syntax"],
+    ["the line not an inside interface for NAT", conSwap(1, "ip nat inside", null), "reach", "nat"],
+    ["the edge router never saved", conSwap(1, "copy running-config startup-config", null), "saved", "unsaved-edge"],
+    ["the branch router never saved", conSwap(0, "copy running-config startup-config", null), "saved", "unsaved-brt"],
+    ["the branch router not named", conSwap(0, "hostname " + Bn.host, null), "rack", "name"],
+    ["no enable secret at the branch", conSwap(0, "enable secret " + p.secret, null), "rack", "secret"],
+    ["Telnet left on at the branch", conSwap(0, "transport input ssh", null), "rack", "ssh"]
+  ];
+  for (const [name, f, id, cause] of cases) { const J = w(f); assert.equal(line(J, id).cause, cause, name + ": " + line(J, id).ev); }
+  /* the line's own causes before anything's plugged in: no module at the branch, the fibre not in, copper across town */
+  let J = o(); run(J, [{ t: "place", dev: "brt", room: "bcomms" }, { t: "sfp", dev: "edge", slot: Bn.hqPort, type: "1000BASE-LX" }]);
+  assert.equal(line(J, "line").cause, "nomod", "no module at the branch");
+  run(J, [{ t: "sfp", dev: "brt", slot: Bn.brPort, type: "1000BASE-LX" }]); assert.equal(line(J, "line").cause, "none", "both modules, no fibre");
+  run(J, [{ t: "lay", a: { dev: "brt", port: "Gi0/1" }, b: { dev: "edge", port: "Gi0/4" } }]); assert.equal(line(J, "line").cause, "copper", "a copper cable across town: " + line(J, "line").ev);
+  J = o(); run(J, [{ t: "place", dev: "brt", room: "bcomms" }, { t: "sfp", dev: "edge", slot: "Gi0/8", type: "1000BASE-LX" }, { t: "sfp", dev: "brt", slot: Bn.brPort, type: "1000BASE-LX" }, { t: "lay", a: { dev: "edge", port: "Gi0/8" }, b: { dev: "brt", port: Bn.brPort } }]);
+  assert.equal(line(J, "line").cause, "slots", "the edge router's Gi0/8");
+  /* the edge router stops handing out the way out: the branch has none (and HQ has lost its own) */
+  J = run(o(), solve3(o())); sshOn(J, gearAddr(p, "edge"), ["configure terminal", "router ospf 1", "no default-information originate", "end"]);
+  assert.equal(line(J, "routes").cause, "noway"); assert.equal(line(J, "works").ok, false);
+});
+
+test("EN-J3: other right ways pass: OSPF for the whole block with every interface passive but the line, a static way out as well, the edge's statement for its own address, the fibre laid from the branch end, two ranges", () => {
+  const s = seeds[0], o = () => B.open(EJ3, s), p = o().v.plan, Bn = p.branch, L3 = Bn.link, b2 = p.srv.fsrv.ip.split(".").slice(0, 2).join(".");
+  const f = (a) => {
+    a = conSwap(0, "network " + L3.net + " 0.0.0.3 area 0", "network " + b2 + ".0.0 0.0.255.255 area 0")(a);
+    a = conSwap(0, "network " + Bn.lan.net + " 0.0.0.255 area 0", "passive-interface default")(a);
+    a = conSwap(0, "passive-interface " + Bn.lanPort, "no passive-interface " + Bn.brPort)(a);
+    a = conAdd(0, "no passive-interface " + Bn.brPort, ["exit", "ip route 0.0.0.0 0.0.0.0 " + L3.hq, "router ospf 1"])(a);
+    a = conSwap(1, "network " + L3.net + " 0.0.0.3 area 0", "network " + L3.hq + " 0.0.0.0 area 0")(a);
+    a = a.map((x) => (x.t === "lay" && x.a.dev === "edge" ? Object.assign({}, x, { a: x.b, b: x.a }) : x));
+    return fsText((t) => t.replace("range " + Bn.lan.first + " " + Bn.lan.net.replace(/0$/, "254") + ";", "range " + Bn.lan.first + " " + Bn.lan.net.replace(/0$/, "120") + ";\n  range " + Bn.lan.net.replace(/0$/, "121") + " " + Bn.lan.net.replace(/0$/, "254") + ";"))(a);
+  };
+  const J = run(o(), solve3(o(), f));
+  for (const r of B.check(J).res) assert.ok(r.ok, r.id + ": " + r.ev);
+});
+
+test("EN-J3: rungs and the ladder; a saved job replays exactly; the help never names a password, an address or the router's name", () => {
+  const J = B.open(EJ3, seeds[0]), p = J.v.plan, Bn = p.branch;
+  const texts = [].concat(...EJ3.reqs.map((q) => [q.text, q.rung1(J.v, J.sim), q.rung2(J.v, J.sim), q.ok(J.v, J.sim)]), [EJ3.mason]).map((x) => String(x).toLowerCase());
+  for (const t of texts) for (const bad of [p.secret, p.console, p.userPw, p.srv.pw, p.srv.fsrv.ip, Bn.host, Bn.link.hq, Bn.link.br, Bn.link.net, Bn.lan.gw, Bn.lan.net].map((x) => String(x).toLowerCase())) assert.ok(t.indexOf(bad) < 0, "names " + bad + ": " + t);
+  for (const q of EJ3.reqs) assert.ok(q.causes(J.sim, J.v).length >= 2, q.id + " has two causes or more, so the third rung can narrow");
+  const U = run(B.open(EJ3, seeds[0]), EJ3.solve(J.v).slice(0, 70));
+  const R = B.restore(EJ3, JSON.parse(JSON.stringify(B.save(U))));
   assert.equal(JSON.stringify(R.sim.net), JSON.stringify(U.sim.net));
 });

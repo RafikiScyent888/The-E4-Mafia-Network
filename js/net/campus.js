@@ -51,7 +51,7 @@ export const CAMPUS_LAYOUT = {
   isp: { x: 10, y: 40 }, modem: { x: 210, y: 40, px: 120, py: 110, room: "data" }, edge: { x: 560, y: 40, lab: "right", px: 290, py: 110, room: "data" },
   core1: { x: 300, y: 150, lab: "left", px: 460, py: 110, room: "data" }, core2: { x: 820, y: 150, lab: "right", px: 460, py: 195, room: "data" },
   dist1: { x: 380, y: 270, lab: "left", px: 290, py: 195, room: "data" }, dist2: { x: 740, y: 270, lab: "right", px: 120, py: 280, room: "data" },
-  tech: { x: 30, y: 240, px: 120, py: 195, room: "data", alt: { c4: { x: 1040, y: 270, px: 265, py: 855 }, acomms: { x: 120, y: 1100, px: 320, py: 1100 }, bcomms: { x: 120, y: 1470, px: 320, py: 1330 } } },   /* carried to the Annex's comms room (work order 8): under the Annex core, in its block */   /* carried to the 4F closet (work order 7): beside the new switch on both drawings */
+  tech: { x: 30, y: 240, px: 120, py: 195, room: "data", alt: { c4: { x: 1040, y: 270, px: 265, py: 855 }, acomms: { x: 120, y: 1100, px: 320, py: 1100 }, bcomms: { x: 120, y: 1430, px: 320, py: 1360 } } },   /* carried to the Annex's comms room (work order 8): under the Annex core, in its block */   /* carried to the 4F closet (work order 7): beside the new switch on both drawings */
   /* the access row in four (the fourth floor, work order 7), in the same width (a wider diagram would shrink every name on it):
      staggered, 1F and 3F up, 2F and 4F down, so no two names share a line; the desks on two rows under them */
   acc1: { x: 100, y: 410, lab: "right", px: 460, py: 280, room: "data" }, acc2: { x: 370, y: 470, lab: "right", px: 115, py: 455, room: "c2" }, acc3: { x: 630, y: 410, lab: "right", px: 115, py: 655, room: "c3" }, acc4: { x: 860, y: 470, lab: "right", px: 115, py: 855, room: "c4" },
@@ -68,8 +68,8 @@ export const CAMPUS_LAYOUT = {
   fsrv: { x: 0, y: 810, lab: "right", px: 600, py: 280, room: "data" }, bksrv: { x: 370, y: 810, lab: "right", px: 290, py: 455, room: "c2" },
   /* the branch office (Level 5, work order 3): a block of its own under the Annex on the logical diagram (the leased fibre a labelled stub at
      each end), a band of its own under the Annex on the floor plan */
-  brt: { x: 120, y: 1290, lab: "right", px: 150, py: 1290, room: "bcomms" }, bsw2: { x: 380, y: 1430, px: 150, py: 1380, room: "bcomms" },
-  bpc1: { x: 620, y: 1370, px: 540, py: 1310, room: "boffice" }, bpc2: { x: 840, y: 1450, px: 780, py: 1310, room: "boffice" },
+  brt: { x: 120, y: 1290, lab: "right", px: 150, py: 1315, room: "bcomms" }, bsw2: { x: 380, y: 1430, px: 150, py: 1405, room: "bcomms" },
+  bpc1: { x: 620, y: 1350, px: 540, py: 1335, room: "boffice" }, bpc2: { x: 840, y: 1430, px: 780, py: 1335, room: "boffice" },
   /* CP-15's switch on the bench, nobody's records: on the floor plan only, at the bench's far end */
   dsw: { px: 900, py: 420, room: "bench" }
 };
@@ -93,7 +93,7 @@ export function addDeskSwitch(sim, kind) {
   L.dsw = "bench"; sim.arp.dsw = {};
   net.extra.stray = { dev: "dsw", moves: moves, leads: leads, take: kind === "customer" ? "Take the customer's switch off the network: bench PC 1's cable back in" : "Take the desk switch away: each bench PC's cable back in" };
 }
-export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 345], c2: [30, 365, 260, 545], bench: [260, 365, 980, 545], c3: [30, 565, 260, 745], office: [260, 565, 980, 745], c4: [30, 765, 330, 945], train: [330, 765, 980, 945], acomms: [30, 985, 400, 1205], class: [400, 985, 980, 1205], bcomms: [30, 1245, 400, 1425], boffice: [400, 1245, 980, 1425] };   /* the branch's band, below the Annex (Level 5) */   /* the Annex's band, below the main building (work order 8) */
+export const CAMPUS_ROOM_BOX = { data: [30, 30, 560, 345], svc: [560, 30, 980, 345], c2: [30, 365, 260, 545], bench: [260, 365, 980, 545], c3: [30, 565, 260, 745], office: [260, 565, 980, 745], c4: [30, 765, 330, 945], train: [330, 765, 980, 945], acomms: [30, 985, 400, 1205], class: [400, 985, 980, 1205], bcomms: [30, 1245, 400, 1465], boffice: [400, 1245, 980, 1465] };   /* the branch's band, below the Annex (Level 5) */   /* the Annex's band, below the main building (work order 8) */
 const swMac = function (hi, lo) { return "00e0.4c" + hi.toString(16).padStart(2, "0") + "." + lo.toString(16).padStart(4, "0"); };
 const run = function (sw, lines) { const S = session(sw); ["", "enable", "configure terminal"].concat(lines, ["end", "copy running-config startup-config", ""]).forEach(function (l) { exec(S, l); }); return sw; };
 
